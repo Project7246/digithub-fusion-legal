@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Privacy Policy — DigiHub Fusion</title>
+<style>
+  :root{
+    --ink:#182027;
+    --ink-soft:#4a5a66;
+    --rule:#d8dfe3;
+    --paper:#fbfaf7;
+    --mark:#0f6a5a;
+  }
+  *{box-sizing:border-box}
+  body{
+    margin:0;background:var(--paper);color:var(--ink);
+    font-family:"Iowan Old Style","Palatino Linotype",Palatino,Georgia,serif;
+    font-size:17px;line-height:1.62;
+  }
+  .wrap{max-width:43rem;margin:0 auto;padding:4rem 1.5rem 6rem}
+  header{border-bottom:2px solid var(--ink);padding-bottom:1.4rem;margin-bottom:2.6rem}
+  .brand{font-family:ui-sans-serif,system-ui,"Segoe UI",sans-serif;font-size:.82rem;
+    letter-spacing:.09em;color:var(--mark);margin:0 0 .5rem;font-weight:600}
+  h1{font-size:2rem;line-height:1.2;margin:0 0 .6rem;font-weight:600}
+  .meta{font-family:ui-sans-serif,system-ui,sans-serif;font-size:.85rem;color:var(--ink-soft);margin:0}
+  h2{font-family:ui-sans-serif,system-ui,"Segoe UI",sans-serif;font-size:1.02rem;
+    font-weight:650;margin:2.6rem 0 .7rem}
+  h2 span{color:var(--mark);margin-right:.5rem}
+  p{margin:0 0 1rem;max-width:70ch}
+  ul{margin:0 0 1rem;padding-left:1.2rem}
+  li{margin-bottom:.45rem}
+  table{border-collapse:collapse;width:100%;margin:0 0 1.2rem;
+    font-family:ui-sans-serif,system-ui,sans-serif;font-size:.9rem}
+  th,td{text-align:left;vertical-align:top;padding:.55rem .7rem .55rem 0;
+    border-bottom:1px solid var(--rule)}
+  th{font-weight:650;border-bottom:1px solid var(--ink)}
+  .callout{border-left:3px solid var(--mark);padding:.1rem 0 .1rem 1.1rem;margin:1.6rem 0}
+  footer{margin-top:3.5rem;padding-top:1.2rem;border-top:1px solid var(--rule);
+    font-family:ui-sans-serif,system-ui,sans-serif;font-size:.86rem;color:var(--ink-soft)}
+  a{color:var(--mark)}
+  @media (max-width:520px){body{font-size:16px}.wrap{padding:2.5rem 1.2rem 4rem}
+    h1{font-size:1.6rem}table{font-size:.84rem}}
+</style>
+</head>
+<body>
+<div class="wrap">
+<header>
+  <p class="brand">DigiHub Fusion</p>
+  <h1>Privacy Policy</h1>
+  <p class="meta">Last updated: 2 October 2026</p>
+</header>
+
+<p>This policy explains what data the DigiHub Fusion application ("the Application") collects when you
+connect it to QuickBooks Online, Shopify, or a courier account, why we collect it, how it is protected,
+and how you can have it removed.</p>
+
+<div class="callout">
+  <p>We do not sell your data, we do not share it for advertising, and we do not use your QuickBooks
+  data to train machine-learning models. Data from one customer is never visible to another.</p>
+</div>
+
+<h2><span>1.</span>Who we are</h2>
+<p>DigiHub Fusion is the data controller for the information described here. You can reach us at
+<a href="mailto:privacy@digihubfusion.com">privacy@digihubfusion.com</a>.</p>
+
+<h2><span>2.</span>What we collect and why</h2>
+<table>
+  <tr><th>Data</th><th>Source</th><th>Purpose</th></tr>
+  <tr><td>Name, email, company name, password hash</td><td>You, at sign-up</td><td>Creating and securing your account</td></tr>
+  <tr><td>OAuth access and refresh tokens, realm (company) ID</td><td>Intuit, Shopify</td><td>Authorising API calls on your behalf</td></tr>
+  <tr><td>Customers, products and services, invoices, payments, deposits, accounts, taxes</td><td>QuickBooks Online API</td><td>Matching records, avoiding duplicates, posting and reconciling transactions</td></tr>
+  <tr><td>Orders, line items, SKUs, discounts, shipping, totals, buyer name and delivery address</td><td>Shopify API</td><td>Creating the corresponding invoices in QuickBooks Online</td></tr>
+  <tr><td>Consignment numbers, delivery status, remittance and payment reference data</td><td>Courier APIs</td><td>Reconciling cash-on-delivery receipts against invoices</td></tr>
+  <tr><td>Sync logs, timestamps, error messages, IP address</td><td>The Application</td><td>Troubleshooting, audit trail, and security monitoring</td></tr>
+</table>
+<p>We request the minimum QuickBooks Online scope needed to perform these functions and we do not
+access payroll data. We do not collect or store payment card numbers, bank account numbers, or
+national identity numbers.</p>
+
+<h2><span>3.</span>Legal basis</h2>
+<p>We process this data to perform our contract with you, and, for security logging and fraud
+prevention, on the basis of our legitimate interests. Where your end customers' personal data
+(buyer name, address, phone) passes through the Application, we act as a processor on your behalf
+and only on your instructions.</p>
+
+<h2><span>4.</span>How data is stored and protected</h2>
+<ul>
+  <li>All traffic between your browser, the Application, and third-party APIs uses TLS 1.2 or higher.</li>
+  <li>Data is held in a managed PostgreSQL database with encryption at rest and restricted network access.</li>
+  <li>OAuth tokens and API keys are stored encrypted and are never displayed in the interface or in logs.</li>
+  <li>Application secrets are held in environment variables, never in source control.</li>
+  <li>Access to production systems is limited to named administrators and protected by multi-factor authentication.</li>
+  <li>Each customer's records are isolated by company identifier and enforced on every query.</li>
+  <li>Backups are encrypted and retained for 30 days.</li>
+</ul>
+<p>If a breach affecting your data occurs, we will notify you and the relevant authorities without
+undue delay and within 72 hours of becoming aware of it.</p>
+
+<h2><span>5.</span>Who else sees the data</h2>
+<p>We share data only with the service providers needed to run the Application: our cloud hosting
+provider, our managed database provider, and our transactional email provider. Each is bound by
+contract to protect the data and may use it only to deliver their service to us. We also disclose
+data where required by law. Our servers are located outside Pakistan; transfers are protected by
+standard contractual clauses with those providers.</p>
+
+<h2><span>6.</span>How long we keep it</h2>
+<p>Operational data is retained while your account is active. When you disconnect the Application
+from QuickBooks Online, the stored tokens for that company are deleted immediately and API access
+stops. When you close your account, all remaining data for that account is deleted within 30 days,
+and purged from encrypted backups within a further 30 days. Anonymised, aggregated usage counts
+that cannot identify you or your customers may be retained.</p>
+
+<h2><span>7.</span>Your choices and rights</h2>
+<ul>
+  <li><strong>Disconnect at any time</strong> — in QuickBooks Online go to Apps → My Apps → DigiHub Fusion → Disconnect, or use the Disconnect button inside the Application.</li>
+  <li><strong>Access or export</strong> — request a copy of the data we hold about you.</li>
+  <li><strong>Correct or delete</strong> — ask us to fix inaccurate data or erase your account data.</li>
+  <li><strong>Object or restrict</strong> — ask us to stop a particular processing activity.</li>
+</ul>
+<p>Email <a href="mailto:privacy@digihubfusion.com">privacy@digihubfusion.com</a> and we will respond
+within 30 days. Deletion requests are confirmed in writing once completed.</p>
+
+<h2><span>8.</span>Cookies</h2>
+<p>We use only strictly necessary cookies to keep you signed in and to protect against cross-site
+request forgery. We do not use advertising or third-party tracking cookies.</p>
+
+<h2><span>9.</span>Children</h2>
+<p>The Application is a business tool and is not directed at anyone under 18. We do not knowingly
+collect data from children.</p>
+
+<h2><span>10.</span>Changes</h2>
+<p>If we change this policy materially, we will notify you by email or in the dashboard at least 14
+days before the change takes effect, and update the date at the top of this page.</p>
+
+<h2><span>11.</span>Contact</h2>
+<p>DigiHub Fusion — <a href="mailto:privacy@digihubfusion.com">privacy@digihubfusion.com</a></p>
+
+<footer>DigiHub Fusion · See also our <a href="/eula">End-User License Agreement</a>.</footer>
+</div>
+</body>
+</html>
