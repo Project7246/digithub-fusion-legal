@@ -29,8 +29,14 @@ get a first deploy working. They can be deleted or rewritten freely.
 | Starter URL | `https://hammerhead-app-z86ki.ondigitalocean.app` |
 
 Deploy: push to `main` -> DigitalOcean builds and deploys by itself (no Render here).
-Status after the first working deploy: **Healthy**, `ca.availity.pk` was still "Pending"
-for DNS at that moment.
+`ca.availity.pk` is live over HTTPS and serves the same build, so it is the address to
+use; `BASE_URL` points at it and the QuickBooks sign-in only works there.
+
+Env vars in DigitalOcean are not saved until **Save** is pressed - values typed and left
+are silently lost, and the app then runs on its fallbacks (`BASE_URL` becomes
+`http://localhost:3000` and the QuickBooks door sends `client_id=undefined`). After any
+change, check `/api/setup-check`: it names which settings the running server received,
+without sending any value back.
 
 ## Rules about space (Neon free plan)
 - Neon free plan is about **1 GB storage per project** (user thought 5 GB - verify on the
