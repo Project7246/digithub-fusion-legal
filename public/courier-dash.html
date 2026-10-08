@@ -274,7 +274,7 @@
   // thousand orders needs a page of its own rather than a panel.
   document.querySelectorAll('#tabs button[data-go]').forEach(function(b){
     b.addEventListener('click', function(){
-      location.href = '/receipts.html' + (account ? '?account=' + account : '');
+      location.href = '/receipts' + (account ? '?account=' + account : '');
     });
   });
 
@@ -821,7 +821,7 @@
     }).join('');
 
     T.orders += '<div class="box"><h3>Handed over' +
-                '<a href="/pickups.html' + (account ? '?account='+account : '') +
+                '<a href="/pickups' + (account ? '?account='+account : '') +
                 '">View every day</a></h3>' +
                 '<table class="t"><tr><th>Day</th><th class="r">Parcels</th>' +
                 '<th class="r">Worth</th><th class="r">Delivered since</th>' +
@@ -847,11 +847,11 @@
     }).join('');
 
     T.payments += '<div class="box" style="margin-bottom:13px"><h3>Cash payment receipts' +
-      '<a href="/receipts.html' + (account ? '?account='+account : '') + '">Open receipts</a></h3>' +
+      '<a href="/receipts' + (account ? '?account='+account : '') + '">Open receipts</a></h3>' +
       '<table class="t"><tr><th>CPR number</th><th>Created</th><th>Status</th>' +
       '<th class="r">Net amount</th><th>QuickBooks</th></tr>' +
       (cprRows || '<tr><td colspan="5" style="color:var(--muted)">' +
-        'No receipts yet. Open <a href="/receipts.html' +
+        'No receipts yet. Open <a href="/receipts' +
         (account ? '?account='+account : '') + '">See detail</a> to sign in to the ' +
         'courier portal and pull them in.</td></tr>') +
       '</table></div>';
@@ -949,7 +949,7 @@
 
     if((d.accounts || []).length > 1 || !account){
       var accRows = (d.accounts || []).map(function(a){
-        return '<tr><td><a href="/courier-dash.html?account=' + a.id + '">' +
+        return '<tr><td><a href="/courier-dash?account=' + a.id + '">' +
                esc(a.label) + '</a></td>' +
                '<td class="r">' + n0(a.orders) + '</td>' +
                '<td class="r">' + n0(a.delivered) + '</td>' +
@@ -1041,7 +1041,7 @@
     // page reads the courier's portal, so it opens there
     $('out').querySelectorAll('[data-goto]').forEach(function(tr){
       tr.addEventListener('click', function(){
-        location.href = '/receipts.html' + (account ? '?account=' + account : '') +
+        location.href = '/receipts' + (account ? '?account=' + account : '') +
                         '#cpr=' + encodeURIComponent(tr.getAttribute('data-goto'));
       });
     });

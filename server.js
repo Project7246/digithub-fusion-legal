@@ -199,17 +199,34 @@ app.get('/api/setup-check', (req, res) => {
 // of the app from somebody who is not all the way in is answered with a redirect
 // to the one screen that is theirs, and nothing else is ever sent.
 //
+// The address bar says /payments, not /payments.html. The pages are still plain
+// files in public/ - the extension is simply not part of the address any more, so
+// anything still pointing at the old spelling is sent to the new one once, rather
+// than the same page answering to two names.
+app.get(/\.html$/, (req, res) => {
+  const rest = req.url.slice(req.path.length);        // keeps ?query and #hash
+  const bare = req.path.replace(/\.html$/, '');
+  res.redirect(bare === '/index' ? '/' + rest : bare + rest);
+});
+
 // Three screens, in order: the door, the waiting-or-choosing screen, the app.
-app.get(/(^\/$)|\.html$/, async (req, res, next) => {
-  const here = req.path === '/' ? '/index.html' : req.path;
+// Only a page of the app reaches here: one bare name and nothing else, which
+// leaves out /api and /auth below it and every file with a dot in it beside it.
+app.get(/^\/$|^\/[A-Za-z0-9-]+$/, async (req, res, next) => {
+  const here = req.path === '/' ? '/index' : req.path;
+
+  // The licence and the privacy notice are not pages of the app. Intuit lists
+  // them against the app and expects anyone to be able to read them, so they are
+  // let through before the question of who is asking comes up at all.
+  if (here === '/eula' || here === '/privacy') return next();
 
   try {
     const sub = currentUser(req);
 
     if (!sub) {
-      return here === '/signin.html' ? next() : res.redirect('/signin.html');
+      return here === '/signin' ? next() : res.redirect('/signin');
     }
-    if (here === '/signin.html') return res.redirect('/');
+    if (here === '/signin') return res.redirect('/');
 
     const who = await whoIs(sub);
     const letIn = !!(who && (who.admin || (who.allowed && who.role !== 'none')));
@@ -218,15 +235,15 @@ app.get(/(^\/$)|\.html$/, async (req, res, next) => {
     const settled = letIn && realmId && await isSettled(sub, realmId);
 
     if (!settled) {
-      return here === '/choose.html' ? next() : res.redirect('/choose.html');
+      return here === '/choose' ? next() : res.redirect('/choose');
     }
-    if (here === '/choose.html') return res.redirect('/');
+    if (here === '/choose') return res.redirect('/');
 
     // A page that belongs to an area this person was not given is not theirs to
     // open. Only a limited user is held to this - everybody else was given the
     // whole of the books, or the whole of them to read.
     if (who && who.role === 'custom' && !who.admin) {
-      const need = PAGE_NEED.get(here);
+      const need = PAGE_NEED.get(here + '.html');
       if (need && who.rights.indexOf(need) < 0) return res.redirect('/');
     }
 
@@ -252,6 +269,7 @@ app.get(['/users.html', '/users'], async (req, res, next) => {
 // from a copy the browser or the installed app kept - so what was deployed is what
 // every computer runs, the moment it reloads.
 app.use(express.static('public', {
+  extensions: ['html'],
   setHeaders(res, file) {
     if (/\.(html|js|css|json)$/i.test(file)) res.setHeader('Cache-Control', 'no-cache');
   }
@@ -548,7 +566,7 @@ app.post('/api/admin/users/companies', async (req, res) => {
           : 'You can now work in ' + added.length + ' more companies',
         body: added.map(c => c.name).join(', ') +
               ' - choose it from the name at the foot of the rail.',
-        link: '/choose.html'
+        link: '/choose'
       });
       const person = u || await getUser(sub);
       if (person && person.email) {
@@ -568,7 +586,7 @@ app.post('/api/admin/users/companies', async (req, res) => {
           ? 'You no longer work in ' + gone[0].name
           : gone.length + ' companies have been taken back',
         body: gone.map(c => c.name).join(', ') + ' is no longer yours to open.',
-        link: '/choose.html'
+        link: '/choose'
       });
     }
 
@@ -1097,9 +1115,9 @@ app.get('/auth/callback', async (req, res) => {
     if (!joinTo) {
       const mine = await companiesFor(sub);
       if (mine.length === 1) joinTo = mine[0].realmId;
-      else if (mine.length > 1) return res.redirect('/choose.html');
+      else if (mine.length > 1) return res.redirect('/choose');
       else if (isAdmin) return res.redirect('/auth/connect');
-      else return res.redirect('/choose.html');
+      else return res.redirect('/choose');
     }
 
     const known = await getCompany(joinTo);
@@ -1122,7 +1140,7 @@ app.get('/auth/callback', async (req, res) => {
     } else if (!known) {
       // A company the app has never been connected to. Connecting one is an
       // admin's, so the chooser says so rather than leaving them at a dead end.
-      return res.redirect('/choose.html');
+      return res.redirect('/choose');
     }
     // a user's key is read once, for the name and address above, and kept nowhere
 

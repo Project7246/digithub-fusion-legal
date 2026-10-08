@@ -996,7 +996,7 @@
     // the server, which has no limit.
     try{
       sessionStorage.setItem('pendingInvoices', JSON.stringify(result.allInvoices));
-      location.href='/upload.html?from=convert';
+      location.href='/upload?from=convert';
       return;
     }catch(e){
       try{ sessionStorage.removeItem('pendingInvoices'); }catch(e2){}
@@ -1013,7 +1013,7 @@
       .then(function(r){ return r.json(); })
       .then(function(d){
         if(d.error) throw new Error(d.error);
-        location.href='/upload.html?from=convert';
+        location.href='/upload?from=convert';
       })
       .catch(function(e){
         b.disabled = false;

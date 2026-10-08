@@ -34,29 +34,29 @@
       { href:'/',              label:'Dashboard',        icon:'grid' }
     ]},
     { group: 'Import invoices', items: [
-      { href:'/convert.html',  label:'Convert',          icon:'shuffle', need:'upload' },
-      { href:'/upload.html',   label:'Upload',           icon:'up',      need:'upload' }
+      { href:'/convert',  label:'Convert',          icon:'shuffle', need:'upload' },
+      { href:'/upload',   label:'Upload',           icon:'up',      need:'upload' }
     ]},
     { group: 'Payments', items: [
-      { href:'/payments.html', label:'Receive payments', icon:'cash',    need:'payments' },
-      { href:'/advance.html',  label:'Advance payments', icon:'wallet',  need:'advance' },
-      { href:'/charges.html',  label:'Delivery charges', icon:'receipt', need:'charges' },
-            { href:'/find.html',     label:'Find orders',      icon:'search' },
-      { href:'/audit.html',    label:'Open invoice audit', icon:'receipt' },
-      { href:'/couriers.html', label:'Couriers',         icon:'truck', tree:true,
+      { href:'/payments', label:'Receive payments', icon:'cash',    need:'payments' },
+      { href:'/advance',  label:'Advance payments', icon:'wallet',  need:'advance' },
+      { href:'/charges',  label:'Delivery charges', icon:'receipt', need:'charges' },
+            { href:'/find',     label:'Find orders',      icon:'search' },
+      { href:'/audit',    label:'Open invoice audit', icon:'receipt' },
+      { href:'/couriers', label:'Couriers',         icon:'truck', tree:true,
         need:'couriersync' }
     ]},
     { group: 'Products', items: [
       // cost, stock, duplicates and the reports behind them are tabs of one page
-      { href:'/products.html',  label:'Product health',  icon:'tag',  need:'products' },
-      { href:'/purchases.html', label:'Purchases',       icon:'cart', need:'purchases' }
+      { href:'/products',  label:'Product health',  icon:'tag',  need:'products' },
+      { href:'/purchases', label:'Purchases',       icon:'cart', need:'purchases' }
     ]},
     { group: 'Maintenance', items: [
-      { href:'/fix.html',      label:'Fix duplicates',   icon:'copy', need:'products' },
+      { href:'/fix',      label:'Fix duplicates',   icon:'copy', need:'products' },
       // Product, Category and Description are tabs of one page, not three
       // lines in the rail - a new kind of change is a new tab, not a new link
-      { href:'/replace.html',  label:'Changes',          icon:'swap', need:'changes' },
-      { href:'/void.html',     label:'Void invoices',    icon:'ban',  need:'void' }
+      { href:'/replace',  label:'Changes',          icon:'swap', need:'changes' },
+      { href:'/void',     label:'Void invoices',    icon:'ban',  need:'void' }
       // Who may sign in, and what each of them may change, is not a line in this
       // rail. It sits under the settings gear with the rest of the company's own
       // settings, the way QuickBooks keeps it, and only the admin sees it there.
@@ -92,7 +92,10 @@
       .replace(/"/g, '&quot;');
   }
 
-  var path = location.pathname.replace(/index\.html$/, '') || '/';
+  // The address carries no .html any more, and a page can still be reached by
+  // the old spelling because the server sends that on. So the name is taken
+  // down to one form here, before anything is compared against it.
+  var path = location.pathname.replace(/\.html$/, '').replace(/\/index$/, '') || '/';
 
   var html =
     '<a class="brand" href="/">' +
@@ -106,11 +109,11 @@
       // Merge payments and the check list are tabs of Receive payments,
       // so that is the line that lights up
       var on = (it.href === path) || (it.href !== '/' && path.indexOf(it.href) === 0) ||
-               (it.href === '/payments.html' &&
-                (path === '/merge.html' || path === '/checklist.html')) ||
+               (it.href === '/payments' &&
+                (path === '/merge' || path === '/checklist')) ||
                // every tab of the changes page lights up the one link
-               (it.href === '/replace.html' &&
-                (path === '/swap.html' || path === '/recat.html' || path === '/desc.html'));
+               (it.href === '/replace' &&
+                (path === '/swap' || path === '/recat' || path === '/desc'));
       html += '<a href="' + it.href + '"' +
               (it.need ? ' data-line="' + it.need + '"' : '') +
               (on ? ' class="on"' : (it.admin ? ' class="admin-only"' : '')) +
@@ -287,12 +290,12 @@
         'M2.5 12h2.8M18.7 12h2.8M5.2 5.2l2 2M16.8 16.8l2 2M18.8 5.2l-2 2M7.2 16.8l-2 2"/>') +
       '<div class="setmenu" id="setMenu">' +
         '<div class="cap admin-only">Your company</div>' +
-        '<a class="admin-only" href="/users.html">Manage users</a>' +
+        '<a class="admin-only" href="/users">Manage users</a>' +
         '<div class="cap">Profile</div>' +
-        '<a href="/settings.html#profile">Your profile</a>' +
+        '<a href="/settings#profile">Your profile</a>' +
         '<div class="cap">Custom changes</div>' +
-        '<a href="/settings.html#style">Custom form style</a>' +
-        '<a href="/settings.html#theme">Custom theme</a>' +
+        '<a href="/settings#style">Custom form style</a>' +
+        '<a href="/settings#theme">Custom theme</a>' +
       '</div>';
     box.appendChild(wrap);
 
@@ -621,7 +624,7 @@
 
     // nothing is open until it is asked for - but a page that belongs to an
     // account should show where it sits
-    var onCourierPage = path.indexOf('/courier') === 0 || path === '/receipts.html';
+    var onCourierPage = path.indexOf('/courier') === 0 || path === '/receipts';
     var open = onCourierPage || localStorage.getItem('ctreeOpen') === '1';
 
     function setOpen(v){
@@ -647,7 +650,7 @@
         var out = '';
 
         out += '<a class="all' + (here.indexOf('scope=all') > -1 ? ' on' : '') +
-               '" href="/courier-dash.html?scope=all">All courier companies</a>';
+               '" href="/courier-dash?scope=all">All courier companies</a>';
 
         (d.couriers || []).forEach(function(c){
           // only the company whose account is on screen opens itself
@@ -665,14 +668,14 @@
           // more lines in this tree.
           c.accounts.forEach(function(a){
             out += '<a class="acc' + (here.indexOf('account=' + a.id) > -1 ? ' on' : '') +
-                   '" href="/courier-dash.html?account=' + a.id + '">' +
+                   '" href="/courier-dash?account=' + a.id + '">' +
                    esc(a.label) + '</a>';
           });
-          out += '<a class="add" href="/couriers.html?add=' + esc(c.key) + '">+ add an account</a>';
+          out += '<a class="add" href="/couriers?add=' + esc(c.key) + '">+ add an account</a>';
           out += '</div>';
         });
 
-        out += '<a class="add wide" href="/couriers.html">Manage courier accounts</a>';
+        out += '<a class="add wide" href="/couriers">Manage courier accounts</a>';
         box.innerHTML = out;
 
         box.querySelectorAll('.grp').forEach(function(g){
@@ -752,8 +755,8 @@
       // Signed in, but either nobody has let them in yet or no company is picked.
       // Both are the same screen: one waits there until the admin says yes, the
       // other chooses. Neither is a page of the app, so neither is shown one.
-      if(s.signedIn && (!s.connected || !s.letIn) && location.pathname !== '/choose.html'){
-        location.replace('/choose.html');
+      if(s.signedIn && (!s.connected || !s.letIn) && location.pathname !== '/choose'){
+        location.replace('/choose');
         return s;
       }
       document.documentElement.classList.add(s.admin ? 'as-admin' : 'as-user');

@@ -372,7 +372,7 @@
   // This page is the Receipts tab of the account's own section, so it shows
   // the same bar and leads back to the rest of it.
   function drawTabs(){
-    var back = '/courier-dash.html?account=' + account.id + '&tab=';
+    var back = '/courier-dash?account=' + account.id + '&tab=';
     $('tabs').innerHTML =
       ['overview','orders','payments','cities'].map(function(k){
         return '<a href="' + back + k + '">' +
@@ -390,7 +390,7 @@
         if(!accounts.length){
           $('out').innerHTML = '<div class="box"><h3>No PostEx account yet</h3>' +
             '<p style="font-size:12.5px;color:var(--muted);margin:0">' +
-            'Add one on the <a href="/couriers.html">Couriers</a> page first, ' +
+            'Add one on the <a href="/couriers">Couriers</a> page first, ' +
             'then come back here to sign in to the PostEx portal.</p></div>';
           $('acct').classList.add('hide');
           return;
