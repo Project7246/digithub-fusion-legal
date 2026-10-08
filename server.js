@@ -150,6 +150,45 @@ app.get('/api/version', (req, res) => {
   res.json({ version: BUILD, at: BUILD_AT });
 });
 
+// What the running server actually received from its settings. Whether a setting
+// arrived is the whole question when a deploy looks healthy and the app still will
+// not sign in, and it is not a question that can be answered from the outside - so
+// it is answered here, by name only. No value is ever sent back: a setting is
+// either there or it is not, and for the two that are not secret the value is
+// shown, because getting those two wrong is the usual fault.
+app.get('/api/setup-check', (req, res) => {
+  const has = n => !!process.env[n];
+  res.setHeader('Cache-Control', 'no-store');
+  res.json({
+    build: BUILD,
+    needed: {
+      DATABASE_URL:      has('DATABASE_URL'),
+      QB_CLIENT_ID:      has('QB_CLIENT_ID'),
+      QB_CLIENT_SECRET:  has('QB_CLIENT_SECRET'),
+      SESSION_SECRET:    has('SESSION_SECRET'),
+      BASE_URL:          has('BASE_URL')
+    },
+    optional: {
+      ADMIN_EMAILS:      has('ADMIN_EMAILS'),
+      PORTAL_KEY:        has('PORTAL_KEY'),
+      GOOGLE_SA_EMAIL:   has('GOOGLE_SA_EMAIL'),
+      GOOGLE_SA_KEY:     has('GOOGLE_SA_KEY'),
+      SMTP_HOST:         has('SMTP_HOST')
+    },
+    // Not secrets, and the pair Intuit checks character for character.
+    baseUrl: BASE_URL,
+    redirectUri: `${BASE_URL}/auth/callback`,
+    // A key pasted with a quote or a stray space around it is still "there" and
+    // still wrong, so its shape is described without giving the key away.
+    shape: {
+      QB_CLIENT_ID_length:     (process.env.QB_CLIENT_ID || '').length,
+      QB_CLIENT_SECRET_length: (process.env.QB_CLIENT_SECRET || '').length,
+      GOOGLE_SA_KEY_looks_like_a_key:
+        /BEGIN PRIVATE KEY/.test(process.env.GOOGLE_SA_KEY || '')
+    }
+  });
+});
+
 // Which page this person should be looking at - decided here, before a line of
 // HTML is sent.
 //
@@ -886,6 +925,29 @@ app.use(async (req, res, next) => {
 });
 
 // ==================== OAuth ====================
+// Nothing can be asked of Intuit without the app's own keys, and a missing key is
+// not something to pass along: sending an empty client_id lands the person on
+// Intuit's own "undefined didn't connect" screen, which says nothing about what is
+// actually wrong. So the doors check first and say it plainly here instead.
+function keysMissing() {
+  const out = [];
+  if (!process.env.QB_CLIENT_ID) out.push('QB_CLIENT_ID');
+  if (!process.env.QB_CLIENT_SECRET) out.push('QB_CLIENT_SECRET');
+  return out;
+}
+function sayKeysMissing(res, missing) {
+  res.status(500).type('html').send(
+    '<meta name="viewport" content="width=device-width,initial-scale=1">' +
+    '<div style="font:15px/1.6 system-ui,sans-serif;max-width:34em;margin:12vh auto;padding:0 24px">' +
+    '<h1 style="font-size:19px">QuickBooks is not set up yet</h1>' +
+    '<p>The server is running without ' + missing.join(' and ') + '. ' +
+    'Add it under the app component&rsquo;s Environment Variables, save, and let the ' +
+    'deploy finish - then try again.</p>' +
+    '<p style="color:#666;font-size:13px">Which settings did arrive is listed at ' +
+    '<a href="/api/setup-check">/api/setup-check</a>.</p></div>'
+  );
+}
+
 // The company's own door, and the only place its key comes from. There is no
 // button for it any more: an admin is walked here by the sign-in below, and
 // anyone else who types the address is turned away, so a user can neither take
@@ -895,6 +957,9 @@ app.get('/auth/connect', async (req, res) => {
   if (!who || !who.admin) {
     return res.redirect('/auth/signin');
   }
+
+  const missing = keysMissing();
+  if (missing.length) return sayKeysMissing(res, missing);
 
   const state = crypto.randomBytes(16).toString('hex');
   res.cookie('oauth_state', state, { httpOnly: true, maxAge: 600000, sameSite: 'lax' });
@@ -922,6 +987,9 @@ app.get('/auth/connect', async (req, res) => {
 // screen, out of the ones an admin has already connected. Connecting is done once
 // per company, by an admin; choosing between them is everyone's, every day.
 app.get('/auth/signin', (req, res) => {
+  const missing = keysMissing();
+  if (missing.length) return sayKeysMissing(res, missing);
+
   const state = crypto.randomBytes(16).toString('hex');
   res.cookie('oauth_state', state, { httpOnly: true, maxAge: 600000, sameSite: 'lax' });
   res.cookie('oauth_door', 'user', { httpOnly: true, maxAge: 600000, sameSite: 'lax' });
