@@ -1,0 +1,1248 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Fix duplicates</title>
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="manifest" href="/manifest.json">
+<meta name="theme-color" content="#0F2E24">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/app.css">
+<style>
+  .cat{padding:16px 0;border-bottom:1px solid var(--line)}
+  .cat:last-child{border-bottom:0}
+  .cat .row{display:flex;align-items:flex-start;gap:16px;flex-wrap:wrap}
+  .cat .count{font-family:var(--mono);font-size:24px;font-weight:500;min-width:64px;
+              font-variant-numeric:tabular-nums;line-height:1.1}
+  .cat .count.zero{color:var(--faint)}
+  .cat .body{flex:1;min-width:260px}
+  .cat .title{font-size:14.5px;font-weight:600;margin-bottom:3px}
+  .cat .desc{font-size:12.5px;color:var(--muted);max-width:62ch}
+  .cat .go{align-self:center;display:flex;gap:8px;flex-wrap:wrap}
+  .cat.off{opacity:.45}
+  .goes{color:var(--neg);font-size:10.5px;font-family:var(--mono)}
+  .stays{color:var(--ok);font-size:10.5px;font-family:var(--mono)}
+  .peek{margin-top:14px;border:1px solid var(--line);border-radius:6px;overflow:auto;
+        max-height:360px;display:none}
+  .peek.open{display:block}
+  .peek table{font-size:12px}
+  .peek td,.peek th{padding:6px 10px}
+  .hand{border-left:3px solid var(--warn);padding:12px 12px 6px 14px;background:var(--warn-soft);
+        border-radius:0 6px 6px 0;margin-top:18px}
+
+  .tabs{display:flex;gap:2px;border-bottom:1px solid var(--line);margin-bottom:20px}
+  .tabs button{border:0;background:none;padding:12px 20px;font:inherit;font-size:13.5px;
+    cursor:pointer;color:var(--muted);border-bottom:2px solid transparent;margin-bottom:-1px}
+  .tabs button:hover{color:var(--ink)}
+  .tabs button.on{color:var(--ink);font-weight:600;border-bottom-color:var(--qbo)}
+  .pane{display:none}
+  .pane.on{display:block}
+
+  textarea.nums{width:100%;min-height:150px;border:1px solid var(--line);border-radius:6px;
+    padding:11px 13px;font-family:var(--mono);font-size:12.5px;resize:vertical;background:#fff}
+
+  .tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px;
+    margin:16px 0}
+  .tile{border:1px solid var(--line);border-radius:8px;padding:13px 15px;background:#fff}
+  .tile .n{font-family:var(--mono);font-size:22px;font-weight:500;line-height:1.1}
+  .tile .l{font-size:10.5px;letter-spacing:.07em;text-transform:uppercase;color:var(--faint);
+    margin-top:4px}
+  .tile.go .n{color:var(--neg)}
+  .tile.keep .n{color:var(--ok)}
+
+  .opts{display:flex;gap:18px;flex-wrap:wrap;margin:14px 0;font-size:13px}
+  .opts label{display:flex;align-items:center;gap:7px;cursor:pointer}
+</style>
+</head>
+<body>
+
+<div class="layout">
+  <aside class="rail"></aside>
+
+  <div class="main">
+    <div class="topline">
+      <div>
+        <h1>Fix duplicates</h1>
+        <div class="sub">Find invoices that exist twice, or remove ones that should not be there</div>
+      </div>
+      <div class="right"><span class="mono" id="scanAside" style="font-size:12px;color:var(--muted)"></span></div>
+    </div>
+
+    <div class="shell">
+
+      <div id="gate" class="gate hide">
+        <img src="/logo.svg" alt="">
+        <h2>Connect your QuickBooks company</h2>
+        <p>This page reads your invoices so you can review them. Nothing changes until you press a button.</p>
+        <button class="solid" id="btnConnect">Connect to QuickBooks</button>
+      </div>
+
+      <div id="main" class="hide">
+
+        <div class="tabs">
+          <button class="on" data-pane="dup">Find duplicates</button>
+          <button data-pane="del">Delete invoices</button>
+        </div>
+
+        <!-- ==================== duplicates ==================== -->
+        <div class="pane on" id="paneDup">
+
+        <div class="note bad" style="margin-bottom:20px">
+          <b>Take a backup first.</b> Deleting an invoice in QuickBooks cannot be undone.
+          Go to QuickBooks → Settings → Export data before using any button here.
+          Use <b>View list</b> to check exactly what will go before you press delete.
+        </div>
+
+        <div class="sheet">
+          <div class="sec">
+            <h2><span class="no">01</span> Scan</h2>
+            <div class="g3">
+              <div><label for="dFrom">From date</label><input type="date" id="dFrom"></div>
+              <div><label for="dTo">To date</label><input type="date" id="dTo"></div>
+              <div style="display:flex;align-items:flex-end">
+                <button class="solid" id="btnScan" style="width:100%">Scan QuickBooks</button>
+              </div>
+            </div>
+            <p class="hint">Invoices are grouped by their digits, so <code>#91306999</code> and <code>91306999</code> land together — and so do two copies written exactly the same way.</p>
+            <div class="runacts" style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px">
+              <button class="mini" id="btnScanStop" style="display:none">Stop</button>
+              <button class="mini" id="btnScanResume" style="display:none">Carry on</button>
+              <button class="mini" id="btnScanClear" style="display:none">Clear log</button>
+            </div>
+            <div class="log hide" id="scanLog" style="height:150px"></div>
+            <div class="stat" id="statScan"></div>
+          </div>
+        </div>
+
+        <div class="sheet hide" id="resultSheet">
+          <div class="sec">
+            <h2><span class="no">02</span> What was found <span class="aside" id="foundAside"></span></h2>
+
+            <div class="cat" id="cat_bothUnpaid">
+              <div class="row">
+                <span class="count">0</span>
+                <span class="body">
+                  <span class="title">Same order as <code>#</code> and plain — neither paid</span>
+                  <span class="desc">Amounts match and no payment is attached to either. Removing one of them leaves the order intact.</span>
+                </span>
+                <span class="go">
+                  <button class="mini" data-peek="bothUnpaid">View list</button>
+                  <button class="mini" data-act="bothUnpaid:plain">Delete the plain ones</button>
+                  <button class="mini" data-act="bothUnpaid:hash">Delete the # ones</button>
+                </span>
+              </div>
+            </div>
+
+            <div class="cat" id="cat_hashPaid">
+              <div class="row">
+                <span class="count">0</span>
+                <span class="body">
+                  <span class="title">Same order — the <code>#</code> one is paid</span>
+                  <span class="desc">The payment sits on the <code>#</code> version, so the plain one is the spare.</span>
+                </span>
+                <span class="go">
+                  <button class="mini" data-peek="hashPaid">View list</button>
+                  <button class="solid" data-act="hashPaid:plain">Delete the unpaid plain ones</button>
+                </span>
+              </div>
+            </div>
+
+            <div class="cat" id="cat_plainPaid">
+              <div class="row">
+                <span class="count">0</span>
+                <span class="body">
+                  <span class="title">Same order — the plain one is paid</span>
+                  <span class="desc">The payment sits on the plain version, so the <code>#</code> one is the spare.</span>
+                </span>
+                <span class="go">
+                  <button class="mini" data-peek="plainPaid">View list</button>
+                  <button class="solid" data-act="plainPaid:hash">Delete the unpaid # ones</button>
+                </span>
+              </div>
+            </div>
+
+            <div class="cat" id="cat_dupOnePaid">
+              <div class="row">
+                <span class="count">0</span>
+                <span class="body">
+                  <span class="title">Same number more than once — one copy is paid</span>
+                  <span class="desc">Written the same way, but there twice or more. The paid copy stays; the unpaid extras go.</span>
+                </span>
+                <span class="go">
+                  <button class="mini" data-peek="dupOnePaid">View list</button>
+                  <button class="solid" data-act="dupOnePaid:unpaid">Delete the unpaid copies</button>
+                </span>
+              </div>
+            </div>
+
+            <div class="cat" id="cat_dupAllUnpaid">
+              <div class="row">
+                <span class="count">0</span>
+                <span class="body">
+                  <span class="title">Same number more than once — none paid</span>
+                  <span class="desc">All copies are unpaid, so one is kept and the rest removed.</span>
+                </span>
+                <span class="go">
+                  <button class="mini" data-peek="dupAllUnpaid">View list</button>
+                  <button class="mini" data-act="dupAllUnpaid:extras">Keep one, delete the rest</button>
+                </span>
+              </div>
+            </div>
+
+            <div class="cat" id="cat_plainOnly">
+              <div class="row">
+                <span class="count">0</span>
+                <span class="body">
+                  <span class="title">Plain invoices with no twin</span>
+                  <span class="desc">Nothing is duplicated here. Adding the <code>#</code> lines them up with your older records. Nothing is deleted.</span>
+                </span>
+                <span class="go">
+                  <button class="mini" data-peek="plainOnly">View list</button>
+                  <button class="solid" data-act="plainOnly:rename">Add # to all of them</button>
+                </span>
+              </div>
+            </div>
+
+            <div class="hand">
+              <div style="font-weight:600;font-size:13.5px;margin-bottom:6px">Left for you to look at</div>
+
+              <div class="cat" id="cat_bothPaid">
+                <div class="row">
+                  <span class="count">0</span>
+                  <span class="body">
+                    <span class="title">Both copies carry a payment</span>
+                    <span class="desc">Deleting either one breaks a payment record. Open these in QuickBooks and decide there.</span>
+                  </span>
+                  <span class="go">
+                    <button class="mini" data-peek="bothPaid">View list</button>
+                    <button class="mini" data-act="bothPaid:list">Download</button>
+                  </span>
+                </div>
+              </div>
+
+              <div class="cat" id="cat_dupAllPaid">
+                <div class="row">
+                  <span class="count">0</span>
+                  <span class="body">
+                    <span class="title">Same number more than once — every copy paid</span>
+                    <span class="desc">Every copy has money against it. These need a decision in QuickBooks.</span>
+                  </span>
+                  <span class="go">
+                    <button class="mini" data-peek="dupAllPaid">View list</button>
+                    <button class="mini" data-act="dupAllPaid:list">Download</button>
+                  </span>
+                </div>
+              </div>
+
+              <div class="cat" id="cat_amountDiffers" style="border-bottom:0">
+                <div class="row">
+                  <span class="count">0</span>
+                  <span class="body">
+                    <span class="title">Same number but different amounts</span>
+                    <span class="desc">These are probably not the same order at all, so nothing here is touched.</span>
+                  </span>
+                  <span class="go">
+                    <button class="mini" data-peek="amountDiffers">View list</button>
+                    <button class="mini" data-act="amountDiffers:list">Download</button>
+                  </span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="sheet hide" id="logSheet">
+          <div class="sec">
+            <h2><span class="no">03</span> What was changed <span class="aside" id="runStat"></span></h2>
+            <div class="prog"><i id="bar"></i></div>
+            <div class="log" id="log" style="height:260px"></div>
+            <div class="acts" style="margin-top:12px;margin-bottom:0">
+              <button class="mini" id="btnStop" style="display:none">Stop</button>
+              <button class="mini" id="btnCopyLog">Copy log</button>
+              <button class="mini" id="btnRescan">Scan again</button>
+            </div>
+          </div>
+        </div>
+
+        <footer>
+          <p><b>Paid invoices are never removed by these buttons.</b> A payment in QuickBooks is attached to a particular invoice, so removing that invoice leaves the payment with nothing to sit against. Anything carrying money is put in the section at the bottom for you to handle in QuickBooks.</p>
+          <p><b>Scan again after a run</b> so the counts reflect what is actually in QuickBooks now.</p>
+        </footer>
+        </div>
+
+        <!-- ==================== deleting ==================== -->
+        <div class="pane" id="paneDel">
+
+          <div class="note bad" style="margin-bottom:20px">
+            <b>This cannot be undone.</b> Take a backup first — QuickBooks → Settings → Export data.
+            Anything carrying a payment is set aside and never touched.
+          </div>
+
+          <div class="sheet">
+            <div class="sec">
+              <h2><span class="no">01</span> The invoice numbers</h2>
+              <p class="hint">One per line, or separated by spaces or commas. The hash makes
+                no difference here — both spellings are looked up.</p>
+              <textarea class="nums" id="delNums" placeholder="#91349172&#10;#91349171&#10;#91349170"></textarea>
+              <div style="margin-top:8px;font-size:12px;color:var(--faint)" id="delCount"></div>
+
+              <div class="opts">
+                <label><input type="radio" name="which" value="hash" checked> Only the ones with a <code>#</code></label>
+                <label><input type="radio" name="which" value="plain"> Only the plain ones</label>
+                <label><input type="radio" name="which" value="both"> Both spellings</label>
+              </div>
+
+              <button class="solid" id="btnLook">Look them up in QuickBooks</button>
+              <div class="runacts" style="display:flex;gap:8px;flex-wrap:wrap;margin:10px 0">
+                <button class="mini" id="btnLookStop" style="display:none">Stop</button>
+                <button class="mini" id="btnLookResume" style="display:none">Carry on</button>
+                <button class="mini" id="btnLookClear" style="display:none">Clear log</button>
+              </div>
+              <div class="log hide" id="lookLog" style="height:150px"></div>
+              <div class="stat" id="statLook"></div>
+            </div>
+          </div>
+
+          <div class="sheet hide" id="delFound">
+            <div class="sec">
+              <h2><span class="no">02</span> What is there <span class="aside" id="delAside"></span></h2>
+              <div class="tiles" id="delTiles"></div>
+
+              <div class="acts" style="margin-bottom:14px">
+                <button class="mini" id="btnPeekGo">Show what will go</button>
+                <button class="mini" id="btnPeekKeep">Show what stays</button>
+                                <button class="mini" id="btnPeekPaid">Show the paid ones</button>
+                <button class="mini" id="btnDelFile">Download the list</button>
+              </div>
+
+              <div class="peek" id="delPeek"></div>
+
+              <div style="margin-top:18px">
+                               <button class="solid" id="btnDelStart" data-need="delete">Delete them</button>
+                <button id="btnDelPaid" data-need="delete" style="margin-left:8px">Delete the paid ones too</button>
+                <span style="font-size:12px;color:var(--faint);margin-left:10px" id="delPlan"></span>
+              </div>
+            </div>
+          </div>
+
+          <div class="sheet hide" id="delRun">
+            <div class="sec">
+              <h2><span class="no">03</span> Removing <span class="aside" id="delStat"></span></h2>
+              <div class="prog"><i id="delBar"></i></div>
+              <div class="log" id="delLog" style="height:280px"></div>
+              <div class="acts" style="margin-top:12px;margin-bottom:0">
+                <button class="mini" id="btnDelStop">Stop</button>
+                <button class="mini hide" id="btnDelResume" data-need="delete">Carry on</button>
+                <button class="mini hide" id="btnDelClear" data-need="delete">Clear log</button>
+              </div>
+            </div>
+          </div>
+
+          <footer>
+            <p><b>Leaving this page is fine.</b> The removal runs on the server, so closing
+              the tab or losing the connection will not stop it. Come back and it will still
+              be going, or finished.</p>
+          </footer>
+        </div>
+
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="/nav.js"></script>
+<script>
+(function(){
+  "use strict";
+  var $ = function(id){ return document.getElementById(id); };
+  var data = null, logLines = [], stopFlag = false, busy = false;
+  var delData = null, delSince = 0, delTimer = null, delAwake = null;
+
+  window.APP.ready.then(function(s){
+    if(s.connected){ $('main').classList.remove('hide'); delPoll(); }
+    else $('gate').classList.remove('hide');
+  });
+  $('btnConnect').addEventListener('click', function(){ location.href = '/auth/connect'; });
+
+  document.querySelectorAll('.tabs button').forEach(function(b){
+    b.addEventListener('click', function(){
+      document.querySelectorAll('.tabs button').forEach(function(x){ x.classList.remove('on'); });
+      document.querySelectorAll('.pane').forEach(function(x){ x.classList.remove('on'); });
+      b.classList.add('on');
+      $('pane' + (b.dataset.pane === 'dup' ? 'Dup' : 'Del')).classList.add('on');
+    });
+  });
+
+  function nf(n){ return String(n == null ? 0 : n).replace(/\B(?=(\d{3})+(?!\d))/g, ','); }
+  function money(n){
+    if(n === null || n === undefined || n === '') return '';
+    var v = Number(n);
+    if(isNaN(v)) return String(n);
+    var p = v.toFixed(2).split('.');
+    return p[0].replace(/\B(?=(\d{3})+(?!\d))/g, ',') + '.' + p[1];
+  }
+  function setStat(el, cls, html){ el.className = 'stat ' + cls; el.innerHTML = html; }
+  function isoD(d){
+    return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
+  }
+  function sleep(ms){ return new Promise(function(r){ setTimeout(r, ms); }); }
+  function safe(s){
+    return String(s == null ? '' : s)
+      .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  }
+
+  function log(msg, cls){
+    $('logSheet').classList.remove('hide');
+    var line = new Date().toLocaleTimeString() + '  ' + msg;
+    logLines.push(line);
+    var d = document.createElement('div');
+    if(cls) d.className = cls;
+    d.textContent = line;
+    $('log').appendChild(d);
+    $('log').scrollTop = $('log').scrollHeight;
+  }
+
+  function esc(v){ v=(v==null)?"":String(v); return /[",\n\r]/.test(v)?'"'+v.replace(/"/g,'""')+'"':v; }
+  function buildCSV(head,rows){
+    var out=[head.join(",")];
+    rows.forEach(function(r){ out.push(r.map(esc).join(",")); });
+    return out.join("\r\n")+"\r\n";
+  }
+  function download(name,csv){
+    var b=new Blob(["\uFEFF"+csv],{type:"text/csv;charset=utf-8;"});
+    var a=document.createElement("a"); a.href=URL.createObjectURL(b); a.download=name;
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    setTimeout(function(){URL.revokeObjectURL(a.href);},4000);
+  }
+
+  var t = new Date();
+  $('dTo').value = isoD(t);
+  $('dFrom').value = isoD(new Date(t.getFullYear(), t.getMonth(), 1));
+
+  /* ==================== duplicates ==================== */
+
+  // The read goes a week at a time on the server, so a span picked by mistake
+  // is stopped at the end of the week in flight, carried on where it left off,
+  // and cleared away - the same three buttons every other run here has.
+  var scanEvent = 0, scanPoll = null;
+
+  function scan(){
+    var from = $('dFrom').value, to = $('dTo').value;
+    if(!from || !to){ setStat($('statScan'),'bad','Choose both dates first.'); return; }
+
+    setStat($('statScan'),'busy','Reading invoices from QuickBooks…');
+    $('resultSheet').classList.add('hide');
+    scanEvent = 0;
+    $('scanLog').innerHTML = '';
+    $('scanLog').classList.remove('hide');
+
+    postJSON('/api/invoice-details-start', { from: from, to: to })
+      .then(function(){ pollScan(true); startScanPoll(); })
+      .catch(function(e){ setStat($('statScan'),'bad', e.message); });
+  }
+  $('btnScan').addEventListener('click', scan);
+  $('btnRescan').addEventListener('click', scan);
+
+  function postJSON(url, body){
+    return fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body || {})
+    }).then(function(r){ return r.json(); }).then(function(d){
+      if(d.error) throw new Error(d.error);
+      return d;
+    });
+  }
+
+  function startScanPoll(){
+    if(scanPoll) return;
+    scanPoll = setInterval(function(){ pollScan(false); }, 1500);
+  }
+  function stopScanPoll(){
+    if(!scanPoll) return;
+    clearInterval(scanPoll);
+    scanPoll = null;
+  }
+
+  function pollScan(){
+    return fetch('/api/invoice-details-status?since=' + scanEvent, { cache:'no-store' })
+      .then(function(r){ return r.json(); })
+      .then(function(d){
+        if(!d.job){
+          stopScanPoll();
+          $('btnScanStop').style.display = 'none';
+          $('btnScanResume').style.display = 'none';
+          $('btnScanClear').style.display = 'none';
+          return;
+        }
+
+        var j = d.job;
+        $('scanLog').classList.remove('hide');
+        (j.events || []).forEach(function(e){
+          var line = document.createElement('div');
+          line.textContent = e.msg;
+          $('scanLog').appendChild(line);
+        });
+        if(j.lastEventId) scanEvent = j.lastEventId;
+        $('scanLog').scrollTop = $('scanLog').scrollHeight;
+
+        var live = j.state === 'running';
+        $('btnScan').disabled = live;
+        $('btnScanStop').style.display = live ? '' : 'none';
+        $('btnScanStop').disabled = false;
+        $('btnScanStop').textContent = 'Stop';
+        $('btnScanResume').style.display = (!live && j.canCarryOn) ? '' : 'none';
+        $('btnScanClear').style.display = live ? 'none' : '';
+
+        if(live){
+          setStat($('statScan'),'busy',
+            '<b>' + nf(j.counted) + ' invoices read</b><i>' + j.done + ' of ' + j.total +
+            ' weeks · running on the server, you can leave this page</i>');
+          startScanPoll();
+          return;
+        }
+
+        stopScanPoll();
+
+        if(j.result){
+          data = j.result;
+          setStat($('statScan'), j.state === 'stopped' ? 'warn' : 'ok',
+            '<b>' + nf(j.result.total) + ' invoices read</b><i>' + j.label +
+            (j.state === 'stopped' ? ' · stopped part way' : '') + '</i>');
+          $('scanAside').textContent = j.label;
+          render();
+        }
+      }).catch(function(){ /* a missed poll is nothing to worry about */ });
+  }
+
+  $('btnScanStop').addEventListener('click', function(){
+    $('btnScanStop').disabled = true;
+    $('btnScanStop').textContent = 'Stopping…';
+    postJSON('/api/invoice-details-stop').catch(function(){});
+  });
+  $('btnScanResume').addEventListener('click', function(){
+    $('btnScanResume').style.display = 'none';
+    postJSON('/api/invoice-details-resume')
+      .then(function(){ pollScan(); startScanPoll(); })
+      .catch(function(e){ setStat($('statScan'),'bad', e.message); });
+  });
+  $('btnScanClear').addEventListener('click', function(){
+    postJSON('/api/invoice-details-clear').then(function(){
+      scanEvent = 0;
+      $('scanLog').innerHTML = '';
+      $('scanLog').classList.add('hide');
+      $('btnScanResume').style.display = 'none';
+      $('btnScanClear').style.display = 'none';
+      setStat($('statScan'),'','');
+    }).catch(function(e){ setStat($('statScan'),'bad', e.message); });
+  });
+
+  var KINDS = ['bothUnpaid','hashPaid','plainPaid','dupOnePaid','dupAllUnpaid',
+               'plainOnly','bothPaid','dupAllPaid','amountDiffers'];
+
+  function render(){
+    var c = data.cat;
+    $('resultSheet').classList.remove('hide');
+
+    var issues = c.bothUnpaid.length + c.hashPaid.length + c.plainPaid.length +
+                 c.bothPaid.length + c.dupOnePaid.length + c.dupAllUnpaid.length +
+                 c.dupAllPaid.length + c.amountDiffers.length;
+    $('foundAside').textContent = issues
+      ? nf(issues) + ' need attention · ' + nf(c.plainOnly.length) + ' need the #'
+      : (c.plainOnly.length ? nf(c.plainOnly.length) + ' need the #' : 'nothing to fix');
+
+    KINDS.forEach(function(k){
+      var box = $('cat_' + k);
+      if(!box) return;
+      var n = (c[k] || []).length;
+      var el = box.querySelector('.count');
+      el.textContent = nf(n);
+      el.classList.toggle('zero', n === 0);
+      box.classList.toggle('off', n === 0);
+      box.querySelectorAll('button').forEach(function(b){ b.disabled = (n === 0); });
+      var pk = box.querySelector('.peek');
+      if(pk){ pk.classList.remove('open'); pk.innerHTML = ''; }
+      var pb = box.querySelector('button[data-peek]');
+      if(pb) pb.textContent = 'View list';
+    });
+  }
+
+  function tag(inv){
+    if(inv.paid) return '<span class="pill paid">paid</span>';
+    if(inv.partial) return '<span class="pill part">part paid</span>';
+    return '<span class="pill open">unpaid</span>';
+  }
+
+  function buildPeek(kind){
+    var c = data.cat, rows = '';
+
+    if(kind === 'bothUnpaid' || kind === 'hashPaid' || kind === 'plainPaid' ||
+       kind === 'bothPaid' || kind === 'amountDiffers'){
+
+      var hashGoes  = (kind === 'plainPaid');
+      var plainGoes = (kind === 'hashPaid' || kind === 'bothUnpaid');
+      var noneGoes  = (kind === 'bothPaid' || kind === 'amountDiffers');
+
+      c[kind].forEach(function(p){
+        var sameAmt = Math.abs(Number(p.hash.total) - Number(p.plain.total)) < 0.005;
+        rows +=
+          '<tr>' +
+            '<td class="mono">' + p.hash.doc +
+              '<div style="font-size:10.5px;color:var(--faint)">Id ' + p.hash.id + ' · ' + p.hash.date + '</div>' +
+              tag(p.hash) +
+              (noneGoes ? '' : (hashGoes ? ' <span class="goes">← goes</span>' : ' <span class="stays">← stays</span>')) +
+            '</td>' +
+            '<td class="mono">' + p.plain.doc +
+              '<div style="font-size:10.5px;color:var(--faint)">Id ' + p.plain.id + ' · ' + p.plain.date + '</div>' +
+              tag(p.plain) +
+              (noneGoes ? '' : (plainGoes ? ' <span class="goes">← goes</span>' : ' <span class="stays">← stays</span>')) +
+            '</td>' +
+            '<td class="num mono">' + money(p.hash.total) + '<br>' + money(p.plain.total) +
+              '<div style="font-size:10.5px;color:' + (sameAmt ? 'var(--ok)' : 'var(--neg)') + '">' +
+              (sameAmt ? 'same' : 'different') + '</div>' +
+            '</td>' +
+          '</tr>';
+      });
+      return '<table><thead><tr><th>With #</th><th>Plain</th><th class="num">Amount</th></tr></thead><tbody>' +
+             rows + '</tbody></table>';
+    }
+
+    if(kind === 'dupOnePaid' || kind === 'dupAllUnpaid' || kind === 'dupAllPaid'){
+      c[kind].forEach(function(g){
+        rows += '<tr><td colspan="4" style="background:var(--panel-2);font-family:var(--mono);font-size:11.5px;color:var(--muted)">' +
+                g.copies.length + ' copies of ' + g.copies[0].doc + '</td></tr>';
+        g.copies.forEach(function(x, i){
+          var mark = '';
+          if(kind === 'dupOnePaid') mark = (x.paid || x.partial) ? 'stays' : 'goes';
+          else if(kind === 'dupAllUnpaid') mark = (i === 0) ? 'stays' : 'goes';
+          rows +=
+            '<tr>' +
+              '<td class="mono">' + x.doc + '</td>' +
+              '<td class="mono" style="font-size:11px;color:var(--faint)">Id ' + x.id + ' · ' + x.date + '</td>' +
+              '<td class="num mono">' + money(x.total) + '</td>' +
+              '<td>' + tag(x) +
+                (mark === 'goes'  ? ' <span class="goes">← goes</span>'  : '') +
+                (mark === 'stays' ? ' <span class="stays">← stays</span>' : '') +
+              '</td>' +
+            '</tr>';
+        });
+      });
+      return '<table><thead><tr><th>Invoice</th><th>Details</th><th class="num">Amount</th><th>Status</th></tr></thead><tbody>' +
+             rows + '</tbody></table>';
+    }
+
+    if(kind === 'plainOnly'){
+      c.plainOnly.forEach(function(x){
+        rows +=
+          '<tr>' +
+            '<td class="mono">' + x.doc + ' → <span style="color:var(--ok)">#' + x.doc + '</span></td>' +
+            '<td class="mono" style="font-size:11px;color:var(--faint)">Id ' + x.id + ' · ' + x.date + '</td>' +
+            '<td class="num mono">' + money(x.total) + '</td>' +
+            '<td>' + tag(x) + '</td>' +
+          '</tr>';
+      });
+      return '<table><thead><tr><th>Renamed to</th><th>Details</th><th class="num">Amount</th><th>Status</th></tr></thead><tbody>' +
+             rows + '</tbody></table>';
+    }
+
+    return '<div style="padding:14px;color:var(--muted);font-size:13px">Nothing to show.</div>';
+  }
+
+  document.addEventListener('click', function(e){
+    var b = e.target.closest('button[data-peek]');
+    if(!b || b.disabled || !data) return;
+
+    var kind = b.getAttribute('data-peek');
+    var cat = $('cat_' + kind);
+    var box = cat.querySelector('.peek');
+
+    if(box && box.classList.contains('open')){
+      box.classList.remove('open');
+      b.textContent = 'View list';
+      return;
+    }
+    if(!box){
+      box = document.createElement('div');
+      box.className = 'peek';
+      cat.appendChild(box);
+    }
+    box.innerHTML = buildPeek(kind);
+    box.classList.add('open');
+    b.textContent = 'Hide list';
+  });
+
+  function pickFor(act){
+    var c = data.cat, out = [];
+
+    if(act === 'bothUnpaid:plain')      c.bothUnpaid.forEach(function(p){ out.push(p.plain); });
+    else if(act === 'bothUnpaid:hash')  c.bothUnpaid.forEach(function(p){ out.push(p.hash); });
+    else if(act === 'hashPaid:plain')   c.hashPaid.forEach(function(p){ out.push(p.plain); });
+    else if(act === 'plainPaid:hash')   c.plainPaid.forEach(function(p){ out.push(p.hash); });
+    else if(act === 'dupOnePaid:unpaid'){
+      c.dupOnePaid.forEach(function(g){ g.unpaidOnes.forEach(function(x){ out.push(x); }); });
+    }
+    else if(act === 'dupAllUnpaid:extras'){
+      c.dupAllUnpaid.forEach(function(g){
+        for(var i=1;i<g.copies.length;i++) out.push(g.copies[i]);
+      });
+    }
+    else if(act === 'plainOnly:rename') out = c.plainOnly.slice();
+
+    return out;
+  }
+
+  function describe(act, n){
+    var map = {
+      'bothUnpaid:plain':    'Delete ' + n + ' plain invoice' + (n===1?'':'s') + ', keeping the # version of each.',
+      'bothUnpaid:hash':     'Delete ' + n + ' # invoice' + (n===1?'':'s') + ', keeping the plain version of each.',
+      'hashPaid:plain':      'Delete ' + n + ' unpaid plain invoice' + (n===1?'':'s') + '. The paid # version stays.',
+      'plainPaid:hash':      'Delete ' + n + ' unpaid # invoice' + (n===1?'':'s') + '. The paid plain version stays.',
+      'dupOnePaid:unpaid':   'Delete ' + n + ' unpaid duplicate cop' + (n===1?'y':'ies') + '. Every paid copy stays.',
+      'dupAllUnpaid:extras': 'Delete ' + n + ' extra cop' + (n===1?'y':'ies') + '. One copy of each number is kept.',
+      'plainOnly:rename':    'Add # to ' + n + ' invoice' + (n===1?'':'s') + '. Nothing is deleted.'
+    };
+    return map[act] || '';
+  }
+
+  document.addEventListener('click', function(e){
+    var b = e.target.closest('button[data-act]');
+    if(!b || b.disabled || busy || !data) return;
+    var act = b.getAttribute('data-act');
+
+    if(act.indexOf(':list') > -1){ downloadList(act.split(':')[0]); return; }
+
+    var list = pickFor(act);
+    if(!list.length) return;
+
+    var rename = act === 'plainOnly:rename';
+    var msg = describe(act, list.length) + '\n\n' +
+      (rename ? 'Only the invoice number changes.' : 'This cannot be undone.');
+    if(!confirm(msg)) return;
+
+    run(list, rename, act);
+  });
+
+  async function run(list, rename, act){
+    busy = true;
+    stopFlag = false;
+    $('logSheet').classList.remove('hide');
+    $('btnStop').style.display = 'inline-block';
+    document.querySelectorAll('button[data-act]').forEach(function(b){ b.disabled = true; });
+
+    log('--- ' + describe(act, list.length) + ' ---', 'info');
+
+    var ok = 0, bad = 0;
+
+    for(var i=0;i<list.length;i++){
+      if(stopFlag){ log('Stopped by you.', 'warn'); break; }
+      var inv = list[i];
+
+      $('bar').style.width = Math.round((i / list.length) * 100) + '%';
+      $('runStat').textContent = (i+1) + ' of ' + list.length;
+
+      var good = rename ? await renameOne(inv) : await deleteOne(inv);
+      if(good) ok++; else bad++;
+      await sleep(rename ? 600 : 800);
+    }
+
+    $('bar').style.width = '100%';
+    $('runStat').textContent = ok + (rename ? ' renamed' : ' deleted') + (bad ? ', ' + bad + ' failed' : '');
+    log('--- Finished: ' + ok + (rename ? ' renamed' : ' deleted') +
+        (bad ? ', ' + bad + ' failed' : '') + '. Press Scan again to refresh the counts. ---',
+        bad ? 'warn' : 'ok');
+
+    $('btnStop').style.display = 'none';
+    busy = false;
+    render();
+  }
+
+  function deleteOne(inv){
+    return fetch('/api/invoice-delete', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ id: inv.id })
+    })
+    .then(function(r){ return r.json(); })
+    .then(function(d){
+      if(d.error){ log('Could not delete ' + inv.doc + ': ' + d.error, 'err'); return false; }
+      log('Deleted ' + inv.doc + '   (Id ' + inv.id + ' · ' + money(inv.total) + ')', 'ok');
+      return true;
+    })
+    .catch(function(e){ log('Could not delete ' + inv.doc + ': ' + e.message, 'err'); return false; });
+  }
+
+  function renameOne(inv){
+    return fetch('/api/invoice-rename', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ id: inv.id, newDoc: '#' + inv.doc })
+    })
+    .then(function(r){ return r.json(); })
+    .then(function(d){
+      if(d.error){ log('Could not rename ' + inv.doc + ': ' + d.error, 'err'); return false; }
+      log('Renamed ' + inv.doc + ' → #' + inv.doc, 'ok');
+      return true;
+    })
+    .catch(function(e){ log('Could not rename ' + inv.doc + ': ' + e.message, 'err'); return false; });
+  }
+
+  $('btnStop').addEventListener('click', function(){
+    stopFlag = true;
+    $('btnStop').textContent = 'Stopping…';
+    setTimeout(function(){ $('btnStop').textContent = 'Stop'; }, 2000);
+  });
+
+  function downloadList(kind){
+    var c = data.cat, rows = [], name = kind + '.csv';
+
+    if(kind === 'bothPaid' || kind === 'amountDiffers'){
+      c[kind].forEach(function(p){
+        rows.push([p.hash.doc, p.hash.id, p.hash.date, money(p.hash.total), money(p.hash.balance),
+                   p.plain.doc, p.plain.id, p.plain.date, money(p.plain.total), money(p.plain.balance)]);
+      });
+      download(name, buildCSV(
+        ['# invoice','# id','# date','# total','# outstanding',
+         'Plain invoice','Plain id','Plain date','Plain total','Plain outstanding'], rows));
+    } else if(kind === 'dupAllPaid'){
+      c[kind].forEach(function(g){
+        g.copies.forEach(function(x){
+          rows.push([x.doc, x.id, x.date, money(x.total), money(x.balance)]);
+        });
+      });
+      download(name, buildCSV(['Invoice','QuickBooks id','Date','Total','Outstanding'], rows));
+    }
+    log('Downloaded the ' + kind + ' list.', 'info');
+  }
+
+  $('btnCopyLog').addEventListener('click', function(){
+    var ta = document.createElement('textarea');
+    ta.value = logLines.join('\n');
+    ta.style.position='fixed'; ta.style.opacity='0';
+    document.body.appendChild(ta); ta.select();
+    try{ document.execCommand('copy'); $('btnCopyLog').textContent = 'Copied'; }
+    catch(e){ $('btnCopyLog').textContent = 'Copy failed'; }
+    document.body.removeChild(ta);
+    setTimeout(function(){ $('btnCopyLog').textContent = 'Copy log'; }, 2000);
+  });
+
+  /* ==================== deleting a pasted list ==================== */
+
+  $('delNums').addEventListener('input', function(){
+    var seen = {};
+    $('delNums').value.split(/[\s,;]+/).forEach(function(n){
+      var d = String(n).replace(/[^0-9]/g,'').replace(/^0+(?=[0-9])/,'');
+      if(d) seen[d] = 1;
+    });
+    var n = Object.keys(seen).length;
+    $('delCount').textContent = n ? nf(n) + ' invoice numbers' : '';
+  });
+
+  function whichWanted(){
+    var r = document.querySelector('input[name="which"]:checked');
+    return r ? r.value : 'hash';
+  }
+
+  document.querySelectorAll('input[name="which"]').forEach(function(r){
+    r.addEventListener('change', function(){ if(delData) drawDel(); });
+  });
+
+  var lookEvent = 0, lookPoll = null;
+
+  $('btnLook').addEventListener('click', function(){
+    var nums = $('delNums').value.trim();
+    if(!nums) return setStat($('statLook'),'bad','Paste some invoice numbers first.');
+
+    setStat($('statLook'),'busy','Looking them up in QuickBooks…');
+    $('delFound').classList.add('hide');
+    lookEvent = 0;
+    $('lookLog').innerHTML = '';
+    $('lookLog').classList.remove('hide');
+
+    postJSON('/api/invoice-find-start', { numbers: nums })
+      .then(function(){ pollLook(); startLookPoll(); })
+      .catch(function(e){ setStat($('statLook'),'bad', e.message); });
+  });
+
+  function startLookPoll(){
+    if(lookPoll) return;
+    lookPoll = setInterval(function(){ pollLook(); }, 1500);
+  }
+  function stopLookPoll(){
+    if(!lookPoll) return;
+    clearInterval(lookPoll);
+    lookPoll = null;
+  }
+
+  function pollLook(){
+    return fetch('/api/invoice-find-status?since=' + lookEvent, { cache:'no-store' })
+      .then(function(r){ return r.json(); })
+      .then(function(d){
+        if(!d.job){
+          stopLookPoll();
+          $('btnLookStop').style.display = 'none';
+          $('btnLookResume').style.display = 'none';
+          $('btnLookClear').style.display = 'none';
+          return;
+        }
+
+        var j = d.job;
+        $('lookLog').classList.remove('hide');
+        (j.events || []).forEach(function(e){
+          var line = document.createElement('div');
+          line.textContent = e.msg;
+          $('lookLog').appendChild(line);
+        });
+        if(j.lastEventId) lookEvent = j.lastEventId;
+        $('lookLog').scrollTop = $('lookLog').scrollHeight;
+
+        var live = j.state === 'running';
+        $('btnLook').disabled = live;
+        $('btnLookStop').style.display = live ? '' : 'none';
+        $('btnLookStop').disabled = false;
+        $('btnLookStop').textContent = 'Stop';
+        $('btnLookResume').style.display = (!live && j.canCarryOn) ? '' : 'none';
+        $('btnLookClear').style.display = live ? 'none' : '';
+
+        if(live){
+          setStat($('statLook'),'busy',
+            '<b>Looking them up…</b><i>' + nf(j.counted) + ' found so far · running on the ' +
+            'server, you can leave this page</i>');
+          startLookPoll();
+          return;
+        }
+
+        stopLookPoll();
+
+        if(j.result){
+          delData = j.result;
+          setStat($('statLook'), j.state === 'stopped' ? 'warn' : 'ok',
+            '<b>' + nf(j.result.read) + ' numbers looked up</b>' +
+            (j.state === 'stopped'
+              ? '<i>stopped part way · ' + nf(j.result.unique - j.result.read) + ' left</i>'
+              : ''));
+          drawDel();
+        }
+      }).catch(function(){ /* a missed poll is nothing to worry about */ });
+  }
+
+  $('btnLookStop').addEventListener('click', function(){
+    $('btnLookStop').disabled = true;
+    $('btnLookStop').textContent = 'Stopping…';
+    postJSON('/api/invoice-find-stop').catch(function(){});
+  });
+  $('btnLookResume').addEventListener('click', function(){
+    $('btnLookResume').style.display = 'none';
+    postJSON('/api/invoice-find-resume')
+      .then(function(){ pollLook(); startLookPoll(); })
+      .catch(function(e){ setStat($('statLook'),'bad', e.message); });
+  });
+  $('btnLookClear').addEventListener('click', function(){
+    postJSON('/api/invoice-find-clear').then(function(){
+      lookEvent = 0;
+      $('lookLog').innerHTML = '';
+      $('lookLog').classList.add('hide');
+      $('btnLookResume').style.display = 'none';
+      $('btnLookClear').style.display = 'none';
+      setStat($('statLook'),'','');
+    }).catch(function(e){ setStat($('statLook'),'bad', e.message); });
+  });
+
+  function willGo(){
+    if(!delData) return [];
+    var want = whichWanted();
+    return delData.ready.filter(function(x){
+      if(want === 'hash')  return x.hash;
+      if(want === 'plain') return !x.hash;
+      return true;
+    });
+  }
+
+  function willStay(){
+    if(!delData) return [];
+    var want = whichWanted();
+    var kept = delData.paid.slice();
+    delData.ready.forEach(function(x){
+      if(want === 'hash'  && !x.hash) kept.push(x);
+      if(want === 'plain' &&  x.hash) kept.push(x);
+    });
+    return kept;
+  }
+
+  function drawDel(){
+    $('delFound').classList.remove('hide');
+
+    var go = willGo(), stay = willStay();
+    var amount = go.reduce(function(s, x){ return s + Number(x.total || 0); }, 0);
+
+    $('delAside').textContent = nf(delData.unique) + ' numbers asked about';
+
+    $('delTiles').innerHTML =
+      '<div class="tile go"><div class="n">' + nf(go.length) + '</div><div class="l">Will be deleted</div></div>' +
+      '<div class="tile keep"><div class="n">' + nf(delData.paid.length) + '</div><div class="l">Have a payment</div></div>' +
+      '<div class="tile"><div class="n">' + nf(stay.length - delData.paid.length) + '</div><div class="l">Wrong spelling</div></div>' +
+      '<div class="tile"><div class="n">' + nf(delData.notFound.length) + '</div><div class="l">Not in QuickBooks</div></div>' +
+      '<div class="tile"><div class="n">' + money(amount) + '</div><div class="l">Value going</div></div>';
+
+    $('delPlan').textContent = go.length
+      ? go.length + ' invoice' + (go.length === 1 ? '' : 's') + ' will be removed for good.'
+      : 'Nothing matches that choice.';
+
+    $('btnDelStart').disabled = !go.length;
+    $('btnDelPaid').disabled = !delData.paid.length;
+    $('delPeek').classList.remove('open');
+  }
+
+  function peekTable(list, going){
+    if(!list.length) return '<div style="padding:14px;color:var(--muted);font-size:13px">Nothing here.</div>';
+
+    var rows = list.map(function(x){
+      return '<tr>' +
+        '<td class="mono">' + safe(x.doc) + '</td>' +
+        '<td class="mono" style="font-size:11px;color:var(--faint)">Id ' + safe(x.id) + ' · ' + safe(x.date) + '</td>' +
+        '<td>' + safe(x.customer || '') + '</td>' +
+        '<td class="num mono">' + money(x.total) + '</td>' +
+        '<td>' + (x.balance <= 0.005
+                  ? '<span class="pill paid">paid</span>'
+                  : '<span class="pill open">unpaid</span>') +
+          (going ? ' <span class="goes">← goes</span>' : ' <span class="stays">← stays</span>') +
+        '</td></tr>';
+    }).join('');
+
+    return '<table><thead><tr><th>Invoice</th><th>Details</th><th>Customer</th>' +
+           '<th class="num">Amount</th><th>Status</th></tr></thead><tbody>' + rows + '</tbody></table>';
+  }
+
+  $('btnPeekGo').addEventListener('click', function(){
+    $('delPeek').innerHTML = peekTable(willGo(), true);
+    $('delPeek').classList.add('open');
+  });
+
+  $('btnPeekKeep').addEventListener('click', function(){
+    $('delPeek').innerHTML = peekTable(willStay(), false);
+    $('delPeek').classList.add('open');
+  });
+  $('btnPeekPaid').addEventListener('click', function(){
+    if(!delData || !delData.paid.length){
+      $('delPeek').innerHTML = '<div style="padding:14px;color:var(--muted);font-size:13px">None of them carry a payment.</div>';
+      $('delPeek').classList.add('open');
+      return;
+    }
+
+    var rows = delData.paid.map(function(x){
+      var pays = (x.payments || []).map(function(p){
+        return (p.ref || 'no CPR number') + ' · ' + money(p.amount) +
+               (p.bank ? ' · ' + safe(p.bank) : '') +
+               ' · ' + p.invoices + ' invoice' + (p.invoices === 1 ? '' : 's');
+      }).join('<br>');
+
+      return '<tr' + (x.shared ? ' style="background:#FDF3F3"' : '') + '>' +
+        '<td class="mono">' + safe(x.doc) + '</td>' +
+        '<td class="mono" style="font-size:11px;color:var(--faint)">Id ' + safe(x.id) + ' · ' + safe(x.date) + '</td>' +
+        '<td class="num mono">' + money(x.total) + '</td>' +
+        '<td style="font-size:11.5px">' + (pays || 'nothing found') + '</td>' +
+        '<td>' + (x.shared
+          ? '<span class="goes">also covers other invoices</span>'
+          : '<span class="stays">only these</span>') + '</td>' +
+        '</tr>';
+    }).join('');
+
+    $('delPeek').innerHTML =
+      '<table><thead><tr><th>Invoice</th><th>Details</th><th class="num">Amount</th>' +
+      '<th>The payment behind it</th><th>Reach</th></tr></thead><tbody>' + rows + '</tbody></table>';
+    $('delPeek').classList.add('open');
+  });
+
+  $('btnDelPaid').addEventListener('click', function(){
+    if(!delData || !delData.paid.length) return;
+
+    var want = whichWanted();
+    var list = delData.paid.filter(function(x){
+      if(want === 'hash')  return x.hash;
+      if(want === 'plain') return !x.hash;
+      return true;
+    });
+
+    if(!list.length) return alert('None of the paid ones match that choice.');
+
+    var shared = list.filter(function(x){ return x.shared; });
+    var amount = list.reduce(function(s, x){ return s + Number(x.total || 0); }, 0);
+    var payCount = {};
+    list.forEach(function(x){
+      (x.payments || []).forEach(function(p){ payCount[p.id] = 1; });
+    });
+    var pays = Object.keys(payCount).length;
+
+    var msg = list.length + ' invoices worth ' + money(amount) + ' will be removed, ' +
+              'along with ' + pays + ' payment' + (pays === 1 ? '' : 's') + ' behind them.\n\n' +
+              'The money will leave QuickBooks as well.';
+
+    if(shared.length){
+      msg += '\n\nWARNING: ' + shared.length + ' of those payments also cover invoices ' +
+             'that are NOT in this list. Those invoices will become unpaid.';
+    }
+
+    msg += '\n\nThis cannot be undone. Have you looked at the list?';
+
+    if(!confirm(msg)) return;
+
+    var again = prompt('Type DELETE WITH PAYMENTS to go ahead.');
+    if(String(again || '').trim().toUpperCase() !== 'DELETE WITH PAYMENTS') return;
+
+    startRemoving(list);
+  });
+  $('btnDelFile').addEventListener('click', function(){
+    var rows = [];
+    willGo().forEach(function(x){
+      rows.push([x.doc, x.id, x.date, x.customer || '', money(x.total), 'will be deleted']);
+    });
+    willStay().forEach(function(x){
+      rows.push([x.doc, x.id, x.date, x.customer || '', money(x.total), 'stays']);
+    });
+    delData.notFound.forEach(function(n){
+      rows.push([n, '', '', '', '', 'not in QuickBooks']);
+    });
+    download('invoices-to-delete.csv',
+      buildCSV(['Invoice','QuickBooks id','Date','Customer','Amount','What happens'], rows));
+  });
+
+  $('btnDelStart').addEventListener('click', function(){
+    var go = willGo();
+    if(!go.length) return;
+
+    var amount = go.reduce(function(s, x){ return s + Number(x.total || 0); }, 0);
+    var msg = go.length + ' invoices worth ' + money(amount) + ' will be removed from ' +
+              'QuickBooks for good.\n\nThis cannot be undone. Have you looked at the list?';
+    if(!confirm(msg)) return;
+
+    var again = prompt('Type DELETE to go ahead.');
+    if(String(again || '').trim().toUpperCase() !== 'DELETE') return;
+
+    startRemoving(go);
+  });
+
+  function startRemoving(list){
+    $('btnDelStart').disabled = true;
+    $('btnDelPaid').disabled = true;
+    delSince = 0;
+    $('delLog').innerHTML = '';
+
+    fetch('/api/invoice-delete-start', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ invoices: list })
+    })
+      .then(function(r){ return r.json(); })
+      .then(function(d){
+        if(d.error){
+          $('btnDelStart').disabled = false;
+          $('btnDelPaid').disabled = false;
+          setStat($('statLook'),'bad', d.error);
+          return;
+        }
+        $('delRun').classList.remove('hide');
+        $('btnDelStop').classList.remove('hide');
+        $('btnDelClear').classList.add('hide');
+        $('btnDelResume').classList.add('hide');
+        delKeepAwake(true);
+        delPoll();
+      })
+      .catch(function(e){
+        $('btnDelStart').disabled = false;
+        $('btnDelPaid').disabled = false;
+        setStat($('statLook'),'bad', e.message);
+      });
+  }
+  $('btnDelStop').addEventListener('click', function(){
+    fetch('/api/invoice-delete-stop', { method:'POST' }).catch(function(){});
+  });
+
+  $('btnDelResume').addEventListener('click', function(){
+    fetch('/api/invoice-delete-resume', { method:'POST' })
+      .then(function(r){ return r.json(); })
+      .then(function(d){
+        if(d.error){ setStat($('statLook'),'bad', d.error); return; }
+        $('btnDelResume').classList.add('hide');
+        $('btnDelClear').classList.add('hide');
+        $('btnDelStop').classList.remove('hide');
+        $('btnDelStart').disabled = true;
+        delKeepAwake(true);
+        delPoll();
+      })
+      .catch(function(){});
+  });
+
+  $('btnDelClear').addEventListener('click', function(){
+    fetch('/api/invoice-delete-clear', { method:'POST' })
+      .then(function(r){ return r.json(); })
+      .then(function(){
+        $('delRun').classList.add('hide');
+        $('btnDelResume').classList.add('hide');
+               $('btnDelStart').disabled = false;
+        $('btnDelPaid').disabled = false;
+        delSince = 0;
+      })
+      .catch(function(){});
+  });
+
+  // Render lets a quiet server drop off; a small nudge keeps it listening
+  function delKeepAwake(on){
+    if(delAwake){ clearInterval(delAwake); delAwake = null; }
+    if(on) delAwake = setInterval(function(){
+      fetch('/auth/status', { cache:'no-store' }).catch(function(){});
+    }, 120000);
+  }
+
+  function delPoll(){
+    if(delTimer) clearTimeout(delTimer);
+
+    fetch('/api/invoice-delete-status?since=' + delSince, { cache:'no-store' })
+      .then(function(r){ return r.json(); })
+      .then(function(d){
+        var job = d.job;
+        if(!job) return;
+
+        $('delRun').classList.remove('hide');
+
+        var pct = job.total ? Math.round(100 * (job.done + job.failed) / job.total) : 0;
+        $('delBar').style.width = pct + '%';
+             $('delStat').textContent =
+          nf(job.done) + ' deleted' +
+          (job.paymentsGone ? ', ' + nf(job.paymentsGone) + ' payments removed' : '') +
+          (job.failed ? ', ' + nf(job.failed) + ' failed' : '') +
+          ' of ' + nf(job.total) +
+          (job.state === 'running' ? '' : ' · ' + job.state);
+
+        if(job.log && job.log.length){
+          var el = $('delLog');
+          var stuck = el.scrollTop + el.clientHeight >= el.scrollHeight - 30;
+          job.log.forEach(function(l){
+            var line = document.createElement('div');
+            if(l.kind && l.kind !== 'info') line.className = l.kind;
+            line.textContent = new Date(l.at).toLocaleTimeString() + '  ' + l.text;
+            el.appendChild(line);
+          });
+          delSince = job.logLength;
+          if(stuck) el.scrollTop = el.scrollHeight;
+        }
+
+        if(job.state === 'running'){
+          $('btnDelStart').disabled = true;
+          delTimer = setTimeout(delPoll, 2000);
+          return;
+        }
+
+        delKeepAwake(false);
+        $('btnDelStop').classList.add('hide');
+        $('btnDelClear').classList.remove('hide');
+        // a stopped or part-failed run is carried on from what is not yet gone
+        $('btnDelResume').classList.toggle('hide', !job.leftCount);
+        $('btnDelResume').textContent = 'Carry on (' + nf(job.leftCount || 0) + ' left)';
+        $('btnDelStart').disabled = false;
+                $('btnDelPaid').disabled = false;
+      })
+      .catch(function(){ delTimer = setTimeout(delPoll, 4000); });
+  }
+})();
+</script>
+</body>
+</html>

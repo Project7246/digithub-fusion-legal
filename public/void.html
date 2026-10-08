@@ -1,0 +1,1361 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Void invoices</title>
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="manifest" href="/manifest.json">
+<meta name="theme-color" content="#0F2E24">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/app.css">
+<style>
+  .step{background:var(--panel);border:1px solid var(--line);border-radius:10px;
+    padding:20px 24px;margin-bottom:16px}
+  .step h2{margin:0 0 4px;font-size:14.5px;font-weight:600}
+  .step .hint{font-size:12.5px;color:var(--muted);margin-bottom:14px;line-height:1.6}
+  .step.done{border-color:var(--qbo)}
+
+  .tabs{display:flex;gap:0;border-bottom:1px solid var(--line);margin-bottom:18px}
+  .tabs button{border:none;background:none;padding:10px 18px;font-size:13px;font-weight:600;
+    color:var(--muted);cursor:pointer;font-family:inherit;border-bottom:2px solid transparent}
+  .tabs button.on{color:var(--text);border-bottom-color:var(--qbo)}
+
+  textarea#nums{width:100%;min-height:150px;font-family:var(--mono);font-size:12.5px;
+    line-height:1.7;resize:vertical}
+
+  .picks{display:flex;flex-wrap:wrap;gap:8px}
+  .pick{border:1px solid var(--line);background:#fff;border-radius:7px;padding:9px 14px;
+    cursor:pointer;font-size:13px;font-family:inherit;transition:.13s;text-align:left}
+  .pick:hover{border-color:var(--qbo)}
+  .pick.on{border-color:var(--qbo);background:#F2FAF0;font-weight:600}
+  .pick small{display:block;font-size:11px;color:var(--muted);font-weight:400;margin-top:2px}
+
+  .days{display:flex;flex-wrap:wrap;gap:7px;max-height:210px;overflow:auto;
+    border:1px solid var(--line);border-radius:8px;padding:12px;background:#fff}
+  .day{border:1px solid var(--line);border-radius:6px;padding:6px 11px;font-size:12px;
+    cursor:pointer;font-family:var(--mono);transition:.12s}
+  .day:hover{border-color:var(--qbo)}
+  .day.on{border-color:var(--qbo);background:#F2FAF0;font-weight:600}
+  .day small{display:block;font-size:10px;color:var(--muted);font-family:var(--sans)}
+
+  .range{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:14px;
+    margin-bottom:14px}
+  .range label{display:block;font-size:11px;letter-spacing:.07em;text-transform:uppercase;
+    color:var(--faint);margin-bottom:4px}
+
+  .tally{display:flex;gap:10px;flex-wrap:wrap;margin:16px 0}
+  .tally > div{flex:1;min-width:120px;border:1px solid var(--line);border-radius:8px;
+    padding:12px 14px;background:#fff}
+  .tally .n{font-family:var(--mono);font-size:22px;font-weight:500;line-height:1.1}
+  .tally .l{font-size:10.5px;letter-spacing:.08em;text-transform:uppercase;
+    color:var(--faint);margin-top:4px}
+  .tally .ok .n{color:var(--ok)}
+  .tally .warn .n{color:var(--warn)}
+  .tally .bad .n{color:var(--bad)}
+
+  .bucket{border:1px solid var(--line);border-radius:8px;background:#fff;
+    overflow:hidden;margin-bottom:14px}
+  .bucket.warn{border-color:var(--warn)}
+  .bucket h4{margin:0;padding:10px 14px;font-size:12.5px;font-weight:600;
+    background:var(--tint);border-bottom:1px solid var(--line);
+    display:flex;justify-content:space-between;align-items:center;gap:10px;cursor:pointer}
+  .bucket.warn h4{background:#FFFBF0;color:#8A6100}
+  .bucket .inner{max-height:290px;overflow:auto}
+  .bucket table{width:100%;border-collapse:collapse;font-size:12px}
+  .bucket th{text-align:left;font-size:10px;letter-spacing:.07em;text-transform:uppercase;
+    color:var(--faint);font-weight:600;padding:6px 14px;border-bottom:1px solid var(--line)}
+  .bucket td{padding:6px 14px;border-bottom:1px solid var(--line);vertical-align:top}
+  .bucket td.num{text-align:right;font-family:var(--mono)}
+  .bucket td .paynote{display:block;font-size:10.5px;color:#8A6100;margin-top:3px;line-height:1.5}
+
+  .danger{border:1px solid var(--warn);background:#FFFBF0;border-radius:8px;
+    padding:14px 16px;margin:16px 0}
+  .danger h3{margin:0 0 6px;font-size:13px;font-weight:600}
+  .danger p{margin:0 0 10px;font-size:12.5px;color:var(--muted);line-height:1.6}
+  .danger label{display:flex;gap:9px;align-items:flex-start;font-size:13px;cursor:pointer}
+  .danger label input{width:auto;margin-top:2px;flex:none}
+
+  .prog{height:6px;background:var(--line);border-radius:3px;overflow:hidden;margin:14px 0 8px}
+  .prog i{display:block;height:100%;width:0;background:var(--qbo);transition:width .3s}
+  .runline{font-size:12.5px;color:var(--muted);font-family:var(--mono);margin-bottom:10px}
+
+  .vlog{background:#0F2E24;color:#CFE8D8;border-radius:8px;padding:12px 15px;
+    font-family:var(--mono);font-size:11.5px;line-height:1.7;max-height:280px;
+    overflow:auto;margin-top:12px}
+  .vlog .ok{color:#8FE3A8}
+  .vlog .held{color:#FFD98A}
+  .vlog .retry{color:#FFD98A}
+  .vlog .fail{color:#FF9C9C}
+  .vlog .error{color:#FF9C9C}
+  .vlog .t{color:#6E9C82;margin-right:8px}
+
+  .acts{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}
+  .acts button.mini{font-size:11.5px;padding:5px 12px;border-radius:6px;
+    border:1px solid var(--line);background:#fff;cursor:pointer;font-family:inherit}
+  .acts button.mini:hover{border-color:var(--qbo)}
+</style>
+</head>
+<body>
+
+<div class="layout">
+  <aside class="rail"></aside>
+
+  <div class="main">
+    <div class="topline">
+      <div>
+        <h1>Void invoices</h1>
+        <div class="sub">Set returned orders to zero in QuickBooks, keeping the invoice number.</div>
+      </div>
+    </div>
+
+    <div class="shell">
+
+      <div id="gate" class="gate hide">
+        <img src="/logo.svg" alt="">
+        <h2>Connect your QuickBooks company</h2>
+        <p>Nothing is changed until you have seen the list and pressed Void.</p>
+        <button class="solid" id="btnConnect">Connect to QuickBooks</button>
+      </div>
+
+      <div id="body" class="hide">
+
+        <div class="tabs">
+          <button id="tabSheet" class="on">From the return sheet</button>
+          <button id="tabPaste">Paste numbers</button>
+        </div>
+
+        <!-- ============ from the sheet ============ -->
+        <div id="modeSheet">
+
+          <div class="step" id="stepRoot">
+            <h2>Return sheet folder</h2>
+            <div class="hint">The Drive folder holding the return order workbooks. Paste the link or the ID.</div>
+            <div style="display:flex;gap:8px;flex-wrap:wrap">
+              <input id="rootIn" placeholder="https://drive.google.com/drive/folders/..." style="flex:1;min-width:260px">
+              <button class="solid" id="btnRoot">Save</button>
+            </div>
+            <div id="rootNote" style="font-size:12px;color:var(--muted);margin-top:8px"></div>
+          </div>
+
+          <div class="step hide" id="stepBook">
+            <h2>Workbook</h2>
+            <div class="hint" id="bookHint"></div>
+            <div class="picks" id="books"></div>
+          </div>
+
+          <div class="step hide" id="stepTab">
+            <h2>Which sheet inside it</h2>
+            <div class="hint">Each client has its own tab.</div>
+            <div class="picks" id="tabList"></div>
+          </div>
+
+          <div class="step hide" id="stepDays">
+            <h2>Dates</h2>
+            <div class="hint" id="dayHint"></div>
+            <div class="range">
+              <div>
+                <label>From</label>
+                <select id="dFrom"></select>
+              </div>
+              <div>
+                <label>To</label>
+                <select id="dTo"></select>
+              </div>
+            </div>
+            <div class="days" id="dayList"></div>
+            <div class="acts">
+              <button class="solid" id="btnPull">Take these order numbers</button>
+              <span class="mono" id="pullNote" style="font-size:12px;color:var(--muted);align-self:center"></span>
+            </div>
+          </div>
+        </div>
+
+        <!-- ============ pasted ============ -->
+        <div id="modePaste" class="hide">
+          <div class="step" id="stepPaste">
+            <h2>Order numbers</h2>
+            <div class="hint">
+              One per line, or straight out of a spreadsheet column.
+              With or without the <b>#</b>; both spellings are looked up.
+            </div>
+            <textarea id="nums" placeholder="#91298851&#10;#91300886&#10;91302104"></textarea>
+            <div class="acts">
+              <button class="solid" id="btnScan">Look these up in QuickBooks</button>
+              <button class="mini" id="btnClearNums">Clear</button>
+              <span class="mono" id="numCount" style="font-size:12px;color:var(--muted);align-self:center"></span>
+            </div>
+          </div>
+
+          <!-- the other way round: are these on the return sheet at all -->
+          <div class="step" id="stepCheck">
+            <h2>Or look for them in the return sheet</h2>
+            <div class="hint">
+              The other way round. Instead of asking QuickBooks, this reads the return
+              order workbook and says which of the numbers above are on it, and on what day.
+              With or without the <b>#</b>; both spellings are looked for. Nothing is changed.
+            </div>
+
+            <div id="cNoRoot" class="hide" style="font-size:12.5px;color:var(--muted)">
+              Set the return sheet folder on the other tab first.
+            </div>
+
+            <div id="cPicker">
+              <div style="font-size:11px;letter-spacing:.07em;text-transform:uppercase;
+                          color:var(--faint);margin-bottom:6px">Workbook</div>
+              <div class="picks" id="cBooks"></div>
+
+              <div id="cTabWrap" class="hide" style="margin-top:14px">
+                <div style="font-size:11px;letter-spacing:.07em;text-transform:uppercase;
+                            color:var(--faint);margin-bottom:6px">Tabs to read</div>
+                <div class="days" id="cTabs"></div>
+              </div>
+
+              <div class="range" style="margin-top:14px">
+                <div>
+                  <label>From this day (optional)</label>
+                  <input type="date" id="cFrom">
+                </div>
+                <div>
+                  <label>To this day (optional)</label>
+                  <input type="date" id="cTo">
+                </div>
+              </div>
+
+              <div class="acts">
+                <button class="solid" id="btnCheck">Check the return sheet</button>
+                <button class="solid" id="btnCheckStop" style="display:none;background:var(--neg)">Stop</button>
+                <span class="mono" id="cNote" style="font-size:12px;color:var(--muted);align-self:center"></span>
+              </div>
+            </div>
+          </div>
+
+          <!-- what the sheet said -->
+          <div class="step hide" id="stepCheckOut">
+            <h2>What the return sheet says</h2>
+            <div class="hint" id="cHint"></div>
+            <div class="prog"><i id="cBar"></i></div>
+            <div class="runline" id="cRunline"></div>
+            <div class="tally" id="cTally"></div>
+            <div id="cBuckets"></div>
+            <div class="vlog" id="cLog"></div>
+            <div class="acts">
+              <button class="mini" id="btnCheckResume" style="display:none">Carry on</button>
+              <button class="mini" id="btnCheckCopy">Copy log</button>
+              <button class="mini" id="btnDlOnSheet">Download the ones on it</button>
+              <button class="mini" id="btnDlOffSheet">Download the ones not on it</button>
+              <button class="mini" id="btnDlCheckAll">Download the whole report</button>
+              <button class="mini" id="btnCheckClear">Clear log</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- ============ the look-up itself ============ -->
+        <div class="step hide" id="stepScanRun">
+          <h2>Looking them up in QuickBooks</h2>
+          <div class="runline" id="scanLine"></div>
+          <div class="vlog" id="scanLog"></div>
+          <div class="acts">
+            <button class="solid" id="btnScanStop" style="display:none;background:var(--neg)">Stop</button>
+            <button class="mini" id="btnScanResume" style="display:none">Carry on</button>
+            <button class="mini" id="btnScanClear" style="display:none">Clear log</button>
+          </div>
+        </div>
+
+        <!-- ============ review and run ============ -->
+        <div class="step hide" id="stepReview">
+          <h2>What QuickBooks found</h2>
+          <div class="hint" id="scanHint"></div>
+          <div class="tally" id="tally"></div>
+          <div id="buckets"></div>
+
+          <div id="dangerBox"></div>
+
+          <button class="solid" id="btnVoid" data-need="void">Void them</button>
+          <button class="solid" id="btnStop" style="display:none;background:var(--neg)">Stop</button>
+
+          <div id="runBox" class="hide">
+            <div class="prog"><i id="bar"></i></div>
+            <div class="runline" id="runline"></div>
+            <div class="vlog" id="vlog"></div>
+            <div class="acts">
+              <button class="mini" id="btnRetry" data-need="void" style="display:none">Carry on</button>
+              <button class="mini" id="btnCopyLog">Copy log</button>
+              <button class="mini" id="btnDlVoided">Download voided</button>
+              <button class="mini" id="btnDlLeft">Download not voided</button>
+              <button class="mini" id="btnClearRun" data-need="void">Clear log</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="stat" id="statBox"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="/nav.js"></script>
+<script>
+(function(){
+  "use strict";
+  var $ = function(id){ return document.getElementById(id); };
+
+  var S = {
+    root: '', book: null, tab: '', excel: false,
+    days: [], picked: {},
+    scan: null, job: null, poller: null, lastEventId: 0,
+    open: { ready:true, paid:true, alreadyVoid:false, notFound:false },
+    logLines: []
+  };
+
+  function money(n){
+    var v = Number(n || 0);
+    var p = Math.abs(v).toFixed(2).split('.');
+    return (v < 0 ? '-' : '') + p[0].replace(/\B(?=(\d{3})+(?!\d))/g, ',') + '.' + p[1];
+  }
+  function nf(n){ return String(n).replace(/\B(?=(\d{3})+(?!\d))/g, ','); }
+  function esc(s){
+    return String(s == null ? '' : s)
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  }
+  function clock(ms){
+    var d = ms ? new Date(ms) : new Date();
+    return d.toLocaleTimeString();
+  }
+
+  function say(cls, html){
+    $('statBox').className = 'stat' + (cls ? ' ' + cls : '');
+    $('statBox').innerHTML = html;
+  }
+  function clearSay(){ $('statBox').className = 'stat'; $('statBox').textContent = ''; }
+
+  function get(url){
+    return fetch(url, { cache: 'no-store' }).then(function(r){ return r.json(); }).then(function(d){
+      if(d.error) throw new Error(d.error);
+      return d;
+    });
+  }
+  function post(url, body){
+    return fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body || {})
+    }).then(function(r){ return r.json(); }).then(function(d){
+      if(d.error) throw new Error(d.error);
+      return d;
+    });
+  }
+
+  function download(name, rows){
+    var csv = rows.map(function(r){
+      return r.map(function(c){
+        var s = String(c == null ? '' : c);
+        return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
+      }).join(',');
+    }).join('\r\n');
+    var b = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' });
+    var a = document.createElement('a');
+    a.href = URL.createObjectURL(b);
+    a.download = name;
+    a.click();
+    setTimeout(function(){ URL.revokeObjectURL(a.href); }, 4000);
+  }
+
+  /* ---------- start ---------- */
+
+  $('btnConnect').addEventListener('click', function(){ location.href = '/auth/connect'; });
+
+  window.APP.ready.then(function(s){
+    if(!s.connected){ $('gate').classList.remove('hide'); return; }
+    $('body').classList.remove('hide');
+    pollJob(true);
+    pollScan(true);
+    // the sheet check runs on the server too, so whatever is going shows up
+    // here however this page was opened
+    pollCheck(true);
+
+    get('/api/void/sheet-root').then(function(d){
+      if(d.folderId){
+        S.root = d.folderId;
+        $('rootIn').value = d.folderId;
+        $('rootNote').textContent = 'Saved.';
+        $('stepRoot').classList.add('done');
+        loadBooks();
+        loadCheckBooks();
+      } else {
+        $('cPicker').classList.add('hide');
+        $('cNoRoot').classList.remove('hide');
+      }
+    }).catch(function(){});
+  });
+
+  $('tabSheet').addEventListener('click', function(){
+    $('tabSheet').classList.add('on');
+    $('tabPaste').classList.remove('on');
+    $('modeSheet').classList.remove('hide');
+    $('modePaste').classList.add('hide');
+  });
+  $('tabPaste').addEventListener('click', function(){
+    $('tabPaste').classList.add('on');
+    $('tabSheet').classList.remove('on');
+    $('modePaste').classList.remove('hide');
+    $('modeSheet').classList.add('hide');
+    if(S.root && !C.books.length) loadCheckBooks();
+  });
+
+  /* ---------- the return sheet ---------- */
+
+  $('btnRoot').addEventListener('click', function(){
+    var v = $('rootIn').value.trim();
+    if(!v) return;
+    $('btnRoot').disabled = true;
+    post('/api/void/sheet-root', { folderId: v }).then(function(d){
+      $('btnRoot').disabled = false;
+      S.root = d.folderId;
+      $('rootIn').value = d.folderId;
+      $('rootNote').textContent = 'Saved.';
+      $('stepRoot').classList.add('done');
+      loadBooks();
+      loadCheckBooks();
+    }).catch(function(e){
+      $('btnRoot').disabled = false;
+      $('rootNote').textContent = e.message;
+    });
+  });
+
+  function loadBooks(){
+    $('stepBook').classList.remove('hide');
+    $('bookHint').textContent = 'Reading the folder...';
+    $('books').innerHTML = '';
+
+    get('/api/void/sheets').then(function(d){
+      var all = (d.sheets || []);
+      if(!all.length){
+        $('bookHint').textContent = 'No workbooks in that folder.';
+        return;
+      }
+      $('bookHint').textContent = all.length + ' workbook' + (all.length === 1 ? '' : 's') + ' in there.';
+      var box = $('books');
+      box.innerHTML = '';
+      all.forEach(function(f){
+        var b = document.createElement('button');
+        b.className = 'pick';
+        b.innerHTML = '\u{1F4C4} ' + esc(f.name) +
+          (f.excel ? '<small>Excel file</small>' : '<small>Google Sheet</small>');
+        b.addEventListener('click', function(){
+          Array.prototype.forEach.call(box.children, function(c){ c.classList.remove('on'); });
+          b.classList.add('on');
+          S.book = f;
+          S.excel = !!f.excel;
+          loadTabs();
+        });
+        box.appendChild(b);
+      });
+    }).catch(function(e){
+      $('bookHint').textContent = e.message;
+    });
+  }
+
+  function loadTabs(){
+    $('stepTab').classList.remove('hide');
+    $('stepDays').classList.add('hide');
+    $('tabList').innerHTML = '<span style="font-size:13px;color:var(--muted)">Reading tabs...</span>';
+
+    get('/api/void/tabs?sheetId=' + encodeURIComponent(S.book.id) + (S.excel ? '&excel=1' : ''))
+      .then(function(d){
+        var box = $('tabList');
+        box.innerHTML = '';
+        (d.tabs || []).forEach(function(t){
+          var b = document.createElement('button');
+          b.className = 'pick';
+          b.textContent = t.title;
+          b.addEventListener('click', function(){
+            Array.prototype.forEach.call(box.children, function(c){ c.classList.remove('on'); });
+            b.classList.add('on');
+            S.tab = t.title;
+            loadDays();
+          });
+          box.appendChild(b);
+        });
+      }).catch(function(e){
+        $('tabList').innerHTML = '';
+        say('bad', '<b>' + esc(e.message) + '</b>');
+      });
+  }
+
+  function loadDays(){
+    $('stepDays').classList.remove('hide');
+    $('dayHint').textContent = 'Reading the dates...';
+    $('dayList').innerHTML = '';
+    $('pullNote').textContent = '';
+    S.picked = {};
+
+    var u = '/api/void/days?sheetId=' + encodeURIComponent(S.book.id) +
+            '&tab=' + encodeURIComponent(S.tab) + (S.excel ? '&excel=1' : '');
+
+    get(u).then(function(d){
+      S.days = d.days || [];
+      if(!S.days.length){
+        $('dayHint').textContent = 'No dated columns found on that tab.';
+        return;
+      }
+
+      var total = S.days.reduce(function(s, x){ return s + x.count; }, 0);
+      $('dayHint').innerHTML =
+        nf(S.days.length) + ' days on this tab, ' + nf(total) + ' order numbers in all. ' +
+        'Pick a range, or tap the days you want.';
+
+      var f = $('dFrom'), t = $('dTo');
+      f.innerHTML = ''; t.innerHTML = '';
+      S.days.forEach(function(x){
+        var a = document.createElement('option');
+        a.value = x.date; a.textContent = x.label || x.date;
+        f.appendChild(a);
+        var b = document.createElement('option');
+        b.value = x.date; b.textContent = x.label || x.date;
+        t.appendChild(b);
+      });
+      f.value = S.days[0].date;
+      t.value = S.days[S.days.length - 1].date;
+
+      f.addEventListener('change', applyRange);
+      t.addEventListener('change', applyRange);
+      applyRange();
+    }).catch(function(e){
+      $('dayHint').textContent = e.message;
+    });
+  }
+
+  function applyRange(){
+    var from = $('dFrom').value, to = $('dTo').value;
+    S.picked = {};
+    S.days.forEach(function(x){
+      if(x.date >= from && x.date <= to) S.picked[x.date] = true;
+    });
+    drawDays();
+  }
+
+  function drawDays(){
+    var box = $('dayList');
+    box.innerHTML = '';
+    var n = 0, orders = 0;
+
+    S.days.forEach(function(x){
+      var on = !!S.picked[x.date];
+      if(on){ n++; orders += x.count; }
+
+      var b = document.createElement('button');
+      b.className = 'day' + (on ? ' on' : '');
+      b.innerHTML = esc(x.date) + '<small>' + nf(x.count) + ' orders</small>';
+      b.addEventListener('click', function(){
+        S.picked[x.date] = !S.picked[x.date];
+        drawDays();
+      });
+      box.appendChild(b);
+    });
+
+    $('pullNote').textContent = n + ' day' + (n === 1 ? '' : 's') + ' \u00b7 ' +
+      nf(orders) + ' order numbers';
+  }
+
+  $('btnPull').addEventListener('click', function(){
+    var dates = Object.keys(S.picked).filter(function(k){ return S.picked[k]; }).sort();
+    if(!dates.length) return say('bad', '<b>Pick at least one day.</b>');
+
+    clearSay();
+    $('btnPull').disabled = true;
+    say('', 'Reading the sheet...');
+
+    var u = '/api/void/numbers?sheetId=' + encodeURIComponent(S.book.id) +
+            '&tab=' + encodeURIComponent(S.tab) +
+            '&from=' + encodeURIComponent(dates[0]) +
+            '&to=' + encodeURIComponent(dates[dates.length - 1]) +
+            (S.excel ? '&excel=1' : '');
+
+    get(u).then(function(d){
+      // the range endpoint is inclusive; keep only the days actually ticked
+      var wanted = d.numbers;
+      $('btnPull').disabled = false;
+      clearSay();
+      if(!wanted.length) return say('bad', '<b>No order numbers in those days.</b>');
+      $('nums').value = wanted.join('\n');
+      countNums();
+      runScan(wanted.join('\n'));
+    }).catch(function(e){
+      $('btnPull').disabled = false;
+      say('bad', '<b>' + esc(e.message) + '</b>');
+    });
+  });
+
+  /* ---------- pasted numbers ---------- */
+
+  function countNums(){
+    var n = $('nums').value.split(/[\s,;]+/).filter(Boolean).length;
+    $('numCount').textContent = n ? nf(n) + ' number' + (n === 1 ? '' : 's') + ' ready' : '';
+  }
+  $('nums').addEventListener('input', countNums);
+
+  $('btnClearNums').addEventListener('click', function(){
+    $('nums').value = '';
+    countNums();
+    $('stepReview').classList.add('hide');
+    clearSay();
+  });
+
+  $('btnScan').addEventListener('click', function(){
+    var text = $('nums').value.trim();
+    if(!text) return say('bad', '<b>Paste some order numbers first.</b>');
+    runScan(text);
+  });
+
+  // The look-up runs on the server in batches, so a list pasted by mistake is
+  // stopped at the end of the batch in flight instead of having to be waited
+  // out - and what was already read is kept, to carry on or to clear.
+  function runScan(text){
+    clearSay();
+    S.scanEvent = 0;
+    $('scanLog').innerHTML = '';
+    $('stepScanRun').classList.remove('hide');
+
+    post('/api/void/scan-start', { numbers: text }).then(function(){
+      pollScan(true);
+      startScanPoll();
+    }).catch(function(e){
+      say('bad', '<b>' + esc(e.message) + '</b>');
+    });
+  }
+
+  $('btnScanStop').addEventListener('click', function(){
+    $('btnScanStop').disabled = true;
+    $('btnScanStop').textContent = 'Stopping...';
+    post('/api/void/scan-stop').catch(function(){});
+  });
+
+  $('btnScanResume').addEventListener('click', function(){
+    $('btnScanResume').style.display = 'none';
+    post('/api/void/scan-resume').then(function(){
+      pollScan(false);
+      startScanPoll();
+    }).catch(function(e){ say('bad', '<b>' + esc(e.message) + '</b>'); });
+  });
+
+  $('btnScanClear').addEventListener('click', function(){
+    post('/api/void/scan-clear').then(function(){
+      S.scan = null;
+      S.scanEvent = 0;
+      $('scanLog').innerHTML = '';
+      $('stepScanRun').classList.add('hide');
+      $('scanLine').textContent = '';
+      $('stepReview').classList.add('hide');
+      $('btnScanResume').style.display = 'none';
+      $('btnScanClear').style.display = 'none';
+    }).catch(function(e){ say('bad', '<b>' + esc(e.message) + '</b>'); });
+  });
+
+  function startScanPoll(){
+    if(S.scanPoll) return;
+    S.scanPoll = setInterval(function(){ pollScan(false); }, 1500);
+  }
+  function stopScanPoll(){
+    if(!S.scanPoll) return;
+    clearInterval(S.scanPoll);
+    S.scanPoll = null;
+  }
+
+  function pollScan(first){
+    return get('/api/void/scan-status?since=' + (S.scanEvent || 0)).then(function(d){
+      if(!d.job){
+        stopScanPoll();
+        $('btnScanStop').style.display = 'none';
+        $('btnScanResume').style.display = 'none';
+        $('btnScanClear').style.display = 'none';
+        return;
+      }
+
+      var j = d.job;
+      $('stepScanRun').classList.remove('hide');
+
+      (j.events || []).forEach(function(e){
+        var line = document.createElement('div');
+        if(e.type === 'ok') line.className = 'ok';
+        else if(e.type === 'fail' || e.type === 'error') line.className = 'fail';
+        var t = document.createElement('span');
+        t.className = 't';
+        t.textContent = clock(e.at);
+        line.appendChild(t);
+        line.appendChild(document.createTextNode(e.msg));
+        $('scanLog').appendChild(line);
+      });
+      if(j.lastEventId) S.scanEvent = j.lastEventId;
+      $('scanLog').scrollTop = $('scanLog').scrollHeight;
+
+      var live = j.state === 'running';
+      $('btnScan').style.display = live ? 'none' : '';
+      $('btnScanStop').style.display = live ? '' : 'none';
+      $('btnScanStop').disabled = false;
+      $('btnScanStop').textContent = 'Stop';
+      $('btnScanResume').style.display = (!live && j.leftCount) ? '' : 'none';
+      $('btnScanResume').textContent = 'Carry on (' + nf(j.leftCount) + ' left)';
+      $('btnScanClear').style.display = live ? 'none' : '';
+
+      $('scanLine').textContent =
+        nf(j.done) + ' of ' + nf(j.unique) + ' numbers looked up' +
+        (live ? '   (running on the server - you can leave this page)' : '');
+
+      if(j.result){
+        S.scan = j.result;
+        showScan(j.result);
+      }
+
+      if(live){ startScanPoll(); return; }
+      stopScanPoll();
+    }).catch(function(){ /* a missed poll is nothing to worry about */ });
+  }
+
+  /* ---------- what was found ---------- */
+
+  function showScan(d){
+    $('stepReview').classList.remove('hide');
+
+    $('scanHint').innerHTML =
+      nf(d.asked) + ' number' + (d.asked === 1 ? '' : 's') + ' looked up, ' +
+      nf(d.unique) + ' after removing repeats. ' +
+      '<b>Nothing has been changed yet.</b>';
+
+    $('tally').innerHTML =
+      '<div class="ok"><div class="n">' + nf(d.ready.length) + '</div>' +
+        '<div class="l">Ready to void</div></div>' +
+      '<div class="warn"><div class="n">' + nf(d.paid.length) + '</div>' +
+        '<div class="l">Payment received</div></div>' +
+      '<div><div class="n">' + nf(d.alreadyVoid.length) + '</div>' +
+        '<div class="l">Already void</div></div>' +
+      '<div class="bad"><div class="n">' + nf(d.notFound.length) + '</div>' +
+        '<div class="l">Not in QuickBooks</div></div>';
+
+    var box = $('buckets');
+    box.innerHTML = '';
+
+    bucket(box, 'ready', 'Ready to void', d.ready, false, function(r){
+      return '<tr><td>' + esc(r.doc) + '</td>' +
+             '<td style="color:var(--muted)">' + esc(r.date) + '</td>' +
+             '<td class="num">' + money(r.total) + '</td></tr>';
+    });
+
+    bucket(box, 'paid', 'Payment already received', d.paid, true, function(r){
+      var notes = (r.payments || []).map(function(p){
+        return 'CPR ' + esc(p.cpr) + ' \u00b7 ' + esc(p.date) +
+               ' \u00b7 ' + esc(p.bank) + ' \u00b7 ' + money(p.amount);
+      }).join('<br>');
+      return '<tr><td>' + esc(r.doc) +
+             '<span class="paynote">' + notes + '</span></td>' +
+             '<td style="color:var(--muted)">' + esc(r.date) + '</td>' +
+             '<td class="num">' + money(r.total) + '</td></tr>';
+    });
+
+    bucket(box, 'alreadyVoid', 'Already void - nothing to do', d.alreadyVoid, false, function(r){
+      return '<tr><td>' + esc(r.doc) + '</td>' +
+             '<td style="color:var(--muted)">' + esc(r.date) + '</td>' +
+             '<td class="num">0.00</td></tr>';
+    });
+
+    bucket(box, 'notFound', 'Not found in QuickBooks', d.notFound.map(function(x){
+      return { doc: x };
+    }), false, function(r){
+      return '<tr><td>' + esc(r.doc) + '</td><td></td><td></td></tr>';
+    });
+
+    drawDanger(d);
+    updateVoidButton();
+  }
+
+  function bucket(box, key, title, rows, warn, render){
+    if(!rows.length) return;
+    var el = document.createElement('div');
+    el.className = 'bucket' + (warn ? ' warn' : '');
+
+    var open = !!S.open[key];
+    el.innerHTML =
+      '<h4><span>' + esc(title) + ' (' + nf(rows.length) + ')</span>' +
+      '<span>' + (open ? '\u25B2' : '\u25BC') + '</span></h4>' +
+      (open
+        ? '<div class="inner"><table><thead><tr>' +
+          '<th>Invoice</th><th>Date</th><th class="num">Amount</th>' +
+          '</tr></thead><tbody>' + rows.map(render).join('') + '</tbody></table></div>'
+        : '');
+
+    el.querySelector('h4').addEventListener('click', function(){
+      S.open[key] = !S.open[key];
+      showScan(S.scan);
+    });
+
+    box.appendChild(el);
+  }
+
+  function drawDanger(d){
+    var box = $('dangerBox');
+    if(!d.paid.length){ box.innerHTML = ''; return; }
+
+    box.innerHTML =
+      '<div class="danger">' +
+        '<h3>' + nf(d.paid.length) + ' of these already has a payment against it</h3>' +
+        '<p>QuickBooks will not void a paid invoice. To void these, the payment has to ' +
+          'let go of the invoice first. That drops the payment total by this invoice\u0027s ' +
+          'amount - and the CPR it belongs to will no longer match the courier sheet ' +
+          'on the Receive payments page.</p>' +
+        '<p>Leave this unticked and those invoices are left exactly as they are.</p>' +
+        '<label><input type="checkbox" id="doForce">' +
+          '<span>Free the payments and void these too</span></label>' +
+      '</div>';
+
+    $('doForce').addEventListener('change', updateVoidButton);
+  }
+
+  function forceOn(){
+    var cb = $('doForce');
+    return !!(cb && cb.checked);
+  }
+
+  function updateVoidButton(){
+    if(!S.scan) return;
+    var n = S.scan.ready.length + (forceOn() ? S.scan.paid.length : 0);
+    $('btnVoid').disabled = !n;
+    $('btnVoid').textContent = n
+      ? 'Void ' + nf(n) + ' invoice' + (n === 1 ? '' : 's')
+      : 'Nothing to void';
+  }
+
+  /* ---------- do it ---------- */
+
+  function startRun(list, force){
+    clearSay();
+    $('btnVoid').disabled = true;
+    $('btnRetry').style.display = 'none';
+    $('vlog').innerHTML = '';
+    S.logLines = [];
+    S.lastEventId = 0;
+    S.job = null;
+
+    return post('/api/void/start', {
+      invoices: list.map(function(r){
+        return {
+          id: r.id, doc: r.doc, syncToken: r.syncToken,
+          hasPayment: !!(r.payments && r.payments.length)
+        };
+      }),
+      force: force
+    }).then(function(){
+      pollJob(true);
+      startPolling();
+    }).catch(function(e){
+      $('btnVoid').disabled = false;
+      say('bad', '<b>' + esc(e.message) + '</b>');
+    });
+  }
+
+  $('btnVoid').addEventListener('click', function(){
+    if(!S.scan) return;
+
+    var force = forceOn();
+    var list = S.scan.ready.slice();
+    if(force) list = list.concat(S.scan.paid);
+    if(!list.length) return;
+
+    var msg = 'Void ' + list.length + ' invoice' + (list.length === 1 ? '' : 's') +
+              ' in QuickBooks?\n\nThe invoice numbers stay, the amounts become zero.';
+    if(force){
+      msg += '\n\n' + S.scan.paid.length + ' of them will be taken off their payments first. ' +
+             'Those CPR totals will change.';
+    }
+    if(!confirm(msg)) return;
+
+    startRun(list, force);
+  });
+
+  // carry on from where the run stopped, in the same log
+  $('btnRetry').addEventListener('click', function(){
+    $('btnRetry').style.display = 'none';
+    post('/api/void/resume').then(function(){
+      pollJob(false);
+      startPolling();
+    }).catch(function(e){
+      say('bad', '<b>' + esc(e.message) + '</b>');
+    });
+  });
+
+  $('btnStop').addEventListener('click', function(){
+    $('btnStop').disabled = true;
+    $('btnStop').textContent = 'Stopping...';
+    post('/api/void/stop').catch(function(){});
+  });
+
+  /* ---------- watching the run ---------- */
+
+  function startPolling(){
+    if(S.poller) return;
+    S.poller = setInterval(function(){ pollJob(false); }, 2000);
+  }
+  function stopPolling(){
+    if(!S.poller) return;
+    clearInterval(S.poller);
+    S.poller = null;
+  }
+
+  function pollJob(first){
+    var u = '/api/void/status?since=' + S.lastEventId + (first ? '&full=1' : '');
+    return get(u).then(function(d){
+      if(!d.job){ stopPolling(); return; }
+
+      var j = d.job;
+      S.job = j;
+
+      $('body').classList.remove('hide');
+      $('stepReview').classList.remove('hide');
+      $('runBox').classList.remove('hide');
+
+      (j.events || []).forEach(function(e){
+        var stamp = clock(e.at);
+        S.logLines.push(stamp + '  ' + e.msg);
+
+        var line = document.createElement('div');
+        if(e.type === 'ok') line.className = 'ok';
+        else if(e.type === 'held' || e.type === 'retry') line.className = 'held';
+        else if(e.type === 'fail' || e.type === 'error') line.className = 'fail';
+
+        var t = document.createElement('span');
+        t.className = 't';
+        t.textContent = stamp;
+        line.appendChild(t);
+        line.appendChild(document.createTextNode(e.msg));
+
+        $('vlog').appendChild(line);
+        $('vlog').scrollTop = $('vlog').scrollHeight;
+      });
+      if(j.lastEventId) S.lastEventId = j.lastEventId;
+
+      var live = j.state === 'running';
+      $('btnVoid').style.display = live ? 'none' : 'block';
+      $('btnStop').style.display = live ? 'block' : 'none';
+      $('btnClearRun').style.display = live ? 'none' : '';
+      $('btnStop').disabled = false;
+      $('btnStop').textContent = 'Stop';
+      if(!live){
+        $('btnVoid').disabled = false;
+        updateVoidButton();
+      }
+
+      var pct = j.total ? Math.round(j.done / j.total * 100) : 0;
+      $('bar').style.width = pct + '%';
+      $('runline').textContent =
+        nf(j.done) + ' of ' + nf(j.total) + ' done · ' +
+        nf(Math.max(0, j.total - j.done)) + ' still to go (refused ones are tried again) · ' +
+        nf(j.voidedCount) + ' voided \u00b7 ' +
+        nf(j.heldCount) + ' held \u00b7 ' +
+        nf(j.failedCount) + ' failed' +
+        (live ? '   (running on the server - you can leave this page)' : '');
+
+      if(live){ startPolling(); return; }
+
+      stopPolling();
+      // a stopped or part-failed run is carried on from where it stands
+      if(j.leftCount){
+        $('btnRetry').style.display = 'inline-block';
+        $('btnRetry').textContent = 'Carry on (' + nf(j.leftCount) + ' left)';
+      } else {
+        $('btnRetry').style.display = 'none';
+      }
+    }).catch(function(){ /* a missed poll is nothing to worry about */ });
+  }
+
+  /* ---------- downloads ---------- */
+
+  $('btnCopyLog').addEventListener('click', function(){
+    var ta = document.createElement('textarea');
+    ta.value = S.logLines.join('\n');
+    ta.style.position = 'fixed';
+    ta.style.opacity = '0';
+    document.body.appendChild(ta);
+    ta.select();
+    try { document.execCommand('copy'); $('btnCopyLog').textContent = 'Copied'; }
+    catch(e){ $('btnCopyLog').textContent = 'Copy failed'; }
+    document.body.removeChild(ta);
+    setTimeout(function(){ $('btnCopyLog').textContent = 'Copy log'; }, 2000);
+  });
+
+  $('btnDlVoided').addEventListener('click', function(){
+    var v = (S.job && S.job.voided) || [];
+    if(!v.length) return say('bad', '<b>Nothing voided yet.</b>');
+    download('voided-invoices.csv',
+      [['Invoice', 'QB Id']].concat(v.map(function(r){ return [r.doc, r.id]; })));
+  });
+
+  $('btnDlLeft').addEventListener('click', function(){
+    var held = (S.job && S.job.held) || [];
+    var failed = (S.job && S.job.failed) || [];
+    var rows = held.map(function(r){ return [r.doc, 'held back', r.msg]; })
+      .concat(failed.map(function(r){ return [r.doc, 'failed', r.msg]; }));
+    if(!rows.length) return say('bad', '<b>Everything went through.</b>');
+    download('not-voided.csv', [['Invoice', 'What happened', 'Why']].concat(rows));
+  });
+
+  /* ================= looking the pasted numbers up in the sheet =================
+     The sheet tab takes numbers out of the workbook and asks QuickBooks about
+     them. This goes the other way: it takes the numbers that were pasted and
+     reads the workbook looking for them. It runs on the server like every other
+     run here, so Stop, Carry on and Clear log mean the same thing on every
+     computer, and leaving the page does not end it. */
+
+  var C = {
+    books: [], book: null, excel: false, tabs: [], picked: {}, all: true,
+    job: null, poller: null, lastEventId: 0, logLines: [],
+    open: { found: true, missing: true }
+  };
+
+  function loadCheckBooks(){
+    $('cNoRoot').classList.add('hide');
+    $('cPicker').classList.remove('hide');
+    $('cBooks').innerHTML = '<span style="font-size:13px;color:var(--muted)">Reading the folder...</span>';
+
+    return get('/api/void/sheets').then(function(d){
+      C.books = d.sheets || [];
+      var box = $('cBooks');
+      box.innerHTML = '';
+      if(!C.books.length){
+        box.innerHTML = '<span style="font-size:13px;color:var(--muted)">No workbooks in that folder.</span>';
+        return;
+      }
+      C.books.forEach(function(f){
+        var b = document.createElement('button');
+        b.className = 'pick';
+        b.innerHTML = '\u{1F4C4} ' + esc(f.name) +
+          (f.excel ? '<small>Excel file</small>' : '<small>Google Sheet</small>');
+        b.addEventListener('click', function(){
+          Array.prototype.forEach.call(box.children, function(c){ c.classList.remove('on'); });
+          b.classList.add('on');
+          C.book = f;
+          C.excel = !!f.excel;
+          loadCheckTabs();
+        });
+        box.appendChild(b);
+      });
+    }).catch(function(e){
+      $('cBooks').innerHTML = '<span style="font-size:13px;color:var(--muted)">' +
+        esc(e.message) + '</span>';
+    });
+  }
+
+  function loadCheckTabs(){
+    $('cTabWrap').classList.remove('hide');
+    $('cTabs').innerHTML = '<span style="font-size:12px;color:var(--muted)">Reading tabs...</span>';
+    C.tabs = []; C.picked = {}; C.all = true;
+
+    get('/api/void/tabs?sheetId=' + encodeURIComponent(C.book.id) + (C.excel ? '&excel=1' : ''))
+      .then(function(d){
+        C.tabs = (d.tabs || []).map(function(t){ return t.title; });
+        drawCheckTabs();
+      }).catch(function(e){
+        $('cTabs').innerHTML = '<span style="font-size:12px;color:var(--muted)">' +
+          esc(e.message) + '</span>';
+      });
+  }
+
+  function drawCheckTabs(){
+    var box = $('cTabs');
+    box.innerHTML = '';
+
+    var every = document.createElement('button');
+    every.className = 'day' + (C.all ? ' on' : '');
+    every.textContent = 'Every tab';
+    every.addEventListener('click', function(){
+      C.all = true; C.picked = {}; drawCheckTabs();
+    });
+    box.appendChild(every);
+
+    C.tabs.forEach(function(t){
+      var b = document.createElement('button');
+      b.className = 'day' + (!C.all && C.picked[t] ? ' on' : '');
+      b.textContent = t;
+      b.addEventListener('click', function(){
+        C.all = false;
+        C.picked[t] = !C.picked[t];
+        if(!Object.keys(C.picked).some(function(k){ return C.picked[k]; })) C.all = true;
+        drawCheckTabs();
+      });
+      box.appendChild(b);
+    });
+
+    var n = C.all ? C.tabs.length
+                  : Object.keys(C.picked).filter(function(k){ return C.picked[k]; }).length;
+    $('cNote').textContent = n + ' tab' + (n === 1 ? '' : 's') + ' will be read';
+  }
+
+  $('btnCheck').addEventListener('click', function(){
+    var text = $('nums').value.trim();
+    if(!text) return say('bad', '<b>Paste some order numbers first.</b>');
+    if(!C.book) return say('bad', '<b>Pick the return workbook first.</b>');
+
+    var tabs = C.all ? [] : Object.keys(C.picked).filter(function(k){ return C.picked[k]; });
+
+    clearSay();
+    $('btnCheck').disabled = true;
+    $('cLog').innerHTML = '';
+    C.logLines = [];
+    C.lastEventId = 0;
+    C.job = null;
+
+    post('/api/void/check-start', {
+      numbers: text,
+      sheetId: C.book.id,
+      sheetName: C.book.name,
+      excel: C.excel,
+      tabs: tabs,
+      from: $('cFrom').value || '',
+      to: $('cTo').value || ''
+    }).then(function(){
+      pollCheck(true);
+      startCheckPolling();
+      $('stepCheckOut').scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }).catch(function(e){
+      $('btnCheck').disabled = false;
+      say('bad', '<b>' + esc(e.message) + '</b>');
+    });
+  });
+
+  $('btnCheckStop').addEventListener('click', function(){
+    $('btnCheckStop').disabled = true;
+    $('btnCheckStop').textContent = 'Stopping...';
+    post('/api/void/check-stop').catch(function(){});
+  });
+
+  $('btnCheckResume').addEventListener('click', function(){
+    $('btnCheckResume').style.display = 'none';
+    post('/api/void/check-resume').then(function(){
+      pollCheck(false);
+      startCheckPolling();
+    }).catch(function(e){
+      say('bad', '<b>' + esc(e.message) + '</b>');
+    });
+  });
+
+  $('btnCheckClear').addEventListener('click', function(){
+    post('/api/void/check-clear').then(function(){
+      C.job = null;
+      C.lastEventId = 0;
+      C.logLines = [];
+      $('cLog').innerHTML = '';
+      $('cBuckets').innerHTML = '';
+      $('cTally').innerHTML = '';
+      $('stepCheckOut').classList.add('hide');
+      $('btnCheckResume').style.display = 'none';
+    }).catch(function(e){
+      say('bad', '<b>' + esc(e.message) + '</b>');
+    });
+  });
+
+  function startCheckPolling(){
+    if(C.poller) return;
+    C.poller = setInterval(function(){ pollCheck(false); }, 2000);
+  }
+  function stopCheckPolling(){
+    if(!C.poller) return;
+    clearInterval(C.poller);
+    C.poller = null;
+  }
+
+  function pollCheck(first){
+    // the lists are only as long as what was pasted, so they come down with
+    // every poll - the matches fill in as the tabs are read, not at the end
+    var u = '/api/void/check-status?since=' + C.lastEventId + '&full=1';
+    return get(u).then(function(d){
+      if(!d.job){ stopCheckPolling(); return; }
+
+      var j = d.job;
+      C.job = j;
+
+      $('body').classList.remove('hide');
+      $('stepCheckOut').classList.remove('hide');
+
+      (j.events || []).forEach(function(e){
+        var stamp = clock(e.at);
+        C.logLines.push(stamp + '  ' + e.msg);
+
+        var line = document.createElement('div');
+        if(e.type === 'ok') line.className = 'ok';
+        else if(e.type === 'retry') line.className = 'held';
+        else if(e.type === 'fail' || e.type === 'error') line.className = 'fail';
+
+        var t = document.createElement('span');
+        t.className = 't';
+        t.textContent = stamp;
+        line.appendChild(t);
+        line.appendChild(document.createTextNode(e.msg));
+
+        $('cLog').appendChild(line);
+        $('cLog').scrollTop = $('cLog').scrollHeight;
+      });
+      if(j.lastEventId) C.lastEventId = j.lastEventId;
+
+      var live = j.state === 'running';
+      $('btnCheck').style.display = live ? 'none' : '';
+      $('btnCheck').disabled = false;
+      $('btnCheckStop').style.display = live ? '' : 'none';
+      $('btnCheckStop').disabled = false;
+      $('btnCheckStop').textContent = 'Stop';
+      $('btnCheckClear').style.display = live ? 'none' : '';
+
+      var pct = j.total ? Math.round(j.done / j.total * 100) : 0;
+      $('cBar').style.width = pct + '%';
+      $('cRunline').textContent =
+        nf(j.done) + ' of ' + nf(j.total) + ' tab' + (j.total === 1 ? '' : 's') + ' read' +
+        (j.skippedCount ? ' · ' + nf(j.skippedCount) + ' skipped' : '') +
+        ' · ' + nf(j.foundCount) + ' on the sheet · ' +
+        nf(j.missingCount) + ' not on it' +
+        (live ? '   (running on the server - you can leave this page)' : '');
+
+      $('cHint').innerHTML =
+        nf(j.pasted) + ' number' + (j.pasted === 1 ? '' : 's') + ' pasted, ' +
+        nf(j.unique) + ' after removing repeats, looked for in <b>' + esc(j.sheetName) + '</b>' +
+        ((j.from || j.to) ? ' between ' + esc(j.from || 'the start') + ' and ' +
+                            esc(j.to || 'the end') : '') + '.';
+
+      showCheck(j);
+
+      if(live){ startCheckPolling(); return; }
+
+      stopCheckPolling();
+      if(j.leftCount){
+        $('btnCheckResume').style.display = 'inline-block';
+        $('btnCheckResume').textContent = 'Carry on (' + nf(j.leftCount) + ' tabs left)';
+      } else {
+        $('btnCheckResume').style.display = 'none';
+      }
+    }).catch(function(){ /* a missed poll is nothing to worry about */ });
+  }
+
+  function placesOf(r){
+    return (r.places || []).map(function(p){
+      return esc(p.tab) + (p.date ? ' · ' + esc(p.date) : '');
+    }).join('<br>');
+  }
+
+  function showCheck(j){
+    $('cTally').innerHTML =
+      '<div class="ok"><div class="n">' + nf(j.foundCount) + '</div>' +
+        '<div class="l">On the return sheet</div></div>' +
+      '<div class="bad"><div class="n">' + nf(j.missingCount) + '</div>' +
+        '<div class="l">Not on it</div></div>' +
+      '<div><div class="n">' + nf(j.unique) + '</div>' +
+        '<div class="l">Numbers asked</div></div>' +
+      '<div><div class="n">' + nf(j.done) + ' / ' + nf(j.total) + '</div>' +
+        '<div class="l">Tabs read</div></div>';
+
+    var box = $('cBuckets');
+    box.innerHTML = '';
+
+    checkBucket(box, 'found', 'On the return sheet', j.found || [], false, function(r){
+      return '<tr><td>' + esc(r.doc) + '</td>' +
+             '<td style="color:var(--muted)">' + placesOf(r) + '</td>' +
+             '<td class="num">' + nf((r.places || []).length) + '</td></tr>';
+    });
+
+    checkBucket(box, 'missing', 'Not on the return sheet', j.missing || [], true, function(r){
+      return '<tr><td>' + esc(r.doc) + '</td><td></td><td class="num">0</td></tr>';
+    });
+  }
+
+  function checkBucket(box, key, title, rows, warn, render){
+    if(!rows.length) return;
+    var el = document.createElement('div');
+    el.className = 'bucket' + (warn ? ' warn' : '');
+
+    var open = !!C.open[key];
+    el.innerHTML =
+      '<h4><span>' + esc(title) + ' (' + nf(rows.length) + ')</span>' +
+      '<span>' + (open ? '▲' : '▼') + '</span></h4>' +
+      (open
+        ? '<div class="inner"><table><thead><tr>' +
+          '<th>Invoice</th><th>Where on the sheet</th><th class="num">Times</th>' +
+          '</tr></thead><tbody>' + rows.map(render).join('') + '</tbody></table></div>'
+        : '');
+
+    el.querySelector('h4').addEventListener('click', function(){
+      C.open[key] = !C.open[key];
+      if(C.job) showCheck(C.job);
+    });
+
+    box.appendChild(el);
+  }
+
+  $('btnCheckCopy').addEventListener('click', function(){
+    var ta = document.createElement('textarea');
+    ta.value = C.logLines.join('\n');
+    ta.style.position = 'fixed';
+    ta.style.opacity = '0';
+    document.body.appendChild(ta);
+    ta.select();
+    try { document.execCommand('copy'); $('btnCheckCopy').textContent = 'Copied'; }
+    catch(e){ $('btnCheckCopy').textContent = 'Copy failed'; }
+    document.body.removeChild(ta);
+    setTimeout(function(){ $('btnCheckCopy').textContent = 'Copy log'; }, 2000);
+  });
+
+  // one row per place it was written, so a number sitting on two days is two
+  // lines - that is the thing being looked for
+  function foundRows(){
+    var out = [];
+    ((C.job && C.job.found) || []).forEach(function(r){
+      (r.places || []).forEach(function(p){
+        out.push([r.doc, p.written, p.tab, p.date, (r.places || []).length]);
+      });
+    });
+    return out;
+  }
+
+  $('btnDlOnSheet').addEventListener('click', function(){
+    var rows = foundRows();
+    if(!rows.length) return say('bad', '<b>None of them is on the return sheet.</b>');
+    download('on-return-sheet.csv',
+      [['Invoice', 'As written on the sheet', 'Tab', 'Date', 'Times on the sheet']].concat(rows));
+  });
+
+  $('btnDlOffSheet').addEventListener('click', function(){
+    var miss = (C.job && C.job.missing) || [];
+    if(!miss.length) return say('bad', '<b>Every one of them is on the return sheet.</b>');
+    download('not-on-return-sheet.csv',
+      [['Invoice', 'Times pasted']].concat(miss.map(function(r){
+        return [r.doc, r.pastedTimes];
+      })));
+  });
+
+  $('btnDlCheckAll').addEventListener('click', function(){
+    if(!C.job) return say('bad', '<b>Nothing has been checked yet.</b>');
+    var rows = ((C.job.found) || []).map(function(r){
+      return [r.doc, 'on the return sheet',
+        (r.places || []).map(function(p){
+          return p.tab + (p.date ? ' ' + p.date : '');
+        }).join(' | '),
+        (r.places || []).length];
+    }).concat(((C.job.missing) || []).map(function(r){
+      return [r.doc, 'not on the return sheet', '', 0];
+    }));
+    download('return-sheet-check.csv',
+      [['Invoice', 'What the sheet says', 'Where', 'Times on the sheet']].concat(rows));
+  });
+
+  $('btnClearRun').addEventListener('click', function(){
+    post('/api/void/clear').then(function(){
+      S.job = null;
+      S.lastEventId = 0;
+      S.logLines = [];
+      $('vlog').innerHTML = '';
+      $('runBox').classList.add('hide');
+      $('btnRetry').style.display = 'none';
+    }).catch(function(e){
+      say('bad', '<b>' + esc(e.message) + '</b>');
+    });
+  });
+})();
+</script>
+</body>
+</html>

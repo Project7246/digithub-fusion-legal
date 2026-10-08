@@ -1,0 +1,517 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Manage users</title>
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="manifest" href="/manifest.json">
+<meta name="theme-color" content="#0F2E24">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/app.css">
+<style>
+  .step{background:var(--panel);border:1px solid var(--line);border-radius:10px;
+    padding:20px 24px;margin-bottom:16px}
+  .step h2{margin:0 0 4px;font-size:14.5px;font-weight:600}
+  .step .hint{font-size:12.5px;color:var(--muted);margin-bottom:16px;line-height:1.6}
+
+  table.users{width:100%;border-collapse:collapse}
+  table.users th{text-align:left;font-size:10.5px;letter-spacing:.07em;
+    text-transform:uppercase;color:var(--faint);font-weight:600;
+    padding:0 14px 9px;border-bottom:1px solid var(--line)}
+  table.users td{padding:13px 14px;border-bottom:1px solid var(--line);
+    font-size:13px;vertical-align:middle}
+  table.users tr.off td{color:var(--muted)}
+  table.users td.nm b{font-weight:600;display:block}
+  table.users td.nm small{color:var(--muted);font-size:11.5px;display:block;margin-top:2px}
+  table.users td.act{text-align:right;white-space:nowrap}
+  table.users td.act button.mini + button.mini{margin-left:6px}
+
+  .pill{font-size:10.5px;letter-spacing:.06em;text-transform:uppercase;padding:2px 9px;
+    border-radius:20px;border:1px solid var(--line);color:var(--muted);white-space:nowrap}
+  .pill.ok{border-color:var(--ok);color:var(--ok)}
+  .pill.no{border-color:var(--bad);color:var(--bad)}
+  .pill.wait{border-color:var(--warn,#8a6d3b);color:var(--warn,#8a6d3b)}
+
+  button.mini{font-size:11.5px;padding:5px 13px;border-radius:6px;
+    border:1px solid var(--line);background:#fff;cursor:pointer;font-family:inherit}
+  button.mini:hover{border-color:var(--qbo)}
+
+  tr.editrow td{background:#FAFCFE;padding:0}
+  .editbox{padding:16px 14px 18px}
+  /* One line to a choice. The whole description inside every card made a wall of
+     text to read before anything could be picked; it is on hover instead, where
+     it is there for the one card being considered and nowhere else.
+
+     app.css puts every label in small capitals with wide letter-spacing, which
+     suits a field heading and not a thing to be read, so that is undone here. */
+  .roles{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:8px}
+  .jobs .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:8px}
+
+  .roles label,.jobs label{display:flex;gap:9px;align-items:center;min-width:0;
+    border:1px solid var(--line);border-radius:7px;padding:10px 12px;cursor:pointer;
+    background:#fff;position:relative;
+    font-size:13px;font-weight:500;line-height:1.35;letter-spacing:0;
+    text-transform:none;color:var(--text)}
+  .roles label:hover,.jobs label:hover{border-color:var(--qbo);background:#FCFEFC}
+  .roles label.on,.jobs label.on{border-color:var(--qbo);
+    box-shadow:inset 0 0 0 1px var(--qbo)}
+  .roles label input,.jobs label input{margin:0;flex:0 0 auto}
+  .roles label span,.jobs label span{min-width:0;flex:1;overflow-wrap:anywhere}
+  .roles label em,.jobs label em{font-style:normal;display:block;color:var(--faint);
+    font-family:var(--mono);font-size:10.5px;font-weight:400;margin-top:2px}
+
+  /* One short line, on the card being looked at. It is centred on the card and
+     never wraps, so it is always the same tidy shape - which is only possible
+     because the line it holds is short. Nothing in the way may clip it. */
+  table.users, tr.editrow td, .editbox, .jobs, .jobs .grid, .roles{overflow:visible}
+  label[data-tip]::after{content:attr(data-tip);position:absolute;z-index:40;
+    left:50%;top:calc(100% + 7px);transform:translateX(-50%) translateY(-3px);
+    white-space:nowrap;background:var(--ink);color:#fff;padding:6px 10px;
+    border-radius:6px;font-size:11.5px;font-weight:400;line-height:1.45;
+    letter-spacing:0;text-transform:none;box-shadow:0 6px 18px rgba(15,46,36,.20);
+    opacity:0;visibility:hidden;pointer-events:none;
+    transition:opacity .12s ease,transform .12s ease}
+  label[data-tip]:hover::after{opacity:1;visibility:visible;
+    transform:translateX(-50%)}
+
+  .jobs{margin-top:14px;display:none}
+  .jobs.show{display:block}
+  .jobs .cap{font-size:11px;letter-spacing:.07em;text-transform:uppercase;
+    color:var(--faint);margin-bottom:8px}
+  .jobs .cap{margin-bottom:2px}
+  .jobs.cos .cap{margin-bottom:9px}
+  .jobs .areawhat{font-size:11.5px;color:var(--muted);margin-bottom:9px;line-height:1.5}
+  .jobs .area + .area{margin-top:18px}
+
+  /* A phone has no hover, so there would be nowhere for the description to live.
+     There it goes back under the name - one column wide, it reads as a list
+     rather than as the wall it was across four. */
+  @media (hover: none){
+    .roles label,.jobs label{display:block}
+    .roles label input,.jobs label input{float:left;margin:3px 9px 0 0}
+    label[data-tip]::after{position:static;opacity:1;visibility:visible;transform:none;
+      display:block;white-space:normal;margin-top:3px;padding:0;
+      background:none;color:var(--muted);box-shadow:none;font-size:11.5px}
+  }
+
+
+  .editacts{margin-top:16px;display:flex;gap:8px;align-items:center}
+  .editacts .solid{font-size:12px;padding:7px 16px}
+  .note{font-size:11.5px;color:var(--muted)}
+
+  /* An admin letting somebody in is usually doing it from a phone, because that
+     is where the notice arrived. The table stops being a table and becomes one
+     card per person, and the cards to tick stack one to a row. */
+  @media (max-width: 720px){
+    .step{padding:16px 14px}
+    table.users, table.users tbody, table.users tr, table.users td{display:block;width:100%}
+    table.users thead{display:none}
+    table.users tr{border:1px solid var(--line);border-radius:9px;margin-bottom:10px;
+      padding:4px 0;background:#fff}
+    table.users td{border-bottom:0;padding:5px 13px}
+    table.users td:empty{display:none}
+    table.users td.act{text-align:left;padding-bottom:11px;display:flex;gap:8px}
+    table.users td.act button.mini{flex:1;padding:9px}
+    table.users td[data-lab]::before{content:attr(data-lab);display:block;
+      font-size:9.5px;letter-spacing:.09em;text-transform:uppercase;color:var(--faint);
+      margin-bottom:2px}
+    tr.editrow{padding:0}
+    .editbox{padding:14px 12px 16px}
+    .roles, .jobs .grid{grid-template-columns:1fr}
+    .editacts{flex-wrap:wrap}
+    .editacts .solid, .editacts button.mini{flex:1;padding:10px 16px;font-size:13px}
+  }
+</style>
+</head>
+<body>
+
+<div class="layout">
+  <aside class="rail"></aside>
+
+  <div class="main">
+    <div class="topline">
+      <div>
+        <h1>Manage users</h1>
+        <div class="sub">Who may open this app, and what each of them may change.</div>
+      </div>
+    </div>
+
+    <div class="shell">
+
+      <div id="gate" class="gate hide">
+        <img src="/logo.svg" alt="">
+        <h2>Connect your QuickBooks company</h2>
+        <button class="solid" id="btnConnect">Connect to QuickBooks</button>
+      </div>
+
+      <div id="notAdmin" class="gate hide">
+        <img src="/logo.svg" alt="">
+        <h2>This page belongs to the company admin</h2>
+        <p>Everything else can be read and downloaded.</p>
+      </div>
+
+      <div id="body" class="hide">
+        <div class="step">
+          <h2>Users</h2>
+          <div class="hint">
+            Anyone who signs in with their own QuickBooks address lands here as
+            <b>Reports only</b>: they read and download everything and change nothing,
+            until you say otherwise. Their QuickBooks key is never kept, so signing in
+            can neither take the company over nor stop the app for everyone else.
+            <br><br>
+            A company admin is named on the server, not on this page. Courier accounts
+            and their keys stay with the admin whatever else is given away.
+          </div>
+
+          <table class="users">
+            <thead>
+              <tr>
+                <th style="width:32%">Name</th>
+                <th style="width:16%">Role</th>
+                <th style="width:20%">Companies</th>
+                <th style="width:12%">Status</th>
+                <th style="width:16%">Last signed in</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody id="rows"></tbody>
+          </table>
+
+          <div class="stat" id="statBox"></div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<script src="/nav.js"></script>
+<script>
+(function(){
+  "use strict";
+  var $ = function(id){ return document.getElementById(id); };
+  var S = { roles: [], areas: [], groups: [], users: [], companies: [], openSub: null };
+
+  function esc(s){
+    return String(s == null ? '' : s)
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;');
+  }
+  function say(cls, html){
+    $('statBox').className = 'stat' + (cls ? ' ' + cls : '');
+    $('statBox').innerHTML = html;
+  }
+  function get(url){
+    return fetch(url, { cache: 'no-store' }).then(function(r){ return r.json(); }).then(function(d){
+      if(d.error) throw new Error(d.error);
+      return d;
+    });
+  }
+  function post(url, body){
+    return fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body || {})
+    }).then(function(r){ return r.json(); }).then(function(d){
+      if(d.error) throw new Error(d.error);
+      return d;
+    });
+  }
+  function when(t){
+    if(!t) return 'never';
+    var d = new Date(t);
+    return d.toLocaleDateString() + ' ' +
+           d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  }
+  function roleLabel(key){
+    for(var i = 0; i < S.roles.length; i++){
+      if(S.roles[i].key === key) return S.roles[i].label;
+    }
+    return key;
+  }
+
+  $('btnConnect').addEventListener('click', function(){ location.href = '/auth/connect'; });
+
+  function statusOf(u){
+    if(u.admin) return '<span class="pill ok">Active</span>';
+    if(!u.decided && u.asking === false) return '<span class="pill">Withdrew</span>';
+    if(!u.decided) return '<span class="pill wait">Waiting for you</span>';
+    if(!u.allowed || u.role === 'none') return '<span class="pill no">Turned down</span>';
+    if(u.role === 'viewer') return '<span class="pill wait">Reports only</span>';
+    return '<span class="pill ok">Active</span>';
+  }
+
+  // Somebody who is waiting, or who is in, can be turned away. Somebody already
+  // turned away is put back through Edit instead - that asks the questions that
+  // letting them in needs answered.
+  function canSay(u){
+    return !u.decided || u.allowed || u.role !== 'none';
+  }
+
+  // An admin works in every company the app holds, so there is nothing to list
+  // for them. Everyone else works in what they were given, by name.
+  function coNote(u){
+    if(u.admin) return '<span class="note">All</span>';
+    var names = (u.realms || []).map(function(r){
+      for(var i = 0; i < S.companies.length; i++){
+        if(S.companies[i].realmId === r) return S.companies[i].name;
+      }
+      return r;
+    });
+    if(!names.length) return '<span class="pill no">None</span>';
+    if(names.length <= 2) return esc(names.join(', '));
+    return esc(names.slice(0, 2).join(', ')) +
+           '<small>and ' + (names.length - 2) + ' more</small>';
+  }
+
+  // The row that opens underneath: the role, and where the role is the limited one,
+  // the jobs to tick. Built fresh each time so it always shows what is saved.
+  function editRow(u){
+    var tr = document.createElement('tr');
+    tr.className = 'editrow';
+
+    var roles = S.roles.filter(function(r){ return r.key !== 'admin'; });
+
+    tr.innerHTML =
+      '<td colspan="6"><div class="editbox">' +
+        '<div class="roles">' +
+          roles.map(function(r){
+            return '<label class="' + (u.role === r.key ? 'on' : '') + '"' +
+              ' data-tip="' + esc(r.what) + '">' +
+              '<input type="radio" name="role-' + esc(u.sub) + '" value="' + esc(r.key) + '"' +
+              (u.role === r.key ? ' checked' : '') + '>' +
+              '<span>' + esc(r.label) + '</span></label>';
+          }).join('') +
+        '</div>' +
+        '<div class="jobs cos show">' +
+          '<div class="cap">The companies they may work in</div>' +
+          '<div class="grid">' +
+            (S.companies.length
+              ? S.companies.map(function(c){
+                  return '<label data-tip="Company ' + esc(c.realmId) + '">' +
+                    '<input type="checkbox" value="' + esc(c.realmId) + '"' +
+                    ((u.realms || []).indexOf(c.realmId) > -1 ? ' checked' : '') + '>' +
+                    '<span>' + esc(c.name) + '</span></label>';
+                }).join('')
+              : '<div class="note">No company is connected yet.</div>') +
+          '</div>' +
+        '</div>' +
+        '<div class="jobs rights' + (u.role === 'custom' ? ' show' : '') + '">' +
+          S.areas.map(function(a){
+            var mine = S.groups.filter(function(g){ return g.area === a.key; });
+            if(!mine.length) return '';
+            return '<div class="area">' +
+              '<div class="cap">' + esc(a.label) + '</div>' +
+              '<div class="areawhat">' + esc(a.what) + '</div>' +
+              '<div class="grid">' +
+                mine.map(function(g){
+                  return '<label data-tip="' + esc(g.what) + '">' +
+                    '<input type="checkbox" value="' + esc(g.key) + '"' +
+                    (u.rights.indexOf(g.key) > -1 ? ' checked' : '') + '>' +
+                    '<span>' + esc(g.label) + '</span></label>';
+                }).join('') +
+              '</div></div>';
+          }).join('') +
+        '</div>' +
+        '<div class="editacts">' +
+          '<button class="solid b-save">Save</button>' +
+          '<button class="mini b-cancel">Cancel</button>' +
+          '<span class="note b-note"></span>' +
+        '</div>' +
+      '</div></td>';
+
+    // By name, not by being first: the companies to tick are a .jobs block too,
+    // and they sit above this one - so "the first .jobs" was the wrong one, and
+    // choosing the limited role opened and closed the companies instead.
+    var jobs = tr.querySelector('.jobs.rights');
+
+    tr.querySelectorAll('.jobs input').forEach(function(box){
+      if(box.checked) box.parentNode.classList.add('on');
+      box.addEventListener('change', function(){
+        box.parentNode.classList.toggle('on', box.checked);
+      });
+    });
+
+    tr.querySelectorAll('.roles input').forEach(function(radio){
+      radio.addEventListener('change', function(){
+        tr.querySelectorAll('.roles label').forEach(function(l){ l.classList.remove('on'); });
+        radio.parentNode.classList.add('on');
+        // the ticks are only asked for when the role is the limited one
+        jobs.classList.toggle('show', radio.value === 'custom');
+      });
+    });
+
+    tr.querySelector('.b-cancel').addEventListener('click', function(){
+      S.openSub = null;
+      draw();
+    });
+
+    var save = tr.querySelector('.b-save');
+    save.addEventListener('click', function(){
+      var role = (tr.querySelector('.roles input:checked') || {}).value || u.role;
+      var picked = [];
+      tr.querySelectorAll('.jobs.rights input:checked').forEach(function(i){ picked.push(i.value); });
+      var realms = [];
+      tr.querySelectorAll('.cos input:checked').forEach(function(i){ realms.push(i.value); });
+
+      save.disabled = true;
+      tr.querySelector('.b-note').textContent = 'Saving...';
+
+      post('/api/admin/users/access', {
+        sub: u.sub,
+        role: role,
+        rights: role === 'custom' ? picked : [],
+        allowed: role !== 'none'
+      })
+        .then(function(){
+          return post('/api/admin/users/companies', { sub: u.sub, realms: realms });
+        })
+        .then(function(){
+          u.role = role;
+          u.rights = role === 'custom' ? picked : [];
+          u.realms = realms;
+          u.allowed = role !== 'none';
+          S.openSub = null;
+          draw();
+          say('ok', '<b>' + esc(u.name || u.email) + '</b> is now ' + esc(roleLabel(role)) + '.');
+        })
+        .catch(function(e){
+          save.disabled = false;
+          tr.querySelector('.b-note').textContent = '';
+          say('bad', '<b>' + esc(e.message) + '</b>');
+        });
+    });
+
+    return tr;
+  }
+
+  function draw(){
+    var box = $('rows');
+    box.innerHTML = '';
+
+    if(!S.users.length){
+      box.innerHTML = '<tr><td colspan="6" class="note">Nobody has signed in yet.</td></tr>';
+      return;
+    }
+
+    S.users.forEach(function(u){
+      var tr = document.createElement('tr');
+      if(!u.admin && (!u.allowed || u.role === 'none')) tr.className = 'off';
+
+      // A count of jobs says nothing. Which parts of the books they touch does.
+      var jobsNote = '';
+      if(u.role === 'custom'){
+        var areas = S.areas.filter(function(a){
+          return S.groups.some(function(g){
+            return g.area === a.key && u.rights.indexOf(g.key) > -1;
+          });
+        }).map(function(a){ return a.label; });
+        jobsNote = '<small>' + esc(areas.length ? areas.join(', ') : 'nothing ticked') +
+                   '</small>';
+      }
+
+      tr.innerHTML =
+        '<td class="nm"><b>' + esc(u.name || u.email || u.sub) + '</b>' +
+          '<small>' + esc(u.email || '') + '</small></td>' +
+        '<td data-lab="Role">' + esc(roleLabel(u.role)) + jobsNote + '</td>' +
+        '<td data-lab="Companies">' + coNote(u) + '</td>' +
+        '<td data-lab="Status">' + statusOf(u) + '</td>' +
+        '<td class="note" data-lab="Last signed in">' + esc(when(u.lastIn)) + '</td>' +
+        '<td class="act">' + (u.admin
+          ? '<span class="note">Named on the server</span>'
+          : '<button class="mini b-edit">Edit</button>' +
+            // Turning somebody away is one press, from the row, because that is
+            // usually the whole answer. Letting them in is the longer form -
+            // which companies, and what they may do - so that stays behind Edit.
+            (canSay(u)
+              ? '<button class="mini b-deny">' +
+                  (u.allowed && u.role !== 'none' ? 'Turn off' : 'Turn down') +
+                '</button>'
+              : '<button class="mini b-undeny">Undo</button>')) + '</td>';
+
+      var deny = tr.querySelector('.b-deny');
+      if(deny){
+        deny.addEventListener('click', function(){
+          deny.disabled = true;
+          deny.textContent = 'Saving…';
+          post('/api/admin/users/access', {
+            sub: u.sub, role: 'none', rights: [], allowed: false
+          })
+            .then(function(){
+              u.role = 'none'; u.rights = []; u.allowed = false; u.decided = true;
+              S.openSub = null;
+              draw();
+              say('ok', '<b>' + esc(u.name || u.email) + '</b> has been turned down. ' +
+                'They are told on their own screen, and can be let in at any time.');
+            })
+            .catch(function(e){
+              deny.disabled = false;
+              draw();
+              say('bad', '<b>' + esc(e.message) + '</b>');
+            });
+        });
+      }
+
+      var undeny = tr.querySelector('.b-undeny');
+      if(undeny){
+        undeny.addEventListener('click', function(){
+          S.openSub = u.sub;
+          draw();
+        });
+      }
+
+      var edit = tr.querySelector('.b-edit');
+      if(edit){
+        edit.addEventListener('click', function(){
+          S.openSub = (S.openSub === u.sub) ? null : u.sub;
+          draw();
+        });
+      }
+
+      box.appendChild(tr);
+      if(S.openSub === u.sub) box.appendChild(editRow(u));
+    });
+  }
+
+  window.APP.ready.then(function(s){
+    if(!s.connected){ $('gate').classList.remove('hide'); return; }
+    if(!s.admin){ $('notAdmin').classList.remove('hide'); return; }
+
+    $('body').classList.remove('hide');
+
+    get('/api/admin/rights')
+      .then(function(d){
+        S.roles = d.roles || [];
+        S.areas = d.areas || [];
+        S.groups = d.groups || [];
+        return get('/api/admin/users');
+      })
+      .then(function(d){
+        S.users = d.users || [];
+        S.companies = d.companies || [];
+
+        // Coming here from a notice - the bell, or a link in an email - opens the
+        // person it was about, so there is nothing to hunt for on a phone.
+        var asked = new URLSearchParams(location.search).get('who');
+        if(asked && S.users.some(function(u){ return u.sub === asked; })){
+          S.openSub = asked;
+        }
+
+        draw();
+
+        if(S.openSub){
+          var row = $('rows').querySelector('.editrow');
+          if(row && row.scrollIntoView){
+            row.scrollIntoView({ block: 'center', behavior: 'smooth' });
+          }
+        }
+      })
+      .catch(function(e){ say('bad', '<b>' + esc(e.message) + '</b>'); });
+  });
+})();
+</script>
+</body>
+</html>

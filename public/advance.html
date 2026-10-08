@@ -1,0 +1,1713 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Advance payments</title>
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="manifest" href="/manifest.json">
+<meta name="theme-color" content="#0F2E24">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/app.css">
+<style>
+  .step{background:var(--panel);border:1px solid var(--line);border-radius:10px;
+    padding:20px 24px;margin-bottom:16px}
+  .step h2{margin:0 0 4px;font-size:14.5px;font-weight:600}
+  .step .hint{font-size:12.5px;color:var(--muted);margin-bottom:14px;line-height:1.6}
+  .step.done{border-color:var(--qbo)}
+
+  .picks{display:flex;flex-wrap:wrap;gap:8px}
+  .pick{border:1px solid var(--line);background:#fff;border-radius:7px;padding:9px 14px;
+    cursor:pointer;font-size:13px;font-family:inherit;transition:.13s;text-align:left}
+  .pick:hover{border-color:var(--qbo)}
+  .pick.on{border-color:var(--qbo);background:#F2FAF0;font-weight:600}
+  .pick small{display:block;font-size:11px;color:var(--muted);font-weight:400;margin-top:2px}
+
+  .cols{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:12px}
+  .cols label{display:block;font-size:11px;letter-spacing:.07em;text-transform:uppercase;
+    color:var(--faint);margin-bottom:4px}
+
+  .range{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:14px;
+    margin-bottom:14px}
+  .range label{display:block;font-size:11px;letter-spacing:.07em;text-transform:uppercase;
+    color:var(--faint);margin-bottom:4px}
+
+  .days{display:flex;flex-wrap:wrap;gap:7px;max-height:190px;overflow:auto;
+    border:1px solid var(--line);border-radius:8px;padding:12px;background:#fff}
+  .day{border:1px solid var(--line);border-radius:6px;padding:6px 11px;font-size:12px;
+    font-family:var(--mono);transition:.12s}
+  .day.on{border-color:var(--qbo);background:#F2FAF0;font-weight:600}
+  .day small{display:block;font-size:10px;color:var(--muted);font-family:var(--sans)}
+
+  .tally{display:flex;gap:10px;flex-wrap:wrap;margin:16px 0}
+  .tally > div{flex:1;min-width:120px;border:1px solid var(--line);border-radius:8px;
+    padding:12px 14px;background:#fff}
+  .tally .n{font-family:var(--mono);font-size:22px;font-weight:500;line-height:1.1}
+  .tally .l{font-size:10.5px;letter-spacing:.08em;text-transform:uppercase;
+    color:var(--faint);margin-top:4px}
+  .tally .ok .n{color:var(--ok)}
+  .tally .warn .n{color:var(--warn)}
+  .tally .bad .n{color:var(--bad)}
+
+  .bucket{border:1px solid var(--line);border-radius:8px;background:#fff;
+    overflow:hidden;margin-bottom:14px}
+  .bucket.warn{border-color:var(--warn)}
+  .bucket h4{margin:0;padding:10px 14px;font-size:12.5px;font-weight:600;
+    background:var(--tint);border-bottom:1px solid var(--line);
+    display:flex;justify-content:space-between;align-items:center;gap:10px;cursor:pointer}
+  .bucket.warn h4{background:#FFFBF0;color:#8A6100}
+  .bucket .inner{max-height:280px;overflow:auto}
+  .bucket table{width:100%;border-collapse:collapse;font-size:12px}
+  .bucket th{text-align:left;font-size:10px;letter-spacing:.07em;text-transform:uppercase;
+    color:var(--faint);font-weight:600;padding:6px 14px;border-bottom:1px solid var(--line)}
+  .bucket td{padding:6px 14px;border-bottom:1px solid var(--line)}
+  .bucket td.num{text-align:right;font-family:var(--mono)}
+
+  .bankbox{border:1px solid var(--warn);background:#FFFBF0;border-radius:8px;
+    padding:14px 16px;margin-bottom:16px}
+  .bankbox h3{margin:0 0 6px;font-size:13px;font-weight:600}
+  .bankbox p{margin:0 0 10px;font-size:12.5px;color:var(--muted);line-height:1.55}
+  .bankbox table{width:100%;border-collapse:collapse;font-size:12.5px;background:#fff}
+  .bankbox th{text-align:left;font-size:10.5px;letter-spacing:.07em;text-transform:uppercase;
+    color:var(--faint);font-weight:600;padding:7px 10px;border-bottom:1px solid var(--line)}
+  .bankbox td{padding:7px 10px;border-bottom:1px solid var(--line)}
+  .bankbox td.num{text-align:right;font-family:var(--mono)}
+  .bankbox select{font-size:12px;padding:4px 7px;margin:0}
+  .rechk{border:1px solid var(--line);background:#fff;border-radius:8px;
+    padding:14px 16px;margin-top:16px}
+  .rechk h3{margin:0 0 6px;font-size:13px;font-weight:600}
+  .rechk p{margin:0 0 10px;font-size:12.5px;color:var(--muted);line-height:1.55}
+  .rechk table{width:100%;border-collapse:collapse;font-size:12.5px}
+  .rechk th{text-align:left;font-size:10.5px;letter-spacing:.07em;text-transform:uppercase;
+    color:var(--faint);font-weight:600;padding:7px 10px;border-bottom:1px solid var(--line)}
+  .rechk td{padding:9px 10px;border-bottom:1px solid var(--line);vertical-align:top;
+    line-height:1.5}
+  .rechk .sub{font-size:11px;color:var(--muted);margin-top:3px}
+  .rechk .pay{display:flex;flex-wrap:wrap;gap:8px;align-items:baseline;
+    padding:4px 0;font-size:12.5px}
+  .rechk .pay.dup{color:var(--neg)}
+  .rechk .pay .mono{font-family:var(--mono);min-width:82px;text-align:right}
+  .rechk .pay .when{font-size:11px;color:var(--muted)}
+  .rechk .pay .muted{color:var(--muted)}
+  .rechk .pay .off{color:var(--warn);font-weight:600}
+  .rechk .tagdup{font-size:10.5px;background:#FDF3F3;color:var(--neg);
+    border-radius:4px;padding:1px 6px}
+  .rechk .act{display:flex;gap:6px;align-items:center;margin:2px 0 8px}
+  .rechk .act select{font-size:12px;padding:3px 6px;margin:0;max-width:190px}
+  .rechk .none{font-size:12.5px;color:var(--warn)}
+  .rechk td.num{text-align:right;font-family:var(--mono)}
+  .rechk .why{font-size:11px;color:var(--warn);line-height:1.5}
+  .rechk .good{color:var(--ok);font-weight:600}
+  .rechk button{font-size:11.5px;padding:4px 11px;border-radius:6px;
+    border:1px solid var(--line);background:#fff;cursor:pointer;font-family:inherit;
+    white-space:nowrap;margin:0 0 4px}
+  .rechk button:hover{border-color:var(--qbo)}
+    .rechk button.solid{background:var(--qbo);color:#fff;border-color:var(--qbo);
+    font-size:13px;padding:9px 16px;font-weight:600}
+  .rechk button.solid:hover{opacity:.92}
+  .rechk .del{border-color:var(--neg);color:var(--neg)}
+  .fields{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:14px;
+    margin-bottom:16px}
+  .fields label{display:block;font-size:11px;letter-spacing:.07em;text-transform:uppercase;
+    color:var(--faint);margin-bottom:4px}
+
+  .memo{border:1px solid var(--line);border-radius:8px;background:var(--tint);
+    padding:12px 15px;font-family:var(--mono);font-size:12.5px;line-height:1.7;
+    white-space:pre-wrap;margin-bottom:16px}
+
+  .prog{height:6px;background:var(--line);border-radius:3px;overflow:hidden;margin:14px 0 8px}
+  .prog i{display:block;height:100%;width:0;background:var(--qbo);transition:width .3s}
+  .runline{font-size:12.5px;color:var(--muted);font-family:var(--mono);margin-bottom:10px}
+
+  .rlog{background:#0F2E24;color:#CFE8D8;border-radius:8px;padding:12px 15px;
+    font-family:var(--mono);font-size:11.5px;line-height:1.7;max-height:240px;
+    overflow:auto;margin-top:12px}
+  .rlog .ok{color:#8FE3A8}
+  .rlog .fail{color:#FF9C9C}
+  .rlog .error{color:#FF9C9C}
+  .rlog .t{color:#6E9C82;margin-right:8px}
+
+  .result{border:1px solid var(--line);border-radius:8px;padding:12px 15px;margin-top:12px;
+    background:#fff;font-size:13px}
+  .result.good{border-color:var(--qbo);background:#F2FAF0}
+  .result.bad{border-color:var(--bad);background:#FDF3F3}
+
+  .seg{display:inline-flex;border:1px solid var(--line);border-radius:8px;overflow:hidden;
+    margin-bottom:16px;background:#fff}
+  .seg button{border:0;background:#fff;font-family:inherit;font-size:13px;padding:9px 18px;
+    cursor:pointer;color:var(--muted)}
+  .seg button.on{background:var(--tint);color:var(--ink);font-weight:600}
+
+  textarea#pNums{width:100%;min-height:140px;font-family:var(--mono);font-size:12.5px;
+    line-height:1.7;resize:vertical}
+
+  .acts{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}
+  .acts button.mini{font-size:11.5px;padding:5px 12px;border-radius:6px;
+    border:1px solid var(--line);background:#fff;cursor:pointer;font-family:inherit}
+  .acts button.mini:hover{border-color:var(--qbo)}
+</style>
+</head>
+<body>
+
+<div class="layout">
+  <aside class="rail"></aside>
+
+  <div class="main">
+    <div class="topline">
+      <div>
+        <h1>Advance payments</h1>
+        <div class="sub">Receive part payments from the advance sheet against their invoices.</div>
+      </div>
+    </div>
+
+    <div class="shell">
+
+      <div id="gate" class="gate hide">
+        <img src="/logo.svg" alt="">
+        <h2>Connect your QuickBooks company</h2>
+        <p>Nothing is written until you have seen the list and pressed Receive.</p>
+        <button class="solid" id="btnConnect">Connect to QuickBooks</button>
+      </div>
+
+      <div id="body" class="hide">
+
+        <div class="step" id="stepRoot">
+          <h2>Advance sheet</h2>
+          <div class="hint">Paste the link to the sheet, or to the folder holding it.</div>
+          <div style="display:flex;gap:8px;flex-wrap:wrap">
+            <input id="rootIn" placeholder="https://docs.google.com/spreadsheets/d/..." style="flex:1;min-width:280px">
+            <button class="solid" id="btnRoot">Save</button>
+          </div>
+          <div id="rootNote" style="font-size:12px;color:var(--muted);margin-top:8px"></div>
+        </div>
+
+        <div class="seg" id="advSeg">
+          <button id="modeDays" class="on">By date</button>
+          <button id="modePaste">Paste order numbers</button>
+        </div>
+
+        <!-- ============ a pasted list of orders ============ -->
+        <div id="panePaste" class="hide">
+          <div class="step">
+            <h2>Order numbers</h2>
+            <div class="hint">
+              One per line, or straight out of a spreadsheet column. With or without the
+              <b>#</b>. Their rows are looked for in the advance sheet - whichever workbook,
+              whichever month - and then sorted against QuickBooks the same way a day is.
+            </div>
+            <textarea id="pNums" placeholder="#91298851&#10;91300886"></textarea>
+            <div class="acts">
+              <span class="mono" id="pCount" style="font-size:12px;color:var(--muted);align-self:center"></span>
+            </div>
+          </div>
+
+          <div class="step" id="pStepWhere">
+            <h2>Where to look</h2>
+            <div class="hint">Every workbook in the folder, or just the ones worth reading.
+              Pick a single workbook and its months can be narrowed down too.</div>
+            <div class="picks" id="pBooks"></div>
+            <div id="pTabWrap" class="hide" style="margin-top:12px">
+              <div style="font-size:11px;letter-spacing:.07em;text-transform:uppercase;
+                          color:var(--faint);margin-bottom:6px">Months</div>
+              <div class="days" id="pTabs"></div>
+            </div>
+
+            <div class="acts" style="margin-top:14px">
+              <button class="solid" id="btnPFind">Find these rows in the sheet</button>
+              <button class="solid" id="btnPStop" style="display:none;background:var(--neg)">Stop</button>
+              <button class="mini" id="btnPResume" style="display:none">Carry on</button>
+              <button class="mini" id="btnPClear" style="display:none">Clear log</button>
+              <span class="mono" id="pNote" style="font-size:12px;color:var(--muted);align-self:center"></span>
+            </div>
+
+            <div class="runline" id="pLine" style="margin-top:10px"></div>
+            <div class="rlog hide" id="pLog"></div>
+          </div>
+
+          <div class="step hide" id="pStepFound">
+            <h2>What the sheet says</h2>
+            <div class="hint" id="pFoundHint"></div>
+            <div id="pFound"></div>
+            <div class="acts">
+              <button class="solid" id="btnPMatch">Check these against QuickBooks</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="step hide" id="stepBook">
+          <h2>Workbook</h2>
+          <div class="hint" id="bookHint"></div>
+          <div class="picks" id="books"></div>
+        </div>
+
+        <div class="step hide" id="stepTab">
+          <h2>Which month</h2>
+          <div class="hint">Each month has its own tab.</div>
+          <div class="picks" id="tabList"></div>
+        </div>
+
+        <div class="step hide" id="stepCols">
+          <h2>Columns</h2>
+          <div class="hint" id="colsHint"></div>
+          <div class="cols" id="colsBox"></div>
+          <div style="margin-top:14px">
+            <button class="solid" id="btnCols">Save and continue</button>
+          </div>
+        </div>
+
+        <div class="step hide" id="stepDays">
+          <h2>Dates</h2>
+          <div class="hint" id="dayHint"></div>
+          <div class="range">
+            <div>
+              <label>From</label>
+              <select id="dFrom"></select>
+            </div>
+            <div>
+              <label>To</label>
+              <select id="dTo"></select>
+            </div>
+          </div>
+          <div class="days" id="dayList"></div>
+          <div class="acts">
+            <button class="solid" id="btnMatch">Check these against QuickBooks</button>
+            <span class="mono" id="rangeNote" style="font-size:12px;color:var(--muted);align-self:center"></span>
+          </div>
+        </div>
+
+        <div class="step hide" id="stepMatch">
+          <h2>What matched</h2>
+          <div class="hint" id="matchHint"></div>
+          <div class="tally" id="tally"></div>
+          <div id="bankBox"></div>
+          <div id="buckets"></div>
+          <div id="recheckBox"></div>
+        </div>
+
+        <div class="step hide" id="stepPay">
+          <h2>Record the payments</h2>
+          <div class="hint" id="payHint"></div>
+          <div class="memo" id="memoBox"></div>
+          <div class="fields">
+            <div>
+              <label>Payment method</label>
+              <select id="method"></select>
+            </div>
+            <div>
+              <label>Payment date</label>
+              <input type="date" id="payDate">
+            </div>
+          </div>
+          <button class="solid" id="btnPay" data-need="advance">Receive payments</button>
+          <button class="solid" id="btnStop" style="display:none;background:var(--neg)">Stop</button>
+
+          <div id="runBox" class="hide">
+            <div class="prog"><i id="bar"></i></div>
+            <div class="runline" id="runline"></div>
+            <div class="rlog" id="rlog"></div>
+          </div>
+          <div id="payOut"></div>
+          <div class="acts" id="afterActs" style="display:none">
+            <button class="mini" id="btnCopyLog">Copy log</button>
+            <button class="mini" id="btnCsv">Download what was received</button>
+            <button class="mini" id="btnResume" data-need="advance" style="display:none">Carry on</button>
+            <button class="mini" id="btnClearRun" data-need="advance">Clear log</button>
+          </div>
+        </div>
+
+        <div class="stat" id="statBox"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="/nav.js"></script>
+<script>
+(function(){
+  "use strict";
+  var $ = function(id){ return document.getElementById(id); };
+
+  var S = {
+    root: '', book: null, tab: '', excel: false,
+    header: [], cols: null, days: [], picked: {},
+    match: null, options: null,
+    job: null, poller: null, lastEventId: 0,
+    open: { ready:true, overpaid:true, settled:false, notInQb:false, alreadyPosted:false },
+    takeOver: false,
+    recheck: null,
+    recheckSrc: null,
+    logLines: []
+  };
+
+  function money(n){
+    var v = Number(n || 0);
+    var p = Math.abs(v).toFixed(2).split('.');
+    return (v < 0 ? '-' : '') + p[0].replace(/\B(?=(\d{3})+(?!\d))/g, ',') + '.' + p[1];
+  }
+  function nf(n){ return String(n).replace(/\B(?=(\d{3})+(?!\d))/g, ','); }
+  function esc(s){
+    return String(s == null ? '' : s)
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  }
+  function clock(ms){
+    return (ms ? new Date(ms) : new Date()).toLocaleTimeString();
+  }
+
+  function say(cls, html){
+    $('statBox').className = 'stat' + (cls ? ' ' + cls : '');
+    $('statBox').innerHTML = html;
+  }
+  function clearSay(){ $('statBox').className = 'stat'; $('statBox').textContent = ''; }
+
+  function get(url){
+    return fetch(url, { cache: 'no-store' }).then(function(r){ return r.json(); }).then(function(d){
+      if(d.error) throw new Error(d.error);
+      return d;
+    });
+  }
+  function post(url, body){
+    return fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body || {})
+    }).then(function(r){ return r.json(); }).then(function(d){
+      if(d.error) throw new Error(d.error);
+      return d;
+    });
+  }
+
+  /* ---------- start ---------- */
+
+  $('btnConnect').addEventListener('click', function(){ location.href = '/auth/connect'; });
+
+  window.APP.ready.then(function(s){
+    if(!s.connected){ $('gate').classList.remove('hide'); return; }
+    $('body').classList.remove('hide');
+
+    pollJob(true);
+    // a search of the sheet running on the server belongs to whoever opens
+    // this page next on the same sign-in, so it is picked up here
+    pollPaste(true);
+    loadOptions();
+
+    get('/api/adv/root').then(function(d){
+      if(d.folderId){
+        S.root = d.folderId;
+        $('rootIn').value = d.folderId;
+        $('rootNote').textContent = 'Saved.';
+        $('stepRoot').classList.add('done');
+        loadBooks();
+      }
+    }).catch(function(){});
+  });
+
+  $('btnRoot').addEventListener('click', function(){
+    var v = $('rootIn').value.trim();
+    if(!v) return;
+    $('btnRoot').disabled = true;
+    post('/api/adv/root', { folderId: v }).then(function(d){
+      $('btnRoot').disabled = false;
+      S.root = d.folderId;
+      $('rootIn').value = d.folderId;
+      $('rootNote').textContent = 'Saved.';
+      $('stepRoot').classList.add('done');
+      loadBooks();
+    }).catch(function(e){
+      $('btnRoot').disabled = false;
+      $('rootNote').textContent = e.message;
+    });
+  });
+
+  function loadOptions(){
+    return get('/api/cpr/qb-options').then(function(o){
+      S.options = o;
+      S.accounts = o.accounts || [];
+      fill($('method'), o.methods, true);
+      return get('/api/adv/last-bank');
+    }).then(function(d){
+      if(d && d.bank){
+        if(d.bank.methodId)  $('method').value = d.bank.methodId;
+      }
+    }).catch(function(){});
+  }
+
+  function fill(sel, list, allowNone){
+    sel.innerHTML = '';
+    if(allowNone){
+      var n = document.createElement('option');
+      n.value = ''; n.textContent = '- none -';
+      sel.appendChild(n);
+    }
+    (list || []).forEach(function(x){
+      var e = document.createElement('option');
+      e.value = x.id; e.textContent = x.name;
+      sel.appendChild(e);
+    });
+  }
+
+  function hideFrom(step){
+    var order = ['stepBook','stepTab','stepCols','stepDays','stepMatch','stepPay'];
+    var i = order.indexOf(step);
+    order.slice(i).forEach(function(id){ $(id).classList.add('hide'); });
+  }
+
+  /* ---------- the sheet ---------- */
+
+  function loadBooks(){
+    hideFrom('stepBook');
+    $('stepBook').classList.remove('hide');
+    $('bookHint').textContent = 'Reading...';
+    $('books').innerHTML = '';
+
+    get('/api/adv/sheets').then(function(d){
+      var all = d.sheets || [];
+      if(!all.length){
+        $('bookHint').textContent = 'Nothing found at that link.';
+        return;
+      }
+      $('bookHint').textContent = all.length + ' workbook' + (all.length === 1 ? '' : 's') + '.';
+
+      var box = $('books');
+      box.innerHTML = '';
+      all.forEach(function(f){
+        var b = document.createElement('button');
+        b.className = 'pick';
+        b.innerHTML = '\u{1F4C4} ' + esc(f.name) +
+          (f.excel ? '<small>Excel file</small>' : '<small>Google Sheet</small>');
+        b.addEventListener('click', function(){
+          Array.prototype.forEach.call(box.children, function(c){ c.classList.remove('on'); });
+          b.classList.add('on');
+          S.book = f;
+          S.excel = !!f.excel;
+          loadTabs();
+        });
+        box.appendChild(b);
+      });
+
+      if(all.length === 1){ box.children[0].click(); }
+    }).catch(function(e){
+      $('bookHint').textContent = e.message;
+    });
+  }
+
+  function loadTabs(){
+    hideFrom('stepTab');
+    $('stepTab').classList.remove('hide');
+    $('tabList').innerHTML = '<span style="font-size:13px;color:var(--muted)">Reading tabs...</span>';
+
+    get('/api/adv/tabs?sheetId=' + encodeURIComponent(S.book.id) + (S.excel ? '&excel=1' : ''))
+      .then(function(d){
+        var box = $('tabList');
+        box.innerHTML = '';
+        (d.tabs || []).forEach(function(t){
+          var b = document.createElement('button');
+          b.className = 'pick';
+          b.textContent = t.title;
+          b.addEventListener('click', function(){
+            Array.prototype.forEach.call(box.children, function(c){ c.classList.remove('on'); });
+            b.classList.add('on');
+            S.tab = t.title;
+            openTab();
+          });
+          box.appendChild(b);
+        });
+      }).catch(function(e){
+        $('tabList').innerHTML = '';
+        say('bad', '<b>' + esc(e.message) + '</b>');
+      });
+  }
+
+  function openTab(){
+    hideFrom('stepCols');
+    clearSay();
+    say('', 'Reading ' + S.tab + '...');
+
+    var u = '/api/adv/open?sheetId=' + encodeURIComponent(S.book.id) +
+            '&tab=' + encodeURIComponent(S.tab) + (S.excel ? '&excel=1' : '');
+
+    get(u).then(function(d){
+      clearSay();
+      S.header = d.header;
+      S.cols = d.cols;
+      S.days = d.days || [];
+
+      if(d.remembered && d.cols.invoice >= 0 && d.cols.amount >= 0){
+        showDays();
+      } else {
+        showCols(d);
+      }
+    }).catch(function(e){
+      say('bad', '<b>' + esc(e.message) + '</b>');
+    });
+  }
+
+  /* ---------- columns ---------- */
+
+  function showCols(d){
+    $('stepCols').classList.remove('hide');
+    $('colsHint').textContent = S.header.length + ' columns found. ' +
+      'Check these are right - they are remembered for next time.';
+
+    var fields = [
+      ['invoice', 'Order number'],
+      ['amount',  'Amount paid'],
+      ['payable', 'Payable amount (optional)'],
+      ['name',    'Account holder name (optional)'],
+      ['note',    'Comments (optional)'],
+      ['bank',    'Bank name'],
+      ['posted',  'Posted column']
+    ];
+
+    var box = $('colsBox');
+    box.innerHTML = '';
+    fields.forEach(function(f){
+      var wrap = document.createElement('div');
+      var lab = document.createElement('label');
+      lab.textContent = f[1];
+      var sel = document.createElement('select');
+      sel.id = 'col_' + f[0];
+
+      var none = document.createElement('option');
+      none.value = '-1';
+      none.textContent = '- none -';
+      sel.appendChild(none);
+
+      S.header.forEach(function(h, i){
+        var o = document.createElement('option');
+        o.value = String(i);
+        o.textContent = (h || '(column ' + (i + 1) + ')');
+        sel.appendChild(o);
+      });
+
+      sel.value = String(d.cols[f[0]] === undefined ? -1 : d.cols[f[0]]);
+      wrap.appendChild(lab);
+      wrap.appendChild(sel);
+      box.appendChild(wrap);
+    });
+  }
+
+  $('btnCols').addEventListener('click', function(){
+    var cols = {
+      invoice: Number($('col_invoice').value),
+      amount:  Number($('col_amount').value),
+      payable: Number($('col_payable').value),
+      name:    Number($('col_name').value),
+      note:    Number($('col_note').value),
+      bank:    Number($('col_bank').value),
+      posted:  Number($('col_posted').value)
+    };
+
+    if(cols.invoice < 0) return say('bad', '<b>Pick the order number column.</b>');
+    if(cols.amount < 0)  return say('bad', '<b>Pick the amount paid column.</b>');
+    if(cols.bank < 0)    return say('bad', '<b>Pick the bank name column.</b>');
+    if(cols.posted < 0)  return say('bad', '<b>Pick the column where "Posted by Rani" is written.</b>');
+
+    clearSay();
+    $('btnCols').disabled = true;
+
+    post('/api/adv/columns', { cols: cols }).then(function(){
+      return get('/api/adv/open?sheetId=' + encodeURIComponent(S.book.id) +
+                 '&tab=' + encodeURIComponent(S.tab) + (S.excel ? '&excel=1' : ''));
+    }).then(function(d){
+      $('btnCols').disabled = false;
+      $('stepCols').classList.add('done');
+      S.cols = d.cols;
+      S.days = d.days || [];
+      showDays();
+    }).catch(function(e){
+      $('btnCols').disabled = false;
+      say('bad', '<b>' + esc(e.message) + '</b>');
+    });
+  });
+
+  /* ---------- dates ---------- */
+
+  function showDays(){
+    hideFrom('stepDays');
+    $('stepDays').classList.remove('hide');
+
+    if(!S.days.length){
+      $('dayHint').textContent = 'No dated rows found on this tab.';
+      $('dayList').innerHTML = '';
+      return;
+    }
+
+    var rows = S.days.reduce(function(s, x){ return s + x.count; }, 0);
+    var amt = S.days.reduce(function(s, x){ return s + x.amount; }, 0);
+    $('dayHint').innerHTML =
+      nf(S.days.length) + ' days on this tab \u00b7 ' + nf(rows) + ' rows with money against them \u00b7 ' +
+      money(amt) + ' in all.';
+
+    var f = $('dFrom'), t = $('dTo');
+    f.innerHTML = ''; t.innerHTML = '';
+    S.days.forEach(function(x){
+      var a = document.createElement('option');
+      a.value = x.date; a.textContent = x.date;
+      f.appendChild(a);
+      var b = document.createElement('option');
+      b.value = x.date; b.textContent = x.date;
+      t.appendChild(b);
+    });
+    f.value = S.days[0].date;
+    t.value = S.days[S.days.length - 1].date;
+
+    f.onchange = drawDays;
+    t.onchange = drawDays;
+    drawDays();
+  }
+
+  function drawDays(){
+    var from = $('dFrom').value, to = $('dTo').value;
+    var box = $('dayList');
+    box.innerHTML = '';
+    var n = 0, rows = 0, amt = 0;
+
+    S.days.forEach(function(x){
+      var on = x.date >= from && x.date <= to;
+      if(on){ n++; rows += x.count; amt += x.amount; }
+
+      var d = document.createElement('div');
+      d.className = 'day' + (on ? ' on' : '');
+      d.innerHTML = esc(x.date) + '<small>' + nf(x.count) + ' \u00b7 ' + money(x.amount) + '</small>';
+      box.appendChild(d);
+    });
+
+    $('rangeNote').textContent = n + ' day' + (n === 1 ? '' : 's') + ' \u00b7 ' +
+      nf(rows) + ' rows \u00b7 ' + money(amt);
+  }
+
+  $('btnMatch').addEventListener('click', function(){
+    var from = $('dFrom').value, to = $('dTo').value;
+    if(!from || !to) return say('bad', '<b>Pick a range.</b>');
+    if(from > to) return say('bad', '<b>The first date is after the last one.</b>');
+
+    clearSay();
+    $('btnMatch').disabled = true;
+    say('', 'Checking QuickBooks...');
+
+    var u = '/api/adv/match?sheetId=' + encodeURIComponent(S.book.id) +
+            '&tab=' + encodeURIComponent(S.tab) +
+            '&from=' + encodeURIComponent(from) + '&to=' + encodeURIComponent(to) +
+            (S.excel ? '&excel=1' : '');
+
+    get(u).then(function(d){
+      $('btnMatch').disabled = false;
+      clearSay();
+      S.match = d;
+      showMatch(d);
+    }).catch(function(e){
+      $('btnMatch').disabled = false;
+      say('bad', '<b>' + esc(e.message) + '</b>');
+    });
+  });
+
+  /* ---------- what matched ---------- */
+
+  function showMatch(d){
+    hideFrom('stepMatch');
+    $('stepMatch').classList.remove('hide');
+    var t = d.totals;
+
+    $('matchHint').innerHTML =
+      '<b>' + esc(d.label) + '</b> \u00b7 ' + nf(t.rows) + ' rows in the sheet with money against them. ' +
+      '<b>Nothing has been written yet.</b>';
+
+    $('tally').innerHTML =
+      '<div class="ok"><div class="n">' + nf(t.ready) + '</div>' +
+        '<div class="l">Ready to receive</div></div>' +
+      '<div class="ok"><div class="n">' + money(t.amount) + '</div>' +
+        '<div class="l">Amount</div></div>' +
+      '<div class="warn"><div class="n">' + nf(t.overpaid) + '</div>' +
+        '<div class="l">More than owed</div></div>' +
+      '<div><div class="n">' + nf(t.settled) + '</div>' +
+        '<div class="l">Already settled</div></div>' +
+      '<div><div class="n">' + nf(t.alreadyPosted || 0) + '</div>' +
+        '<div class="l">Already posted</div></div>' +
+      '<div class="bad"><div class="n">' + nf(t.notInQb) + '</div>' +
+        '<div class="l">Not in QB</div></div>';
+
+    var box = $('buckets');
+    box.innerHTML = '';
+
+    bucket(box, 'ready', 'Ready to receive', d.ready, false, function(r){
+      return '<tr><td>' + esc(r.invoice) + '</td>' +
+             '<td style="color:var(--muted)">' + esc(r.date) + '</td>' +
+             '<td class="num">' + money(r.amount) + '</td>' +
+             '<td class="num" style="color:var(--muted)">of ' + money(r.qbBalance) + '</td></tr>';
+    });
+
+    bucket(box, 'overpaid', 'Sheet says more than the invoice still owes', d.overpaid, true, function(r){
+      return '<tr><td>' + esc(r.invoice) + '</td>' +
+             '<td style="color:var(--muted)">' + esc(r.date) + '</td>' +
+             '<td class="num">' + money(r.amount) + '</td>' +
+             '<td class="num" style="color:var(--warn)">owes ' + money(r.qbBalance) + '</td></tr>';
+    });
+
+    // Most of these are out by a rupee or two. Ticking the box sends them with
+    // the rest, and QuickBooks takes only what the invoice still owes.
+    if(d.overpaid.length){
+      var head = box.querySelector('[data-key="overpaid"] h4');
+      if(head){
+        var tick = document.createElement('label');
+        tick.style.cssText = 'display:flex;gap:7px;align-items:center;font-size:11.5px;' +
+                             'font-weight:400;color:var(--muted);cursor:pointer';
+        tick.innerHTML = '<input type="checkbox" id="takeOver" style="width:auto;margin:0"' +
+                         (S.takeOver ? ' checked' : '') + '>' +
+                         'Receive these too \u2014 QuickBooks takes what each invoice owes';
+        tick.addEventListener('click', function(ev){ ev.stopPropagation(); });
+        head.appendChild(tick);
+        document.getElementById('takeOver').addEventListener('change', function(){
+          S.takeOver = this.checked;
+          showPay(S.match);
+        });
+      }
+    }
+
+    bucket(box, 'settled', 'Already settled in QuickBooks', d.settled, false, function(r){
+      return '<tr><td>' + esc(r.invoice) + '</td>' +
+             '<td style="color:var(--muted)">' + esc(r.date) + '</td>' +
+             '<td class="num">' + money(r.amount) + '</td><td></td></tr>';
+    });
+
+    bucket(box, 'needsBank', 'Waiting on a bank name', d.needsBank || [], true, function(r){
+      return '<tr><td>' + esc(r.invoice) + '</td>' +
+             '<td style="color:var(--muted)">' + esc(r.bank || '(blank)') + '</td>' +
+             '<td class="num">' + money(r.amount) + '</td><td></td></tr>';
+    });
+
+    bucket(box, 'alreadyPosted', 'Already posted - marked in the sheet', d.alreadyPosted || [], false, function(r){
+      return '<tr><td>' + esc(r.invoice) + '</td>' +
+             '<td style="color:var(--muted)">' + esc(r.date) + '</td>' +
+             '<td class="num">' + money(r.amount) + '</td>' +
+             '<td style="color:var(--ok)">' + esc(r.posted) + '</td></tr>';
+    });
+
+    bucket(box, 'notInQb', 'Not found in QuickBooks', d.notInQb, false, function(r){
+      return '<tr><td>' + esc(r.invoice) + '</td>' +
+             '<td style="color:var(--muted)">' + esc(r.date) + '</td>' +
+             '<td class="num">' + money(r.amount) + '</td><td></td></tr>';
+    });
+
+    drawBanks(d);
+    drawRecheck(d);
+
+    if(!t.ready){
+      $('stepPay').classList.add('hide');
+      say('bad', '<b>Nothing to receive in that range.</b>');
+      return;
+    }
+    showPay(d);
+  }
+
+  /* ---------- which QuickBooks account each bank name means ---------- */
+
+  // The sheet says "AA Traders" or "Easypaisa"; QuickBooks needs an account.
+  // A name is asked about once and then remembered, so only new ones come up.
+  function drawBanks(d){
+    var box = $('bankBox');
+    box.innerHTML = '';
+
+    var missing = (d.banks || []).filter(function(b){ return !b.accountId; });
+    if(!missing.length) return;
+
+    var opts = (S.accounts || []).map(function(a){
+      return '<option value="' + esc(a.id) + '">' + esc(a.name) + '</option>';
+    }).join('');
+
+    box.innerHTML =
+      '<div class="bankbox">' +
+        '<h3>New bank names in this sheet</h3>' +
+        '<p>Pick the QuickBooks account each one pays into. This is asked once ' +
+          'per name \u2014 next time these go straight through.</p>' +
+        '<table>' +
+          '<thead><tr><th>In the sheet</th><th class="num">Rows</th>' +
+            '<th>QuickBooks account</th></tr></thead>' +
+          '<tbody>' + missing.map(function(b, i){
+            return '<tr><td><b>' + esc(b.name) + '</b></td>' +
+                   '<td class="num">' + nf(b.count) + '</td>' +
+                   '<td><select id="bk_' + i + '">' +
+                     '<option value="">\u2014 choose \u2014</option>' + opts +
+                   '</select></td></tr>';
+          }).join('') + '</tbody>' +
+        '</table>' +
+        '<button class="solid" id="btnBanks" style="margin-top:12px">Save and match again</button>' +
+      '</div>';
+
+    $('btnBanks').addEventListener('click', function(){
+      var pairs = {};
+      var short = 0;
+      missing.forEach(function(b, i){
+        var v = $('bk_' + i).value;
+        if(v) pairs[b.name] = v; else short++;
+      });
+      if(short) return say('bad', '<b>Pick an account for every name first.</b>');
+
+      $('btnBanks').disabled = true;
+      post('/api/adv/banks', { banks: pairs }).then(function(){
+        $('btnBanks').disabled = false;
+        runMatch();
+      }).catch(function(e){
+        $('btnBanks').disabled = false;
+        say('bad', '<b>' + esc(e.message) + '</b>');
+      });
+    });
+  }
+
+  /* ---------- checking what QuickBooks really did ---------- */
+
+  // Reads the invoices back out of QuickBooks and says, row by row, which
+  // payments are on them, how much, and in which bank. It does not care who
+  // entered them, so payments made by hand are checked the same way.
+  function drawRecheck(d){
+    var box = $('recheckBox');
+    var rows = (d.alreadyPosted || []).concat(d.settled || []);
+    if(!rows.length){ box.innerHTML = ''; return; }
+
+    box.innerHTML =
+      '<div class="rechk">' +
+        '<h3>Check what was received</h3>' +
+        '<p>' + nf(rows.length) + ' row' + (rows.length === 1 ? '' : 's') +
+          ' in this range have already been dealt with. This reads them back out of ' +
+          'QuickBooks and shows the payment on each one \u2014 the amount, and the bank ' +
+          'it went into.</p>' +
+        '<button class="solid" id="btnRecheck">Check these against QuickBooks</button>' +
+        '<span id="rechkNote" style="font-size:12px;color:var(--muted);margin-left:10px"></span>' +
+        '<div id="rechkOut"></div>' +
+      '</div>';
+
+    $('btnRecheck').addEventListener('click', function(){
+      var b = $('btnRecheck');
+      b.disabled = true;
+      b.textContent = 'Checking...';
+      $('rechkOut').innerHTML = '';
+
+      post('/api/adv/recheck', { rows: rows }).then(function(res){
+        b.disabled = false;
+        b.textContent = 'Check these against QuickBooks';
+        $('rechkNote').textContent =
+          nf(res.ok) + ' look right, ' + nf(res.off) + ' need a look';
+        S.recheck = res.rows;
+        S.recheckSrc = rows;          // so one row can be read again on its own
+        drawRecheckRows();
+      }).catch(function(e){
+        b.disabled = false;
+        b.textContent = 'Check these against QuickBooks';
+        say('bad', '<b>' + esc(e.message) + '</b>');
+      });
+    });
+  }
+
+  // After a change only that one invoice is worth reading again; asking about
+  // all of them would send the whole table back to QuickBooks for nothing.
+  function refreshOne(i, done){
+    var src = (S.recheckSrc || [])[i];
+    if(!src){ if(done) done(); return; }
+
+    post('/api/adv/recheck', { rows: [src] }).then(function(res){
+      if(res.rows && res.rows.length) S.recheck[i] = res.rows[0];
+      var ok = 0, off = 0;
+      (S.recheck || []).forEach(function(r){
+        if(r.verdict === 'ok') ok++; else off++;
+      });
+      $('rechkNote').textContent = nf(ok) + ' look right, ' + nf(off) + ' need a look';
+      drawRecheckRows();
+      if(done) done();
+    }).catch(function(e){
+      say('bad', '<b>' + esc(e.message) + '</b>');
+      if(done) done();
+    });
+  }
+
+  // One invoice can carry both the advance and, later, the CPR settlement.
+  // Only the payments that come to what the sheet says are the advance; the
+  // rest belong to the courier run and are none of this page's business.
+  function drawRecheckRows(){
+    var rows = S.recheck || [];
+    if(!rows.length) return;
+
+    var opts = (S.accounts || []).map(function(a){
+      return '<option value="' + esc(a.id) + '">' + esc(a.name) + '</option>';
+    }).join('');
+    // only what is wrong is worth looking at - the rest just make the table long
+    var okCount = rows.filter(function(r){ return r.verdict === 'ok'; }).length;
+    var body = rows.map(function(r, i){
+            if(r.verdict === 'ok') return '';
+      var adv = r.advance || [];
+      var dup = r.dup || [];
+
+      var found = adv.length
+        ? adv.map(function(p, k){
+            var wrong = r.wantAccountId && p.accountId &&
+                        String(p.accountId) !== String(r.wantAccountId);
+            var isDup = dup.indexOf(p.id) >= 0;
+
+            return '<div class="pay' + (isDup ? ' dup' : '') + '">' +
+              '<span class="mono">' + money(p.amount) + '</span>' +
+              '<span class="when">' + esc(p.date) + '</span>' +
+              '<span class="' + (wrong ? 'off' : 'muted') + '">' +
+                esc(p.accountName || p.accountId || 'no account') + '</span>' +
+              (isDup ? '<span class="tagdup">extra copy</span>' : '') +
+              '</div>' +
+              (wrong && !isDup
+                ? '<div class="act">' +
+                  '<select id="rf_' + i + '_' + k + '">' + opts + '</select>' +
+                  '<button data-fix="' + i + '_' + k + '" data-pid="' + esc(p.id) + '">' +
+                  'Move here</button></div>'
+                : '') +
+              (isDup
+                ? '<div class="act">' +
+                  '<button class="del" data-del="' + esc(p.id) + '" data-row="' + i + '">' +
+                  'Delete this copy</button>' +
+                  '</div>'
+                : '');
+          }).join('')
+        : '<span class="none">no advance payment found</span>' +
+          (r.qbId && r.wantAccountId
+            ? '<div class="act">' +
+              '<button class="solid" data-recv="' + i + '">Receive ' +
+              money(r.sheetAmount) + ' now</button>' +
+              '</div>'
+            : (r.qbId
+                ? '<div class="sub">map ' + esc(r.bank || 'this bank') +
+                  ' to a QuickBooks account first</div>'
+                : ''));
+
+      return '<tr>' +
+        '<td><b>' + esc(r.invoice) + '</b>' +
+          '<div class="sub">sheet row ' + r.sheetRow + '</div></td>' +
+        '<td class="num">' + money(r.sheetAmount) +
+          '<div class="sub">' + esc(r.bank || '\u2014') + '</div></td>' +
+        '<td>' + found +
+          (r.others
+            ? '<div class="sub">' + nf(r.others) + ' other payment' +
+              (r.others === 1 ? '' : 's') + ' on this invoice, left alone</div>'
+            : '') +
+          '</td>' +
+        '<td>' + (r.verdict === 'ok'
+          ? '<span class="good">looks right</span>'
+          : '<span class="why">' + (r.notes || []).map(esc).join('<br>') + '</span>') +
+        '</td>' +
+        '</tr>';
+    }).join('');
+
+    $('rechkOut').innerHTML =
+      '<table style="margin-top:14px">' +
+        '<thead><tr>' +
+          '<th style="width:22%">Invoice</th>' +
+          '<th class="num" style="width:16%">Sheet says</th>' +
+          '<th style="width:38%">The advance in QuickBooks</th>' +
+          '<th style="width:24%">Verdict</th>' +
+        '</tr></thead>' +
+                '<tbody>' + body + '</tbody></table>' +
+        (okCount
+          ? '<div class="sub" style="margin-top:10px">' + nf(okCount) + ' row' +
+            (okCount === 1 ? '' : 's') + ' look right and are not shown.</div>'
+          : '');
+
+    $('rechkOut').querySelectorAll('button[data-fix]').forEach(function(b){
+      b.addEventListener('click', function(){
+        var sel = $('rf_' + b.getAttribute('data-fix'));
+        if(!sel || !sel.value) return;
+        b.disabled = true;
+        b.textContent = 'Moving...';
+        post('/api/adv/fix-payment', {
+          paymentId: b.getAttribute('data-pid'),
+          accountId: sel.value
+        }).then(function(){
+          b.textContent = 'Moved';
+          refreshOne(Number(b.getAttribute('data-fix').split('_')[0]));
+        }).catch(function(e){
+          b.disabled = false;
+          b.textContent = 'Move here';
+          say('bad', '<b>' + esc(e.message) + '</b>');
+        });
+      });
+    });
+    // received properly, but the sheet never got its mark - most often because
+    // Google cut the writing short partway through a big run
+    var unmarked = rows.filter(function(r, i){
+      return r.verdict === 'ok' &&
+             !(S.recheckSrc && S.recheckSrc[i] && S.recheckSrc[i].posted);
+    }).map(function(r){ return r.sheetRow; });
+
+    if(unmarked.length){
+      $('rechkOut').insertAdjacentHTML('afterbegin',
+        '<div class="act" style="margin:4px 0 10px">' +
+        '<button class="solid" id="markAll">Mark all ' + nf(unmarked.length) +
+        ' as posted</button></div>');
+
+      $('markAll').addEventListener('click', function(){
+        var b = $('markAll');
+        b.disabled = true;
+        b.textContent = 'Marking...';
+        post('/api/adv/mark-posted', {
+          sheetId: S.book.id,
+          tab: S.tab,
+          postedCol: (S.cols && S.cols.posted !== undefined) ? S.cols.posted : -1,
+          rows: unmarked,
+          stamp: 'Posted by Rani'
+        }).then(function(res){
+          b.textContent = 'Marked ' + nf(res.marked);
+          setTimeout(function(){ runMatch(); }, 900);
+        }).catch(function(e){
+          b.disabled = false;
+          b.textContent = 'Mark all as posted';
+          say('bad', '<b>' + esc(e.message) + '</b>');
+        });
+      });
+    }
+    $('rechkOut').querySelectorAll('button[data-recv]').forEach(function(b){
+      b.addEventListener('click', function(){
+        var i = Number(b.getAttribute('data-recv'));
+        var r = S.recheck[i];
+        var src = (S.recheckSrc || [])[i] || {};
+        if(!confirm('Receive ' + money(r.sheetAmount) + ' against ' + r.invoice +
+                    ' into ' + (r.bank || 'the mapped bank') + ', dated ' +
+                    (src.date || 'today') + '?')) return;
+
+        b.disabled = true;
+        b.textContent = 'Receiving...';
+        post('/api/adv/receive-one', {
+          qbId: r.qbId,
+          amount: r.sheetAmount,
+          accountId: r.wantAccountId,
+          txnDate: src.date || null,
+          methodId: $('method') ? ($('method').value || null) : null,
+          memo: 'Advance payment dated: ' + (src.date || '')
+        }).then(function(){
+          b.textContent = 'Received';
+          refreshOne(i);
+        }).catch(function(e){
+          b.disabled = false;
+          b.textContent = 'Receive ' + money(r.sheetAmount) + ' now';
+          say('bad', '<b>' + esc(e.message) + '</b>');
+        });
+      });
+    });
+
+    $('rechkOut').querySelectorAll('button[data-del]').forEach(function(b){
+      b.addEventListener('click', function(){
+        if(!confirm('Delete this payment from QuickBooks? It cannot be undone.')) return;
+        b.disabled = true;
+        b.textContent = 'Deleting...';
+        post('/api/adv/delete-payment', { paymentId: b.getAttribute('data-del') })
+          .then(function(){
+            b.textContent = 'Deleted';
+            refreshOne(Number(b.getAttribute('data-row')));
+          }).catch(function(e){
+            b.disabled = false;
+            b.textContent = 'Delete this copy';
+            say('bad', '<b>' + esc(e.message) + '</b>');
+          });
+      });
+    });
+  }
+
+  function bucket(box, key, title, rows, warn, render){
+    if(!rows.length) return;
+    var el = document.createElement('div');
+    el.className = 'bucket' + (warn ? ' warn' : '');
+    el.setAttribute('data-key', key);
+    var open = !!S.open[key];
+
+    el.innerHTML =
+      '<h4><span>' + esc(title) + ' (' + nf(rows.length) + ')</span>' +
+      '<span>' + (open ? '\u25B2' : '\u25BC') + '</span></h4>' +
+      (open
+        ? '<div class="inner"><table><thead><tr>' +
+          '<th>Invoice</th><th>Date</th><th class="num">Paid</th><th class="num">Owed</th>' +
+          '</tr></thead><tbody>' + rows.map(render).join('') + '</tbody></table></div>'
+        : '');
+
+    el.querySelector('h4').addEventListener('click', function(){
+      S.open[key] = !S.open[key];
+      showMatch(S.match);
+    });
+
+    box.appendChild(el);
+  }
+
+  /* ---------- pay ---------- */
+
+  function showPay(d){
+    $('stepPay').classList.remove('hide');
+    $('payOut').innerHTML = '';
+
+    var parts = d.customers.map(function(c){
+      return esc(c.customerName) + ' - ' + nf(c.count) + ' invoices, ' + money(c.amount);
+    });
+    $('payHint').innerHTML = parts.join('<br>');
+
+    $('memoBox').textContent = 'Advance payment\ndated: ' + d.label;
+    $('payDate').value = d.from;
+
+    var over = d.overpaid.length;
+    if(over){
+      $('payHint').innerHTML += S.takeOver
+        ? '<br><span style="color:var(--ok)">' + nf(over) + ' row' + (over === 1 ? '' : 's') +
+          ' where the sheet says more are included, at what the invoice owes \u2014 ' +
+          money(overAmount()) + '.</span>'
+        : '<br><span style="color:var(--warn)">' + nf(over) + ' row' + (over === 1 ? '' : 's') +
+          ' where the sheet says more than the invoice owes are left out.</span>';
+    }
+  }
+
+  // the overpaid rows, cut down to what is actually owed
+  function overRows(){
+    if(!S.takeOver || !S.match) return [];
+    return (S.match.overpaid || []).map(function(r){
+      var copy = {};
+      for(var k in r) copy[k] = r[k];
+      copy.willPay = Math.round(Number(r.qbBalance) * 100) / 100;
+      return copy;
+    }).filter(function(r){ return r.willPay > 0 && r.accountId; });
+  }
+
+  function overAmount(){
+    return overRows().reduce(function(s, r){ return s + r.willPay; }, 0);
+  }
+
+  function toSend(){
+    return (S.match.ready || []).concat(overRows());
+  }
+
+  $('btnPay').addEventListener('click', function(){
+    if(!S.match) return;
+
+    var rows = toSend();
+    if(!rows.length) return;
+
+    if(!$('payDate').value) return say('bad', '<b>Pick a payment date.</b>');
+
+    var sum = rows.reduce(function(s, r){ return s + Number(r.willPay || 0); }, 0);
+    if(!confirm('Receive ' + rows.length + ' part payments totalling ' + money(sum) +
+                ', each into the bank its own row names?\n\n' +
+                'Dated ' + $('payDate').value + ', memo: Advance payment dated ' + S.match.label)) return;
+
+    clearSay();
+    $('btnPay').disabled = true;
+    $('rlog').innerHTML = '';
+    $('payOut').innerHTML = '';
+    S.logLines = [];
+    S.lastEventId = 0;
+    S.job = null;
+
+    post('/api/adv/receive', {
+      rows: rows,
+      methodId: $('method').value || null,
+      txnDate: $('payDate').value,
+      label: S.match.label,
+      sheetId: S.book ? S.book.id : null,
+      tab: S.tab || null,
+      postedCol: (S.cols && S.cols.posted !== undefined && S.cols.posted >= 0)
+        ? S.cols.posted
+        : (P && P.postedCol !== undefined ? P.postedCol : -1),
+      stamp: 'Posted by Rani',
+      courier: 'Advance payments'
+    }).then(function(){
+      $('btnPay').disabled = false;
+      pollJob(true);
+      startPolling();
+    }).catch(function(e){
+      $('btnPay').disabled = false;
+      say('bad', '<b>' + esc(e.message) + '</b>');
+    });
+  });
+
+  $('btnStop').addEventListener('click', function(){
+    $('btnStop').disabled = true;
+    $('btnStop').textContent = 'Stopping...';
+    post('/api/adv/receive-stop').catch(function(){});
+  });
+
+  /* ---------- watching the run ---------- */
+
+  function startPolling(){
+    if(S.poller) return;
+    S.poller = setInterval(function(){ pollJob(false); }, 2000);
+  }
+  function stopPolling(){
+    if(!S.poller) return;
+    clearInterval(S.poller);
+    S.poller = null;
+  }
+
+  function pollJob(first){
+    var u = '/api/adv/receive-status?since=' + S.lastEventId + (first ? '&full=1' : '');
+    return get(u).then(function(d){
+      if(!d.job){ stopPolling(); return; }
+
+      var j = d.job;
+      S.job = j;
+
+      $('stepPay').classList.remove('hide');
+      $('runBox').classList.remove('hide');
+
+      (j.events || []).forEach(function(e){
+        var stamp = clock(e.at);
+        S.logLines.push(stamp + '  ' + e.msg);
+
+        var line = document.createElement('div');
+        if(e.type === 'ok') line.className = 'ok';
+        else if(e.type === 'fail' || e.type === 'error') line.className = 'fail';
+
+        var t = document.createElement('span');
+        t.className = 't';
+        t.textContent = stamp;
+        line.appendChild(t);
+        line.appendChild(document.createTextNode(e.msg));
+
+        $('rlog').appendChild(line);
+        $('rlog').scrollTop = $('rlog').scrollHeight;
+      });
+      if(j.lastEventId) S.lastEventId = j.lastEventId;
+
+      var live = j.state === 'running';
+      $('btnPay').style.display = live ? 'none' : 'block';
+      $('btnStop').style.display = live ? 'block' : 'none';
+      $('btnClearRun').style.display = live ? 'none' : '';
+      // a stopped run is carried on from the rows not yet paid
+      $('btnResume').style.display = (!live && j.leftCount) ? '' : 'none';
+      $('btnResume').textContent = 'Carry on (' + nf(j.leftCount || 0) + ' left)';
+      $('btnStop').disabled = false;
+      $('btnStop').textContent = 'Stop';
+      if(!live) $('btnPay').disabled = false;
+
+      var pct = j.total ? Math.round(j.doneCount / j.total * 100) : 0;
+      $('bar').style.width = pct + '%';
+      $('runline').textContent =
+        nf(j.doneCount) + ' of ' + nf(j.total) + ' invoices \u00b7 ' +
+        nf(j.posted) + ' payment' + (j.posted === 1 ? '' : 's') + ' \u00b7 ' + money(j.amount) +
+        (live ? '   (running on the server - you can leave this page)' : '');
+
+      if(live){ startPolling(); return; }
+
+      stopPolling();
+      finish(j);
+    }).catch(function(){ /* a missed poll is nothing to worry about */ });
+  }
+
+  function finish(j){
+    var html = '';
+    (j.results || []).forEach(function(r){
+      html += '<div class="result ' + (r.ok ? 'good' : 'bad') + '">' +
+        (r.ok
+          ? '\u2713 ' + esc(r.customer || '') + ' - ' + nf(r.count) + ' invoices, ' + money(r.amount) +
+            (r.paymentId ? ' \u00b7 QB payment ' + esc(r.paymentId) : '')
+          : '\u2717 ' + (r.customer ? esc(r.customer) + ' - ' : '') + esc(r.msg)) +
+        '</div>';
+    });
+    $('payOut').innerHTML = html;
+    $('afterActs').style.display = 'flex';
+    if(j.posted > 0) $('stepPay').classList.add('done');
+  }
+
+  /* ---------- afterwards ---------- */
+
+  $('btnCopyLog').addEventListener('click', function(){
+    var ta = document.createElement('textarea');
+    ta.value = S.logLines.join('\n');
+    ta.style.position = 'fixed'; ta.style.opacity = '0';
+    document.body.appendChild(ta); ta.select();
+    try { document.execCommand('copy'); $('btnCopyLog').textContent = 'Copied'; }
+    catch(e){ $('btnCopyLog').textContent = 'Copy failed'; }
+    document.body.removeChild(ta);
+    setTimeout(function(){ $('btnCopyLog').textContent = 'Copy log'; }, 2000);
+  });
+
+  $('btnCsv').addEventListener('click', function(){
+    var paid = (S.job && S.job.paid) || [];
+    if(!paid.length) return say('bad', '<b>Nothing received yet.</b>');
+
+    var rows = [['Invoice', 'QB Doc', 'Customer', 'Received', 'Was owed']].concat(
+      paid.map(function(p){ return [p.invoice, p.qbDoc, p.customer, p.amount, p.balanceWas]; })
+    );
+    var csv = rows.map(function(r){
+      return r.map(function(c){
+        var s = String(c == null ? '' : c);
+        return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
+      }).join(',');
+    }).join('\r\n');
+
+    var b = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' });
+    var a = document.createElement('a');
+    a.href = URL.createObjectURL(b);
+    a.download = 'advance-received.csv';
+    a.click();
+    setTimeout(function(){ URL.revokeObjectURL(a.href); }, 4000);
+  });
+
+  $('btnResume').addEventListener('click', function(){
+    $('btnResume').style.display = 'none';
+    post('/api/adv/receive-resume').then(function(){
+      pollJob(false);
+      startPolling();
+    }).catch(function(e){
+      say('bad', '<b>' + esc(e.message) + '</b>');
+    });
+  });
+
+  $('btnClearRun').addEventListener('click', function(){
+    post('/api/adv/receive-clear').then(function(){
+      S.job = null;
+      S.lastEventId = 0;
+      S.logLines = [];
+      $('rlog').innerHTML = '';
+      $('runBox').classList.add('hide');
+      $('afterActs').style.display = 'none';
+      $('payOut').innerHTML = '';
+    }).catch(function(e){
+      say('bad', '<b>' + esc(e.message) + '</b>');
+    });
+  });
+
+  /* ================= the same sheet, asked about a pasted list =================
+     By date works forwards: a month, some days, and everything paid on them.
+     This works backwards: here are the order numbers, find their rows wherever
+     they were written. What it finds is sorted against QuickBooks by the very
+     same rule, and received by the very same Receive below. */
+
+  var P = {
+    books: [], pick: {}, all: true,
+    tabs: [], pickedTabs: {}, allTabs: true,
+    event: 0, poller: null, rows: [], missing: [], postedCol: -1
+  };
+
+  $('modeDays').addEventListener('click', function(){ setAdvMode('days'); });
+  $('modePaste').addEventListener('click', function(){ setAdvMode('paste'); });
+
+  function setAdvMode(m){
+    S.pasteMode = (m === 'paste');
+    $('modeDays').classList.toggle('on', m === 'days');
+    $('modePaste').classList.toggle('on', m === 'paste');
+    $('panePaste').classList.toggle('hide', m !== 'paste');
+
+    ['stepBook','stepTab','stepCols','stepDays'].forEach(function(id){
+      var el = $(id);
+      if(!el) return;
+      if(m === 'paste') el.classList.add('hide');
+    });
+
+    // what was matched one way does not belong to the other
+    $('stepMatch').classList.add('hide');
+    $('stepPay').classList.add('hide');
+
+    if(m === 'paste' && !P.books.length) loadPasteBooks();
+    if(m === 'days' && S.root) loadBooks();
+  }
+
+  $('pNums').addEventListener('input', function(){
+    var seen = {};
+    $('pNums').value.split(/[\s,;]+/).forEach(function(n){
+      var d = String(n).replace(/[^0-9]/g, '').replace(/^0+(?=[0-9])/, '');
+      if(d) seen[d] = 1;
+    });
+    var n = Object.keys(seen).length;
+    $('pCount').textContent = n ? nf(n) + ' order number' + (n === 1 ? '' : 's') + ' to look for' : '';
+  });
+
+  /* ---------- which workbooks, which months ---------- */
+
+  function loadPasteBooks(){
+    $('pBooks').innerHTML =
+      '<span style="font-size:12px;color:var(--muted)">Reading the folder...</span>';
+
+    get('/api/adv/sheets').then(function(d){
+      P.books = d.sheets || [];
+      drawPasteBooks();
+    }).catch(function(e){
+      $('pBooks').innerHTML =
+        '<span style="font-size:12px;color:var(--bad)">' + esc(e.message) + '</span>';
+    });
+  }
+
+  function drawPasteBooks(){
+    var box = $('pBooks');
+    box.innerHTML = '';
+
+    if(!P.books.length){
+      box.innerHTML = '<span style="font-size:12px;color:var(--muted)">' +
+        'Nothing found at that link.</span>';
+      return;
+    }
+
+    var every = document.createElement('button');
+    every.className = 'pick' + (P.all ? ' on' : '');
+    every.innerHTML = 'Every workbook<small>' + nf(P.books.length) + ' in the folder</small>';
+    every.addEventListener('click', function(){
+      P.all = true; P.pick = {};
+      P.tabs = []; P.pickedTabs = {}; P.allTabs = true;
+      $('pTabWrap').classList.add('hide');
+      drawPasteBooks();
+    });
+    box.appendChild(every);
+
+    P.books.forEach(function(f){
+      var b = document.createElement('button');
+      b.className = 'pick' + (!P.all && P.pick[f.id] ? ' on' : '');
+      b.innerHTML = '\u{1F4C4} ' + esc(f.name) +
+        (f.excel ? '<small>Excel file</small>' : '<small>Google Sheet</small>');
+      b.addEventListener('click', function(){
+        P.all = false;
+        if(P.pick[f.id]) delete P.pick[f.id];
+        else P.pick[f.id] = f;
+        if(!Object.keys(P.pick).length) P.all = true;
+        P.tabs = []; P.pickedTabs = {}; P.allTabs = true;
+        drawPasteBooks();
+        // one workbook on its own can have its months narrowed down
+        var only = Object.keys(P.pick);
+        if(only.length === 1) loadPasteTabs(P.pick[only[0]]);
+        else $('pTabWrap').classList.add('hide');
+      });
+      box.appendChild(b);
+    });
+
+    var n = P.all ? P.books.length : Object.keys(P.pick).length;
+    $('pNote').textContent = n + ' workbook' + (n === 1 ? '' : 's') + ' will be read';
+  }
+
+  function loadPasteTabs(f){
+    $('pTabWrap').classList.remove('hide');
+    $('pTabs').innerHTML = '<span style="font-size:12px;color:var(--muted)">Reading tabs...</span>';
+
+    get('/api/adv/tabs?sheetId=' + encodeURIComponent(f.id) + (f.excel ? '&excel=1' : ''))
+      .then(function(d){
+        P.tabs = (d.tabs || []).map(function(t){ return t.title; });
+        drawPasteTabs();
+      }).catch(function(e){
+        $('pTabs').innerHTML =
+          '<span style="font-size:12px;color:var(--bad)">' + esc(e.message) + '</span>';
+      });
+  }
+
+  function drawPasteTabs(){
+    var box = $('pTabs');
+    box.innerHTML = '';
+
+    var every = document.createElement('div');
+    every.className = 'day' + (P.allTabs ? ' on' : '');
+    every.textContent = 'Every month';
+    every.addEventListener('click', function(){
+      P.allTabs = true; P.pickedTabs = {}; drawPasteTabs();
+    });
+    box.appendChild(every);
+
+    P.tabs.forEach(function(t){
+      var d = document.createElement('div');
+      d.className = 'day' + (!P.allTabs && P.pickedTabs[t] ? ' on' : '');
+      d.textContent = t;
+      d.addEventListener('click', function(){
+        P.allTabs = false;
+        if(P.pickedTabs[t]) delete P.pickedTabs[t];
+        else P.pickedTabs[t] = true;
+        if(!Object.keys(P.pickedTabs).length) P.allTabs = true;
+        drawPasteTabs();
+      });
+      box.appendChild(d);
+    });
+  }
+
+  function pasteBooksToRead(){
+    var picked = P.all ? P.books : Object.keys(P.pick).map(function(k){ return P.pick[k]; });
+    var tabs = P.allTabs ? [] : Object.keys(P.pickedTabs);
+    return picked.map(function(f){
+      return {
+        id: f.id, name: f.name, excel: !!f.excel,
+        tabs: (picked.length === 1 ? tabs : [])
+      };
+    });
+  }
+
+  /* ---------- the search itself ---------- */
+
+  $('btnPFind').addEventListener('click', function(){
+    var text = $('pNums').value.trim();
+    if(!text) return say('bad', '<b>Paste some order numbers first.</b>');
+
+    var books = pasteBooksToRead();
+    if(!books.length) return say('bad', '<b>Pick at least one workbook.</b>');
+
+    clearSay();
+    P.event = 0;
+    P.rows = [];
+    P.missing = [];
+    $('pLog').innerHTML = '';
+    $('pLog').classList.remove('hide');
+    $('pStepFound').classList.add('hide');
+    $('stepMatch').classList.add('hide');
+    $('stepPay').classList.add('hide');
+
+    post('/api/adv/find-start', { numbers: text, books: books }).then(function(){
+      pollPaste(true);
+      startPastePoll();
+    }).catch(function(e){ say('bad', '<b>' + esc(e.message) + '</b>'); });
+  });
+
+  $('btnPStop').addEventListener('click', function(){
+    $('btnPStop').disabled = true;
+    $('btnPStop').textContent = 'Stopping...';
+    post('/api/adv/find-stop').catch(function(){});
+  });
+
+  $('btnPResume').addEventListener('click', function(){
+    $('btnPResume').style.display = 'none';
+    post('/api/adv/find-resume').then(function(){
+      pollPaste(false);
+      startPastePoll();
+    }).catch(function(e){ say('bad', '<b>' + esc(e.message) + '</b>'); });
+  });
+
+  $('btnPClear').addEventListener('click', function(){
+    post('/api/adv/find-clear').then(function(){
+      P.event = 0;
+      P.rows = [];
+      P.missing = [];
+      $('pLog').innerHTML = '';
+      $('pLog').classList.add('hide');
+      $('pLine').textContent = '';
+      $('pStepFound').classList.add('hide');
+      $('btnPResume').style.display = 'none';
+      $('btnPClear').style.display = 'none';
+    }).catch(function(e){ say('bad', '<b>' + esc(e.message) + '</b>'); });
+  });
+
+  function startPastePoll(){
+    if(P.poller) return;
+    P.poller = setInterval(function(){ pollPaste(false); }, 2000);
+  }
+  function stopPastePoll(){
+    if(!P.poller) return;
+    clearInterval(P.poller);
+    P.poller = null;
+  }
+
+  function pollPaste(first){
+    return get('/api/adv/find-status?since=' + P.event).then(function(d){
+      if(!d.job){
+        stopPastePoll();
+        $('btnPStop').style.display = 'none';
+        $('btnPResume').style.display = 'none';
+        $('btnPClear').style.display = 'none';
+        return;
+      }
+
+      var j = d.job;
+      if(first && j.state) setAdvModeQuietly();
+      $('pLog').classList.remove('hide');
+
+      (j.events || []).forEach(function(e){
+        var line = document.createElement('div');
+        if(e.type === 'ok') line.className = 'ok';
+        else if(e.type === 'fail' || e.type === 'error') line.className = 'fail';
+        line.textContent = e.msg;
+        $('pLog').appendChild(line);
+      });
+      if(j.lastEventId) P.event = j.lastEventId;
+      $('pLog').scrollTop = $('pLog').scrollHeight;
+
+      var live = j.state === 'running';
+      $('btnPFind').style.display = live ? 'none' : '';
+      $('btnPStop').style.display = live ? '' : 'none';
+      $('btnPStop').disabled = false;
+      $('btnPStop').textContent = 'Stop';
+      $('btnPResume').style.display = (!live && j.leftCount) ? '' : 'none';
+      $('btnPResume').textContent = 'Carry on (' + nf(j.leftCount || 0) + ' tabs left)';
+      $('btnPClear').style.display = live ? 'none' : '';
+
+      $('pLine').textContent =
+        nf(j.done) + ' of ' + nf(j.total) + ' tab' + (j.total === 1 ? '' : 's') + ' read · ' +
+        nf(j.found) + ' of ' + nf(j.asked) + ' orders found' +
+        (j.skippedCount ? ' · ' + nf(j.skippedCount) + ' skipped' : '') +
+        (live ? '   (running on the server - you can leave this page)' : '');
+
+      P.rows = j.rows || [];
+      P.missing = j.missing || [];
+      if(!live) showPasteFound(j);
+
+      if(live){ startPastePoll(); return; }
+      stopPastePoll();
+    }).catch(function(){ /* a missed poll is nothing to worry about */ });
+  }
+
+  // a search found on the server when the page opens belongs to this tab, so
+  // the tab is the one shown
+  function setAdvModeQuietly(){
+    if(S.pasteMode) return;
+    setAdvMode('paste');
+  }
+
+  function showPasteFound(j){
+    if(!P.rows.length && !P.missing.length) return;
+
+    $('pStepFound').classList.remove('hide');
+    $('pFoundHint').innerHTML =
+      nf(j.found) + ' of ' + nf(j.asked) + ' orders have a row in the advance sheet' +
+      (P.rows.length !== j.found
+        ? ' · ' + nf(P.rows.length) + ' rows in all (an order can be part paid twice)'
+        : '') +
+      (P.missing.length ? ' · <b>' + nf(P.missing.length) + ' not in it</b>' : '') +
+      '. <b>Nothing has been written yet.</b>';
+
+    var html = '';
+
+    if(P.rows.length){
+      html += '<div class="bucket"><h4><span>Rows found (' + nf(P.rows.length) + ')</span></h4>' +
+        '<div class="inner"><table><thead><tr>' +
+        '<th>Order</th><th>Month</th><th>Date</th><th>Bank</th>' +
+        '<th class="num">Paid</th><th>Posted</th>' +
+        '</tr></thead><tbody>' +
+        P.rows.map(function(r){
+          return '<tr><td>' + esc(r.invoice) + '</td>' +
+                 '<td style="color:var(--muted)">' + esc(r.tab || '') + '</td>' +
+                 '<td style="color:var(--muted)">' + esc(r.date || '') + '</td>' +
+                 '<td>' + esc(r.bank || '') + '</td>' +
+                 '<td class="num">' + money(r.amount) + '</td>' +
+                 '<td style="color:var(--muted)">' + esc(r.posted || '') + '</td></tr>';
+        }).join('') +
+        '</tbody></table></div></div>';
+    }
+
+    if(P.missing.length){
+      html += '<div class="bucket warn"><h4><span>Not in the advance sheet (' +
+        nf(P.missing.length) + ')</span></h4>' +
+        '<div class="inner"><table><tbody>' +
+        P.missing.map(function(n){
+          return '<tr><td>' + esc(n) + '</td></tr>';
+        }).join('') +
+        '</tbody></table></div></div>';
+    }
+
+    $('pFound').innerHTML = html;
+    $('btnPMatch').style.display = P.rows.length ? '' : 'none';
+  }
+
+  $('btnPMatch').addEventListener('click', function(){
+    if(!P.rows.length) return say('bad', '<b>Nothing was found to check.</b>');
+
+    clearSay();
+    $('btnPMatch').disabled = true;
+    say('', 'Checking QuickBooks...');
+
+    post('/api/adv/find-match', {
+      rows: P.rows,
+      label: 'a pasted list of ' + P.rows.length + ' rows'
+    }).then(function(d){
+      $('btnPMatch').disabled = false;
+      clearSay();
+      if(d.postedCol !== undefined) P.postedCol = d.postedCol;
+      S.match = d;
+      S.pasteMode = true;
+      showMatch(d);
+      $('stepMatch').scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }).catch(function(e){
+      $('btnPMatch').disabled = false;
+      say('bad', '<b>' + esc(e.message) + '</b>');
+    });
+  });
+
+})();
+</script>
+</body>
+</html>

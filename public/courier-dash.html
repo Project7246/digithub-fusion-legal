@@ -1,0 +1,1168 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Courier dashboard</title>
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="manifest" href="/manifest.json">
+<meta name="theme-color" content="#0F2E24">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/app.css">
+<style>
+  .cdbar{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:16px}
+  .cdbar input[type=date]{border:1px solid var(--line);border-radius:7px;padding:7px 9px;
+    font:inherit;font-size:12.5px;background:#fff;height:auto;width:auto}
+  .cdbar button{border:1px solid var(--line);background:#fff;border-radius:7px;padding:7px 12px;
+    font:inherit;font-size:12.5px;cursor:pointer;width:auto;height:auto;color:var(--ink)}
+  .cdbar button:hover{border-color:var(--qbo)}
+  .cdbar button.on{background:var(--qbo);border-color:var(--qbo);color:#fff;font-weight:600}
+  .cdbar .find{margin-left:auto;display:flex;gap:6px}
+  .cdbar .find input{border:1px solid var(--line);border-radius:7px;padding:7px 11px;
+    font:inherit;font-size:12.5px;width:190px}
+
+  .cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px;
+    margin-bottom:16px}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:15px 17px}
+  .card .k{font-size:10.5px;letter-spacing:.08em;text-transform:uppercase;color:var(--faint)}
+  .card .v{font-family:var(--mono);font-size:23px;font-weight:500;margin-top:6px;line-height:1.1}
+  .card .n{font-size:11.5px;color:var(--muted);margin-top:4px}
+  .card.good .v{color:var(--ok)}
+  .card.warn .v{color:var(--warn)}
+
+  .row{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px}
+  @media(max-width:1050px){.row{grid-template-columns:1fr}}
+  .wide{display:grid;grid-template-columns:1.45fr 1fr;gap:14px;margin-bottom:14px}
+  @media(max-width:1050px){.wide{grid-template-columns:1fr}}
+  .box{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:16px 18px}
+  .box h3{margin:0 0 14px;font-size:13.5px;font-weight:600;display:flex;align-items:baseline;gap:9px}
+  .box h3 .aside{margin-left:auto;font-size:11.5px;color:var(--faint);font-weight:400}
+  .box h3 a{font-size:11.5px;font-weight:400;color:var(--qbo);text-decoration:none}
+  .box h3 a:hover{text-decoration:underline}
+
+  table.t{width:100%;border-collapse:collapse;font-size:12.5px}
+  table.t th{text-align:left;font-size:10px;text-transform:uppercase;letter-spacing:.06em;
+    color:var(--faint);border-bottom:1px solid var(--line);padding:7px 8px;font-weight:600}
+  table.t td{padding:8px;border-bottom:1px solid var(--line)}
+  table.t td.r,table.t th.r{text-align:right;font-family:var(--mono)}
+  table.t td.mono{font-family:var(--mono);font-size:12px}
+  table.t tr:last-child td{border-bottom:0}
+  table.t tr.tot td{font-weight:600;background:#FAFCFE}
+  table.t tr.click{cursor:pointer}
+  table.t tr.click:hover td{background:#F5FAFD}
+
+  /* one meaning per colour, the same as everywhere else in the app */
+  .cpill{display:inline-block;padding:2px 8px;border-radius:20px;font-size:10.5px;
+    font-weight:600;letter-spacing:.02em;white-space:nowrap}
+  .cpill.ok{background:#E7F5EC;color:#1B7A44}
+  .cpill.wait{background:#FFF4E0;color:#8A5A00}
+  .cpill.grey{background:#EEF1F4;color:#5A6672}
+  .cpill.done{background:#E9F1FD;color:#14539A}
+
+  /* tabs across the top, the way a courier portal does it */
+  .tabs{display:flex;gap:26px;border-bottom:1px solid var(--line);margin:0 0 18px;
+    overflow-x:auto}
+  .tabs button{border:0;background:none;padding:0 0 11px;font:inherit;font-size:13.5px;
+    cursor:pointer;color:var(--muted);border-bottom:2px solid transparent;width:auto;
+    height:auto;white-space:nowrap;letter-spacing:.01em}
+  .tabs button:hover{color:var(--ink)}
+  .tabs button.on{color:var(--ink);border-bottom-color:var(--qbo);font-weight:600}
+  .tabs button .dot{display:inline-block;width:6px;height:6px;border-radius:50%;
+    background:var(--bad);margin-left:6px;vertical-align:middle}
+  .pane{display:none}
+  .pane.on{display:block}
+
+  /* Overview is a wall of small panels, not a column of big ones - the point
+     is to see how everything is doing without scrolling. */
+  .mini{display:grid;grid-template-columns:repeat(auto-fit,minmax(310px,1fr));gap:14px;
+    margin-bottom:14px}
+  .p{background:var(--panel);border:1px solid var(--line);border-radius:10px;
+    padding:16px 18px;display:flex;flex-direction:column;min-height:206px}
+
+  /* a few rows inside a tile - recent parcels, newest receipts */
+  .rows{margin-top:2px}
+  .rows .r1{display:grid;grid-template-columns:1fr auto;gap:8px;padding:7px 0;
+    border-bottom:1px solid var(--line);font-size:12px}
+  .rows .r1:last-child{border-bottom:0}
+  .rows .a{font-family:var(--mono);font-size:12px;color:#2F6FA8;
+    overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .rows .b2{font-size:11px;color:var(--faint);margin-top:1px}
+  .rows .c1{font-family:var(--mono);font-size:12px;text-align:right}
+  .rows .d1{font-size:10.5px;color:var(--faint);text-align:right;margin-top:1px}
+  .p h4{margin:0 0 10px;font-size:10.5px;letter-spacing:.08em;text-transform:uppercase;
+    color:var(--faint);font-weight:600;display:flex;align-items:center;gap:7px}
+  .p h4 .rt{margin-left:auto;font-size:10.5px;letter-spacing:0;text-transform:none;
+    color:var(--faint);font-weight:400}
+  .p .big{font-family:var(--mono);font-size:26px;font-weight:500;line-height:1.05}
+  .p .sub2{font-size:11.5px;color:var(--muted);margin-top:4px}
+  .p .more{margin-top:auto;padding-top:11px;font-size:11.5px;color:var(--qbo);
+    background:none;border:0;cursor:pointer;text-align:left;font-family:inherit;width:auto;
+    height:auto}
+  .p .more:hover{text-decoration:underline}
+  .p.warn2{border-color:#E9C3C0;background:#FEF8F7}
+  .p.warn2 .big{color:var(--bad)}
+
+  /* a percentage bar, used everywhere a rate is shown */
+  .meter{height:7px;border-radius:4px;background:#E8EDF3;overflow:hidden;margin-top:9px}
+  .meter i{display:block;height:7px;border-radius:4px}
+  .legend{display:flex;flex-wrap:wrap;gap:4px 12px;font-size:11px;color:var(--muted);
+    margin-top:8px}
+  .legend b{font-family:var(--mono);font-weight:500;color:var(--ink)}
+  .sw{display:inline-block;width:8px;height:8px;border-radius:2px;margin-right:5px;
+    vertical-align:middle}
+
+  .split{display:flex;gap:14px;flex-wrap:wrap}
+  .split > div{flex:1;min-width:92px}
+  .split .n2{font-family:var(--mono);font-size:18px;font-weight:500;line-height:1.1}
+  .split .l2{font-size:10.5px;letter-spacing:.05em;text-transform:uppercase;
+    color:var(--faint);margin-top:3px}
+
+  .box h3 .dl{margin-left:auto;border:1px solid var(--line);background:#fff;border-radius:7px;
+    padding:5px 12px;font:inherit;font-size:11.5px;cursor:pointer;color:var(--ink);
+    width:auto;height:auto;font-weight:400}
+  .box h3 .dl:hover{border-color:var(--qbo);color:var(--qbo)}
+
+  /* a box that is telling you something is wrong */
+  .box.attn{border-color:#E9C3C0;background:#FEF8F7}
+
+  .grid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
+  @media(max-width:620px){.grid{grid-template-columns:repeat(2,1fr)}}
+  .cell{border:1px solid var(--line);border-radius:9px;padding:12px 14px;background:#fff;
+    cursor:pointer;text-align:left;font:inherit;width:100%}
+  .cell:hover{border-color:var(--qbo);background:#FAFDF9}
+  .cell .l{font-size:10px;letter-spacing:.06em;text-transform:uppercase;color:var(--faint);
+    line-height:1.35;min-height:26px}
+  .cell .n{font-family:var(--mono);font-size:22px;font-weight:500;margin-top:5px;line-height:1.1}
+  .cell .m{font-size:11px;color:var(--faint);margin-top:3px}
+  .cell.tot{background:#F3F7FB;border-color:#DCE7F1}
+
+  .tx a{display:grid;grid-template-columns:1fr auto;gap:8px;padding:9px 0;
+    border-bottom:1px solid var(--line);text-decoration:none;color:inherit}
+  .tx a:last-child{border-bottom:0}
+  .tx a:hover .tk{text-decoration:underline}
+  .tx .tk{font-family:var(--mono);font-size:12.5px;color:#2F6FA8}
+  .tx .rf{font-size:11.5px;color:var(--faint);margin-top:2px}
+  .tx .am{font-family:var(--mono);font-size:12.5px;text-align:right}
+  .tx .dt{font-size:11px;color:var(--faint);text-align:right;margin-top:2px}
+
+  .bars{display:flex;flex-direction:column;gap:7px}
+  .bars .b{display:grid;grid-template-columns:130px 1fr 108px;align-items:center;gap:10px;
+    font-size:12px}
+  .bars .track{display:block;background:var(--line);border-radius:4px;height:9px;overflow:hidden}
+  .bars .fill{display:block;height:9px;border-radius:4px}
+  .bars .num{text-align:right;font-family:var(--mono);font-size:11.5px}
+
+  .drawer{position:fixed;inset:0;background:rgba(12,24,20,.45);display:none;z-index:60}
+  .drawer.open{display:block}
+  .drawer .panel{position:absolute;right:0;top:0;bottom:0;width:min(980px,96vw);background:#fff;
+    box-shadow:-8px 0 28px rgba(0,0,0,.18);display:flex;flex-direction:column}
+  .drawer .hd{padding:16px 20px;border-bottom:1px solid var(--line);display:flex;
+    align-items:center;gap:12px}
+  .drawer .hd b{font-size:14px}
+  .drawer .hd .note{font-size:12px;color:var(--faint)}
+  .drawer .hd .x{margin-left:auto;border:1px solid var(--line);background:#fff;border-radius:7px;
+    width:30px;height:30px;cursor:pointer;font-size:15px;line-height:1}
+  .drawer .bd{overflow:auto;padding:6px 20px 24px}
+
+  .note{font-size:11.5px;color:var(--faint);margin-top:11px}
+  .msg{padding:13px 15px;border-radius:8px;background:#FDF3F3;border:1px solid var(--bad);
+    color:var(--bad);font-size:12.5px}
+  .loading{color:var(--muted);font-size:12.5px;padding:22px 0}
+  .fresh{font-size:11.5px;color:var(--faint)}
+  .fresh b{color:var(--ok);font-weight:500}
+</style>
+</head>
+<body>
+
+<div class="layout">
+  <aside class="rail"></aside>
+
+  <div class="main">
+    <div class="topline">
+      <div>
+        <h1 id="ttl">Courier dashboard</h1>
+        <div class="sub" id="sub">Loading…</div>
+      </div>
+    </div>
+
+    <div class="shell">
+
+      <div id="gate" class="gate hide">
+        <img src="/logo.svg" alt="">
+        <h2>Connect your QuickBooks company</h2>
+        <p>Courier accounts are kept per company.</p>
+        <button class="solid" id="btnConnect">Connect to QuickBooks</button>
+      </div>
+
+      <div id="body" class="hide">
+        <div class="tabs" id="tabs">
+          <button data-tab="overview" class="on">Overview</button>
+          <button data-tab="orders">Orders</button>
+          <button data-tab="payments">Payments</button>
+          <button data-tab="cities">Cities</button>
+          <button data-go="receipts">Receipts</button>
+        </div>
+
+        <div class="cdbar">
+          <button data-days="0">Today</button>
+          <button data-days="6" class="on">7 days</button>
+          <button data-days="29">30 days</button>
+          <button data-days="89">3 months</button>
+          <input type="date" id="from">
+          <input type="date" id="to">
+          <button class="on" id="go">Show</button>
+          <div class="find">
+            <input id="track" placeholder="Tracking number">
+            <button id="btnTrack">Find</button>
+          </div>
+        </div>
+        <div class="fresh" id="fresh"></div>
+        <div id="out"><div class="loading">Reading…</div></div>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<div class="drawer" id="drawer">
+  <div class="panel">
+    <div class="hd"><b id="dTitle">Orders</b><span class="note" id="dNote"></span>
+      <button class="x" id="dClose">&times;</button></div>
+    <div class="bd" id="dBody"></div>
+  </div>
+</div>
+
+<script src="/nav.js"></script>
+<script>
+(function(){
+  "use strict";
+  var $ = function(id){ return document.getElementById(id); };
+
+  var qs = new URLSearchParams(location.search);
+  var account = qs.get('account');
+  var courier = qs.get('courier');
+  var keeperTimer = null;
+
+  // The tab bar lives in the page, not in the drawn output, so it stays put
+  // while the numbers underneath it reload. The choice is remembered.
+  var TABS = ['overview','orders','payments','cities'];
+  // ?tab= wins, so coming back from the receipts page lands where it said
+  var tab = qs.get('tab') || localStorage.getItem('cdTab');
+  if(TABS.indexOf(tab) < 0) tab = 'overview';
+
+  function showTab(k){
+    if(TABS.indexOf(k) < 0) k = 'overview';
+    tab = k;
+    localStorage.setItem('cdTab', k);
+
+    document.querySelectorAll('#tabs button[data-tab]').forEach(function(b){
+      b.classList.toggle('on', b.getAttribute('data-tab') === k);
+    });
+    document.querySelectorAll('#out .pane').forEach(function(p){
+      p.classList.toggle('on', p.getAttribute('data-pane') === k);
+    });
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }
+
+  document.querySelectorAll('#tabs button[data-tab]').forEach(function(b){
+    b.addEventListener('click', function(){ showTab(b.getAttribute('data-tab')); });
+  });
+
+  // Receipts belongs to this account like the others, but a receipt of two
+  // thousand orders needs a page of its own rather than a panel.
+  document.querySelectorAll('#tabs button[data-go]').forEach(function(b){
+    b.addEventListener('click', function(){
+      location.href = '/receipts.html' + (account ? '?account=' + account : '');
+    });
+  });
+
+  showTab(tab);
+
+  var COLOR = {
+    delivered:'#1F9D5A', returned:'#C9453F', returning:'#E08A2E', transit:'#2F7DD1',
+    booked:'#6A6FD6', unbooked:'#8A99A8', cancelled:'#95A3B1', expired:'#B07A2E',
+    review:'#C98B1E', transferred:'#4AA3C7', lost:'#8B2F2F', damaged:'#8B2F6B',
+    other:'#B6C1CC'
+  };
+
+  function esc(s){
+    return String(s == null ? '' : s)
+      .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  }
+  function n0(v){ return Number(v||0).toLocaleString('en-US'); }
+  function full(v){ return Number(v||0).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2}); }
+  function money(v){
+    var x = Number(v||0);
+    if(Math.abs(x) >= 1000000) return (x/1000000).toFixed(2)+'M';
+    if(Math.abs(x) >= 1000)    return (x/1000).toFixed(1)+'K';
+    return x.toFixed(0);
+  }
+  function iso(d){ return d.toISOString().slice(0,10); }
+  function monthStart(){ var d = new Date(); return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-01'; }
+  function short(day){ var p = String(day).split('-'); return p[2]+'/'+p[1]; }
+
+  var fromEl = $('from'), toEl = $('to');
+
+  function setRange(days){
+    var t = new Date(), f = new Date();
+    f.setDate(f.getDate() - days);
+    fromEl.value = iso(f); toEl.value = iso(t);
+  }
+
+  function params(extra){
+    var p = new URLSearchParams();
+    p.set('from', fromEl.value); p.set('to', toEl.value);
+    if(account) p.set('account', account);
+    if(courier) p.set('courier', courier);
+    Object.keys(extra||{}).forEach(function(k){ if(extra[k]) p.set(k, extra[k]); });
+    return p.toString();
+  }
+
+  $('btnConnect').addEventListener('click', function(){ location.href = '/auth/connect'; });
+
+  window.APP.ready.then(function(s){
+    if(!s.connected){ $('gate').classList.remove('hide'); return; }
+    $('body').classList.remove('hide');
+
+    var sf = localStorage.getItem('cdFrom'), st = localStorage.getItem('cdTo');
+    if(sf && st){ fromEl.value = sf; toEl.value = st; } else setRange(6);
+
+    document.querySelectorAll('.cdbar button[data-days]').forEach(function(b){
+      b.addEventListener('click', function(){
+        document.querySelectorAll('.cdbar button[data-days]').forEach(function(x){ x.classList.remove('on'); });
+        b.classList.add('on');
+        setRange(Number(b.getAttribute('data-days')));
+        load();
+      });
+    });
+    $('go').addEventListener('click', load);
+    $('btnTrack').addEventListener('click', findOne);
+    $('track').addEventListener('keydown', function(e){ if(e.key === 'Enter') findOne(); });
+
+    head();
+    load();
+    watchKeeper();
+  });
+
+  function head(){
+    var p = new URLSearchParams();
+    if(account) p.set('account', account);
+    if(courier) p.set('courier', courier);
+    fetch('/api/courier/scope?'+p.toString(), { cache:'no-store' })
+      .then(function(r){ return r.json(); })
+      .then(function(d){
+        if(d.error) return;
+        $('ttl').textContent = d.title || 'Courier dashboard';
+        $('sub').textContent = d.sub || '';
+      })
+      .catch(function(){});
+  }
+
+  /* ---------- the quiet catch-up, so you can see it is current ---------- */
+
+  function watchKeeper(){
+    fetch('/api/courier/keeper', { cache:'no-store' })
+      .then(function(r){ return r.json(); })
+      .then(function(d){
+        var el = $('fresh');
+        if(d.running){
+          el.innerHTML = 'Catching up with the courier\u2026';
+          if(keeperTimer) clearTimeout(keeperTimer);
+          keeperTimer = setTimeout(function(){ watchKeeper(); load(); }, 8000);
+          return;
+        }
+        if(d.finishedAt){
+          el.innerHTML = '<b>Up to date</b> \u00b7 last checked ' +
+            new Date(d.finishedAt).toLocaleTimeString();
+        }
+        if(keeperTimer) clearTimeout(keeperTimer);
+        keeperTimer = setTimeout(watchKeeper, 60000);
+      })
+      .catch(function(){});
+  }
+
+  /* ---------- the page ---------- */
+
+  var live = null;
+
+  function load(){
+    localStorage.setItem('cdFrom', fromEl.value);
+    localStorage.setItem('cdTo', toEl.value);
+    $('out').innerHTML = '<div class="loading">Reading\u2026</div>';
+
+    Promise.all([
+      fetch('/api/courier/dash?'+params(), { cache:'no-store' }).then(function(r){ return r.json(); }),
+      // receipts come from the courier's own portal now, not our order table
+      fetch('/api/receipts/recent?'+new URLSearchParams({
+        account: account || '', courier: courier || '', limit: 6
+      }).toString(), { cache:'no-store' }).then(function(r){ return r.json(); }),
+      fetch('/api/courier/pickups?'+params({ limit: 8 }), { cache:'no-store' })
+        .then(function(r){ return r.json(); })
+    ])
+    .then(function(all){
+      var d = all[0];
+      if(d.error){ $('out').innerHTML = '<div class="msg">'+esc(d.error)+'</div>'; return; }
+      live = d;
+      draw(d, all[1].cprs || [], all[2].days || []);
+    })
+    .catch(function(e){
+      $('out').innerHTML = '<div class="msg">'+esc(e.message)+'</div>';
+    });
+  }
+
+  function donut(done, total, colDone, colRest){
+    var R = 46, C = 2*Math.PI*R;
+    var part = total ? C * (done/total) : 0;
+    return '<svg width="128" height="128" viewBox="0 0 130 130">' +
+      '<circle cx="65" cy="65" r="'+R+'" fill="none" stroke="'+colRest+'" stroke-width="19"></circle>' +
+      (part ? '<circle cx="65" cy="65" r="'+R+'" fill="none" stroke="'+colDone+'" stroke-width="19" ' +
+        'stroke-dasharray="'+part.toFixed(2)+' '+(C-part).toFixed(2)+'" ' +
+        'transform="rotate(-90 65 65)"></circle>' : '') +
+      '<text x="65" y="63" text-anchor="middle" font-size="17" font-weight="600" fill="#123">' +
+        n0(done) + '</text>' +
+      '<text x="65" y="80" text-anchor="middle" font-size="10" fill="#8A99A8">of ' + n0(total) + '</text>' +
+      '</svg>';
+  }
+
+  // three bars a day: booked, delivered, returned
+  function dayChart(days){
+    if(!days.length) return '<div class="note">No days in this range.</div>';
+
+    var W = 700, H = 250, PL = 46, PR = 14, PT = 14, PB = 34;
+    var iw = W-PL-PR, ih = H-PT-PB;
+
+    var max = 0;
+    days.forEach(function(d){
+      max = Math.max(max, d.booked, d.delivered, d.returned);
+    });
+    if(!max) max = 1;
+
+    var slot = iw/days.length;
+    var bw = Math.max(2, (slot - 6) / 3);
+    var svg = '';
+
+    for(var i=0;i<=4;i++){
+      var y = PT + ih - (ih*i/4);
+      svg += '<line x1="'+PL+'" y1="'+y.toFixed(1)+'" x2="'+(W-PR)+'" y2="'+y.toFixed(1)+'" stroke="#EEF3F8"></line>';
+      svg += '<text x="'+(PL-8)+'" y="'+(y+4).toFixed(1)+'" text-anchor="end" font-size="10" fill="#9AA8B6">'+n0(Math.round(max*i/4))+'</text>';
+    }
+
+    days.forEach(function(d, i){
+      var x0 = PL + i*slot + 3;
+
+      function bar(n, off, fill, label, amt){
+        if(!n) return '';
+        var h = ih * (n/max);
+        return '<rect x="'+(x0+off*bw).toFixed(1)+'" y="'+(PT+ih-h).toFixed(1)+'" ' +
+               'width="'+bw.toFixed(1)+'" height="'+h.toFixed(1)+'" fill="'+fill+'" rx="1.5">' +
+               '<title>'+esc(d.day)+' \u00b7 '+label+': '+n0(n)+' \u00b7 '+full(amt)+'</title></rect>';
+      }
+
+      svg += bar(d.booked,    0, '#9EC9EE', 'booked',    d.bookedAmount);
+      svg += bar(d.delivered, 1, '#1F9D5A', 'delivered', d.deliveredAmount);
+      svg += bar(d.returned,  2, '#E48B85', 'returned',  d.returnedAmount);
+
+      if(days.length <= 16 || i % Math.ceil(days.length/14) === 0){
+        svg += '<text x="'+(x0 + bw*1.5).toFixed(1)+'" y="'+(H-12)+'" text-anchor="middle" ' +
+               'font-size="10" fill="#9AA8B6">'+esc(short(d.day))+'</text>';
+      }
+    });
+
+    return '<svg viewBox="0 0 '+W+' '+H+'" style="width:100%;height:auto">'+svg+'</svg>' +
+      '<div class="note"><span style="color:#9EC9EE">\u25AE</span> booked &nbsp; ' +
+      '<span style="color:#1F9D5A">\u25AE</span> delivered &nbsp; ' +
+      '<span style="color:#E48B85">\u25AE</span> returned</div>';
+  }
+
+  // the same two marks the receipts page uses - green when the money agreed,
+  // amber when it did not, a hundred rupees either way being rounding
+  function cprBadges(c){
+    var out = '';
+    if(c.dcJournalId) out += '<span class="cpill ok">posted DC</span> ';
+
+    if(c.qbPaymentId){
+      var gap = (c.expected == null || c.received == null)
+        ? null : Math.abs(c.expected - c.received);
+      out += (gap === null || gap <= 100)
+        ? '<span class="cpill ok">received</span>'
+        : '<span class="cpill wait">off by ' + full(gap) + '</span>';
+    }
+
+    return out || '<span class="cpill grey">not yet</span>';
+  }
+
+  function card(k, v, n, cls){
+    return '<div class="card' + (cls ? ' '+cls : '') + '"><div class="k">' + esc(k) + '</div>' +
+           '<div class="v">' + esc(v) + '</div><div class="n">' + esc(n) + '</div></div>';
+  }
+
+  /* ---------- small pieces the panels are built from ---------- */
+
+  function pct(part, whole){ return whole ? (100 * part / whole) : 0; }
+  function pc(v){ return (Math.round(v * 10) / 10) + '%'; }
+
+  // green when it is going well, amber when it is slipping, red when it is not
+  function gradeColour(rate){
+    return rate >= 90 ? '#1F9D5A' : (rate >= 75 ? '#C98B1E' : '#C9453F');
+  }
+
+  function meter(parts){
+    var total = parts.reduce(function(a, p){ return a + p.n; }, 0) || 1;
+    return '<div class="meter" style="display:flex">' + parts.map(function(p){
+      return '<i style="background:' + p.c + ';width:' +
+             (100 * p.n / total).toFixed(2) + '%"></i>';
+    }).join('') + '</div>';
+  }
+
+  function legend(parts){
+    return '<div class="legend">' + parts.filter(function(p){ return p.n; })
+      .map(function(p){
+        return '<span><span class="sw" style="background:' + p.c + '"></span>' +
+               esc(p.l) + ' <b>' + n0(p.n) + '</b></span>';
+      }).join('') + '</div>';
+  }
+
+  // every panel can send you to the tab that explains it
+  function more(tab, words){
+    return '<button class="more" data-go="' + tab + '">' + esc(words) + ' →</button>';
+  }
+
+  function panel(title, right, body, cls){
+    return '<div class="p' + (cls ? ' ' + cls : '') + '"><h4>' + esc(title) +
+           (right ? '<span class="rt">' + right + '</span>' : '') + '</h4>' + body + '</div>';
+  }
+
+  function draw(d, cprs, picks){
+    var t = d.totals, st = d.statuses || [], days = d.days || [];
+
+    var g = {};
+    (d.groups || []).forEach(function(x){ g[x.group] = x; });
+    var gc = function(k){ return (g[k] || {}).count || 0; };
+    var ga = function(k){ return (g[k] || {}).amount || 0; };
+
+    // Everything is sorted into one of four tabs. Overview is a wall of small
+    // panels - enough of each thing to know whether it needs looking at, and a
+    // way through to the tab that shows it properly.
+    var T = { overview:'', orders:'', payments:'', cities:'' };
+
+    var settled  = gc('delivered') + gc('returned');
+    var lost     = gc('lost') + gc('damaged');
+    var expired  = gc('expired') + gc('other');
+    var moving   = gc('unbooked') + gc('booked') + gc('transit') +
+                   gc('review') + gc('returning');
+
+    var deliveredRate = pct(gc('delivered'), settled);
+    var returnRate    = pct(gc('returned'), settled);
+    var lostRate      = pct(lost, t.orders);
+
+    /* ==================== Overview ==================== */
+
+    // Everything on this page is about the parcels booked inside the chosen
+    // dates - not parcels delivered in them. That is the only way a rate
+    // means anything: of the ones handed over, this many arrived.
+
+    var html = '';
+
+    var collected = t.deliveredAmount;
+    var owed      = t.pendingAmount;
+
+    // Where a parcel got to, and what stopped it. Every group the courier can
+    // report appears in exactly one row, so the rows add up to what was booked
+    // - a stage that quietly swallowed a hundred parcels is worse than no
+    // stage at all.
+    var stages = [
+      { l:'Picked up by the courier', n:t.picked, a:null, c:'#7FA8D4', picked:1,
+        note:'stamped with a pickup date' },
+      { l:'Not picked up yet', n:t.unpicked, a:t.unpickedAmount, c:'#C9B8A0', picked:0,
+        note:'still with you, or never collected' }
+    ];
+
+    var ends = [
+      { l:'Delivered',     g:'delivered',            c:'#4FB477' },
+      { l:'Returned',      g:'returned',             c:'#E48B85' },
+      { l:'Coming back',   g:'returning',            c:'#E9B0A0' },
+      { l:'On the way',    g:'transit',              c:'#9EC9EE' },
+      { l:'Under review',  g:'review',               c:'#B7A6D6' },
+      { l:'Waiting to be booked', g:'unbooked,booked', c:'#C7CDD4' },
+      { l:'Cancelled',     g:'cancelled',            c:'#A8A8A8' },
+      { l:'Transferred',   g:'transferred',          c:'#8FB0A8' },
+      { l:'Expired',       g:'expired',              c:'#B9A24A' },
+      { l:'Lost or damaged', g:'lost,damaged',       c:'#B3453F' },
+      { l:'Unknown status', g:'other',               c:'#D0A0C0' }
+    ].map(function(x){
+      var n = 0, a = 0;
+      x.g.split(',').forEach(function(k){ n += gc(k); a += ga(k); });
+      return { l:x.l, g:x.g, n:n, a:a, c:x.c };
+    }).filter(function(x){ return x.n; });
+
+    function stageRow(x){
+      var attr = x.picked === undefined
+        ? ' class="click" data-group="' + esc(x.g) + '"'
+        : ' class="click" data-picked="' + x.picked + '"';
+      return '<tr' + attr + '>' +
+        '<td><span class="sw" style="background:' + x.c + '"></span>' + esc(x.l) +
+        (x.note ? ' <span style="color:var(--faint)">· ' + esc(x.note) + '</span>' : '') +
+        '</td>' +
+        '<td class="r">' + n0(x.n) + '</td>' +
+        '<td class="r">' + pc(pct(x.n, t.orders)) + '</td>' +
+        '<td class="r">' + (x.a === null ? '—' : full(x.a)) + '</td></tr>';
+    }
+
+    var trackRows =
+      '<tr class="tot"><td>Booked in this range</td>' +
+      '<td class="r">' + n0(t.orders) + '</td><td class="r">100%</td>' +
+      '<td class="r">' + full(t.amount) + '</td></tr>' +
+      stages.map(stageRow).join('') +
+      '<tr class="tot"><td colspan="4" style="font-size:10px;letter-spacing:.06em;' +
+        'text-transform:uppercase;color:var(--faint)">Where they ended up</td></tr>' +
+      ends.map(stageRow).join('');
+
+    T.overview += '<div class="box" style="margin-bottom:13px"><h3>' +
+      'What happened to the parcels booked in this range' +
+      '<button class="dl" id="dlBooked">Download the lot</button></h3>' +
+      '<table class="t"><tr><th>Stage</th><th class="r">Parcels</th>' +
+      '<th class="r">Of booked</th><th class="r">Worth</th></tr>' + trackRows +
+      '<tr class="tot"><td>Money collected</td><td class="r">—</td>' +
+      '<td class="r">' + pc(pct(collected, collected + owed)) + '</td>' +
+      '<td class="r">' + full(collected) + '</td></tr>' +
+      '<tr class="tot"><td>Money still to come</td><td class="r">—</td>' +
+      '<td class="r">' + pc(pct(owed, collected + owed)) + '</td>' +
+      '<td class="r">' + full(owed) + '</td></tr>' +
+      '</table>' +
+      '<div class="note">Parcels booked between ' + esc(d.from) + ' and ' + esc(d.to) +
+      '. The rows under "where they ended up" add up to what was booked. ' +
+      'Click any row to see those parcels.</div></div>';
+
+    /* --- one grid, every tile the same --- */
+
+    var mix = [
+      { l:'Delivered', n:gc('delivered'), c:'#4FB477' },
+      { l:'Returned',  n:gc('returned'),  c:'#E48B85' },
+      { l:'Moving',    n:moving,          c:'#7FA8D4' },
+      { l:'Lost',      n:lost,            c:'#B3453F' },
+      { l:'Expired',   n:expired,         c:'#B9A24A' }
+    ];
+
+    T.overview += '<div class="mini">';
+
+    T.overview += panel('Booked', full(t.amount) + ' worth',
+      '<div class="big">' + n0(t.orders) + '</div>' +
+      '<div class="sub2">parcels handed to the courier</div>' +
+      more('orders', 'Day by day'));
+
+    T.overview += panel('Delivery rate', n0(settled) + ' settled',
+      '<div class="big" style="color:' + gradeColour(deliveredRate) + '">' +
+      pc(deliveredRate) + '</div>' +
+      '<div class="sub2">' + n0(gc('delivered')) + ' delivered of ' + n0(settled) + '</div>' +
+      meter([{ n:gc('delivered'), c:'#4FB477' }, { n:gc('returned'), c:'#E48B85' }]) +
+      more('orders', 'Every status'));
+
+    T.overview += panel('Return rate', n0(gc('returned')) + ' came back',
+      '<div class="big" style="color:' + gradeColour(100 - returnRate) + '">' +
+      pc(returnRate) + '</div>' +
+      '<div class="sub2">' + full(ga('returned')) + ' did not sell</div>' +
+      more('orders', 'Every status'));
+
+    T.overview += panel('Where the parcels went', n0(t.orders) + ' booked',
+      meter(mix) + legend(mix) + more('orders', 'Every status'));
+
+    T.overview += panel('Money collected', pc(pct(collected, collected + owed)) + ' of booked',
+      '<div class="big">' + full(collected) + '</div>' +
+      '<div class="sub2">' + full(owed) + ' still to come</div>' +
+      meter([{ n:collected, c:'#4FB477' }, { n:owed, c:'#E8EDF3' }]) +
+      more('payments', 'Money not in yet'));
+
+    T.overview += panel('Courier charges', pc(pct(t.fee + t.tax, collected)) + ' of collected',
+      '<div class="big">' + full(t.fee + t.tax) + '</div>' +
+      '<div class="sub2">' + full(t.fee) + ' charges · ' + full(t.tax) + ' tax</div>' +
+      more('payments', 'Receipts'));
+
+    T.overview += panel('Lost or damaged', lost ? pc(lostRate) + ' of booked' : '',
+      '<div class="big">' + n0(lost) + '</div>' +
+      '<div class="sub2">' + (lost
+        ? full(ga('lost') + ga('damaged')) + ' at risk'
+        : 'nothing lost or damaged') + '</div>' +
+      more('orders', 'Every status'),
+      lost ? 'warn2' : '');
+
+    var cities = (d.cities || []).filter(function(c){ return c.settled >= 5; });
+    var best  = cities.slice().sort(function(a, b){ return b.rate - a.rate; })[0];
+    var worst = cities.slice().sort(function(a, b){ return a.rate - b.rate; })[0];
+
+    T.overview += panel('Best and worst city', n0((d.cities || []).length) + ' in range',
+      (best
+        ? '<div class="split">' +
+            '<div><div class="n2" style="color:' + gradeColour(best.rate) + '">' +
+              pc(best.rate) + '</div><div class="l2">' + esc(best.city) + '</div></div>' +
+            '<div><div class="n2" style="color:' + gradeColour(worst.rate) + '">' +
+              pc(worst.rate) + '</div><div class="l2">' + esc(worst.city) + '</div></div>' +
+          '</div><div class="sub2" style="margin-top:9px">' +
+          'Delivery rate, cities with 5 or more settled</div>'
+        : '<div class="sub2">Not enough settled orders yet to rank cities.</div>') +
+      more('cities', 'Every city'));
+
+    var recent4 = (d.recent || []).slice(0, 4).map(function(o){
+      return '<div class="r1"><div><div class="a">' + esc(o.tracking) + '</div>' +
+             '<div class="b2">' + esc(o.orderRef || '') + ' · ' + esc(o.city || '') + '</div></div>' +
+             '<div><div class="c1">' + full(o.amount) + '</div>' +
+             '<div class="d1">' + esc(o.on || '') + '</div></div></div>';
+    }).join('');
+
+    T.overview += panel('Latest deliveries', n0((d.recent || []).length) + ' newest',
+      '<div class="rows">' + (recent4 ||
+        '<div class="sub2">Nothing delivered yet.</div>') + '</div>' +
+      more('orders', 'See detail'));
+
+    var newCprs = cprs.slice(0, 4).map(function(c){
+      var st = String(c.status || '').toUpperCase();
+      return '<div class="r1"><div><div class="a">' + esc(c.cpr) + '</div>' +
+             '<div class="b2">' + esc(c.createdOn || '') + ' · ' +
+             (c.qbPaymentId ? 'in QuickBooks' : 'not received') + '</div></div>' +
+             '<div><div class="c1">' + full(c.netAmount) + '</div>' +
+             '<div class="d1">' + esc(st || '') + '</div></div></div>';
+    }).join('');
+
+    T.overview += panel('Newest receipts',
+      n0(cprs.filter(function(c){ return !c.qbPaymentId; }).length) + ' not received',
+      '<div class="rows">' + (newCprs ||
+        '<div class="sub2">No receipts pulled in yet. Sign in to the courier ' +
+        'portal on the receipts page.</div>') + '</div>' +
+      more('payments', 'See detail'));
+
+    var pickTotal = picks.reduce(function(a, p){ return a + p.parcels; }, 0);
+    T.overview += panel('Handed over', picks.length + ' days',
+      '<div class="big">' + n0(pickTotal) + '</div>' +
+      '<div class="sub2">parcels given to the courier</div>' +
+      more('orders', 'Handed over'));
+
+    T.overview += '</div>';
+
+    /* the chart and the newest deliveries belong with the orders, not the summary */
+    T.orders += '<div class="box" style="margin-bottom:13px"><h3>Day by day' +
+      '<span class="aside">' + esc(d.from) + ' → ' + esc(d.to) + '</span></h3>' +
+      dayChart(days) + '</div>';
+
+    var tx = (d.recent || []).map(function(o){
+      return '<a href="#" data-find="' + esc(o.tracking) + '">' +
+             '<div><div class="tk">' + esc(o.tracking) + '</div>' +
+             '<div class="rf">' + esc(o.orderRef || '') + '</div></div>' +
+             '<div><div class="am">Rs ' + full(o.amount) + '</div>' +
+             '<div class="dt">' + esc(o.on || '') + '</div></div></a>';
+    }).join('');
+
+    T.orders += '<div class="box" style="margin-bottom:13px"><h3>Latest deliveries' +
+      '<span class="aside">newest first</span></h3>' +
+      '<div class="tx">' + (tx || '<div class="note">Nothing yet.</div>') + '</div></div>';
+
+    /* ==================== Orders ==================== */
+
+    var cells = '<button class="cell tot" data-group=""><div class="l">All orders</div>' +
+                '<div class="n">' + n0(t.orders) + '</div>' +
+                '<div class="m">' + money(t.amount) + '</div></button>';
+
+    st.forEach(function(s){
+      cells += '<button class="cell" data-status="' + esc(s.status) + '">' +
+               '<div class="l">' + esc(s.status) + '</div>' +
+               '<div class="n">' + n0(s.count) + '</div>' +
+               '<div class="m">' + money(s.amount) + '</div>' +
+               '<div class="m">' + pc(pct(s.count, t.orders)) + ' of booked</div></button>';
+    });
+
+    T.orders += '<div class="box" style="margin-bottom:13px"><h3>Every status' +
+                '<span class="aside">click any number to see the parcels</span></h3>' +
+                '<div class="grid">' + cells + '</div></div>';
+
+    var dayRows = '';
+    var dt = { booked:0, bookedAmount:0, delivered:0, deliveredAmount:0,
+               returned:0, returnedAmount:0 };
+
+    days.slice().reverse().forEach(function(x){
+      if(!x.booked && !x.delivered && !x.returned && !x.picked) return;
+      var s = x.delivered + x.returned;
+      dayRows += '<tr><td class="mono">' + esc(x.day) + '</td>' +
+                 '<td class="r">' + n0(x.booked) + '</td>' +
+                 '<td class="r">' + money(x.bookedAmount) + '</td>' +
+                 '<td class="r">' + n0(x.delivered) + '</td>' +
+                 '<td class="r">' + money(x.deliveredAmount) + '</td>' +
+                 '<td class="r">' + n0(x.returned) + '</td>' +
+                 '<td class="r">' + (s ? pc(pct(x.delivered, s)) : '—') + '</td></tr>';
+
+      dt.booked += x.booked; dt.bookedAmount += x.bookedAmount;
+      dt.delivered += x.delivered; dt.deliveredAmount += x.deliveredAmount;
+      dt.returned += x.returned; dt.returnedAmount += x.returnedAmount;
+    });
+
+    var dts = dt.delivered + dt.returned;
+    dayRows += '<tr class="tot"><td>Total</td>' +
+               '<td class="r">' + n0(dt.booked) + '</td>' +
+               '<td class="r">' + money(dt.bookedAmount) + '</td>' +
+               '<td class="r">' + n0(dt.delivered) + '</td>' +
+               '<td class="r">' + money(dt.deliveredAmount) + '</td>' +
+               '<td class="r">' + n0(dt.returned) + '</td>' +
+               '<td class="r">' + (dts ? pc(pct(dt.delivered, dts)) : '—') + '</td></tr>';
+
+    T.orders += '<div class="box" style="margin-bottom:13px"><h3>Every day, in numbers</h3>' +
+                '<div style="max-height:360px;overflow:auto"><table class="t">' +
+                '<tr><th>Day</th><th class="r">Booked</th><th class="r">Worth</th>' +
+                '<th class="r">Delivered</th><th class="r">Collected</th>' +
+                '<th class="r">Returned</th><th class="r">Rate</th></tr>' +
+                dayRows + '</table></div></div>';
+
+    var pickRows = picks.map(function(p){
+      return '<tr class="click" data-pickup="' + esc(p.day) + '">' +
+             '<td class="mono">' + esc(p.day) + '</td>' +
+             '<td class="r">' + n0(p.parcels) + '</td>' +
+             '<td class="r">' + full(p.amount) + '</td>' +
+             '<td class="r">' + n0(p.delivered) + '</td>' +
+             '<td class="r">' + (p.parcels ? pc(pct(p.delivered, p.parcels)) : '—') +
+             '</td></tr>';
+    }).join('');
+
+    T.orders += '<div class="box"><h3>Handed over' +
+                '<a href="/pickups.html' + (account ? '?account='+account : '') +
+                '">View every day</a></h3>' +
+                '<table class="t"><tr><th>Day</th><th class="r">Parcels</th>' +
+                '<th class="r">Worth</th><th class="r">Delivered since</th>' +
+                '<th class="r">Rate</th></tr>' +
+                (pickRows || '<tr><td colspan="5" style="color:var(--muted)">' +
+                  'Nothing picked up in this range.</td></tr>') +
+                '</table></div>';
+
+    /* ==================== Payments ==================== */
+
+    // NEW means the courier has not paid this one out yet, CLOSED means it is
+    // paid. The badge on the right is our own side of it.
+    var cprRows = cprs.map(function(c){
+      var s = String(c.status || '').toUpperCase();
+      var scls = s === 'CLOSED' ? 'ok' : (s === 'NEW' || s === 'OPEN' ? 'wait' : 'grey');
+
+      return '<tr class="click" data-goto="' + esc(c.remoteId) + '">' +
+             '<td class="mono">' + esc(c.cpr) + '</td>' +
+             '<td class="mono">' + esc(c.createdOn || '') + '</td>' +
+             '<td><span class="cpill ' + scls + '">' + esc(c.status || '—') + '</span></td>' +
+             '<td class="r">' + full(c.netAmount) + '</td>' +
+             '<td>' + cprBadges(c) + '</td></tr>';
+    }).join('');
+
+    T.payments += '<div class="box" style="margin-bottom:13px"><h3>Cash payment receipts' +
+      '<a href="/receipts.html' + (account ? '?account='+account : '') + '">Open receipts</a></h3>' +
+      '<table class="t"><tr><th>CPR number</th><th>Created</th><th>Status</th>' +
+      '<th class="r">Net amount</th><th>QuickBooks</th></tr>' +
+      (cprRows || '<tr><td colspan="5" style="color:var(--muted)">' +
+        'No receipts yet. Open <a href="/receipts.html' +
+        (account ? '?account='+account : '') + '">See detail</a> to sign in to the ' +
+        'courier portal and pull them in.</td></tr>') +
+      '</table></div>';
+
+    // Delivered and returned are settled one way or the other. Everything else
+    // is a parcel whose money has not landed yet.
+    var OWED = [
+      { g:'unbooked',    label:'Not booked yet' },
+      { g:'booked',      label:'Booked, not picked up' },
+      { g:'transit',     label:'On the way' },
+      { g:'review',      label:'Under verification' },
+      { g:'returning',   label:'Coming back' },
+      { g:'cancelled',   label:'Cancelled' },
+      { g:'transferred', label:'Transferred' },
+      { g:'expired',     label:'Expired' },
+      { g:'lost',        label:'Lost' },
+      { g:'damaged',     label:'Damaged' }
+    ];
+
+    var owedRows = '', owedCount = 0, owedAmount = 0;
+    OWED.forEach(function(o){
+      var x = g[o.g];
+      if(!x || !x.count) return;
+      owedCount += x.count; owedAmount += x.amount;
+      owedRows += '<tr class="click" data-group="' + o.g + '">' +
+                  '<td>' + esc(o.label) + '</td>' +
+                  '<td class="r">' + n0(x.count) + '</td>' +
+                  '<td class="r">' + full(x.amount) + '</td>' +
+                  '<td class="r">' + pc(pct(x.count, t.orders)) + '</td></tr>';
+    });
+
+    if(owedRows){
+      owedRows += '<tr class="tot"><td>Still to come</td>' +
+                  '<td class="r">' + n0(owedCount) + '</td>' +
+                  '<td class="r">' + full(owedAmount) + '</td>' +
+                  '<td class="r">' + pc(pct(owedCount, t.orders)) + '</td></tr>';
+    }
+
+    T.payments += '<div class="box"><h3>Money not in yet' +
+      '<span class="aside">click a row to see the parcels</span></h3>' +
+      '<table class="t"><tr><th>Where it is</th><th class="r">Parcels</th>' +
+      '<th class="r">Worth</th><th class="r">Of booked</th></tr>' +
+      (owedRows || '<tr><td colspan="4" style="color:var(--muted)">' +
+        'Every parcel in this range is settled.</td></tr>') +
+      '</table>' +
+      '<div class="note">Delivered ' + full(t.deliveredAmount) + ' has been collected. ' +
+      'What the courier has actually paid out is on the receipts above.</div></div>';
+
+    /* ==================== Cities ==================== */
+
+    // This table is what decides which courier gets which city, so it holds
+    // every number that bears on it - not just a bar.
+    var cityRows = (d.cities || []).map(function(c){
+      return '<tr class="click" data-city="' + esc(c.city) + '">' +
+             '<td>' + esc(c.city) + '</td>' +
+             '<td class="r">' + n0(c.count) + '</td>' +
+             '<td class="r">' + n0(c.delivered) + '</td>' +
+             '<td class="r">' + n0(c.returned) + '</td>' +
+             '<td class="r">' + n0(c.moving) + '</td>' +
+             '<td class="r">' + (c.lost ? n0(c.lost) : '—') + '</td>' +
+             '<td class="r" style="color:' + gradeColour(c.rate) + ';font-weight:600">' +
+               (c.settled ? pc(c.rate) : '—') + '</td>' +
+             '<td class="r">' + (c.settled ? pc(c.returnRate) : '—') + '</td>' +
+             '<td class="r">' + full(c.amount) + '</td>' +
+             '<td class="r">' + full(c.fee + c.tax) + '</td></tr>';
+    }).join('');
+
+    T.cities += '<div class="box" style="margin-bottom:13px"><h3>Every city' +
+      '<span class="aside">rate is delivered out of settled · click a row for the parcels' +
+      '</span></h3>' +
+      '<div style="max-height:560px;overflow:auto"><table class="t">' +
+      '<tr><th>City</th><th class="r">Parcels</th><th class="r">Delivered</th>' +
+      '<th class="r">Returned</th><th class="r">Moving</th><th class="r">Lost</th>' +
+      '<th class="r">Rate</th><th class="r">Return %</th>' +
+      '<th class="r">Collected</th><th class="r">Charges</th></tr>' +
+      (cityRows || '<tr><td colspan="10" style="color:var(--muted)">No cities.</td></tr>') +
+      '</table></div>' +
+      '<div class="note">Green is 90% or better, amber 75–90%, red under 75%. ' +
+      'Cities with only a handful of settled parcels swing wildly — read those ' +
+      'percentages with care.</div></div>';
+
+    var cmax = 0;
+    (d.cities || []).forEach(function(c){ if(c.count > cmax) cmax = c.count; });
+
+    var bars = (d.cities || []).slice(0, 15).map(function(c){
+      return '<div class="b"><span>' + esc(c.city) + '</span>' +
+        '<span class="track"><span class="fill" style="background:' + gradeColour(c.rate) +
+        ';width:' + (cmax ? 100*c.count/cmax : 0).toFixed(1) + '%"></span></span>' +
+        '<span class="num">' + n0(c.count) + ' · ' + pc(c.rate) + '</span></div>';
+    }).join('');
+
+    T.cities += '<div class="box" style="margin-bottom:13px"><h3>Busiest cities' +
+      '<span class="aside">bar is volume, colour is delivery rate</span></h3>' +
+      '<div class="bars">' + (bars || '<div class="note">No cities.</div>') + '</div></div>';
+
+    if((d.accounts || []).length > 1 || !account){
+      var accRows = (d.accounts || []).map(function(a){
+        return '<tr><td><a href="/courier-dash.html?account=' + a.id + '">' +
+               esc(a.label) + '</a></td>' +
+               '<td class="r">' + n0(a.orders) + '</td>' +
+               '<td class="r">' + n0(a.delivered) + '</td>' +
+               '<td class="r">' + n0(a.returned) + '</td>' +
+               '<td class="r" style="color:' + gradeColour(a.successRate) +
+                 ';font-weight:600">' + pc(a.successRate) + '</td>' +
+               '<td class="r">' + money(a.deliveredAmount) + '</td>' +
+               '<td class="r">' + money(a.pendingAmount) + '</td></tr>';
+      }).join('');
+
+      T.cities += '<div class="box"><h3>Accounts side by side</h3><table class="t">' +
+              '<tr><th>Account</th><th class="r">Orders</th><th class="r">Delivered</th>' +
+              '<th class="r">Returned</th><th class="r">Rate</th>' +
+              '<th class="r">Collected</th><th class="r">Pending</th></tr>' +
+              (accRows || '<tr><td colspan="7" style="color:var(--muted)">No accounts.</td></tr>') +
+              '</table></div>';
+    }
+
+    /* ==================== put it together ==================== */
+
+    ['overview','orders','payments','cities'].forEach(function(k){
+      html += '<div class="pane' + (k === tab ? ' on' : '') + '" data-pane="' + k + '">' +
+              (T[k] || '<div class="box"><div class="note">Nothing here.</div></div>') +
+              '</div>';
+    });
+
+    if(t.lastSeen){
+      html += '<div class="note">Newest order in the store: ' +
+              esc(new Date(t.lastSeen).toLocaleString()) + '</div>';
+    }
+
+    $('out').innerHTML = html;
+
+    // the red dot marks a tab that has something wrong sitting in it
+    var dotOn = lost > 0;
+    var ob = document.querySelector('#tabs button[data-tab="overview"]');
+    if(ob){
+      var had = ob.querySelector('.dot');
+      if(dotOn && !had) ob.insertAdjacentHTML('beforeend', '<span class="dot"></span>');
+      if(!dotOn && had) had.remove();
+    }
+
+    /* ---------- what everything on the page does ---------- */
+
+    var dl = document.getElementById('dlBooked');
+    if(dl){
+      dl.addEventListener('click', function(){
+        location.href = '/api/courier/export?' + params();
+      });
+    }
+
+    $('out').querySelectorAll('.more[data-go]').forEach(function(b){
+      b.addEventListener('click', function(){ showTab(b.getAttribute('data-go')); });
+    });
+    $('out').querySelectorAll('.cell').forEach(function(b){
+      b.addEventListener('click', function(){
+        openList({ status: b.getAttribute('data-status'), group: b.getAttribute('data-group') });
+      });
+    });
+    $('out').querySelectorAll('tr[data-group]').forEach(function(tr){
+      tr.addEventListener('click', function(){
+        openList({
+          group: tr.getAttribute('data-group'),
+          title: tr.cells[0] ? tr.cells[0].textContent : ''
+        });
+      });
+    });
+    $('out').querySelectorAll('tr[data-picked]').forEach(function(tr){
+      tr.addEventListener('click', function(){
+        openList({
+          picked: tr.getAttribute('data-picked'),
+          title: tr.cells[0] ? tr.cells[0].textContent : ''
+        });
+      });
+    });
+    $('out').querySelectorAll('tr[data-city]').forEach(function(tr){
+      tr.addEventListener('click', function(){
+        openList({ city: tr.getAttribute('data-city'), title: tr.getAttribute('data-city') });
+      });
+    });
+    $('out').querySelectorAll('[data-find]').forEach(function(a){
+      a.addEventListener('click', function(e){
+        e.preventDefault();
+        $('track').value = a.getAttribute('data-find');
+        findOne();
+      });
+    });
+    // a receipt is not something this page can show in full - the receipts
+    // page reads the courier's portal, so it opens there
+    $('out').querySelectorAll('[data-goto]').forEach(function(tr){
+      tr.addEventListener('click', function(){
+        location.href = '/receipts.html' + (account ? '?account=' + account : '') +
+                        '#cpr=' + encodeURIComponent(tr.getAttribute('data-goto'));
+      });
+    });
+    $('out').querySelectorAll('[data-pickup]').forEach(function(tr){
+      tr.addEventListener('click', function(){ openPickup(tr.getAttribute('data-pickup')); });
+    });
+  }
+
+  /* ---------- the drawer ---------- */
+
+  function openDrawer(title, note, body){
+    $('dTitle').textContent = title;
+    $('dNote').textContent = note || '';
+    $('dBody').innerHTML = body;
+    $('drawer').classList.add('open');
+  }
+  $('dClose').addEventListener('click', function(){ $('drawer').classList.remove('open'); });
+  $('drawer').addEventListener('click', function(e){
+    if(e.target === $('drawer')) $('drawer').classList.remove('open');
+  });
+
+  function orderTable(rows){
+    var lines = rows.map(function(o){
+      return '<tr><td class="mono">' + esc(o.orderRef || '') + '</td>' +
+             '<td class="mono">' + esc(o.tracking) + '</td>' +
+             '<td>' + esc(o.city || '') + '</td>' +
+             '<td class="r">' + full(o.amount) + '</td>' +
+             '<td class="mono">' + esc(o.bookedOn || '') + '</td>' +
+             '<td class="mono">' + esc(o.deliveredOn || '') + '</td>' +
+             '<td>' + esc(o.status) + '</td>' +
+             '<td class="mono">' + esc(o.cprNumber || '') + '</td></tr>';
+    }).join('');
+
+    return '<table class="t">' +
+      '<tr><th>Order ref</th><th>Tracking</th><th>City</th><th class="r">Amount</th>' +
+      '<th>Booked</th><th>Delivered</th><th>Status</th><th>CPR</th></tr>' +
+      (lines || '<tr><td colspan="8">Nothing here.</td></tr>') + '</table>';
+  }
+
+  function openList(what){
+    // a group has no name of its own worth showing, so the row that was
+    // clicked passes the words the person actually read
+    var title = what.status || what.cpr || what.title || 'All orders';
+    openDrawer(title, '', '<div class="loading">Reading\u2026</div>');
+
+    var ask = {};
+    Object.keys(what).forEach(function(k){ if(k !== 'title') ask[k] = what[k]; });
+
+    fetch('/api/courier/rows?'+params(ask), { cache:'no-store' })
+      .then(function(r){ return r.json(); })
+      .then(function(d){
+        if(d.error){ $('dBody').innerHTML = '<div class="msg">'+esc(d.error)+'</div>'; return; }
+        $('dNote').textContent = n0(d.count) + ' orders \u00b7 ' + full(d.amount);
+        $('dBody').innerHTML = orderTable(d.orders || []);
+      })
+      .catch(function(e){ $('dBody').innerHTML = '<div class="msg">'+esc(e.message)+'</div>'; });
+  }
+
+  function openPickup(day){
+    openDrawer('Handed over on ' + day, '', '<div class="loading">Reading\u2026</div>');
+
+    var p = new URLSearchParams();
+    p.set('day', day);
+    if(account) p.set('account', account);
+    if(courier) p.set('courier', courier);
+
+    fetch('/api/courier/pickups?'+p.toString(), { cache:'no-store' })
+      .then(function(r){ return r.json(); })
+      .then(function(d){
+        if(d.error){ $('dBody').innerHTML = '<div class="msg">'+esc(d.error)+'</div>'; return; }
+        $('dNote').textContent = n0(d.parcels) + ' parcels \u00b7 ' + full(d.amount);
+        $('dBody').innerHTML = orderTable(d.orders || []);
+      })
+      .catch(function(e){ $('dBody').innerHTML = '<div class="msg">'+esc(e.message)+'</div>'; });
+  }
+
+  function findOne(){
+    var q = $('track').value.trim();
+    if(!q) return;
+
+    openDrawer('Tracking ' + q, '', '<div class="loading">Looking for it\u2026</div>');
+
+    fetch('/api/courier/track?q=' + encodeURIComponent(q) + (account ? '&account='+account : ''),
+          { cache:'no-store' })
+      .then(function(r){ return r.json(); })
+      .then(function(d){
+        if(d.error){ $('dBody').innerHTML = '<div class="msg">'+esc(d.error)+'</div>'; return; }
+        if(!d.found){
+          $('dBody').innerHTML = '<div class="note">No courier here knows that number.</div>';
+          return;
+        }
+
+        var p = d.payment || {}, o = d.order;
+        var line = function(k, v){
+          return '<tr><td style="color:var(--faint);width:190px">' + esc(k) + '</td>' +
+                 '<td class="mono">' + esc(v == null || v === '' ? '\u2014' : v) + '</td></tr>';
+        };
+
+        var html = '<table class="t" style="margin-top:10px">';
+        html += line('Account', d.account.label);
+        html += line('Tracking number', p.tracking);
+        html += line('Order reference', p.orderRef || (o && o.orderRef));
+        if(o){
+          html += line('Status', o.status);
+          html += line('Amount', full(o.amount));
+          html += line('Courier fee', full(o.fee) + ' + tax ' + full(o.tax));
+          html += line('City', o.city);
+          html += line('Booked on', o.bookedOn);
+          html += line('Picked on', o.pickedOn);
+          html += line('Delivered on', o.deliveredOn);
+        }
+        html += line('Settled', p.settled ? 'yes' : 'not yet');
+        html += line('Settled on', p.settledOn);
+        html += line('CPR number', p.cprNumber);
+        html += '</table>';
+
+        $('dBody').innerHTML = html;
+      })
+      .catch(function(e){ $('dBody').innerHTML = '<div class="msg">'+esc(e.message)+'</div>'; });
+  }
+})();
+</script>
+</body>
+</html>

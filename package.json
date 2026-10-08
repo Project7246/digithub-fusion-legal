@@ -1,10 +1,11 @@
 {
-  "name": "qb-invoice-uploader",
+  "name": "digithub-fusion",
   "version": "1.0.0",
   "type": "module",
   "main": "server.js",
   "scripts": {
-    "start": "node server.js"
+    "start": "node server.js",
+    "postinstall": "node buildstamp.js"
   },
   "dependencies": {
     "cookie-parser": "^1.4.6",

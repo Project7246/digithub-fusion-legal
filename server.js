@@ -3,6 +3,7 @@ import multer from 'multer';
 import cookieParser from 'cookie-parser';
 import XLSX from 'xlsx';
 import crypto from 'crypto';
+import fs from 'node:fs';
 import {
   pool, initDb, saveCompany, getCompany, renameCompany, logUpload,
   getNegativeItems, setNegativeItems
@@ -135,10 +136,13 @@ const bulkUpload = multer({
 
 app.use(cookieParser());
 app.use(express.json({ limit: '50mb' }));
-// Which build is running. Render hands over the commit being deployed; anywhere
-// else, the moment the process started stands in for it. Every open page asks
-// for this now and then, and a different answer means a deploy has landed.
-const BUILD = process.env.RENDER_GIT_COMMIT || ('boot-' + Date.now());
+// Which build is running. The build step writes a stamp into .build-id, so it
+// changes when a deploy lands and stays put across a restart; if the file is not
+// there, the moment the process started stands in for it. Every open page asks for
+// this now and then, and a different answer means a deploy has landed.
+const BUILD = (() => {
+  try { return fs.readFileSync('.build-id', 'utf8').trim() || null; } catch { return null; }
+})() || ('boot-' + Date.now());
 const BUILD_AT = new Date().toISOString();
 
 app.get('/api/version', (req, res) => {

@@ -1,0 +1,1266 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Merge payments</title>
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="manifest" href="/manifest.json">
+<meta name="theme-color" content="#0F2E24">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/app.css">
+<style>
+  .step{background:var(--panel);border:1px solid var(--line);border-radius:10px;
+    padding:20px 24px;margin-bottom:16px}
+  .step h2{margin:0 0 4px;font-size:14.5px;font-weight:600}
+  .step .hint{font-size:12.5px;color:var(--muted);margin-bottom:14px}
+  .step.done{border-color:var(--qbo)}
+
+  .drop{border:1.5px dashed var(--line);border-radius:9px;padding:26px;text-align:center;
+    cursor:pointer;background:#fff;transition:.13s}
+  .drop:hover,.drop.over{border-color:var(--qbo);background:#F2FAF0}
+  .drop b{display:block;font-size:13.5px;margin-bottom:4px}
+  .drop small{font-size:12px;color:var(--muted)}
+
+  .files{margin-top:14px;display:grid;gap:10px}
+  .fcard{border:1px solid var(--line);border-radius:8px;background:#fff;overflow:hidden}
+  .fcard h4{margin:0;padding:9px 13px;font-size:12.5px;font-weight:600;
+    background:var(--tint);border-bottom:1px solid var(--line);
+    display:flex;justify-content:space-between;gap:10px;align-items:center}
+  .fcard h4 span{font-weight:400;color:var(--muted);font-size:11.5px}
+  .fcard .cols{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));
+    gap:10px;padding:12px 13px}
+  .fcard .cols label{display:block;font-size:10.5px;letter-spacing:.07em;
+    text-transform:uppercase;color:var(--faint);margin-bottom:3px}
+  .fcard .cols select{font-size:12px;padding:5px 7px}
+
+  .picks{display:flex;flex-wrap:wrap;gap:8px}
+  .pick{border:1px solid var(--line);background:#fff;border-radius:7px;padding:9px 14px;
+    cursor:pointer;font-size:13px;font-family:inherit;transition:.13s;text-align:left}
+  .pick:hover{border-color:var(--qbo)}
+  .pick.on{border-color:var(--qbo);background:#F2FAF0;font-weight:600}
+  .pick small{display:block;font-size:11px;color:var(--muted);font-weight:400;margin-top:2px}
+
+  .crumb{font-size:12px;color:var(--muted);margin-bottom:10px;font-family:var(--mono)}
+  .crumb b{color:var(--text)}
+
+  .tally{display:flex;gap:10px;flex-wrap:wrap;margin:16px 0}
+  .tally > div{flex:1;min-width:118px;border:1px solid var(--line);border-radius:8px;
+    padding:12px 14px;background:#fff}
+  .tally .n{font-family:var(--mono);font-size:22px;font-weight:500;line-height:1.1}
+  .tally .l{font-size:10.5px;letter-spacing:.08em;text-transform:uppercase;
+    color:var(--faint);margin-top:4px}
+  .tally .ok .n{color:var(--ok)}
+  .tally .warn .n{color:var(--warn)}
+
+  .strength{display:flex;gap:9px;flex-wrap:wrap;margin-bottom:14px}
+  .strength button{border:1px solid var(--line);background:#fff;border-radius:7px;
+    padding:9px 14px;cursor:pointer;font-size:13px;font-family:inherit;text-align:left}
+  .strength button.on{border-color:var(--qbo);background:#F2FAF0;font-weight:600}
+  .strength button small{display:block;font-size:11px;color:var(--muted);font-weight:400;
+    margin-top:2px}
+
+  .grp{border:1px solid var(--line);border-radius:8px;background:#fff;margin-bottom:9px;
+    overflow:hidden}
+  .grp .top{padding:9px 13px;display:flex;gap:12px;align-items:baseline;cursor:pointer;
+    font-size:12.5px}
+  .grp .top:hover{background:var(--tint)}
+  .grp .top b{font-weight:600}
+  .grp .top .who{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .grp .top .tag{font-size:10.5px;letter-spacing:.06em;text-transform:uppercase;
+    color:var(--faint)}
+  .grp .top .amt{font-family:var(--mono)}
+  .grp .body{border-top:1px solid var(--line);display:none}
+  .grp.open .body{display:block}
+  .grp table{width:100%;border-collapse:collapse;font-size:12px}
+  .grp th{text-align:left;font-size:10.5px;letter-spacing:.07em;text-transform:uppercase;
+    color:var(--faint);font-weight:600;padding:6px 13px;border-bottom:1px solid var(--line)}
+  .grp td{padding:5px 13px;border-bottom:1px solid var(--line);vertical-align:top}
+  .grp td.num{text-align:right;font-family:var(--mono)}
+
+  .lists{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:14px}
+  .lists .box{border:1px solid var(--line);border-radius:8px;overflow:hidden;background:#fff}
+  .lists .box h4{margin:0;padding:9px 13px;font-size:12px;font-weight:600;
+    background:var(--tint);border-bottom:1px solid var(--line)}
+  .lists .box .inner{max-height:280px;overflow:auto}
+  .lists table{width:100%;border-collapse:collapse;font-size:12px}
+  .lists td{padding:5px 13px;border-bottom:1px solid var(--line)}
+  .lists td.num{text-align:right;font-family:var(--mono)}
+  .lists .off{color:var(--warn);font-weight:600}
+
+  .row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+
+  textarea{width:100%;min-height:150px;font-family:var(--mono);font-size:11.5px;
+    line-height:1.5;padding:10px 12px;border:1px solid var(--line);border-radius:8px;
+    background:#fff;resize:vertical;white-space:pre;overflow-x:auto}
+
+  .cprhead{font-size:13px;font-weight:600;margin:22px 0 10px;padding-bottom:6px;
+    border-bottom:1px solid var(--line);display:flex;gap:10px;align-items:baseline}
+  .cprhead small{font-weight:400;font-size:11.5px;color:var(--muted)}
+
+  .cols2{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+  .cols2 label{display:block;font-size:11px;letter-spacing:.07em;text-transform:uppercase;
+    color:var(--faint);margin-bottom:4px}
+  .cols2 label span{text-transform:none;letter-spacing:0;color:var(--muted)}
+  .cols2 textarea{min-height:190px}
+  .cols2 button{margin-top:8px;font-size:12px;padding:6px 13px;border-radius:6px;
+    border:1px solid var(--line);background:#fff;cursor:pointer;font-family:inherit}
+  .cols2 button:hover{border-color:var(--qbo)}
+  @media (max-width:800px){ .cols2{grid-template-columns:1fr} }
+
+  .prog{height:6px;background:var(--line);border-radius:3px;overflow:hidden;margin:14px 0 8px}
+  .prog i{display:block;height:100%;width:0;background:var(--qbo);transition:width .3s}
+  .paylog{background:#0F2E24;color:#CFE8D8;border-radius:8px;padding:12px 15px;
+    font-family:var(--mono);font-size:11.5px;line-height:1.7;max-height:200px;
+    overflow:auto}
+  .paylog .fail{color:#FF9C9C}
+
+  .grpbox{margin-bottom:18px}
+  .grpbox h4{margin:0 0 8px;font-size:12.5px;font-weight:600;display:flex;
+    align-items:center;gap:8px}
+  .grpbox .dot{width:8px;height:8px;border-radius:50%;background:var(--faint);flex:none}
+  .grpbox .dot.ok{background:var(--ok)}
+  .grpbox .dot.warn{background:var(--warn)}
+  .grpbox .dot.bad{background:var(--bad)}
+  .grpbox .why{padding:8px 13px;font-size:11.5px;color:var(--muted);line-height:1.6}
+  .grp .top .offnum,.grp .body .offnum{color:var(--warn);font-weight:600}
+  .grp .body .why{border-top:1px solid var(--line)}
+
+  .tabs{display:flex;gap:2px;border-bottom:1px solid var(--line);margin-bottom:20px}
+  .tabs a{padding:12px 20px;font-size:13.5px;color:var(--muted);text-decoration:none;
+    border-bottom:2px solid transparent;margin-bottom:-1px}
+  .tabs a:hover{color:var(--ink)}
+  .tabs a.on{color:var(--ink);font-weight:600;border-bottom-color:var(--qbo)}
+
+  /* take the shipping off pasted invoices - its own little table */
+  .shiptbl{border:1px solid var(--line);border-radius:8px;overflow:auto;max-height:420px;
+    background:#fff}
+  .shiptbl table{width:100%;border-collapse:collapse;font-size:12.5px}
+  .shiptbl th{position:sticky;top:0;background:#F7F8F7;text-align:left;font-weight:600;
+    font-size:10.5px;letter-spacing:.06em;text-transform:uppercase;color:var(--faint);
+    padding:9px 12px;border-bottom:1px solid var(--line);white-space:nowrap}
+  .shiptbl td{padding:8px 12px;border-bottom:1px solid var(--line);vertical-align:top;
+    white-space:nowrap}
+  .shiptbl tr:last-child td{border-bottom:0}
+  .shiptbl td.num{text-align:right;font-family:var(--mono)}
+  .shiptbl td.mono{font-family:var(--mono)}
+  .shiptbl td.ship{white-space:normal;font-size:11.5px;color:var(--muted);max-width:320px}
+  .shiptbl td.ship b{font-family:var(--mono);font-weight:500;color:var(--text)}
+  .shiptbl td.tick{width:34px}
+  .shiptbl td.tick input{accent-color:var(--qbo);width:15px;height:15px;margin:0}
+  .shiptbl tr.off{opacity:.45}
+  #stepShip textarea{min-height:120px}
+</style>
+</head>
+<body>
+
+<div class="layout">
+  <aside class="rail"></aside>
+
+  <div class="main">
+    <div class="topline">
+      <div>
+        <h1>Merge payments</h1>
+        <div class="sub">Find the orders that went to one customer, then see how the courier wrote them in a CPR.</div>
+      </div>
+    </div>
+
+    <div class="shell">
+
+      <div id="gate" class="gate hide">
+        <img src="/logo.svg" alt="">
+        <h2>Connect your QuickBooks company</h2>
+        <p>Everything on this page comes straight from your company file.</p>
+        <button class="solid" id="btnConnect">Connect to QuickBooks</button>
+      </div>
+
+      <div id="body" class="hide">
+
+        <div class="tabs">
+          <a href="/payments.html">Receive payments</a>
+          <a class="on" href="/merge.html">Merge payments</a>
+          <a href="/checklist.html">Check list</a>
+        </div>
+
+        <div class="step" id="stepFiles">
+          <h2>Shopify orders</h2>
+          <div class="hint">The month's exports from your own computer - CSV or Excel, as many
+            files as you like. Nothing is saved to Drive or to QuickBooks.</div>
+
+          <div class="drop" id="drop">
+            <b>Drop the files here</b>
+            <small>or click to choose them</small>
+          </div>
+          <input type="file" id="fileIn" multiple accept=".csv,.xlsx,.xls,.xlsm"
+                 style="display:none">
+
+          <div class="files" id="fileList"></div>
+          <div class="row" id="fileActs" style="margin-top:12px;display:none">
+            <button class="solid" id="btnGroups">Find the groups</button>
+            <button id="btnClear">Start again</button>
+          </div>
+        </div>
+
+        <div class="step hide" id="stepGroups">
+          <h2>Same customer, more than one order</h2>
+          <div class="hint" id="grpHint"></div>
+
+          <div class="strength" id="strength"></div>
+          <div class="strength" id="timing"></div>
+          <div class="tally" id="grpTally"></div>
+          <div class="row" style="margin-bottom:12px">
+            <button id="btnCsv">Download the groups</button>
+            <button id="btnNext" class="solid">Match against pasted CPR rows</button>
+          </div>
+          <div id="grpList"></div>
+          <div id="grpMore" style="font-size:12px;color:var(--muted);margin-top:8px"></div>
+        </div>
+
+        <div class="step hide" id="stepPaste">
+          <h2>Paste the CPR rows</h2>
+          <div class="hint">Copy the rows out of the CPR sheet - header row and all -
+            and paste them here. As many CPRs at a time as you like.</div>
+          <textarea id="pasteIn" spellcheck="false"
+            placeholder="CPR Date	CPR Number	ORDER_REF_NUMBER	TRACKING	...	COD_AMOUNT&#10;8/4/2026	CPR-6L4DB532992	#91328057	24652550	...	1197"></textarea>
+          <div class="row" style="margin-top:12px">
+            <button class="solid" id="btnPaste">Match these against Shopify</button>
+            <span id="pasteNote" style="font-size:12px;color:var(--muted)"></span>
+          </div>
+        </div>
+
+        <div class="step hide" id="stepOut">
+          <h2>What these CPRs come to</h2>
+          <div class="hint" id="outHint"></div>
+          <div class="tally" id="outTally"></div>
+          <div class="lists" id="outLists"></div>
+        </div>
+
+        <div class="step hide" id="stepDo">
+          <h2>Put it right</h2>
+          <div class="hint" id="doHint"></div>
+
+          <div class="row">
+            <button class="solid" id="btnStrip" data-need="merge">Take the shipping off in QuickBooks</button>
+            <button id="btnStripStop" style="display:none;background:var(--neg);color:#fff">Stop</button>
+            <span id="stripNote" style="font-size:12px;color:var(--muted)"></span>
+          </div>
+          <div id="stripRun" class="hide">
+            <div class="prog"><i id="stripBar"></i></div>
+            <div class="paylog" id="stripLog"></div>
+            <div class="row">
+              <button id="btnStripCarry" data-need="merge" style="display:none">Carry on</button>
+              <button id="btnStripClearLog" data-need="merge" style="display:none">Clear log</button>
+            </div>
+          </div>
+
+          <div id="backBox" style="margin-top:18px">
+            <div style="font-size:12.5px;color:var(--muted);line-height:1.6;margin-bottom:10px">
+              Copy each block and paste it back into the sheet, over the rows you copied
+              from. The first goes into the ORDER_REF_NUMBER column, the second into a new
+              Remarks column beside it. Then Receive payments pays each cell as one parcel.
+            </div>
+            <div class="cols2">
+              <div>
+                <label>ORDER_REF_NUMBER <span id="backCount"></span></label>
+                <textarea id="backOrders" readonly spellcheck="false"></textarea>
+                <button id="btnCopyOrders">Copy this column</button>
+              </div>
+              <div>
+                <label>Remarks</label>
+                <textarea id="backRemarks" readonly spellcheck="false"></textarea>
+                <button id="btnCopyRemarks">Copy this column</button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Its own thing: no CPR, no arithmetic - the numbers are known and the
+             shipping line on them has to come off. -->
+        <div class="step" id="stepShip">
+          <h2>Take the shipping off pasted invoices</h2>
+          <div class="hint">Nothing above is needed for this. Paste the invoice numbers,
+            look at the shipping line found on each one, and take it off. Everything else
+            on the invoice &mdash; the products, the customer, the date, the tax &mdash;
+            stays exactly as it is.</div>
+
+          <textarea id="shipIn" spellcheck="false"
+            placeholder="One invoice number a line&#10;91306999&#10;WH1132&#10;#91307004"></textarea>
+
+          <div class="row" style="margin-top:10px">
+            <button class="solid" id="btnShipFind">Find these invoices</button>
+            <button id="btnShipClear">Start again</button>
+            <span id="shipNote2" style="font-size:12px;color:var(--muted)"></span>
+          </div>
+
+          <div id="shipOut" class="hide" style="margin-top:16px">
+            <div class="tally" id="shipTally"></div>
+
+            <div class="row" style="margin-bottom:10px">
+              <button id="btnShipAll">Tick all that can be done</button>
+              <button id="btnShipNone">Untick all</button>
+            </div>
+
+            <div class="shiptbl">
+              <table>
+                <thead>
+                  <tr>
+                    <th></th>
+                    <th>Invoice</th>
+                    <th>Date</th>
+                    <th>Customer</th>
+                    <th>Shipping line</th>
+                    <th class="num">Shipping</th>
+                    <th class="num">Invoice total</th>
+                    <th>State</th>
+                  </tr>
+                </thead>
+                <tbody id="shipRows"></tbody>
+              </table>
+            </div>
+
+            <div class="row" style="margin-top:14px">
+              <button class="solid" id="btnShipRun" data-need="merge">Take the shipping off</button>
+              <button id="btnShipStop" style="display:none;background:var(--neg);color:#fff">Stop</button>
+              <span id="shipRunNote" style="font-size:12px;color:var(--muted)"></span>
+            </div>
+
+            <div id="shipRun" class="hide">
+              <div class="prog"><i id="shipBar"></i></div>
+              <div class="paylog" id="shipLog"></div>
+              <div class="row">
+                <button id="btnShipCarry" data-need="merge" style="display:none">Carry on</button>
+                <button id="btnShipClearLog" data-need="merge" style="display:none">Clear log</button>
+              </div>
+            </div>
+          </div>
+
+          <div class="stat" id="shipStat"></div>
+        </div>
+
+        <div class="stat" id="statBox"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="/nav.js"></script>
+<script>
+(function(){
+  "use strict";
+  var $ = function(id){ return document.getElementById(id); };
+
+  var S = {
+    files: [], orders: 0,
+    minFields: 4, timeMode: 'day', groups: [],
+    plan: null
+  };
+
+  var FIELDS = [
+    ['order',    'Order number'],
+    ['customer', 'Customer name'],
+    ['phone',    'Phone'],
+    ['email',    'Email'],
+    ['address',  'Address'],
+    ['address2', 'Address line 2'],
+    ['city',     'City'],
+    ['total',    'Order total'],
+    ['date',     'Order date']
+  ];
+
+  function money(n){
+    var v = Number(n || 0);
+    var p = Math.abs(v).toFixed(2).split('.');
+    return (v < 0 ? '-' : '') + p[0].replace(/\B(?=(\d{3})+(?!\d))/g, ',') + '.' + p[1];
+  }
+  function nf(n){ return String(n).replace(/\B(?=(\d{3})+(?!\d))/g, ','); }
+  function clock(ms){
+    if(!ms) return '';
+    var d = new Date(ms);
+    var h = d.getHours(), m = d.getMinutes();
+    var ap = h < 12 ? 'am' : 'pm';
+    h = h % 12; if(h === 0) h = 12;
+    return d.getDate() + '/' + (d.getMonth() + 1) + ' ' + h + ':' +
+           (m < 10 ? '0' : '') + m + ap;
+  }
+  function esc(s){
+    return String(s == null ? '' : s)
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  }
+  function say(cls, html){
+    $('statBox').className = 'stat' + (cls ? ' ' + cls : '');
+    $('statBox').innerHTML = html;
+  }
+  function clearSay(){ $('statBox').className = 'stat'; $('statBox').textContent = ''; }
+
+  // an upload that is refused on the way in comes back with no body at all, so
+  // the reply is read as text first and the status is what gets reported
+  function body(r){
+    return r.text().then(function(t){
+      if(!t){
+        if(r.status === 413) throw new Error('The files were too big for the server to accept. ' +
+          'Split the month into smaller exports and drop them again.');
+        throw new Error('The server sent nothing back (' + r.status + ').');
+      }
+      var d;
+      try { d = JSON.parse(t); }
+      catch(e){
+        throw new Error('The server did not answer with data (' + r.status + '): ' +
+          t.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 140));
+      }
+      if(d.error) throw new Error(d.error);
+      return d;
+    });
+  }
+
+  function get(url){
+    return fetch(url, { cache: 'no-store' }).then(body);
+  }
+  function post(url, data){
+    return fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data || {})
+    }).then(body);
+  }
+
+  function hideFrom(step){
+    var order = ['stepGroups','stepPaste','stepOut','stepDo'];
+    var i = order.indexOf(step);
+    if(i < 0) return;
+    order.slice(i).forEach(function(id){ $(id).classList.add('hide'); });
+  }
+
+  $('btnConnect').addEventListener('click', function(){ location.href = '/auth/connect'; });
+
+  window.APP.ready.then(function(s){
+    if(!s.connected){ $('gate').classList.remove('hide'); return; }
+    $('body').classList.remove('hide');
+
+    // an upload from earlier is still in the server's hands
+    get('/api/merge/state').then(function(d){
+      if(!d.loaded) return;
+      S.files = d.files;
+      S.orders = d.orders;
+      drawFiles();
+    }).catch(function(){});
+  });
+
+  /* ---------- the files ---------- */
+
+  $('drop').addEventListener('click', function(){ $('fileIn').click(); });
+  $('fileIn').addEventListener('change', function(){
+    if(this.files && this.files.length) send(this.files);
+    this.value = '';
+  });
+  ['dragenter','dragover'].forEach(function(ev){
+    $('drop').addEventListener(ev, function(e){
+      e.preventDefault(); $('drop').classList.add('over');
+    });
+  });
+  ['dragleave','drop'].forEach(function(ev){
+    $('drop').addEventListener(ev, function(e){
+      e.preventDefault(); $('drop').classList.remove('over');
+    });
+  });
+  $('drop').addEventListener('drop', function(e){
+    if(e.dataTransfer && e.dataTransfer.files.length) send(e.dataTransfer.files);
+  });
+
+  function send(fileList){
+    var fd = new FormData();
+    Array.prototype.forEach.call(fileList, function(f){ fd.append('files', f); });
+
+    say('', 'Reading ' + fileList.length + ' file' + (fileList.length === 1 ? '' : 's') + '...');
+    fetch('/api/merge/upload', { method: 'POST', body: fd })
+      .then(body)
+      .then(function(d){
+        clearSay();
+        S.files = d.files;
+        S.orders = d.orders;
+        S.groups = [];
+        hideFrom('stepGroups');
+        drawFiles();
+      })
+      .catch(function(e){ say('bad', '<b>' + esc(e.message) + '</b>'); });
+  }
+
+  function drawFiles(){
+    var box = $('fileList');
+    box.innerHTML = '';
+
+    S.files.forEach(function(f){
+      var card = document.createElement('div');
+      card.className = 'fcard';
+
+      var head = document.createElement('h4');
+      head.innerHTML = esc(f.name) +
+        '<span>' + nf(f.rows) + ' rows &middot; ' + nf(f.orders) + ' orders</span>';
+      card.appendChild(head);
+
+      var cols = document.createElement('div');
+      cols.className = 'cols';
+
+      FIELDS.forEach(function(fd){
+        var wrap = document.createElement('div');
+        var lab = document.createElement('label');
+        lab.textContent = fd[1];
+
+        var sel = document.createElement('select');
+        var none = document.createElement('option');
+        none.value = '-1'; none.textContent = '- none -';
+        sel.appendChild(none);
+
+        f.header.forEach(function(h, i){
+          var o = document.createElement('option');
+          o.value = String(i);
+          o.textContent = h || ('(column ' + (i + 1) + ')');
+          sel.appendChild(o);
+        });
+
+        sel.value = String(f.cols[fd[0]] === undefined ? -1 : f.cols[fd[0]]);
+        sel.addEventListener('change', function(){
+          var cols = {};
+          cols[fd[0]] = Number(sel.value);
+          post('/api/merge/columns', { file: f.name, cols: cols }).then(function(d){
+            S.files = d.files;
+            S.orders = d.orders;
+            S.groups = [];
+            hideFrom('stepGroups');
+            drawFiles();
+          }).catch(function(e){ say('bad', '<b>' + esc(e.message) + '</b>'); });
+        });
+
+        wrap.appendChild(lab);
+        wrap.appendChild(sel);
+        cols.appendChild(wrap);
+      });
+
+      card.appendChild(cols);
+      box.appendChild(card);
+    });
+
+    $('fileActs').style.display = S.files.length ? 'flex' : 'none';
+    $('stepFiles').classList.toggle('done', !!S.files.length);
+  }
+
+  $('btnClear').addEventListener('click', function(){
+    post('/api/merge/clear').then(function(){
+      S.files = []; S.orders = 0; S.groups = [];
+      $('fileList').innerHTML = '';
+      $('fileActs').style.display = 'none';
+      $('stepFiles').classList.remove('done');
+      hideFrom('stepGroups');
+      clearSay();
+    });
+  });
+
+  /* ---------- grouping ---------- */
+
+  var STRENGTH = [
+    [4, 'All four match', 'Name, address, phone and email - the same on every order.'],
+    [3, 'At least three', 'One detail may differ - a typo in the address, say.'],
+    [2, 'At least two',   'Loosest. Two details agreeing is enough to call it one customer.']
+  ];
+
+  var TIMING = [
+    ['day',    'Ordered the same day',
+     'One parcel is one day of ordering. The same customer next week is a second parcel.'],
+    ['window', 'Within 24 hours',
+     'Orders close together in time, even side of midnight.'],
+    ['any',    'Any date',
+     'Date ignored - every order that customer ever placed lands in one group.']
+  ];
+
+  $('btnGroups').addEventListener('click', function(){ scan(); });
+
+  function drawStrength(){
+    var box = $('strength');
+    box.innerHTML = '';
+    STRENGTH.forEach(function(s){
+      var b = document.createElement('button');
+      if(s[0] === S.minFields) b.className = 'on';
+      b.innerHTML = '<b>' + esc(s[1]) + '</b><small>' + esc(s[2]) + '</small>';
+      b.addEventListener('click', function(){ S.minFields = s[0]; scan(); });
+      box.appendChild(b);
+    });
+
+    var tbox = $('timing');
+    tbox.innerHTML = '';
+    TIMING.forEach(function(t){
+      var b = document.createElement('button');
+      if(t[0] === S.timeMode) b.className = 'on';
+      b.innerHTML = '<b>' + esc(t[1]) + '</b><small>' + esc(t[2]) + '</small>';
+      b.addEventListener('click', function(){ S.timeMode = t[0]; scan(); });
+      tbox.appendChild(b);
+    });
+  }
+
+  function scan(){
+    say('', 'Reading ' + nf(S.orders) + ' orders...');
+    $('btnGroups').disabled = true;
+
+    post('/api/merge/scan', {
+      minFields: S.minFields,
+      timeMode: S.timeMode
+    }).then(function(d){
+      $('btnGroups').disabled = false;
+      clearSay();
+      S.groups = d.groups;
+      $('stepGroups').classList.remove('hide');
+      hideFrom('stepPaste');
+      drawStrength();
+      drawGroups(d);
+    }).catch(function(e){
+      $('btnGroups').disabled = false;
+      say('bad', '<b>' + esc(e.message) + '</b>');
+    });
+  }
+
+  function drawGroups(d){
+    var t = d.totals;
+    $('grpHint').innerHTML = nf(d.orders) + ' orders read &middot; ' +
+      nf(t.groups) + ' customer' + (t.groups === 1 ? '' : 's') +
+      ' with more than one order &middot; ' + nf(t.orders) + ' orders inside them';
+
+    $('grpTally').innerHTML =
+      '<div class="ok"><div class="n">' + nf(t.groups) + '</div>' +
+        '<div class="l">Groups</div></div>' +
+      '<div><div class="n">' + nf(t.orders) + '</div>' +
+        '<div class="l">Orders in groups</div></div>' +
+      t.byTier.map(function(x){
+        return '<div><div class="n">' + nf(x.groups) + '</div>' +
+               '<div class="l">' + x.fields + ' details agree</div></div>';
+      }).join('');
+
+    var box = $('grpList');
+    box.innerHTML = '';
+
+    // the server keeps them all; only the first few hundred are sent over
+    S.groups.forEach(function(g){ box.appendChild(groupCard(g)); });
+
+    $('grpMore').textContent = t.groups > S.groups.length
+      ? 'Showing the first ' + S.groups.length + ' of ' + nf(t.groups) +
+        ' - download the file to see them all. Matching uses every one of them.'
+      : '';
+  }
+
+  function groupCard(g){
+    var el = document.createElement('div');
+    el.className = 'grp';
+
+    var top = document.createElement('div');
+    top.className = 'top';
+    top.innerHTML =
+      '<b>#' + g.id + '</b>' +
+      '<span class="who">' + esc(g.customer || '(no name)') +
+        (g.phone ? ' &middot; ' + esc(g.phone) : '') + '</span>' +
+      '<span class="tag">' + g.orders.length + ' orders' +
+        (g.orders[0].date ? ' &middot; ' + esc(g.orders[0].date) : '') + ' &middot; ' +
+        esc(g.agree.join(' + ') || 'nothing') + '</span>' +
+      '<span class="amt">' + money(g.total) + '</span>';
+    top.addEventListener('click', function(){ el.classList.toggle('open'); });
+    el.appendChild(top);
+
+    var body = document.createElement('div');
+    body.className = 'body';
+    body.innerHTML =
+      '<table><tr><th>Order</th><th>Customer</th><th>Phone</th><th>Address</th>' +
+      '<th style="text-align:right">Total</th><th>Date</th></tr>' +
+      g.orders.map(function(o){
+        return '<tr><td>' + esc(o.order) + '</td><td>' + esc(o.customer) + '</td>' +
+               '<td>' + esc(o.phone) + '</td><td>' + esc(o.address) + '</td>' +
+               '<td class="num">' + money(o.total) + '</td>' +
+               '<td>' + esc(o.date || '') + '</td></tr>';
+      }).join('') + '</table>';
+    el.appendChild(body);
+
+    return el;
+  }
+
+  $('btnCsv').addEventListener('click', function(){ location.href = '/api/merge/csv'; });
+
+  $('btnNext').addEventListener('click', function(){
+    if(!S.groups.length) return say('bad', '<b>No groups to match yet.</b>');
+    $('stepPaste').classList.remove('hide');
+    $('pasteIn').focus();
+  });
+
+  /* ---------- the pasted CPR rows ---------- */
+
+  $('btnPaste').addEventListener('click', function(){
+    var text = $('pasteIn').value;
+    if(!text.trim()) return say('bad', '<b>Paste the rows first.</b>');
+
+    $('btnPaste').disabled = true;
+    say('', 'Reading the rows and asking QuickBooks...');
+
+    post('/api/merge/paste', { text: text }).then(function(d){
+      $('btnPaste').disabled = false;
+      clearSay();
+      $('pasteNote').textContent = nf(d.pastedRows) + ' rows read, ' +
+        d.cprs.length + ' CPR' + (d.cprs.length === 1 ? '' : 's');
+      drawOut(d);
+    }).catch(function(e){
+      $('btnPaste').disabled = false;
+      say('bad', '<b>' + esc(e.message) + '</b>');
+    });
+  });
+
+  /* ---------- putting it right ---------- */
+
+  function drawDo(d){
+    var t = d.totals;
+    $('stepDo').classList.remove('hide');
+
+    $('doHint').innerHTML =
+      (t.fix
+        ? nf(t.shipping) + ' shipping charge' + (t.shipping === 1 ? '' : 's') +
+          ' to come off, across ' + nf(t.fix) + ' group' + (t.fix === 1 ? '' : 's') + '. '
+        : 'No shipping charges need to come off. ') +
+      (t.manual ? nf(t.manual) + ' group' + (t.manual === 1 ? '' : 's') +
+        ' need a manual check and are left alone. ' : '') +
+      'Nothing has been changed yet.';
+
+    $('btnStrip').disabled = !t.fix;
+    loadBack();
+  }
+
+  function loadBack(){
+    get('/api/merge/columns-back').then(function(d){
+      $('backOrders').value = d.orders;
+      $('backRemarks').value = d.remarks;
+      $('backCount').textContent = '- ' + nf(d.changed) + ' of ' + nf(d.rows) +
+        ' rows get a group written in';
+    }).catch(function(e){ say('bad', '<b>' + esc(e.message) + '</b>'); });
+  }
+
+  function copyBox(id, btn){
+    var box = $(id);
+    box.select();
+    box.setSelectionRange(0, box.value.length);
+    try { document.execCommand('copy'); } catch(e){}
+    var was = btn.textContent;
+    btn.textContent = 'Copied';
+    setTimeout(function(){ btn.textContent = was; }, 1400);
+  }
+
+  $('btnCopyOrders').addEventListener('click', function(){
+    copyBox('backOrders', $('btnCopyOrders'));
+  });
+  $('btnCopyRemarks').addEventListener('click', function(){
+    copyBox('backRemarks', $('btnCopyRemarks'));
+  });
+
+  $('btnStrip').addEventListener('click', function(){
+    $('btnStrip').disabled = true;
+    post('/api/merge/strip', {}).then(function(d){
+      $('stripRun').classList.remove('hide');
+      $('btnStripStop').style.display = '';
+      $('stripNote').textContent = d.invoices + ' invoices in ' + d.groups + ' groups...';
+      pollStrip();
+    }).catch(function(e){
+      $('btnStrip').disabled = false;
+      say('bad', '<b>' + esc(e.message) + '</b>');
+    });
+  });
+
+  $('btnStripCarry').addEventListener('click', function(){ $('btnStrip').click(); });
+  $('btnStripClearLog').addEventListener('click', function(){
+    post('/api/merge/strip-clear-log', {}).then(function(){
+      $('stripLog').innerHTML = '';
+      $('stripNote').textContent = '';
+      $('stripRun').classList.add('hide');
+      $('btnStripCarry').style.display = 'none';
+      $('btnStripClearLog').style.display = 'none';
+      clearSay();
+    }).catch(function(e){ say('bad', '<b>' + esc(e.message) + '</b>'); });
+  });
+
+  $('btnStripStop').addEventListener('click', function(){
+    post('/api/merge/strip-stop', {}).catch(function(){});
+  });
+
+  function pollStrip(){
+    get('/api/merge/strip-status').then(function(j){
+      $('stripBar').style.width = j.total ? (100 * j.done / j.total) + '%' : '0';
+      $('stripNote').textContent = j.done + ' of ' + j.total + ' invoices' +
+        (j.failed ? ' - ' + j.failed + ' would not go through' : '');
+
+      $('stripLog').innerHTML = j.log.map(function(l){
+        return l.ok
+          ? esc(l.doc) + ' - shipping off, now ' + money(l.total)
+          : '<span class="fail">' + esc(l.doc) + ' - ' + esc(l.msg) + '</span>';
+      }).join('<br>');
+      $('stripLog').scrollTop = $('stripLog').scrollHeight;
+
+      $('btnStripCarry').style.display = 'none';
+      $('btnStripClearLog').style.display = 'none';
+      if(j.running){ setTimeout(pollStrip, 1200); return; }
+
+      $('btnStripStop').style.display = 'none';
+      $('btnStrip').disabled = false;
+      // once the run is over: carry on with what is left, or clear the log
+      var stripLeft = Math.max(0, j.total - (j.done - (j.failed || 0)));
+      $('btnStripCarry').style.display = stripLeft ? '' : 'none';
+      $('btnStripCarry').textContent = 'Carry on (' + stripLeft + ' left)';
+      $('btnStripClearLog').style.display = j.total ? '' : 'none';
+      if(j.error) say('bad', '<b>' + esc(j.error) + '</b>');
+      else if(!j.failed && j.total){
+        say('ok', '<b>Done.</b> The shipping is off ' + j.done +
+          ' invoices, so those groups now come to what the CPR collected. ' +
+          'Paste the columns back into the sheet, then receive them on the ' +
+          '<a href="/payments.html">Receive payments</a> page - a cell with several ' +
+          'numbers in it is paid as one parcel.');
+      }
+    }).catch(function(e){
+      $('btnStrip').disabled = false;
+      say('bad', '<b>' + esc(e.message) + '</b>');
+    });
+  }
+
+  /* ---------- the answer ---------- */
+
+  var STATE = {
+    agrees:  ['ok',   'Agrees with the sheet'],
+    fix:     ['warn', 'Shipping to come off'],
+    stuck:   ['bad',  'Manual check - the difference is not shipping'],
+    paid:    ['bad',  'Manual check - an invoice is already paid'],
+    missing: ['bad',  'Manual check - an invoice is not in QuickBooks']
+  };
+
+  function drawOut(d){
+    $('stepOut').classList.remove('hide');
+    var t = d.totals;
+    S.plan = d;
+
+    $('outHint').innerHTML =
+      nf(d.pastedRows) + ' rows pasted &middot; ' + d.cprs.length + ' CPR' +
+      (d.cprs.length === 1 ? '' : 's') + ' &middot; ' +
+      nf(t.groups) + ' of those rows carry a group' +
+      (d.strangers && d.strangers.count
+        ? ' &middot; <span style="color:var(--warn)">' + nf(d.strangers.count) +
+          ' rows are in none of the uploaded files (' +
+          d.strangers.rows.slice(0, 6).map(function(r){ return esc(r.invoice); }).join(', ') +
+          (d.strangers.count > 6 ? ', ...' : '') + ')</span>'
+        : '');
+
+    $('outTally').innerHTML =
+      '<div><div class="n">' + nf(t.groups) + '</div>' +
+        '<div class="l">Groups found</div></div>' +
+      '<div class="ok"><div class="n">' + nf(t.agrees) + '</div>' +
+        '<div class="l">Already agree</div></div>' +
+      '<div class="warn"><div class="n">' + nf(t.fix) + '</div>' +
+        '<div class="l">Shipping to remove</div></div>' +
+      '<div class="warn"><div class="n">' + nf(t.shipping) + '</div>' +
+        '<div class="l">Shipping lines</div></div>' +
+      '<div class="warn"><div class="n">' + nf(t.manual) + '</div>' +
+        '<div class="l">Manual check</div></div>' +
+      '<div class="warn"><div class="n">' + nf(t.twice) + '</div>' +
+        '<div class="l">In two rows</div></div>';
+
+    var out = $('outLists');
+    out.innerHTML = '';
+    out.style.display = 'block';
+
+    if(d.canWrite) drawDo(d);
+
+    if(!d.byCpr.length){
+      out.innerHTML = '<div style="font-size:13px;color:var(--muted)">' +
+        'None of the pasted rows belong to a customer who ordered more than once ' +
+        'that day. Nothing here needs merging.</div>';
+      return;
+    }
+
+    d.byCpr.forEach(function(c){
+      var head = document.createElement('div');
+      head.className = 'cprhead';
+      head.innerHTML = esc(c.cprNumber) +
+        '<small>' + nf(c.rows) + ' rows pasted &middot; ' + c.plans.length + ' group' +
+        (c.plans.length === 1 ? '' : 's') +
+        (c.twice.length ? ' &middot; ' + c.twice.length + ' written twice' : '') + '</small>';
+      out.appendChild(head);
+
+      if(c.twice.length) out.appendChild(twiceBox(c.twice));
+
+      ['fix','agrees','stuck','paid','missing'].forEach(function(state){
+        var rows = c.plans.filter(function(p){ return p.state === state; });
+        if(rows.length) out.appendChild(planBox(state, rows));
+      });
+    });
+  }
+
+  function planBox(state, rows){
+    var el = document.createElement('div');
+    el.className = 'grpbox';
+    el.innerHTML = '<h4><span class="dot ' + STATE[state][0] + '"></span>' +
+      esc(STATE[state][1]) + ' (' + rows.length + ')</h4>';
+
+    rows.forEach(function(p){ el.appendChild(planCard(p)); });
+    return el;
+  }
+
+  function planCard(p){
+    var el = document.createElement('div');
+    el.className = 'grp';
+
+    var top = document.createElement('div');
+    top.className = 'top';
+    top.innerHTML =
+      '<b>#' + p.id + '</b>' +
+      '<span class="who">' + esc(p.customer || '(no name)') +
+        ' &middot; row ' + p.sheetRow + ' &middot; ' + esc(p.cell) + '</span>' +
+      '<span class="tag">' + p.orders.length + ' orders' +
+        (p.day ? ' &middot; ' + esc(p.day) : '') + '</span>' +
+      '<span class="amt">QB ' + money(p.qbTotal) + '</span>' +
+      '<span class="amt">COD ' + money(p.cod) + '</span>' +
+      '<span class="amt' + (Math.abs(p.diff) > 1 ? ' offnum' : '') + '">' +
+        (p.diff > 0 ? '+' : '') + money(p.diff) + '</span>';
+    top.addEventListener('click', function(){ el.classList.toggle('open'); });
+    el.appendChild(top);
+
+    var strip = {};
+    (p.strip || []).forEach(function(l){ strip[l.lineId] = l.amount; });
+
+    var body = document.createElement('div');
+    body.className = 'body';
+    body.innerHTML =
+      '<div class="why">Grouped because ' +
+        esc(p.agree.join(' + ') || 'nothing') + ' matched' +
+        (p.day ? ', all ordered on ' + esc(p.day) : '') +
+        '. ' + esc(p.note || '') + '</div>' +
+      '<table><tr><th>Order</th><th>Placed</th><th>Invoice</th>' +
+      '<th style="text-align:right">Total</th>' +
+      '<th style="text-align:right">Shipping</th><th>What happens</th></tr>' +
+      p.invoices.map(function(inv){
+        var ship = inv.shipping;
+        var going = ship.filter(function(l){ return strip[l.lineId] !== undefined; });
+        return '<tr><td>' + esc(inv.order) + '</td>' +
+          '<td>' + esc(clock(inv.placed)) + '</td>' +
+          '<td>' + esc(inv.doc) + '</td>' +
+          '<td class="num">' + money(inv.total) + '</td>' +
+          '<td class="num">' +
+            (ship.length ? ship.map(function(l){ return money(l.amount); }).join(' + ') : '-') +
+          '</td>' +
+          '<td>' + (going.length
+            ? '<span class="offnum">take off ' +
+              going.map(function(l){ return esc(l.item) + ' ' + money(l.amount); }).join(', ') +
+              '</span>'
+            : (ship.length ? 'shipping stays' : 'nothing to take off')) + '</td></tr>';
+      }).join('') +
+      (p.missing.length
+        ? '<tr><td colspan="6" class="offnum">not in QuickBooks: ' +
+          p.missing.map(esc).join(', ') + '</td></tr>'
+        : '') +
+      '</table>' +
+      '<div class="why">Remark for the sheet: ' + esc(p.remark || '') + '</div>';
+    el.appendChild(body);
+
+    return el;
+  }
+
+  function twiceBox(rows){
+    var el = document.createElement('div');
+    el.className = 'grpbox';
+    el.innerHTML = '<h4><span class="dot bad"></span>The same parcel in two rows (' +
+      rows.length + ')</h4>' +
+      '<div class="why">One order number should appear once in a CPR. These are ' +
+      'written twice, so nothing is done with them until the sheet is put right.</div>';
+
+    rows.forEach(function(r){
+      var d = document.createElement('div');
+      d.className = 'grp';
+      d.innerHTML = '<div class="top"><b>#' + r.id + '</b>' +
+        '<span class="who">' + esc(r.customer || '(no name)') + '</span>' +
+        '<span class="tag">' + r.rows.map(function(x){
+          return 'row ' + x.sheetRow + ' (' + esc(x.cell) + ', ' + money(x.amount) + ')';
+        }).join(' &middot; ') + '</span></div>';
+      el.appendChild(d);
+    });
+
+    return el;
+  }
+
+})();
+</script>
+
+<script>
+/* Take the shipping off pasted invoices.
+   Its own list, its own run - nothing here touches the CPR match above. */
+(function(){
+  "use strict";
+  var $ = function(id){ return document.getElementById(id); };
+
+  var S = { rows: [], picked: {}, poller: null, logged: 0 };
+
+  function esc(s){
+    return String(s == null ? '' : s)
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  }
+  function money(n){
+    var v = Number(n || 0);
+    var p = Math.abs(v).toFixed(2).split('.');
+    return (v < 0 ? '-' : '') + p[0].replace(/\B(?=(\d{3})+(?!\d))/g, ',') + '.' + p[1];
+  }
+  function say(cls, html){
+    $('shipStat').className = 'stat' + (cls ? ' ' + cls : '');
+    $('shipStat').innerHTML = html;
+  }
+  function post(url, body){
+    return fetch(url, {
+      method:'POST', headers:{ 'Content-Type':'application/json' },
+      body: JSON.stringify(body || {})
+    }).then(function(r){ return r.json(); })
+      .then(function(d){ if(d.error) throw new Error(d.error); return d; });
+  }
+  function get(url){
+    return fetch(url, { cache:'no-store' }).then(function(r){ return r.json(); })
+      .then(function(d){ if(d.error) throw new Error(d.error); return d; });
+  }
+
+  function counts(){
+    var c = { found:0, ready:0, picked:0, pickedAmount:0, missing:0, noship:0, done:0, failed:0 };
+    S.rows.forEach(function(r){
+      c.found++;
+      if(r.state === 'ready'){
+        c.ready++;
+        if(S.picked[r.qbId]){ c.picked++; c.pickedAmount += r.hitTotal; }
+      }
+      if(r.state === 'missing')  c.missing++;
+      if(r.state === 'noship')   c.noship++;
+      if(r.state === 'stripped') c.done++;
+      if(r.state === 'failed')   c.failed++;
+    });
+    return c;
+  }
+
+  function pill(r){
+    if(r.state === 'ready')    return '<span class="pill open">ready</span>';
+    if(r.state === 'stripped') return '<span class="pill good">shipping off</span>';
+    if(r.state === 'failed')   return '<span class="pill paid">failed</span>';
+    if(r.state === 'missing')  return '<span class="pill miss">not found</span>';
+    return '<span class="pill miss">nothing to take off</span>';
+  }
+
+  function draw(){
+    $('shipOut').classList.remove('hide');
+    var c = counts();
+
+    function box(cls, n, label){
+      return '<div' + (cls ? ' class="' + cls + '"' : '') + '><div class="n">' + n +
+             '</div><div class="l">' + label + '</div></div>';
+    }
+    $('shipTally').innerHTML =
+      box('', c.found, 'Invoices found') +
+      box('ok', c.ready, 'With shipping on them') +
+      box('warn', c.picked, 'Ticked') +
+      box('', money(c.pickedAmount), 'Shipping to come off') +
+      (c.missing ? box('warn', c.missing, 'Not in QuickBooks') : '') +
+      (c.done ? box('ok', c.done, 'Done') : '') +
+      (c.failed ? box('bad', c.failed, 'Failed') : '');
+
+    $('shipRows').innerHTML = S.rows.length ? S.rows.map(function(r){
+      var on = r.state === 'ready' && S.picked[r.qbId];
+      var lines = r.hits.length
+        ? r.hits.map(function(l){
+            return esc(l.item || l.description || 'Shipping') +
+                   ' <b>' + money(l.amount) + '</b>';
+          }).join('<br>')
+        : '<span style="color:var(--faint)">&mdash;</span>';
+
+      return '<tr class="' + (r.state === 'ready' && !on ? 'off' : '') + '">' +
+        '<td class="tick">' + (r.state === 'ready'
+          ? '<input type="checkbox" data-id="' + esc(r.qbId) + '"' + (on ? ' checked' : '') + '>'
+          : '') + '</td>' +
+        '<td class="mono">' + esc(r.doc || r.pastedAs || '') +
+          (r.paid ? ' <span class="pill paid">paid</span>' : '') + '</td>' +
+        '<td class="mono">' + esc(r.date || '') + '</td>' +
+        '<td>' + esc(r.customer || '') + '</td>' +
+        '<td class="ship">' + lines + '</td>' +
+        '<td class="num">' + money(r.hitTotal) + '</td>' +
+        '<td class="num">' + money(r.total) + '</td>' +
+        '<td>' + pill(r) +
+          (r.note ? '<div style="font-size:11px;color:var(--muted)">' + esc(r.note) + '</div>' : '') +
+        '</td></tr>';
+    }).join('')
+      : '<tr><td colspan="8" style="color:var(--faint);padding:14px">Nothing pasted yet.</td></tr>';
+
+    Array.prototype.forEach.call($('shipRows').querySelectorAll('input[type=checkbox]'), function(b){
+      b.addEventListener('change', function(){
+        S.picked[b.getAttribute('data-id')] = b.checked;
+        draw();
+      });
+    });
+
+    $('btnShipRun').disabled = !c.picked;
+    $('btnShipRun').textContent = c.picked
+      ? 'Take the shipping off ' + c.picked + (c.picked === 1 ? ' invoice' : ' invoices')
+      : 'Take the shipping off';
+    $('shipRunNote').textContent = c.picked
+      ? money(c.pickedAmount) + ' of shipping in all'
+      : 'Tick what to take it off';
+  }
+
+  function find(){
+    var text = $('shipIn').value;
+    if(!text.trim()) return say('bad', '<b>Paste the invoice numbers first</b>');
+
+    $('btnShipFind').disabled = true;
+    say('busy', 'Reading these invoices from QuickBooks…');
+
+    post('/api/shipfix/plan', { text: text })
+      .then(function(d){
+        S.rows = d.rows || [];
+        S.picked = {};
+        // a paid invoice going down in value leaves a credit, so it is shown
+        // but not ticked for you
+        S.rows.forEach(function(r){
+          if(r.state === 'ready' && !r.paid) S.picked[r.qbId] = true;
+        });
+        draw();
+        var c = counts();
+        say('ok', '<b>' + c.ready + (c.ready === 1 ? ' invoice' : ' invoices') +
+          '</b> with a shipping line, out of ' + d.pasted + ' pasted' +
+          (c.missing ? ' &mdash; ' + c.missing + ' not in QuickBooks' : ''));
+      })
+      .catch(function(e){ say('bad', '<b>' + esc(e.message) + '</b>'); })
+      .then(function(){ $('btnShipFind').disabled = false; });
+  }
+
+  function drawJob(job){
+    $('shipRun').classList.remove('hide');
+    var pct = job.total ? Math.round(100 * job.done / job.total) : 0;
+    $('shipBar').style.width = pct + '%';
+
+    var box = $('shipLog');
+    (job.log || []).slice(S.logged).forEach(function(l){
+      var div = document.createElement('div');
+      if(l.ok){
+        div.textContent = l.doc + ' — ' + l.lines + ' shipping line' +
+          (l.lines === 1 ? '' : 's') + ' off, ' + money(l.amount);
+      } else {
+        div.className = 'fail';
+        div.textContent = l.doc + ' — ' + l.msg;
+      }
+      box.appendChild(div);
+    });
+    S.logged = (job.log || []).length;
+    box.scrollTop = box.scrollHeight;
+
+    // the buttons for a finished run: carry on with what is left, or clear the log
+    var shipLeft = Math.max(0, job.total - (job.done - job.failed));
+    $('btnShipCarry').style.display = (!job.running && shipLeft) ? '' : 'none';
+    $('btnShipCarry').textContent = 'Carry on (' + shipLeft + ' left)';
+    $('btnShipClearLog').style.display = job.running ? 'none' : '';
+
+    if(!job.running){
+      $('btnShipStop').style.display = 'none';
+      $('btnShipRun').disabled = false;
+      if(job.error) say('bad', '<b>' + esc(job.error) + '</b>');
+      else say('ok', '<b>' + (job.done - job.failed) +
+        (job.done - job.failed === 1 ? ' invoice' : ' invoices') + ' done, ' +
+        money(job.taken) + ' of shipping taken off' +
+        (job.failed ? ', ' + job.failed + ' failed' : '') + '</b>');
+    }
+  }
+
+  function poll(){
+    clearInterval(S.poller);
+    var tick = function(){
+      get('/api/shipfix/status').then(function(d){
+        if(!d.has) return;
+        S.rows = d.rows || [];
+        draw();
+        if(d.job) drawJob(d.job);
+        if(!d.job || !d.job.running){ clearInterval(S.poller); S.poller = null; }
+      }).catch(function(){ /* keep trying */ });
+    };
+    tick();
+    S.poller = setInterval(tick, 1500);
+  }
+
+  function run(){
+    var ids = S.rows.filter(function(r){ return r.state === 'ready' && S.picked[r.qbId]; })
+                    .map(function(r){ return r.qbId; });
+    if(!ids.length) return;
+
+    $('btnShipRun').disabled = true;
+    $('shipLog').innerHTML = '';
+    S.logged = 0;
+
+    post('/api/shipfix/run', { ids: ids })
+      .then(function(){
+        $('shipRun').classList.remove('hide');
+        $('btnShipStop').style.display = '';
+        say('busy', 'Taking the shipping off…');
+        poll();
+      })
+      .catch(function(e){
+        say('bad', '<b>' + esc(e.message) + '</b>');
+        $('btnShipRun').disabled = false;
+      });
+  }
+
+  function tickAll(on){
+    S.rows.forEach(function(r){ if(r.state === 'ready') S.picked[r.qbId] = on; });
+    draw();
+  }
+
+  $('btnShipFind').addEventListener('click', find);
+  $('btnShipAll').addEventListener('click', function(){ tickAll(true); });
+  $('btnShipNone').addEventListener('click', function(){ tickAll(false); });
+  $('btnShipRun').addEventListener('click', run);
+  $('btnShipCarry').addEventListener('click', function(){
+    $('btnShipCarry').style.display = 'none';
+    $('shipLog').innerHTML = '';
+    S.logged = 0;
+    post('/api/shipfix/run', {})
+      .then(function(){ $('btnShipStop').style.display = ''; poll(); })
+      .catch(function(e){ say('bad', '<b>' + esc(e.message) + '</b>'); });
+  });
+  $('btnShipClearLog').addEventListener('click', function(){
+    post('/api/shipfix/clear-log').then(function(){
+      S.logged = 0;
+      $('shipLog').innerHTML = '';
+      $('shipRun').classList.add('hide');
+      $('btnShipCarry').style.display = 'none';
+      $('btnShipClearLog').style.display = 'none';
+      $('btnShipRun').disabled = false;
+    }).catch(function(e){ say('bad', '<b>' + esc(e.message) + '</b>'); });
+  });
+  $('btnShipStop').addEventListener('click', function(){
+    $('btnShipStop').disabled = true;
+    post('/api/shipfix/stop').then(function(){ $('btnShipStop').disabled = false; });
+  });
+  $('btnShipClear').addEventListener('click', function(){
+    post('/api/shipfix/clear').then(function(){
+      clearInterval(S.poller); S.poller = null;
+      S.rows = []; S.picked = {}; S.logged = 0;
+      $('shipIn').value = '';
+      $('shipOut').classList.add('hide');
+      $('shipRun').classList.add('hide');
+      $('shipLog').innerHTML = '';
+      say('', '');
+    }).catch(function(e){ say('bad', '<b>' + esc(e.message) + '</b>'); });
+  });
+
+  // a list found before a reload, or a run still going, is picked back up
+  window.APP.ready.then(function(s){
+    if(!s.connected) return;
+    get('/api/shipfix/status').then(function(d){
+      if(!d || !d.has) return;
+      S.rows = d.rows || [];
+      S.rows.forEach(function(r){
+        if(r.state === 'ready' && !r.paid) S.picked[r.qbId] = true;
+      });
+      draw();
+      if(d.job){ S.logged = 0; drawJob(d.job); }
+      if(d.job && d.job.running){ $('btnShipStop').style.display = ''; poll(); }
+    }).catch(function(){ /* nothing to pick up */ });
+  });
+})();
+</script>
+
+</body>
+</html>

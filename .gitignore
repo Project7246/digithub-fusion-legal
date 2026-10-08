@@ -7,3 +7,6 @@ node_modules/
 docs/chat-notes.md
 
 .claude/
+
+# the build stamp, written fresh by the build step on every deploy
+.build-id
