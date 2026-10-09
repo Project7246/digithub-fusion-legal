@@ -35,9 +35,27 @@ export async function initAccounts() {
   // An email address is one account, whichever door it came through, so a person
   // who signed up with a password and later uses Google lands on their own row
   // instead of a second one.
-  await pool.query(
-    `CREATE UNIQUE INDEX IF NOT EXISTS users_email_key
-       ON users (LOWER(email)) WHERE email IS NOT NULL`);
+  //
+  // This is the one thing here that can fail against rows that were already in
+  // the table - QuickBooks can hand out two sign-ins for one address, and an app
+  // that will not start is worse than two rows for one person. So it is said and
+  // not insisted on: without it byEmail() may find either row, which is a muddle,
+  // where a refusal to boot is an outage. The addresses it tripped over are named
+  // in the log so they can be put right by hand.
+  try {
+    await pool.query(
+      `CREATE UNIQUE INDEX IF NOT EXISTS users_email_key
+         ON users (LOWER(email)) WHERE email IS NOT NULL`);
+  } catch (e) {
+    const dupes = await pool.query(
+      `SELECT LOWER(email) AS email, COUNT(*) AS n FROM users
+        WHERE email IS NOT NULL GROUP BY 1 HAVING COUNT(*) > 1`).catch(() => null);
+    console.error('Accounts: one address per account could not be enforced -', e.message);
+    if (dupes && dupes.rowCount) {
+      console.error('Accounts: addresses held by more than one row: ' +
+        dupes.rows.map(r => r.email + ' (' + r.n + ')').join(', '));
+    }
+  }
 
   // The code sent to an address, kept hashed and short-lived. One row per address:
   // asking for a new code replaces the old one, which is also what stops a mailbox
@@ -207,6 +225,20 @@ export async function byLoginId(loginId) {
 // this server, which is a different list entirely.
 export async function createSelfAccount({ email, name, password }) {
   const key = String(email).toLowerCase().trim();
+
+  // An address that already has a row - somebody who has signed in with
+  // QuickBooks, say - is the same person, so the password goes on the row they
+  // have. A second row for one address would be two desks for one person, and
+  // whichever one they landed on would be missing their work.
+  const held = await byEmail(key);
+  if (held) {
+    await pool.query(
+      `UPDATE users SET pass = $2, email_ok = TRUE, name = COALESCE($3, name),
+              last_in = NOW() WHERE sub = $1`,
+      [held.sub, hashPassword(password), name || null]);
+    return held.sub;
+  }
+
   const r = await pool.query(
     `INSERT INTO users (sub, email, name, pass, email_ok, door, allowed, role, last_in, decided_at)
      VALUES ($1, $2, $3, $4, TRUE, 'password', TRUE, 'admin', NOW(), NOW())
