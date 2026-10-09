@@ -18,6 +18,13 @@ import {
   askAgain, stopAsking, resumeAsking
 } from './users.js';
 import {
+  initAccounts, hashPassword, checkPassword, passwordComplaint, loginIdComplaint,
+  newCode, putCode, codeSentRecently, useCode, EMAIL_OK,
+  byEmail, byLoginId, createSelfAccount, upsertGoogleAccount, createMemberAccount,
+  listMembers, setMemberPassword, setDisabled, deleteMember, touchSignIn,
+  claimCompany, ownerOf, ownsCompany
+} from './accounts.js';
+import {
   initNotify, notify, listFor, unreadCount, markAllRead, clearFor, sendMail
 } from './notify.js';
 import { initPush, publicKey, addSub, dropSub, hasSub, pushTo } from './push.js';
@@ -228,8 +235,22 @@ app.get(/^\/$|^\/[A-Za-z0-9-]+$/, async (req, res, next) => {
     }
     if (here === '/signin') return res.redirect('/');
 
+    // The sign-in is written again on every page opened, so the year starts over
+    // from the last day of work rather than from the day they first signed in.
+    setSession(res, sub);
+
     const who = await whoIs(sub);
     const letIn = !!(who && (who.admin || (who.allowed && who.role !== 'none')));
+
+    // A handed-out user id belongs to one company and was never given a choice of
+    // them, so it is put at its own desk here instead of being sent to a chooser
+    // with one thing in it.
+    if (letIn && who.homeRealm && req.cookies.realm_id !== who.homeRealm) {
+      res.cookie('realm_id', who.homeRealm, {
+        httpOnly: true, maxAge: 30 * 24 * 3600 * 1000, sameSite: 'lax'
+      });
+      req.cookies.realm_id = who.homeRealm;
+    }
 
     const realmId = req.cookies.realm_id;
     const settled = letIn && realmId && await isSettled(sub, realmId);
@@ -259,8 +280,8 @@ app.get(/^\/$|^\/[A-Za-z0-9-]+$/, async (req, res, next) => {
 // dashboard, so the page is never served rather than merely hidden in the rail.
 app.get(['/users.html', '/users'], async (req, res, next) => {
   try {
-    const who = await whoIs(currentUser(req));
-    if (who && who.admin) return next();
+    const sub = currentUser(req);
+    if (sub && await runsCompany(sub, req.cookies.realm_id)) return next();
   } catch (e) { /* fall through to the dashboard */ }
   res.redirect('/');
 });
@@ -300,6 +321,26 @@ function verify(token) {
 }
 function currentUser(req) {
   return verify(req.cookies.uid);
+}
+
+// How long a sign-in lasts, and why it is a year.
+//
+// The people who run this app open it every working day, on the same computer, to
+// work on books they are in the middle of. Being asked to sign in again is never
+// information - it is an interruption in the middle of a run - so the cookie is
+// written for a year and written again on every page that is opened. Somebody who
+// uses Fusion is never signed out; somebody who stops using it for a year is.
+// Signing out is still one click, and it is the only thing that ends a session,
+// which is the right way round: leaving is the person's decision, not the clock's.
+const SESSION_DAYS = 365;
+
+function setSession(res, sub) {
+  res.cookie('uid', sign(sub), {
+    httpOnly: true,
+    maxAge: SESSION_DAYS * 24 * 3600 * 1000,
+    sameSite: 'lax',
+    secure: /^https:/i.test(BASE_URL)
+  });
 }
 
 // ==================== who is an admin ====================
@@ -355,14 +396,28 @@ async function whoIs(sub) {
   const u = await getUser(sub);
   const who = {
     email: (u && u.email) ? String(u.email).toLowerCase() : '',
-    name: u ? (u.name || u.email) : null,
+    name: u ? (u.name || u.login_id || u.email) : null,
     allowed: u ? u.allowed !== false : true,
     rights: (u && Array.isArray(u.rights)) ? u.rights : [],
     role: (u && u.role) ? u.role : 'viewer',
+    // which door they came through, the id they type if it was that door, and the
+    // one company a handed-out id belongs to - the rail needs all three to say
+    // who is signed in without asking a second time.
+    door: (u && u.door) ? u.door : 'qb',
+    loginId: (u && u.login_id) || null,
+    homeRealm: (u && u.home_realm) || null,
+    // Switched off by whoever runs the company. Not deleted, because the runs and
+    // the logs with their name on them are still the company's record - but every
+    // door is shut to them from the next page they ask for.
+    disabled: !!(u && u.disabled),
     at: Date.now()
   };
+  // The server's own list, and nothing else, makes somebody an admin of Fusion
+  // itself. Running a company is a separate thing, decided per company by who
+  // connected it - see ownsCompany().
   who.admin = !!who.email && ADMIN_EMAILS.has(who.email);
   if (who.admin) who.role = 'admin';
+  if (who.disabled) { who.allowed = false; who.role = 'none'; who.rights = []; }
   whoCache.set(sub, who);
   return who;
 }
@@ -380,15 +435,34 @@ function forgetWho(sub) { whoCache.delete(sub); }
 
 // The admin, and nobody else. What only the admin may touch - the courier accounts
 // and their keys above all - asks for this instead of requireCompany.
+// The administrator of these books, and nobody else. What only an administrator
+// may touch - the courier accounts and their keys above all - asks for this
+// instead of requireCompany.
+//
+// Two kinds of person pass. One is named in ADMIN_EMAILS and runs Fusion itself,
+// so every company is open to them. The other connected this company, which makes
+// them its administrator - of these books and no others. That is what makes the
+// app hold more than one company: each one is run by whoever brought it, and
+// neither can reach into the other's.
 async function requireAdmin(req, res) {
   const realmId = await requireCompany(req, res);
   if (!realmId) return null;
-  const who = await whoIs(currentUser(req));
-  if (!who || !who.admin) {
-    res.status(403).json({ error: 'Only the admin can do this. You are signed in as a user.' });
-    return null;
-  }
-  return realmId;
+  const sub = currentUser(req);
+  const who = await whoIs(sub);
+  if (who && who.admin) return realmId;
+  if (who && !who.disabled && who.allowed && await ownsCompany(sub, realmId)) return realmId;
+  res.status(403).json({ error: 'Only the administrator of this company can do this.' });
+  return null;
+}
+
+// Does this person run this company - either because they run Fusion, or because
+// they are the one who connected it. Used where a page or a list has to be shown
+// differently rather than refused.
+async function runsCompany(sub, realmId) {
+  const who = await whoIs(sub);
+  if (who && who.admin) return true;
+  if (!who || who.disabled || !who.allowed) return false;
+  return await ownsCompany(sub, realmId);
 }
 
 async function requireCompany(req, res) {
@@ -435,9 +509,21 @@ app.get('/api/admin/users', async (req, res) => {
   const realmId = await requireAdmin(req, res);
   if (!realmId) return;
   try {
-    const rows = await listUsers();
+    const me = currentUser(req);
+    const whoAmI = await whoIs(me);
+    const everyone = await listUsers();
     const byUser = new Map();
-    for (const u of rows) byUser.set(u.sub, await realmsForUser(u.sub));
+    for (const u of everyone) byUser.set(u.sub, await realmsForUser(u.sub));
+
+    // Whoever runs Fusion sees everybody. The administrator of one company sees
+    // only the people in it: the user ids they made, and anyone linked to these
+    // books. Another company's people are not theirs to see, let alone change -
+    // and a list is where that would quietly stop being true.
+    const all = !!(whoAmI && whoAmI.admin);
+    const rows = all ? everyone : everyone.filter(u =>
+      u.home_realm === realmId ||
+      (byUser.get(u.sub) || []).indexOf(realmId) > -1);
+
     res.setHeader('Cache-Control', 'no-store');
     res.json({
       admins: [...ADMIN_EMAILS],
@@ -456,9 +542,157 @@ app.get('/api/admin/users', async (req, res) => {
         lastIn: u.last_in,
         since: u.created_at
       })),
-      // the shelf to tick from, so the page need not ask twice
-      companies: await listCompanies()
+      // The shelf to tick from, so the page need not ask twice - and for the
+      // administrator of one company, a shelf with only their own on it.
+      companies: (await listCompanies()).filter(c => all || c.realmId === realmId),
+      // whether this page is being read by the person who runs Fusion or by the
+      // administrator of one company, so it can say so instead of implying more
+      scope: all ? 'all' : 'company'
     });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// ==================== user ids handed out by a company ====================
+//
+// A company's own people do not need an email address and should not have to make
+// an account anywhere. Their administrator makes them a user id - hmna-01 - with
+// a password, ticks what they may touch, and tells them. They sign in with that
+// and see exactly those sections and no others.
+//
+// Such an id belongs to one company for its whole life. It is made here with the
+// company it is for, linked to it in the same breath so there is never a moment
+// where it exists with nowhere to go, and it cannot be moved afterwards.
+
+app.get('/api/admin/members', async (req, res) => {
+  const realmId = await requireAdmin(req, res);
+  if (!realmId) return;
+  try {
+    const rows = await listMembers(realmId);
+    res.setHeader('Cache-Control', 'no-store');
+    res.json({
+      members: rows.map(m => ({
+        sub: m.sub,
+        loginId: m.login_id,
+        name: m.name || m.login_id,
+        role: m.role || 'custom',
+        rights: Array.isArray(m.rights) ? m.rights : [],
+        on: m.allowed !== false && !m.disabled,
+        lastIn: m.last_in,
+        since: m.created_at
+      })),
+      roles: ROLES.filter(r => r.key !== 'admin'),
+      areas: AREAS,
+      groups: RIGHT_GROUPS.map(g => ({
+        key: g.key, area: g.area || 'sales', label: g.label, what: g.what
+      }))
+    });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.post('/api/admin/members/new', async (req, res) => {
+  const realmId = await requireAdmin(req, res);
+  if (!realmId) return;
+
+  const loginId = String((req.body && req.body.loginId) || '').trim();
+  const name = String((req.body && req.body.name) || '').trim().slice(0, 120);
+  const password = String((req.body && req.body.password) || '');
+  const role = String((req.body && req.body.role) || 'custom');
+  const rights = Array.isArray(req.body && req.body.rights) ? req.body.rights : [];
+
+  const badId = loginIdComplaint(loginId);
+  if (badId) return res.status(400).json({ error: badId });
+  const weak = passwordComplaint(password);
+  if (weak) return res.status(400).json({ error: weak });
+  if (!ROLE_KEYS.has(role) || role === 'admin') {
+    return res.status(400).json({ error: 'Pick what this user may do. A user id cannot be made an administrator.' });
+  }
+
+  try {
+    if (await byLoginId(loginId)) {
+      return res.status(409).json({ error: 'That user ID is already taken. Try another.' });
+    }
+    // only rights the app actually has, whatever was sent
+    const known = new Set(RIGHT_GROUPS.map(g => g.key));
+    const want = rights.map(String).filter(r => known.has(r));
+
+    const sub = await createMemberAccount({
+      loginId, name, password, realmId,
+      madeBy: currentUser(req),
+      role, rights: role === 'custom' ? want : []
+    });
+    await linkCompany(sub, realmId);
+    forgetSettled(sub);
+    forgetWho(sub);
+
+    res.json({ ok: true, sub, loginId });
+  } catch (e) {
+    // the unique index is the last word on a duplicate, whoever asked first
+    if (/users_login_id_key/.test(e.message)) {
+      return res.status(409).json({ error: 'That user ID is already taken. Try another.' });
+    }
+    console.error('members/new:', e.message);
+    res.status(500).json({ error: 'Could not make that user ID.' });
+  }
+});
+
+// A new password for an id whose holder has forgotten theirs. There is no email to
+// send a code to, so the administrator sets it and passes it on - which is how it
+// was handed out in the first place.
+app.post('/api/admin/members/password', async (req, res) => {
+  const realmId = await requireAdmin(req, res);
+  if (!realmId) return;
+  const sub = String((req.body && req.body.sub) || '');
+  const password = String((req.body && req.body.password) || '');
+  const weak = passwordComplaint(password);
+  if (weak) return res.status(400).json({ error: weak });
+  try {
+    const u = await getUser(sub);
+    if (!u || u.door !== 'member' || u.home_realm !== realmId) {
+      return res.status(404).json({ error: 'That user ID is not in this company.' });
+    }
+    await setMemberPassword(sub, password);
+    res.json({ ok: true });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// Switched off, not deleted: the runs and the logs with their name on them are
+// still the company's record. Every door is shut to them from the next page they
+// ask for, and turning it back on gives them everything they had.
+app.post('/api/admin/members/off', async (req, res) => {
+  const realmId = await requireAdmin(req, res);
+  if (!realmId) return;
+  const sub = String((req.body && req.body.sub) || '');
+  const off = !!(req.body && req.body.off);
+  try {
+    const u = await getUser(sub);
+    if (!u || u.door !== 'member' || u.home_realm !== realmId) {
+      return res.status(404).json({ error: 'That user ID is not in this company.' });
+    }
+    await setDisabled(sub, off);
+    forgetWho(sub);
+    res.json({ ok: true, on: !off });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.post('/api/admin/members/delete', async (req, res) => {
+  const realmId = await requireAdmin(req, res);
+  if (!realmId) return;
+  const sub = String((req.body && req.body.sub) || '');
+  try {
+    const gone = await deleteMember(sub, realmId);
+    if (!gone) return res.status(404).json({ error: 'That user ID is not in this company.' });
+    await setUserCompanies(sub, []);
+    forgetWho(sub);
+    forgetSettled(sub);
+    res.json({ ok: true });
   } catch (e) {
     res.status(500).json({ error: e.message });
   }
@@ -481,6 +715,18 @@ app.post('/api/admin/users/access', async (req, res) => {
     const u = await getUser(sub);
     if (u && u.email && ADMIN_EMAILS.has(String(u.email).toLowerCase())) {
       return res.status(400).json({ error: 'That address is an admin - change ADMIN_EMAILS on the server instead.' });
+    }
+
+    // The administrator of one company may only change the people in it. Reaching
+    // past that - with a sub copied from somewhere, or an address typed in - is
+    // refused here rather than caught by the list happening not to show them.
+    const me = await whoIs(currentUser(req));
+    if (!(me && me.admin)) {
+      const theirs = u && (u.home_realm === realmId ||
+        (await realmsForUser(sub)).indexOf(realmId) > -1);
+      if (!theirs) {
+        return res.status(403).json({ error: 'That person is not in this company.' });
+      }
     }
     const before = u || {};
     await setUserAccess(sub, { allowed, rights, role });
@@ -552,6 +798,22 @@ app.post('/api/admin/users/companies', async (req, res) => {
     const want = realms.map(String).filter(r => connected.has(r));
 
     const had = new Set(await realmsForUser(sub));
+
+    // The administrator of one company gives out that company and no other, and
+    // takes away only its own. What they send about somebody else's books is left
+    // exactly as it was rather than refused, because they may well be saving a
+    // list they were never shown the rest of.
+    const me = await whoIs(currentUser(req));
+    if (!(me && me.admin)) {
+      const theirs = u && (u.home_realm === realmId || had.has(realmId));
+      if (!theirs) {
+        return res.status(403).json({ error: 'That person is not in this company.' });
+      }
+      const mine = want.indexOf(realmId) > -1;
+      want.length = 0;
+      for (const r of had) if (r !== realmId) want.push(r);
+      if (mine) want.push(realmId);
+    }
     await setUserCompanies(sub, want);
     forgetSettled(sub);
 
@@ -758,6 +1020,9 @@ app.post('/api/push/unsubscribe', async (req, res) => {
 // until it is opened on purpose.
 const USER_MAY_POST = new Set([
   '/auth/signout', '/auth/switch', '/auth/disconnect',
+  // the doors themselves: asked for by somebody who is not signed in yet, so
+  // they cannot be held to what a signed-in person may do
+  '/auth/code', '/auth/signup', '/auth/in', '/auth/forgot', '/auth/reset',
   // a person's own bell: reading it and emptying it are their own business
   '/api/notifications/read', '/api/notifications/clear',
   // signing this phone up for notices, and off again
@@ -970,9 +1235,22 @@ function sayKeysMissing(res, missing) {
 // button for it any more: an admin is walked here by the sign-in below, and
 // anyone else who types the address is turned away, so a user can neither take
 // the company over nor, by disconnecting later, stop the app for everyone.
+// Connecting a set of books to Fusion.
+//
+// Whoever does this becomes the administrator of that company - so it is open to
+// anybody who runs their own books here, not only to whoever runs Fusion. What it
+// is not open to is a user id somebody was handed: that id was made for one
+// company by its administrator, and connecting another is not among the things it
+// was given.
+function mayConnect(who) {
+  if (!who) return false;
+  if (who.admin) return true;
+  return !!who.allowed && !who.disabled && who.role === 'admin' && who.door !== 'member';
+}
+
 app.get('/auth/connect', async (req, res) => {
   const who = await whoIs(currentUser(req));
-  if (!who || !who.admin) {
+  if (!mayConnect(who)) {
     return res.redirect('/auth/signin');
   }
 
@@ -1021,6 +1299,259 @@ app.get('/auth/signin', (req, res) => {
   });
 
   res.redirect(`${AUTH_URL}?${params}`);
+});
+
+// ==================== the email and user-id doors ====================
+//
+// Three things are kept apart here on purpose. Proving an address is yours is one
+// (a code to that address). Proving you know a password is another. Being allowed
+// to do anything once inside is a third, and none of it is decided here - that is
+// the role and the rights on the row, set by whoever runs the company.
+//
+// Nothing below ever says whether an address or a user id exists. "That did not
+// match" is the only answer to a bad sign-in, and "we have sent a code if that
+// address has an account" the only answer to a forgotten password, because a door
+// that tells you which addresses are real is a list of who to attack.
+
+// Guessing is slowed where it happens, in this process, with no table to grow and
+// nothing to clean up. Ten tries from one address at one name, then a wait.
+const TRIES_MAX = 10;
+const TRIES_WINDOW = 10 * 60 * 1000;
+const tries = new Map();
+
+function tooManyTries(req, who) {
+  const key = (req.ip || '') + '|' + String(who || '').toLowerCase();
+  const now = Date.now();
+  const kept = tries.get(key);
+  if (!kept || now - kept.first > TRIES_WINDOW) {
+    tries.set(key, { n: 1, first: now });
+    return false;
+  }
+  kept.n++;
+  return kept.n > TRIES_MAX;
+}
+function triesDone(req, who) {
+  tries.delete((req.ip || '') + '|' + String(who || '').toLowerCase());
+}
+// the map is small, but it is not left to grow for the life of the process
+setInterval(() => {
+  const now = Date.now();
+  for (const [k, v] of tries) if (now - v.first > TRIES_WINDOW) tries.delete(k);
+}, TRIES_WINDOW).unref();
+
+// A code to an address, for signing up or for a forgotten password. It is the same
+// code either way; what it is allowed to do afterwards is decided by which route
+// is handed it back.
+async function mailCode(res, email, name, subject, why) {
+  if (await codeSentRecently(email)) {
+    return res.status(429).json({ error: 'A code has just gone out. Check your email, then ask again in a minute.' });
+  }
+  const code = newCode();
+  await putCode(email, code, name);
+  const sent = await sendMail(email, subject, [
+    why,
+    'Your code is ' + code,
+    'It works for the next 15 minutes, once. If you did not ask for it, nothing has happened to your account and you can ignore this.',
+    'Fusion'
+  ]);
+  if (!sent) {
+    // Without an SMTP account the code was written and can never be read, so the
+    // row is taken back out rather than left to expire against a person who is
+    // standing there waiting for an email that is not coming.
+    await pool.query('DELETE FROM email_codes WHERE email = $1', [email]);
+    console.error('Sign-up code for ' + email + ' could not be sent: no SMTP settings');
+    return res.status(503).json({
+      error: 'This server cannot send email yet, so the code could not go out. ' +
+             'The administrator needs to set SMTP_HOST, SMTP_USER and SMTP_PASS.'
+    });
+  }
+  res.json({ ok: true, sent: true });
+}
+
+// Step one of signing up: say who you are, and get a code at that address.
+app.post('/auth/code', async (req, res) => {
+  try {
+    const email = String(req.body.email || '').toLowerCase().trim();
+    const name = String(req.body.name || '').trim().slice(0, 120);
+    if (!EMAIL_OK(email)) return res.status(400).json({ error: 'That does not look like an email address.' });
+    if (tooManyTries(req, email)) {
+      return res.status(429).json({ error: 'Too many tries. Wait ten minutes and start again.' });
+    }
+
+    // An address that already has a password is not signed up again from here -
+    // that is the sign-in, or the forgotten-password route, and saying so is not
+    // leaking anything they did not already know by typing their own address.
+    const held = await byEmail(email);
+    if (held && held.pass) {
+      return res.status(409).json({ error: 'That address already has an account. Sign in instead, or use "Forgot password".' });
+    }
+
+    await mailCode(res, email, name,
+      'Your Fusion sign-up code',
+      'Somebody is setting up a Fusion account with this address.');
+  } catch (e) {
+    console.error('auth/code:', e.message);
+    res.status(500).json({ error: 'Could not send the code. Try again.' });
+  }
+});
+
+// Step two: hand back the code and choose a password. Getting this far is what
+// signs them in - they have just proved the address and set the password, so
+// asking them to do it again on the next screen would be theatre.
+app.post('/auth/signup', async (req, res) => {
+  try {
+    const email = String(req.body.email || '').toLowerCase().trim();
+    const code = String(req.body.code || '').trim();
+    const password = String(req.body.password || '');
+    let name = String(req.body.name || '').trim().slice(0, 120);
+
+    if (!EMAIL_OK(email)) return res.status(400).json({ error: 'That does not look like an email address.' });
+    if (tooManyTries(req, email)) {
+      return res.status(429).json({ error: 'Too many tries. Wait ten minutes and start again.' });
+    }
+    const weak = passwordComplaint(password);
+    if (weak) return res.status(400).json({ error: weak });
+
+    const used = await useCode(email, code);
+    if (used.error) return res.status(400).json({ error: used.error });
+    if (!name) name = used.name || email.split('@')[0];
+
+    const sub = await createSelfAccount({ email, name, password });
+    forgetWho(sub);
+    triesDone(req, email);
+    setSession(res, sub);
+    inside(res, true);
+
+    tellAdmins({
+      kind: 'signup',
+      title: 'New account: ' + name,
+      body: email + ' has signed up and verified their address.',
+      link: '/users'
+    }).catch(() => {});
+
+    // Nobody arrives with a company. Connecting one is the next thing they do, and
+    // the chooser is the screen that says so.
+    res.json({ ok: true, next: '/choose' });
+  } catch (e) {
+    console.error('auth/signup:', e.message);
+    res.status(500).json({ error: 'Could not finish signing up. Try again.' });
+  }
+});
+
+// Signing in with a password. The same field takes an email address or a user id,
+// because the person typing it should not have to know which kind of account they
+// were given.
+app.post('/auth/in', async (req, res) => {
+  try {
+    const typed = String(req.body.who || '').trim();
+    const password = String(req.body.password || '');
+    if (!typed || !password) return res.status(400).json({ error: 'Type your email or user ID, and your password.' });
+    if (tooManyTries(req, typed)) {
+      return res.status(429).json({ error: 'Too many tries. Wait ten minutes and try again.' });
+    }
+
+    const u = typed.indexOf('@') > -1 ? await byEmail(typed) : await byLoginId(typed);
+    // The password is still ground against something when there is no account, so
+    // a name that exists cannot be told from one that does not by how long the
+    // answer took.
+    const good = checkPassword(password, u ? u.pass : null);
+    if (!u || !good) {
+      return res.status(401).json({ error: 'That email or user ID and password do not match.' });
+    }
+    if (u.disabled) {
+      return res.status(403).json({ error: 'This account has been switched off. Ask your company administrator.' });
+    }
+
+    triesDone(req, typed);
+    await touchSignIn(u.sub);
+    forgetWho(u.sub);
+    setSession(res, u.sub);
+    inside(res, true);
+
+    // A user id was made for one company and is put straight at its desk. Anybody
+    // else lands wherever they left off, or at the chooser if there is a choice.
+    if (u.home_realm) {
+      res.cookie('realm_id', u.home_realm, {
+        httpOnly: true, maxAge: 30 * 24 * 3600 * 1000, sameSite: 'lax'
+      });
+      forgetSettled(u.sub);
+      return res.json({ ok: true, next: '/' });
+    }
+    const mine = await companiesFor(u.sub);
+    res.json({ ok: true, next: mine.length === 1 ? '/' : '/choose' });
+  } catch (e) {
+    console.error('auth/in:', e.message);
+    res.status(500).json({ error: 'Could not sign you in. Try again.' });
+  }
+});
+
+// A forgotten password. The answer is the same whether or not the address has an
+// account, so this route cannot be used to find out which addresses do.
+app.post('/auth/forgot', async (req, res) => {
+  try {
+    const email = String(req.body.email || '').toLowerCase().trim();
+    if (!EMAIL_OK(email)) return res.status(400).json({ error: 'That does not look like an email address.' });
+    if (tooManyTries(req, email)) {
+      return res.status(429).json({ error: 'Too many tries. Wait ten minutes and try again.' });
+    }
+    const u = await byEmail(email);
+    if (!u) return res.json({ ok: true, sent: true });
+
+    // Somebody who only ever used Google or QuickBooks has no password to reset,
+    // and being sent a code would leave them setting one they do not need.
+    if (u.door === 'google' || u.door === 'qb') {
+      await sendMail(email, 'Signing in to Fusion', [
+        'Somebody asked to reset the password for this address.',
+        'There is no password on this account - it signs in with ' +
+          (u.door === 'google' ? 'Google' : 'QuickBooks') +
+          '. Use that button on the sign-in page and you are in.',
+        'Fusion'
+      ]);
+      return res.json({ ok: true, sent: true });
+    }
+
+    return mailCode(res, email, u.name,
+      'Your Fusion password reset code',
+      'Somebody asked to set a new password for this Fusion account.');
+  } catch (e) {
+    console.error('auth/forgot:', e.message);
+    res.json({ ok: true, sent: true });
+  }
+});
+
+// The new password, with the code that proves the mailbox is theirs.
+app.post('/auth/reset', async (req, res) => {
+  try {
+    const email = String(req.body.email || '').toLowerCase().trim();
+    const code = String(req.body.code || '').trim();
+    const password = String(req.body.password || '');
+    if (!EMAIL_OK(email)) return res.status(400).json({ error: 'That does not look like an email address.' });
+    if (tooManyTries(req, email)) {
+      return res.status(429).json({ error: 'Too many tries. Wait ten minutes and try again.' });
+    }
+    const weak = passwordComplaint(password);
+    if (weak) return res.status(400).json({ error: weak });
+
+    const used = await useCode(email, code);
+    if (used.error) return res.status(400).json({ error: used.error });
+
+    const u = await byEmail(email);
+    if (!u) return res.status(400).json({ error: 'That code is no longer good for anything. Start again.' });
+
+    await pool.query(
+      'UPDATE users SET pass = $2, email_ok = TRUE, last_in = NOW() WHERE sub = $1',
+      [u.sub, hashPassword(password)]);
+    triesDone(req, email);
+    forgetWho(u.sub);
+    setSession(res, u.sub);
+    inside(res, true);
+
+    const mine = await companiesFor(u.sub);
+    res.json({ ok: true, next: mine.length === 1 ? '/' : '/choose' });
+  } catch (e) {
+    console.error('auth/reset:', e.message);
+    res.status(500).json({ error: 'Could not set the password. Try again.' });
+  }
 });
 
 app.get('/auth/callback', async (req, res) => {
@@ -1101,7 +1632,7 @@ app.get('/auth/callback', async (req, res) => {
         ]
       });
     }
-    res.cookie('uid', sign(sub), { httpOnly: true, maxAge: 60 * 24 * 3600 * 1000, sameSite: 'lax' });
+    setSession(res, sub);
 
     const isAdmin = ADMIN_EMAILS.has(String(email || '').toLowerCase());
     res.clearCookie('oauth_door');
@@ -1145,6 +1676,13 @@ app.get('/auth/callback', async (req, res) => {
     // a user's key is read once, for the name and address above, and kept nowhere
 
     await linkCompany(sub, joinTo);
+    // Whoever connected these books runs them: they hand out the user ids for this
+    // company and say what each one may touch. Only written where nobody has
+    // claimed it, so somebody connecting the same company later does not take it.
+    if (tokens.refresh_token) {
+      try { await claimCompany(joinTo, sub); }
+      catch (e) { console.error('claim company:', e.message); }
+    }
     forgetSettled(sub);
     res.cookie('realm_id', joinTo, { httpOnly: true, maxAge: 30 * 24 * 3600 * 1000, sameSite: 'lax' });
     inside(res, true);
@@ -1288,6 +1826,10 @@ app.get('/auth/status', async (req, res) => {
       limited: !!(who && !who.admin && who.role === 'custom'),
       companyCount: mine.length,
       admin: !!(who && who.admin),
+      // With no company yet, what the chooser needs to know is whether this
+      // person may connect one - which is not the same question as whether they
+      // run Fusion. Somebody who signed up for themselves may.
+      canConnect: mayConnect(who),
       email: (who && who.email) || null,
       adminCount: ADMIN_EMAILS.size,
       user: user ? (user.name || user.email) : null
@@ -1303,8 +1845,12 @@ app.get('/auth/status', async (req, res) => {
     asking: !(user && user.asked === false),
     companyName: company ? await companyLabel(company) : null,
     realmId,
-    // the pages read these to put away every button the person may not press
-    admin: !!(who && who.admin),
+    // The pages read these to put away every button the person may not press.
+    // "admin" means the administrator of the company now open, which is either
+    // whoever runs Fusion or whoever connected these books - a page showing the
+    // courier keys and the people list has no use for the difference.
+    admin: await runsCompany(sub, realmId),
+    canConnect: mayConnect(who),
     letIn,
     // given areas rather than the whole of the books - the rail is cut to them
     limited: !!(who && !who.admin && who.role === 'custom'),
@@ -1346,7 +1892,10 @@ app.get('/auth/companies', async (req, res) => {
     res.json({
       companies: list,
       current: req.cookies.realm_id || null,
-      admin: !!(who && who.admin)
+      admin: !!(who && who.admin),
+      // Whether the "Connect a company" door is theirs to open. Somebody who
+      // signed up for themselves runs their own books, so it is.
+      canConnect: mayConnect(who)
     });
   } catch (e) {
     res.status(500).json({ error: e.message });
@@ -9692,6 +10241,7 @@ const PORT = process.env.PORT || 3000;
 initDb()
   .then(() => initMappings())
   .then(() => initUsers())
+  .then(() => initAccounts())
   .then(() => initNotify())
   .then(() => initPush())
   .then(() => resetNonAdminAccess())

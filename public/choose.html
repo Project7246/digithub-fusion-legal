@@ -243,13 +243,13 @@
       }
 
       if(!all.length){
-        $('sub').textContent = d.admin ? 'Nothing is connected yet.' : 'Nothing yet.';
-        $('list').innerHTML = '<div class="empty">' + (d.admin
+        $('sub').textContent = d.canConnect ? 'Nothing is connected yet.' : 'Nothing yet.';
+        $('list').innerHTML = '<div class="empty">' + (d.canConnect
           ? 'The app works through a company file, connected once. Connect one to ' +
-            'begin.'
-          : 'No company has been given to you yet. The admin says who works in ' +
-            'which company, on the Manage users page.') + '</div>';
-        if(d.admin){
+            'begin - whoever connects it runs it, and hands out the user IDs for it.'
+          : 'No company has been given to you yet. The administrator says who works ' +
+            'in which company, on the Manage users page.') + '</div>';
+        if(d.canConnect){
           $('note').innerHTML = '<a href="/auth/connect">Connect a QuickBooks company</a>';
         }
         return;
@@ -263,7 +263,7 @@
 
       $('btnOut').style.display = '';
       $('note').innerHTML = 'You can change company later from the name at the ' +
-        'bottom of the rail.' + (d.admin
+        'bottom of the rail.' + (d.canConnect
           ? ' <a href="/auth/connect">Connect another company</a>' : '');
     })
     .catch(function(){
