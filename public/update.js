@@ -20,13 +20,13 @@
     css.textContent = [
       '.upd{position:fixed;top:14px;left:50%;transform:translateX(-50%);z-index:9999;',
       '  display:flex;align-items:center;gap:12px;padding:10px 14px 10px 16px;border-radius:9px;',
-      '  background:#0F2E24;color:#fff;font:500 13px/1.35 var(--sans,system-ui,sans-serif);',
+      '  background:#222F34;color:#fff;font:500 13px/1.35 var(--sans,system-ui,sans-serif);',
       '  box-shadow:0 8px 24px rgba(0,0,0,.22);max-width:calc(100vw - 28px)}',
       '.upd .dot{width:8px;height:8px;border-radius:50%;background:#7BD88F;flex:none}',
       '.upd small{display:block;font-weight:400;opacity:.75;font-size:11.5px;margin-top:1px}',
       '.upd button{border:1px solid rgba(255,255,255,.35);background:none;color:#fff;border-radius:6px;',
       '  font:inherit;font-size:12px;padding:5px 10px;cursor:pointer;white-space:nowrap}',
-      '.upd button.go{background:#fff;color:#0F2E24;border-color:#fff}'
+      '.upd button.go{background:#fff;color:#222F34;border-color:#fff}'
     ].join('');
     document.head.appendChild(css);
 

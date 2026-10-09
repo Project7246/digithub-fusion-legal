@@ -55,7 +55,7 @@ self.addEventListener('push', e => {
   try { n = e.data ? e.data.json() : {}; } catch (err) { n = {}; }
 
   e.waitUntil(
-    self.registration.showNotification(n.title || 'Shopify → QuickBooks', {
+    self.registration.showNotification(n.title || 'Fusion', {
       body: n.body || '',
       icon: '/icon-192.png',
       badge: '/icon-192.png',

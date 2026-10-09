@@ -1,18 +1,28 @@
 :root{
-  --page:#F3F5F4; --panel:#FFFFFF; --panel-2:#FAFBFB;
-  --ink:#0F2E24; --ink-2:#163B2E; --ink-3:#0A211A;
-  --text:#18212A; --muted:#5F6B75; --faint:#8A959E;
-  --line:#E1E5E8; --line-2:#CDD4D9;
+  /* Fusion brand guideline: slate, teal, two greys and white. Teal is spent only
+     on the thing being acted on - a button, the page you are on, the logo's dot -
+     so that it still means something when it appears. */
+  --page:#F1F5F5; --panel:#FFFFFF; --panel-2:#F7FAFA;
+  --ink:#222F34; --ink-2:#2B3A41; --ink-3:#18232A;
+  --text:#1A2428; --muted:#55666B; --faint:#8A999D;
+  --line:#D9E2E2; --line-2:#C2CFCF;
+
+  /* The two shops' own colours, kept as they are: they stand for QuickBooks and
+     Shopify themselves, not for this app. */
   --shop:#95BF47; --qbo:#2CA01C;
-  --accent:#1B4F7C; --accent-soft:#EBF1F7;
-  --ok:#14614A; --ok-soft:#E9F2EF;
+
+  --accent:#11BAB5; --accent-soft:#E4F7F6; --accent-deep:#08827E; --aqua:#6BF0EA;
+  --ok:#0E7A5F; --ok-soft:#E4F4EF;
   --warn:#8A5711; --warn-soft:#FBF2E1;
   --neg:#9A2E24; --neg-soft:#FBEDEC;
-  --sans:"IBM Plex Sans",-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
-  --mono:"IBM Plex Mono",ui-monospace,SFMono-Regular,Menlo,monospace;
+
+  --head:"Montserrat","Trebuchet MS",-apple-system,sans-serif;
+  --sans:"Roboto",-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+  --mono:"Roboto Mono",ui-monospace,SFMono-Regular,Menlo,monospace;
   --rail:236px;
 }
 *{box-sizing:border-box}
+h1,h2,h3,h4,.h{font-family:var(--head);font-weight:700;letter-spacing:-.01em}
 html,body{margin:0;padding:0}
 body{background:var(--page);color:var(--text);font-family:var(--sans);
   font-size:14.5px;line-height:1.55;-webkit-font-smoothing:antialiased}
@@ -27,28 +37,28 @@ a{color:inherit}
 
 .rail .brand{display:flex;align-items:center;gap:11px;padding:20px 18px 18px;
   text-decoration:none;color:#fff;border-bottom:1px solid rgba(255,255,255,.08)}
-.rail .brand img{width:32px;height:32px;border-radius:8px;display:block;flex:0 0 32px}
+.rail .brand img{width:38px;height:auto;aspect-ratio:400/280;display:block;flex:0 0 38px}
 .rail .brand b{font-size:14px;font-weight:600;letter-spacing:-.005em;display:block;line-height:1.25}
 .rail .brand span{font-family:var(--mono);font-size:9.5px;letter-spacing:.15em;
-  text-transform:uppercase;color:#7FA096;display:block;margin-top:3px}
+  text-transform:uppercase;color:#9DB0B5;display:block;margin-top:3px}
 
 .rail nav{flex:1;overflow-y:auto;padding:16px 10px}
 .rail .group{font-family:var(--mono);font-size:9.5px;letter-spacing:.15em;text-transform:uppercase;
-  color:#5E7D73;padding:14px 12px 7px}
+  color:#8A999D;padding:14px 12px 7px}
 .rail nav a{display:flex;align-items:center;gap:10px;padding:9px 12px;border-radius:6px;
-  text-decoration:none;color:#B4C8C1;font-size:13.5px;font-weight:500;margin-bottom:2px}
+  text-decoration:none;color:#BBBBBB;font-size:13.5px;font-weight:500;margin-bottom:2px}
 .rail nav a:hover{background:rgba(255,255,255,.06);color:#fff}
 .rail nav a.on{background:rgba(255,255,255,.13);color:#fff}
 .rail nav a .ic{width:16px;height:16px;flex:0 0 16px;opacity:.8}
 .rail nav a.on .ic{opacity:1}
 
 .rail .foot{padding:14px;border-top:1px solid rgba(255,255,255,.08)}
-.conn{display:flex;align-items:center;gap:8px;font-size:12px;color:#A9BFB8;
-  border:1px solid #2F4A42;border-radius:6px;padding:8px 10px;cursor:pointer;
+.conn{display:flex;align-items:center;gap:8px;font-size:12px;color:#9DB0B5;
+  border:1px solid #38474E;border-radius:6px;padding:8px 10px;cursor:pointer;
   user-select:none;position:relative}
-.conn:hover{border-color:#456B60}
+.conn:hover{border-color:#4E6169}
 .conn .dot{width:8px;height:8px;border-radius:50%;background:#C0655C;flex:0 0 8px}
-.conn .dot.on{background:#4EC08A}
+.conn .dot.on{background:#2FB37E}
 .conn .who{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .conn .caret{font-size:8px;opacity:.7}
 
@@ -122,7 +132,7 @@ a{color:inherit}
 .zone{border:1px solid var(--line-2);border-radius:6px;background:var(--panel-2);
   padding:14px 16px;cursor:pointer;transition:.13s;display:flex;align-items:center;
   justify-content:space-between;gap:12px}
-.zone:hover,.zone.hot{border-color:var(--qbo);background:#F2F8F1}
+.zone:hover,.zone.hot{border-color:var(--qbo);background:#EFF7F6}
 .zone b{display:block;font-size:14px;font-weight:600}
 .zone > span > span{font-size:12.5px;color:var(--muted)}
 .zone .pick{font-family:var(--mono);font-size:11px;letter-spacing:.1em;text-transform:uppercase;
@@ -202,7 +212,7 @@ button.ghost:hover{color:var(--text)}
   font-family:var(--mono);white-space:nowrap}
 .pill.paid{background:#FCE9E7;color:#9A2E24}
 .pill.part{background:#FBF2E1;color:#8A5711}
-.pill.open{background:#E9F2EF;color:#14614A}
+.pill.open{background:#E4F4EF;color:#14614A}
 .pill.good{background:var(--ok-soft);color:var(--ok)}
 .pill.miss{background:var(--warn-soft);color:var(--warn)}
 
@@ -227,7 +237,7 @@ td.num{text-align:right}
 td.memo{max-width:250px;overflow:hidden;text-overflow:ellipsis;color:var(--muted);font-size:12px}
 tr.gone{opacity:.35}
 
-.log{background:#10201B;color:#D6E2DD;border-radius:6px;padding:12px;height:280px;
+.log{background:#18232A;color:#D2DFDF;border-radius:6px;padding:12px;height:280px;
   overflow-y:auto;font-family:var(--mono);font-size:11.5px;line-height:1.6}
 .log .ok{color:#6FD69B} .log .err{color:#F09189}
 .log .warn{color:#E8BE73} .log .info{color:#8FC4E8}

@@ -100,7 +100,7 @@
   var html =
     '<a class="brand" href="/">' +
       '<img src="/logo.svg" alt="">' +
-      '<span><b>Shopify → QuickBooks</b><span>Invoice pipeline</span></span>' +
+      '<span><b>FUSION</b><span>AI-powered OS</span></span>' +
     '</a><nav>';
 
   ITEMS.forEach(function(sec){
@@ -147,7 +147,7 @@
   // The app writes its sizes in pixels throughout, so growing the body text alone
   // would move almost nothing. The whole page is scaled instead, which takes the
   // tables, the rail and the charts with it.
-  var LOOK_BASE = { zoom: 1, rail: 236, tight: false, ink: '#0F2E24', accent: '#2CA01C' };
+  var LOOK_BASE = { zoom: 1, rail: 236, tight: false, ink: '#222F34', accent: '#11BAB5' };
 
   function readLook(){
     try {

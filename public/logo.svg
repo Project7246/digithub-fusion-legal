@@ -1,7 +1,8 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120" width="120" height="120" role="img" aria-label="Shopify orders to QuickBooks Online">
-  <rect width="120" height="120" rx="28" fill="#0F2E24"/>
-  <circle cx="44" cy="60" r="26" fill="none" stroke="#95BF47" stroke-width="7"/>
-  <circle cx="76" cy="60" r="26" fill="none" stroke="#2CA01C" stroke-width="7"/>
-  <path d="M60 30v60" stroke="#FFFFFF" stroke-width="7" stroke-linecap="round"/>
-  <path d="M56 82l12 12" stroke="#95BF47" stroke-width="7" stroke-linecap="round"/>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 280" role="img" aria-label="Fusion">
+  <!-- The folded triangle from the brand guideline: a light face turned to the
+       light, the darker side it stands on, and the teal dot where everything the
+       app joins up meets. -->
+  <polygon points="0,0 110,2 395,43 107,43" fill="#BBBBBB"/>
+  <polygon points="0,0 107,43 107,275" fill="#7B7B7B"/>
+  <circle cx="190" cy="150" r="40" fill="#11BAB5"/>
 </svg>

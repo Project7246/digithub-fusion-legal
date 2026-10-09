@@ -3,56 +3,301 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Sign in</title>
+<title>Fusion</title>
 <link rel="icon" href="/favicon.svg" type="image/svg+xml">
 <link rel="manifest" href="/manifest.json">
-<meta name="theme-color" content="#0F2E24">
+<meta name="theme-color" content="#222F34">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@600;700;800&family=Roboto:wght@400;500&family=Roboto+Mono:wght@400;500&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="/app.css">
 <style>
   /* The door, and nothing else on the screen with it. No rail, no toolbar and no
      dashboard behind it: the server sends this page instead of one of the app's,
-     so there is nothing to draw first and nothing to take away afterwards. */
-  .pick{min-height:100vh;display:flex;align-items:center;justify-content:center;padding:24px}
-  .card{width:100%;max-width:400px;background:var(--panel);border:1px solid var(--line);
-    border-radius:14px;padding:34px 28px 26px;text-align:center;
-    box-shadow:0 10px 34px rgba(15,46,36,.07)}
-  .card img{width:56px;height:56px;border-radius:13px;display:block;margin:0 auto 20px}
-  .card h1{font-size:19px;font-weight:600;margin:0 0 6px}
-  .card p{color:var(--muted);font-size:13px;margin:0 0 22px;line-height:1.6}
-  .go{width:100%;padding:11px;border-radius:9px;border:0;background:var(--qbo);
-    color:#fff;font:inherit;font-size:14px;font-weight:600;cursor:pointer}
-  .go:hover{filter:brightness(1.06)}
+     so there is nothing to draw first and nothing to take away afterwards.
+
+     The one thing behind it is the work the app does, drawn rather than
+     described - e-commerce splitting into the four desks it feeds, and all four
+     running back into Fusion. */
+  body{background:radial-gradient(120% 120% at 20% 0%,#1B2A30 0%,#121B1E 55%,#0B1113 100%);
+    min-height:100vh;display:flex;align-items:center;justify-content:center;padding:20px}
+
+  .door{width:100%;max-width:620px;background:rgba(34,47,52,.88);
+    border:1px solid rgba(255,255,255,.1);border-radius:16px;
+    padding:22px 20px 20px;color:#ECF3F3;box-shadow:0 28px 70px rgba(0,0,0,.5)}
+
+  .top{display:flex;align-items:center;gap:14px}
+  .top svg{width:60px;height:auto;aspect-ratio:400/280;flex:0 0 60px;display:block}
+  .top h1{font-family:var(--head);font-size:21px;font-weight:700;line-height:1.15;
+    margin:0;color:#fff;letter-spacing:-.01em}
+  .top .tag{font-family:var(--head);font-weight:600;font-size:13.5px;
+    color:var(--aqua);margin:3px 0 0}
+  .top .sub{font-size:12px;color:#9DB0B5;margin:3px 0 0;line-height:1.45}
+
+  .viz{position:relative;height:320px;margin:10px 0 14px}
+  .viz canvas{position:absolute;inset:0;width:100%;height:100%;display:block}
+
+  .go{display:block;width:100%;border:0;border-radius:10px;padding:13px;
+    font-family:var(--head);font-weight:700;font-size:14px;letter-spacing:.01em;
+    color:#0A1517;background:var(--accent);cursor:pointer}
+  .go:hover{background:var(--aqua)}
   .go:disabled{opacity:.7;cursor:default}
-  .fine{margin:16px 0 0;font-size:11.5px;color:var(--muted);line-height:1.6}
+  .go:focus-visible{outline:2px solid #fff;outline-offset:2px}
+
+  .fine{display:block;margin:12px 0 0;font-size:11.5px;color:#8A9DA2;
+    text-align:center;line-height:1.55}
+  .fine a{color:#9DB0B5}
+
+  @media (max-width:440px){
+    .viz{height:270px}
+    .top svg{width:46px;flex:0 0 46px}
+    .top h1{font-size:18px}
+  }
+  @media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
 </style>
 </head>
 <body>
 
-<div class="pick">
-  <div class="card">
-    <img src="/logo.svg" alt="">
-    <h1>Shopify &rarr; QuickBooks</h1>
-    <p>Sign in with the QuickBooks address you work under.</p>
-    <button class="go" id="go">Sign in with QuickBooks</button>
-    <p class="fine">
-      What you may do in the app, and which companies you work in, is the
-      company admin&rsquo;s to decide.
-    </p>
+<div class="door">
+  <div class="top">
+    <svg viewBox="0 0 400 280" role="img" aria-label="Fusion">
+      <polygon points="0,0 110,2 395,43 107,43" fill="#BBBBBB"/>
+      <polygon points="0,0 107,43 107,275" fill="#7B7B7B"/>
+      <circle cx="190" cy="150" r="40" fill="#11BAB5"/>
+    </svg>
+    <div>
+      <h1>Fusion</h1>
+      <p class="tag">AI-powered OS for e-commerce</p>
+      <p class="sub">Sign in with the QuickBooks address you work under.</p>
+    </div>
   </div>
+
+  <div class="viz" id="viz"><canvas id="cv"></canvas></div>
+
+  <button class="go" id="go" type="button">Sign in with QuickBooks</button>
+
+  <small class="fine">
+    What you may do in the app, and which companies you work in, is the
+    company admin&rsquo;s to decide.<br>
+    <a href="/privacy">Privacy</a> &middot; <a href="/eula">Terms</a>
+  </small>
 </div>
 
 <script>
+"use strict";
 (function(){
-  "use strict";
   var go = document.getElementById('go');
   go.addEventListener('click', function(){
     go.disabled = true;
-    go.textContent = 'Taking you to QuickBooks\u2026';
+    go.textContent = 'Taking you to QuickBooks…';
     location.href = '/auth/signin';
   });
+})();
+</script>
+
+<script>
+"use strict";
+(function(){
+  var cv = document.getElementById("cv"), box = document.getElementById("viz");
+  if (!cv || !box) return;
+  var ctx = cv.getContext("2d");
+  var still = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  var TEAL = "#11BAB5", AQUA = "#6BF0EA";
+
+  // E-commerce is the one source. Four desks come out of it, and all four run
+  // back into Fusion - which is the whole point of the app, said without words.
+  var BR = [
+    { label:"Finance",    c:"#6BF0EA", y:.12 },
+    { label:"Logistics",  c:"#BBBBBB", y:.37 },
+    { label:"Operations", c:"#F2F7F7", y:.63 },
+    { label:"HR",         c:"#11BAB5", y:.88 }
+  ];
+
+  var W=0, H=0, raf=0, last=0, pulse=0, emit=0, cnt=0, eglow=0, G=null;
+  var parts=[], ripples=[], glow=[0,0,0,0];
+
+  function size(){
+    var d = Math.min(window.devicePixelRatio || 1, 2), r = box.getBoundingClientRect();
+    W = r.width; H = r.height;
+    cv.width  = Math.max(1, Math.round(W * d));
+    cv.height = Math.max(1, Math.round(H * d));
+    ctx.setTransform(d, 0, 0, d, 0, 0);
+    G = geo();
+  }
+  function setF(wt, px){ ctx.font = wt + " " + px + "px Montserrat, sans-serif"; }
+  function fnt(){ setF(600, W < 440 ? 10.5 : 12.5); }
+  function cw(label){ fnt(); return ctx.measureText(label).width + (W < 440 ? 20 : 24); }
+
+  function rr(x, y, w, h, r){
+    ctx.beginPath(); ctx.moveTo(x + r, y);
+    ctx.arcTo(x + w, y, x + w, y + h, r); ctx.arcTo(x + w, y + h, x, y + h, r);
+    ctx.arcTo(x, y + h, x, y, r);         ctx.arcTo(x, y, x + w, y, r);
+    ctx.closePath();
+  }
+  function chip(x, y, label, color, g, w){
+    fnt();
+    var h = 27;
+    rr(x, y - h/2, w, h, 13.5);
+    ctx.fillStyle = "rgba(255,255,255," + (.06 + .2*g) + ")"; ctx.fill();
+    ctx.lineWidth = 1 + g*.8; ctx.strokeStyle = color;
+    ctx.globalAlpha = .6 + .4*g; ctx.stroke(); ctx.globalAlpha = 1;
+    ctx.fillStyle = "rgba(255,255,255," + (.88 + .12*g) + ")";
+    ctx.textAlign = "center"; ctx.textBaseline = "middle";
+    ctx.fillText(label, x + w/2, y + .5, w - 12);
+  }
+  function bez(c, t){
+    var u = 1 - t;
+    return { x: u*u*u*c[0] + 3*u*u*t*c[2] + 3*u*t*t*c[4] + t*t*t*c[6],
+             y: u*u*u*c[1] + 3*u*u*t*c[3] + 3*u*t*t*c[5] + t*t*t*c[7] };
+  }
+  function sV(x0, y0, x1, y1){ var d = y1 - y0; return [x0, y0, x0, y0 + d*.5, x1, y1 - d*.5, x1, y1]; }
+
+  // The lockup as the guideline draws it: the mark, then FUSION set to the right
+  // of the teal dot. The icon is 400x280 units with the dot at (190,150).
+  function geo(){
+    var i, cy, ws = [cw("E-commerce")];
+    for (i = 0; i < 4; i++) ws.push(cw(BR[i].label));
+    var cwid = Math.max.apply(null, ws), ew = cwid, s = .2;
+    var gap = W >= 520 ? 28 : 7;
+    cwid = Math.min(cwid, (W - 16 - gap*3) / 4); ew = cwid;
+
+    var g = { a:[], b:[], chips:[], cwid:cwid, s:s, ew:ew };
+    var ph = 27; g.ph = ph;
+    s = (ph - 7) / 280; g.s = s;
+    setF(800, W < 440 ? 11.5 : 13.5);
+    g.fw = ctx.measureText("FUSION").width;
+    g.pw = Math.max(cwid, 12 + 400*s + 7 + g.fw + 14);
+    g.hy = H * .8; g.top = g.hy - ph/2;
+    g.x0 = (W - g.pw)/2 + 12; g.hx = g.x0 + 190*s;
+    g.e  = { x: W/2 - ew/2, y: H * .07 };
+
+    var sum = cwid*4 + gap*3, cx = (W - sum)/2;
+    cy = H * .31;
+    for (i = 0; i < 4; i++){
+      g.chips.push({ x:cx, y:cy });
+      var mid = cx + cwid/2;
+      g.a.push(sV(W/2, g.e.y + 15, mid, cy - 15));
+      g.b.push(sV(mid, cy + 15, W/2 + (i - 1.5)*5, g.top));
+      cx += cwid + gap;
+    }
+    return g;
+  }
+  function glowDot(x, y, r, color, al){
+    var g = ctx.createRadialGradient(x, y, 0, x, y, r*4);
+    g.addColorStop(0, color); g.addColorStop(1, "rgba(0,0,0,0)");
+    ctx.globalAlpha = al*.35; ctx.fillStyle = g;
+    ctx.beginPath(); ctx.arc(x, y, r*4, 0, 6.283); ctx.fill();
+    ctx.globalAlpha = al; ctx.fillStyle = color;
+    ctx.beginPath(); ctx.arc(x, y, r, 0, 6.283); ctx.fill();
+    ctx.globalAlpha = 1;
+  }
+  function poly(ox, oy, s, pts, color){
+    ctx.beginPath();
+    for (var i = 0; i < pts.length; i += 2){
+      var x = ox + pts[i]*s, y = oy + pts[i+1]*s;
+      if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+    }
+    ctx.closePath(); ctx.fillStyle = color; ctx.fill();
+  }
+  function spawn(){ parts.push({ st:0, l:cnt++ % 4, t:0, v:.011 + Math.random()*.002 }); eglow = 1; }
+  function preset(){
+    parts = [];
+    for (var i = 0; i < 4; i++){
+      parts.push({ st:0, l:i, t:.55,        v:0 });
+      parts.push({ st:1, l:i, t:.45 + i*.1, v:0 });
+    }
+  }
+  function drawLock(g){
+    var s = g.s, x = (W - g.pw)/2, y = g.hy - g.ph/2;
+    rr(x, y, g.pw, g.ph, g.ph/2);
+    ctx.fillStyle = "rgba(255,255,255," + (.06 + .2*pulse) + ")"; ctx.fill();
+    ctx.lineWidth = 1 + pulse*1.2; ctx.strokeStyle = TEAL;
+    ctx.globalAlpha = .75 + .25*pulse; ctx.stroke(); ctx.globalAlpha = 1;
+
+    var ox = g.x0, oy = g.hy - 150*s;
+    var lift = Math.round(187 + pulse*68);
+    poly(ox, oy, s, [0,0, 110,2, 395,43, 107,43], "rgb(" + lift + "," + lift + "," + lift + ")");
+    poly(ox, oy, s, [0,0, 107,43, 107,275], "#7B7B7B");
+    ctx.beginPath(); ctx.arc(g.hx, g.hy, 40*s*(1 + pulse*.3), 0, 6.283);
+    ctx.fillStyle = TEAL; ctx.fill();
+
+    setF(800, W < 440 ? 11.5 : 13.5);
+    ctx.fillStyle = "#FFFFFF"; ctx.textAlign = "left"; ctx.textBaseline = "middle";
+    ctx.fillText("FUSION", ox + 400*s + 7, g.hy + .5);
+  }
+  function frame(now){
+    var dt = last ? Math.min(40, now - last) / 16.7 : 1;
+    last = now;
+    var g = G, i;
+    ctx.clearRect(0, 0, W, H);
+
+    ctx.lineWidth = 1.2;
+    for (i = 0; i < 4; i++){
+      ctx.strokeStyle = BR[i].c; ctx.globalAlpha = .26;
+      var a = g.a[i], b = g.b[i];
+      ctx.beginPath(); ctx.moveTo(a[0], a[1]); ctx.bezierCurveTo(a[2],a[3],a[4],a[5],a[6],a[7]); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(b[0], b[1]); ctx.bezierCurveTo(b[2],b[3],b[4],b[5],b[6],b[7]); ctx.stroke();
+    }
+    ctx.globalAlpha = 1;
+
+    if (!still){
+      emit -= dt * 16.7;
+      if (emit <= 0){ spawn(); emit = 280 + Math.random()*140; }
+    }
+
+    ctx.globalCompositeOperation = "lighter";
+    for (var p = parts.length - 1; p >= 0; p--){
+      var q = parts[p];
+      if (!still) q.t += q.v * dt;
+      if (q.t >= 1){
+        if (q.st === 0){ glow[q.l] = 1; parts.push({ st:1, l:q.l, t:0, v:.0095 + Math.random()*.002 }); }
+        else { pulse = Math.min(1, pulse + .45); ripples.push({ r:0, a:.7 }); }
+        parts.splice(p, 1); continue;
+      }
+      var cur = q.st === 0 ? g.a[q.l] : g.b[q.l];
+      var step = q.st === 0 ? .03 : .025;
+      for (var s = 0; s < 6; s++){
+        var tt = q.t - s*step; if (tt < 0) continue;
+        var pt = bez(cur, tt);
+        glowDot(pt.x, pt.y, 3 - s*.42, BR[q.l].c, (1 - s/6));
+      }
+    }
+    ctx.globalCompositeOperation = "source-over";
+
+    if (!still){
+      pulse *= Math.pow(.94, dt); eglow *= Math.pow(.92, dt);
+      for (var k = 0; k < 4; k++) glow[k] *= Math.pow(.94, dt);
+    }
+
+    var halo = ctx.createRadialGradient(W/2, g.hy, 0, W/2, g.hy, g.pw*.85);
+    halo.addColorStop(0, "rgba(17,186,181," + (.16 + pulse*.3) + ")");
+    halo.addColorStop(1, "rgba(17,186,181,0)");
+    ctx.fillStyle = halo; ctx.fillRect(0, g.hy - g.pw, W, g.pw*2);
+
+    for (var r = ripples.length - 1; r >= 0; r--){
+      var rp = ripples[r];
+      if (!still){ rp.r += .55*dt; rp.a -= .02*dt; }
+      if (rp.a <= 0){ ripples.splice(r, 1); continue; }
+      rr(W/2 - g.pw/2 - rp.r, g.hy - g.ph/2 - rp.r, g.pw + rp.r*2, g.ph + rp.r*2, g.ph/2 + rp.r);
+      ctx.strokeStyle = AQUA; ctx.globalAlpha = rp.a; ctx.lineWidth = 1.3; ctx.stroke();
+      ctx.globalAlpha = 1;
+    }
+
+    drawLock(g);
+    chip(g.e.x, g.e.y, "E-commerce", TEAL, eglow, g.cwid);
+    for (var n = 0; n < 4; n++) chip(g.chips[n].x, g.chips[n].y, BR[n].label, BR[n].c, glow[n], g.cwid);
+
+    if (!still) raf = requestAnimationFrame(frame);
+  }
+  function start(){
+    size(); cancelAnimationFrame(raf); last = 0;
+    if (still){ preset(); frame(0); } else raf = requestAnimationFrame(frame);
+  }
+
+  if (window.ResizeObserver) new ResizeObserver(start).observe(box);
+  else window.addEventListener("resize", start);
+  if (document.fonts && document.fonts.ready) document.fonts.ready.then(start);
+  start();
 })();
 </script>
 </body>
