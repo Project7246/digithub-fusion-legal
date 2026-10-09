@@ -38,6 +38,29 @@ are silently lost, and the app then runs on its fallbacks (`BASE_URL` becomes
 change, check `/api/setup-check`: it names which settings the running server received,
 without sending any value back.
 
+## The brand
+The app is called **Fusion** - not Digithub Fusion, and the old name must not come back.
+Tagline: "AI-powered OS for e-commerce". The full lockup reads "Together we can" above
+"FUSION(TM)".
+
+It follows the user's own brand guideline (`C:\Users\ASUS-1\Downloads\Brand-Guideline---Fusion.pdf`,
+worked out into `C:\Users\ASUS-1\Desktop\Fusion Brand Preview.html`, which the user approved):
+
+| Piece | Value |
+|---|---|
+| Mark | Folded triangle, viewBox `0 0 400 280`: light face `#BBBBBB`, dark side `#7B7B7B`, teal dot at (190,150) r40. In `public/logo.svg` and `public/favicon.svg` |
+| Colours | Slate `#222F34`, Teal `#11BAB5`, Grey `#7B7B7B`, Light grey `#BBBBBB`, White. Aqua `#6BF0EA` for the hovered/lit state |
+| Type | Montserrat for headings (`--head`), Roboto for text (`--sans`), Roboto Mono for figures (`--mono`) |
+
+Every colour and face comes from the `:root` block at the top of `public/app.css`, so the
+whole app changes from there. Teal is spent only on the thing being acted on - a button,
+the page you are on, the logo's dot - so it keeps meaning something. QuickBooks green and
+Shopify green stay as they are: they stand for those two companies, not for this app.
+
+The sign-in page carries the one animation: e-commerce splits into Finance, Logistics,
+Operations and HR, and all four run back into the Fusion lockup. **Only** there - inside
+the app the background stays plain, because that is where the books are worked on.
+
 ## Rules about space (Neon free plan)
 - Neon free plan is about **1 GB storage per project** (user thought 5 GB - verify on the
   Neon dashboard). Compute is limited to ~100 CU-hours/month and the database auto-suspends
