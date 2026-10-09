@@ -531,6 +531,12 @@ app.get('/api/admin/users', async (req, res) => {
         sub: u.sub,
         email: u.email || '',
         name: u.name || '',
+        // Which door they come through, and the id they type if it is that one.
+        // A row with a user id has no address to show and is the administrator's
+        // to reset a password on, which the page can only offer if it knows.
+        door: u.door || 'qb',
+        loginId: u.login_id || '',
+        off: !!u.disabled,
         admin: !!u.email && ADMIN_EMAILS.has(String(u.email).toLowerCase()),
         allowed: u.allowed !== false,
         role: (!!u.email && ADMIN_EMAILS.has(String(u.email).toLowerCase()))

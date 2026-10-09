@@ -98,6 +98,30 @@
   }
 
 
+  /* Making a user id. Three fields and the same cards the rest of the page ticks
+     with, so there is one way of saying what somebody may touch and not two. */
+  .make{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px}
+  .make .f label{display:block;font-size:11px;letter-spacing:.07em;
+    text-transform:uppercase;color:var(--faint);font-weight:600;margin-bottom:5px}
+  .make .f input{width:100%;border:1px solid var(--line);border-radius:7px;
+    padding:9px 11px;font:inherit;font-size:13px;background:#fff;color:var(--text)}
+  .make .f input:focus{outline:0;border-color:var(--accent)}
+  .make .f small{display:block;font-size:11px;color:var(--muted);margin-top:4px}
+  .make .f input#mkId{font-family:var(--mono)}
+
+  /* The password, shown once. There is nowhere to read it back from afterwards -
+     it is ground and thrown away - so it is on screen until it is passed on. */
+  .made{margin-top:14px;padding:14px 16px;border-radius:9px;
+    border:1px solid var(--ok);background:var(--ok-soft);display:none}
+  .made.show{display:block}
+  .made b{display:block;font-size:13px;margin-bottom:8px}
+  .made .pair{font-family:var(--mono);font-size:14px;color:var(--ink);
+    background:#fff;border:1px solid var(--line);border-radius:7px;
+    padding:10px 12px;margin-bottom:8px;overflow-wrap:anywhere}
+  .made .why{font-size:12px;color:var(--muted);line-height:1.55}
+
+  td.nm code{font-family:var(--mono);font-size:11.5px;color:var(--accent-deep)}
+
   .editacts{margin-top:16px;display:flex;gap:8px;align-items:center}
   .editacts .solid{font-size:12px;padding:7px 16px}
   .note{font-size:11.5px;color:var(--muted)}
@@ -154,16 +178,66 @@
       </div>
 
       <div id="body" class="hide">
+
+        <!-- The people in a company do not need an account anywhere. Their
+             administrator makes them an id, ticks what they may touch, and tells
+             them. The id belongs to this company and opens nothing else. -->
+        <div class="step">
+          <h2>Make a user ID</h2>
+          <div class="hint">
+            For somebody in your company who should not have to sign up for
+            anything. Give them an ID and a password, tick what they may touch,
+            and they are in &mdash; they see those sections and no others.
+            <br><br>
+            An ID belongs to <b id="mkCo">this company</b> and cannot be moved to
+            another. The password is shown once, here, and never again: it is
+            stored ground beyond reading, so if it is lost you set a new one.
+          </div>
+
+          <div class="make">
+            <div class="f">
+              <label for="mkId">User ID</label>
+              <input id="mkId" type="text" placeholder="hmna-01" autocomplete="off"
+                     spellcheck="false">
+              <small>Letters, numbers and dashes.</small>
+            </div>
+            <div class="f">
+              <label for="mkName">Their name</label>
+              <input id="mkName" type="text" placeholder="Hamna Saim" autocomplete="off">
+              <small>So the rest of the app can say who did what.</small>
+            </div>
+            <div class="f">
+              <label for="mkPw">Password</label>
+              <input id="mkPw" type="text" placeholder="at least 8, with a number"
+                     autocomplete="off" spellcheck="false">
+              <small><a href="#" id="mkDice">Make one up for me</a></small>
+            </div>
+          </div>
+
+          <div class="roles" id="mkRoles" style="margin-top:14px"></div>
+          <div class="jobs" id="mkJobs"></div>
+
+          <div class="editacts">
+            <button class="solid" id="mkGo">Make this user ID</button>
+            <span class="note" id="mkNote"></span>
+          </div>
+
+          <div class="made" id="mkMade"></div>
+        </div>
+
         <div class="step">
           <h2>Users</h2>
           <div class="hint">
-            Anyone who signs in with their own QuickBooks address lands here as
+            Everybody who can open this company, however they got in &mdash; a user
+            ID you made, an email address and password, or QuickBooks. Anyone who
+            signs in with their own QuickBooks address lands here as
             <b>Reports only</b>: they read and download everything and change nothing,
             until you say otherwise. Their QuickBooks key is never kept, so signing in
             can neither take the company over nor stop the app for everyone else.
             <br><br>
-            A company admin is named on the server, not on this page. Courier accounts
-            and their keys stay with the admin whatever else is given away.
+            This list is this company&rsquo;s. Another company&rsquo;s people are not
+            on it and are not yours to change. Courier accounts and their keys stay
+            with the administrator whatever else is given away.
           </div>
 
           <table class="users">
@@ -193,6 +267,9 @@
 (function(){
   "use strict";
   var $ = function(id){ return document.getElementById(id); };
+  // A line break inside a browser's own prompt and confirm boxes, which take
+  // text and not markup.
+  var BR = String.fromCharCode(10);
   var S = { roles: [], areas: [], groups: [], users: [], companies: [], openSub: null };
 
   function esc(s){
@@ -414,8 +491,10 @@
       }
 
       tr.innerHTML =
-        '<td class="nm"><b>' + esc(u.name || u.email || u.sub) + '</b>' +
-          '<small>' + esc(u.email || '') + '</small></td>' +
+        '<td class="nm"><b>' + esc(u.name || u.email || u.loginId || u.sub) + '</b>' +
+          '<small>' + (u.loginId
+            ? '<code>' + esc(u.loginId) + '</code>'
+            : esc(u.email || '')) + '</small></td>' +
         '<td data-lab="Role">' + esc(roleLabel(u.role)) + jobsNote + '</td>' +
         '<td data-lab="Companies">' + coNote(u) + '</td>' +
         '<td data-lab="Status">' + statusOf(u) + '</td>' +
@@ -430,7 +509,56 @@
               ? '<button class="mini b-deny">' +
                   (u.allowed && u.role !== 'none' ? 'Turn off' : 'Turn down') +
                 '</button>'
-              : '<button class="mini b-undeny">Undo</button>')) + '</td>';
+              : '<button class="mini b-undeny">Undo</button>') +
+            // An id has no mailbox to send a reset code to, so its password is
+            // set here and passed on - the way it was handed out to begin with.
+            // Deleting is offered only for an id this company made: there is
+            // nothing of somebody else's to delete.
+            (u.door === 'member'
+              ? '<button class="mini b-newpw">New password</button>' +
+                '<button class="mini b-drop">Delete</button>'
+              : '')) + '</td>';
+
+      var newpw = tr.querySelector('.b-newpw');
+      if(newpw){
+        newpw.addEventListener('click', function(){
+          var pw = prompt('New password for ' + (u.loginId || u.name) + BR + BR +
+            'At least 8 characters, with a number. Write it down before you ' +
+            'press OK - it cannot be read back afterwards.');
+          if(pw === null) return;
+          newpw.disabled = true;
+          newpw.textContent = 'Saving…';
+          post('/api/admin/members/password', { sub: u.sub, password: pw })
+            .then(function(){
+              draw();
+              say('ok', 'The password for <b>' + esc(u.loginId || u.name) +
+                '</b> has been changed. Tell them what it is - it is not kept ' +
+                'anywhere it can be read back.');
+            })
+            .catch(function(e){ draw(); say('bad', '<b>' + esc(e.message) + '</b>'); });
+        });
+      }
+
+      var drop = tr.querySelector('.b-drop');
+      if(drop){
+        drop.addEventListener('click', function(){
+          if(!confirm('Delete the user ID ' + (u.loginId || u.name) + '?' + BR + BR +
+            'They will not be able to sign in again, and the ID can be given to ' +
+            'somebody else. Turning them off instead keeps the ID and lets you ' +
+            'turn it back on.')) return;
+          drop.disabled = true;
+          drop.textContent = 'Deleting…';
+          post('/api/admin/members/delete', { sub: u.sub })
+            .then(function(){
+              S.openSub = null;
+              return refresh();
+            })
+            .then(function(){
+              say('ok', 'That user ID is gone.');
+            })
+            .catch(function(e){ draw(); say('bad', '<b>' + esc(e.message) + '</b>'); });
+        });
+      }
 
       var deny = tr.querySelector('.b-deny');
       if(deny){
@@ -476,17 +604,155 @@
     });
   }
 
+  // ==================== making a user id ====================
+  //
+  // The same cards the rest of the page ticks with, built once the server has
+  // said what the roles and the jobs are. Everything here is about one company -
+  // the one that is open - so there is no company to choose.
+
+  function drawMake(){
+    var roles = S.roles.filter(function(r){ return r.key !== 'admin'; });
+
+    $('mkRoles').innerHTML = roles.map(function(r, i){
+      return '<label class="' + (r.key === 'custom' ? 'on' : '') + '"' +
+        ' data-tip="' + esc(r.what) + '">' +
+        '<input type="radio" name="mk-role" value="' + esc(r.key) + '"' +
+        (r.key === 'custom' ? ' checked' : '') + '>' +
+        '<span>' + esc(r.label) + '</span></label>';
+    }).join('');
+
+    $('mkJobs').className = 'jobs show';
+    $('mkJobs').innerHTML = S.areas.map(function(a){
+      var mine = S.groups.filter(function(g){ return g.area === a.key; });
+      if(!mine.length) return '';
+      return '<div class="area">' +
+        '<div class="cap">' + esc(a.label) + '</div>' +
+        '<div class="areawhat">' + esc(a.what) + '</div>' +
+        '<div class="grid">' +
+          mine.map(function(g){
+            return '<label data-tip="' + esc(g.what) + '">' +
+              '<input type="checkbox" value="' + esc(g.key) + '">' +
+              '<span>' + esc(g.label) + '</span></label>';
+          }).join('') +
+        '</div></div>';
+    }).join('');
+
+    $('mkJobs').querySelectorAll('input').forEach(function(box){
+      box.addEventListener('change', function(){
+        box.parentNode.classList.toggle('on', box.checked);
+      });
+    });
+    $('mkRoles').querySelectorAll('input').forEach(function(radio){
+      radio.addEventListener('change', function(){
+        $('mkRoles').querySelectorAll('label').forEach(function(l){
+          l.classList.remove('on');
+        });
+        radio.parentNode.classList.add('on');
+        // the ticks are only asked for when the role is the limited one
+        $('mkJobs').classList.toggle('show', radio.value === 'custom');
+      });
+    });
+  }
+
+  function mkRole(){
+    var on = $('mkRoles').querySelector('input:checked');
+    return on ? on.value : 'custom';
+  }
+  function mkRights(){
+    var out = [];
+    $('mkJobs').querySelectorAll('input:checked').forEach(function(b){ out.push(b.value); });
+    return out;
+  }
+
+  // A password nobody has to think of, out of letters and digits that cannot be
+  // read for one another - no l against 1, no O against 0 - because this one gets
+  // read off a screen and typed somewhere else.
+  $('mkDice').addEventListener('click', function(e){
+    e.preventDefault();
+    var pool = 'abcdefghjkmnpqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+    var n = new Uint32Array(12);
+    (window.crypto || window.msCrypto).getRandomValues(n);
+    var out = '';
+    for(var i = 0; i < 12; i++) out += pool.charAt(n[i] % pool.length);
+    // a digit for certain, wherever the draw landed
+    if(!/[0-9]/.test(out)) out = out.slice(0, 11) + '7';
+    $('mkPw').value = out;
+    $('mkPw').focus();
+    $('mkPw').select();
+  });
+
+  $('mkGo').addEventListener('click', function(){
+    var btn = $('mkGo');
+    var loginId = $('mkId').value.trim();
+    var name = $('mkName').value.trim();
+    var pw = $('mkPw').value;
+    var role = mkRole();
+
+    $('mkMade').className = 'made';
+    $('mkNote').textContent = '';
+
+    if(!loginId){ $('mkNote').textContent = 'Type the user ID first.'; $('mkId').focus(); return; }
+    if(!pw){ $('mkNote').textContent = 'Type a password, or make one up.'; $('mkPw').focus(); return; }
+    if(role === 'custom' && !mkRights().length){
+      $('mkNote').textContent = 'Tick at least one thing they may touch.';
+      return;
+    }
+
+    btn.disabled = true;
+    btn.textContent = 'Making…';
+    post('/api/admin/members/new', {
+      loginId: loginId, name: name, password: pw,
+      role: role, rights: mkRights()
+    })
+      .then(function(){
+        // Shown once, because there is nowhere to read it back from. It stays on
+        // screen until the page is left, so it can be passed on properly.
+        $('mkMade').className = 'made show';
+        $('mkMade').innerHTML =
+          '<b>' + esc(loginId) + ' can sign in now.</b>' +
+          '<div class="pair">User ID &nbsp;' + esc(loginId) + '</div>' +
+          '<div class="pair">Password &nbsp;' + esc(pw) + '</div>' +
+          '<div class="why">Give these to ' + esc(name || loginId) + '. The password is ' +
+          'not kept anywhere it can be read back &mdash; if it is lost, set a new one ' +
+          'from the row below. They sign in at the same screen everybody else does.</div>';
+
+        $('mkId').value = '';
+        $('mkName').value = '';
+        $('mkPw').value = '';
+        btn.disabled = false;
+        btn.textContent = 'Make this user ID';
+        return refresh();
+      })
+      .catch(function(e){
+        btn.disabled = false;
+        btn.textContent = 'Make this user ID';
+        $('mkNote').textContent = e.message;
+      });
+  });
+
+  // Reading the list again after something changed it, without reloading the page
+  // and losing the password that is on screen.
+  function refresh(){
+    return get('/api/admin/users').then(function(d){
+      S.users = d.users || [];
+      S.companies = d.companies || [];
+      draw();
+    });
+  }
+
   window.APP.ready.then(function(s){
     if(!s.connected){ $('gate').classList.remove('hide'); return; }
     if(!s.admin){ $('notAdmin').classList.remove('hide'); return; }
 
     $('body').classList.remove('hide');
+    if(s.companyName) $('mkCo').textContent = s.companyName;
 
     get('/api/admin/rights')
       .then(function(d){
         S.roles = d.roles || [];
         S.areas = d.areas || [];
         S.groups = d.groups || [];
+        drawMake();
         return get('/api/admin/users');
       })
       .then(function(d){

@@ -89,6 +89,54 @@ the app the background stays plain, because that is where the books are worked o
 - If Google or QuickBooks login is added: add `https://ca.availity.pk/...` as a redirect
   URL in their developer consoles.
 
+## Who may open the app
+
+Three doors, one room. Whichever was used, what ends up in `users` is the same
+shape, and what somebody may do is still the `role` + `rights` on that row - read
+by `whoIs()` in `server.js` and enforced by `PAGE_NEED` for pages and
+`RIGHT_OF_PATH` for POSTs. `accounts.js` is only the lock; it decides nothing.
+
+| Door | `door` | `sub` | Set up by |
+|---|---|---|---|
+| Email + password | `password` | `pw:<email>` | Themselves: code to the address (`/auth/code`), then `/auth/signup` |
+| Google | `google` | `g:<google sub>` | Themselves, one click (**not built yet** - needs a Google OAuth client) |
+| Company user ID (`hmna-01`) | `member` | `id:<login id>` | The administrator of a company, on `/users`. No email, tied to `home_realm` for life |
+| QuickBooks | `qb` | Intuit's sub | As before |
+
+Three tiers, and the middle one is new:
+
+- **ADMIN_EMAILS** runs Fusion itself. Named on the server, never in the database,
+  so reaching the database is not a way to become one. Sees every company.
+- **The administrator of a company** is whoever connected it (`companies.owner_sub`,
+  claimed once in `/auth/callback`). They hand out that company's user IDs, set
+  what each may touch, and can see and change nobody outside it. `requireAdmin()`
+  and `runsCompany()` are what let them in; `mayConnect()` is what lets somebody
+  connect books at all.
+- **Everybody else** has what their company's administrator ticked.
+
+Anything scoped per company must stay scoped: `/api/admin/users`,
+`/api/admin/users/access` and `/api/admin/users/companies` each cut their list to
+the company being run unless the asker is in ADMIN_EMAILS. A new admin route must
+do the same, or one customer's people appear on another's screen.
+
+Passwords are scrypt (built into Node - do not add bcrypt or argon2). Nothing is
+stored that can be turned back into a password, so a lost one is replaced, never
+read: the administrator sets a new one and the sign-up screen shows it once.
+
+Rules the doors follow, which are easy to break by accident:
+- No door ever says whether an address or a user ID exists. "That did not match"
+  is the only answer to a bad sign-in; a forgotten password always says a code is
+  on its way. A door that confirms addresses is a list of who to attack.
+- A wrong password and a password tried on an account that has none take the same
+  work to refuse (`checkPassword` grinds a dummy hash), so one cannot be told from
+  the other by how long it took.
+- A sign-in lasts a year and is rewritten on every page opened (`setSession`), so
+  somebody who works here daily is never signed out mid-run. Signing out is the
+  only thing that ends it.
+- Verification codes need SMTP. Without `SMTP_HOST`/`SMTP_USER`/`SMTP_PASS` the
+  email doors cannot work and say so plainly (503), rather than leaving somebody
+  waiting for a code that is not coming.
+
 ## Open items
 - Replace the copied old files with the new design once the user describes it.
 - Decide DigitalOcean settings: turn **Edge caching** and **Email obfuscation** Off (app shows
