@@ -43,7 +43,7 @@
 /* The bell's own sheet, for the screens that have no toolbar to hang one on. */
 .fxsheet{position:fixed;inset:0;background:rgba(24,35,42,.4);display:none;z-index:60}
 .fxsheet.on{display:block}
-.fxsheet .fxcard{position:absolute;top:62px;left:20px;width:330px;max-width:calc(100vw - 40px);
+.fxsheet .fxcard{position:absolute;top:62px;right:20px;width:330px;max-width:calc(100vw - 40px);
   background:var(--panel);border:1px solid var(--line);border-radius:12px;
   box-shadow:0 22px 50px rgba(24,35,42,.22);overflow:hidden}
 .fxsheet .fxcard .fxcap{display:flex;align-items:center;justify-content:space-between;

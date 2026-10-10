@@ -91,7 +91,7 @@
 
   @media (max-width:780px){
     .fxbarin{grid-template-columns:1fr;gap:10px;padding:10px 16px}
-    .fxbar .fxright{display:none}
+    .fxbar .fxleft{display:none}
     .fxnav{overflow-x:auto;justify-content:flex-start}
     .fxnav a{padding:9px 16px;font-size:12.5px}
     .fxstrip{height:auto;min-height:88px;padding:14px 0}
@@ -104,12 +104,23 @@
 <div class="fxbar" id="bar">
   <div class="fxbarin">
     <div class="fxleft">
-      <button class="fxtool" id="btnSeek" title="Search" aria-label="Search">
-        <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>
+      <button class="fxtool" id="btnBack" title="Back" aria-label="Back">
+        <svg viewBox="0 0 24 24"><path d="M15 5l-7 7 7 7"/></svg>
       </button>
+      <button class="fxtool" id="btnFwd" title="Forward" aria-label="Forward">
+        <svg viewBox="0 0 24 24"><path d="M9 5l7 7-7 7"/></svg>
+      </button>
+    </div>
+
+    <nav class="fxnav" id="pill"></nav>
+
+    <div class="fxright">
       <div class="fxseek" id="seekBox">
         <input id="seek" type="search" placeholder="Search apps…" autocomplete="off">
       </div>
+      <button class="fxtool" id="btnSeek" title="Search" aria-label="Search">
+        <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>
+      </button>
       <button class="fxtool" id="btnBell" title="Notifications" aria-label="Notifications">
         <svg viewBox="0 0 24 24"><path d="M18 8a6 6 0 10-12 0c0 7-2 8-2 8h16s-2-1-2-8"/><path d="M13.7 21a2 2 0 01-3.4 0"/></svg>
         <span class="fxcount" id="bellN"></span>
@@ -117,17 +128,6 @@
       <a class="fxtool" href="/settings" title="Settings" aria-label="Settings">
         <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3.2"/><path d="M12 2.5v2.8M12 18.7v2.8M2.5 12h2.8M18.7 12h2.8M5.2 5.2l2 2M16.8 16.8l2 2M18.8 5.2l-2 2M7.2 16.8l-2 2"/></svg>
       </a>
-    </div>
-
-    <nav class="fxnav" id="pill"></nav>
-
-    <div class="fxright">
-      <button class="fxtool" id="btnBack" title="Back" aria-label="Back">
-        <svg viewBox="0 0 24 24"><path d="M15 5l-7 7 7 7"/></svg>
-      </button>
-      <button class="fxtool" id="btnFwd" title="Forward" aria-label="Forward">
-        <svg viewBox="0 0 24 24"><path d="M9 5l7 7-7 7"/></svg>
-      </button>
     </div>
   </div>
 </div>
