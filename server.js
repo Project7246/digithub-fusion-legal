@@ -25,7 +25,8 @@ import {
   claimCompany, ownerOf, ownsCompany
 } from './accounts.js';
 import {
-  initNotify, notify, listFor, unreadCount, markAllRead, clearFor, sendMail
+  initNotify, notify, listFor, unreadCount, markAllRead, clearFor, sendMail,
+  mailReady, mailStatus, checkMail
 } from './notify.js';
 import { initPush, publicKey, addSub, dropSub, hasSub, pushTo } from './push.js';
 import {
@@ -180,8 +181,15 @@ app.get('/api/setup-check', (req, res) => {
       PORTAL_KEY:        has('PORTAL_KEY'),
       GOOGLE_SA_EMAIL:   has('GOOGLE_SA_EMAIL'),
       GOOGLE_SA_KEY:     has('GOOGLE_SA_KEY'),
-      SMTP_HOST:         has('SMTP_HOST')
+      SMTP_HOST:         has('SMTP_HOST'),
+      SMTP_USER:         has('SMTP_USER'),
+      SMTP_PASS:         has('SMTP_PASS'),
+      SMTP_FROM:         has('SMTP_FROM')
     },
+    // Without these three nobody can sign up at all - the code has nowhere to go -
+    // so the post is named here with the rest of the setup rather than left to be
+    // discovered by the first person who tries.
+    mail: mailStatus(),
     // Not secrets, and the pair Intuit checks character for character.
     baseUrl: BASE_URL,
     redirectUri: `${BASE_URL}/auth/callback`,
@@ -711,6 +719,58 @@ app.post('/api/admin/members/delete', async (req, res) => {
   } catch (e) {
     res.status(500).json({ error: e.message });
   }
+});
+
+/* ---------- the post office ---------- */
+// Signing up only works if the server can send mail, and a server that cannot
+// send mail looks exactly like one that can until somebody tries. These three
+// make that visible to the one person who can do anything about it.
+//
+// Fusion's own admin, not a company's administrator: SMTP is the whole server's
+// setting, so a customer who connected their books has no business reading it
+// and nothing to gain from a test letter they cannot act on.
+async function mailAdmin(req, res) {
+  const who = await whoIs(currentUser(req));
+  if (who && who.admin) return who;
+  res.status(403).json({ error: 'Only the administrator of Fusion can see this.' });
+  return null;
+}
+
+app.get('/api/mail/status', async (req, res) => {
+  if (!await mailAdmin(req, res)) return;
+  res.setHeader('Cache-Control', 'no-store');
+  res.json(mailStatus());
+});
+
+// Does the mail server accept us? Asked without sending anything, so it can be
+// pressed as often as it takes while the settings are being got right.
+app.post('/api/mail/check', async (req, res) => {
+  if (!await mailAdmin(req, res)) return;
+  const out = await checkMail();
+  res.json(Object.assign({ status: mailStatus() }, out));
+});
+
+// A real letter, and only ever to the address of the person asking for it. No
+// `to` is read from the request: an endpoint that mails wherever it is told is a
+// way to send mail from this company's name, whoever ends up holding the account.
+app.post('/api/mail/test', async (req, res) => {
+  const who = await mailAdmin(req, res);
+  if (!who) return;
+  if (!who.email) return res.status(400).json({ error: 'Your account has no email address to send to.' });
+  if (!mailReady()) {
+    return res.status(503).json({
+      error: 'No SMTP_HOST / SMTP_USER / SMTP_PASS on this server yet, so there is nothing to test.'
+    });
+  }
+  const sent = await sendMail(who.email, 'Fusion can send email', [
+    'This is the test letter from Fusion.',
+    'If you are reading it, sign-up codes and password resets will reach people.',
+    'Sent from ' + BASE_URL
+  ]);
+  if (!sent) {
+    return res.status(502).json({ error: 'The mail server refused it.', status: mailStatus() });
+  }
+  res.json({ ok: true, to: who.email, status: mailStatus() });
 });
 
 app.post('/api/admin/users/access', async (req, res) => {
@@ -1354,6 +1414,40 @@ setInterval(() => {
 // A code to an address, for signing up or for a forgotten password. It is the same
 // code either way; what it is allowed to do afterwards is decided by which route
 // is handed it back.
+// What the letter looks like. Somebody reading it has never seen this app before,
+// and a bare line of text asking for a six-digit code is the exact shape of a scam,
+// so it carries the mark, the colours and nothing to click. Tables and inline
+// styles because that is what mail readers still understand; the plain-text copy
+// underneath is what they see with the pictures off.
+function codeEmail(code, why) {
+  const safe = String(why).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  const face = 'Segoe UI,Roboto,Helvetica,Arial,sans-serif';
+  return '<div style="margin:0;padding:24px 12px;background:#F2F6F6">' +
+    '<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" ' +
+      'style="max-width:520px;margin:0 auto;background:#FFFFFF;border:1px solid #E1E8E9;' +
+      'border-radius:14px;overflow:hidden">' +
+    '<tr><td style="background:#222F34;padding:19px 26px">' +
+      '<span style="font:700 19px ' + face + ';color:#FFFFFF;letter-spacing:.04em">FUSION</span>' +
+      '<span style="font:400 12px ' + face + ';color:#11BAB5;padding-left:9px">' +
+        'AI-powered OS for e-commerce</span>' +
+    '</td></tr>' +
+    '<tr><td style="padding:26px 26px 6px">' +
+      '<p style="font:400 14px/1.6 ' + face + ';color:#18212A;margin:0 0 18px">' + safe + '</p>' +
+      '<div style="font:700 30px/1 Consolas,Menlo,monospace;letter-spacing:.28em;' +
+        'color:#0C7F7C;background:#EAFAF9;border:1px solid #BCEDEB;border-radius:10px;' +
+        'padding:18px 10px 18px 24px;text-align:center">' + code + '</div>' +
+      '<p style="font:400 13px/1.6 ' + face + ';color:#55666B;margin:16px 0 0">' +
+        'It works once, for the next 15 minutes.</p>' +
+      '<p style="font:400 13px/1.6 ' + face + ';color:#55666B;margin:10px 0 20px">' +
+        'If you did not ask for it, nothing has happened to your account ' +
+        'and you can ignore this. Nobody from Fusion will ever ask you for this code.</p>' +
+    '</td></tr>' +
+    '<tr><td style="background:#F7FAFA;border-top:1px solid #E1E8E9;padding:13px 26px">' +
+      '<span style="font:400 11.5px ' + face + ';color:#7C8E93">Fusion &middot; ' +
+        BASE_URL.replace(/^https?:\/\//, '') + '</span>' +
+    '</td></tr></table></div>';
+}
+
 async function mailCode(res, email, name, subject, why) {
   if (await codeSentRecently(email)) {
     return res.status(429).json({ error: 'A code has just gone out. Check your email, then ask again in a minute.' });
@@ -1365,16 +1459,28 @@ async function mailCode(res, email, name, subject, why) {
     'Your code is ' + code,
     'It works for the next 15 minutes, once. If you did not ask for it, nothing has happened to your account and you can ignore this.',
     'Fusion'
-  ]);
+  ], { html: codeEmail(code, why) });
   if (!sent) {
-    // Without an SMTP account the code was written and can never be read, so the
-    // row is taken back out rather than left to expire against a person who is
-    // standing there waiting for an email that is not coming.
+    // The code was written and can never be read, so the row is taken back out
+    // rather than left to expire against a person standing there waiting for an
+    // email that is not coming.
     await pool.query('DELETE FROM email_codes WHERE email = $1', [email]);
-    console.error('Sign-up code for ' + email + ' could not be sent: no SMTP settings');
-    return res.status(503).json({
-      error: 'This server cannot send email yet, so the code could not go out. ' +
-             'The administrator needs to set SMTP_HOST, SMTP_USER and SMTP_PASS.'
+
+    // Two different failures, and telling them apart is the whole difference
+    // between "the owner has not finished setting this up" and "try again in a
+    // minute". Saying the second when the first is true leaves somebody pressing
+    // a button that can never work.
+    if (!mailReady()) {
+      console.error('Code for ' + email + ' could not be sent: no SMTP settings');
+      return res.status(503).json({
+        error: 'This server cannot send email yet, so the code could not go out. ' +
+               'The administrator needs to set SMTP_HOST, SMTP_USER and SMTP_PASS.'
+      });
+    }
+    console.error('Code for ' + email + ' was refused by the mail server');
+    return res.status(502).json({
+      error: 'The mail server would not take the message, so the code did not go out. ' +
+             'Try again in a minute; if it keeps happening, tell the administrator.'
     });
   }
   res.json({ ok: true, sent: true });

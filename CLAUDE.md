@@ -200,6 +200,41 @@ browser and prints the section each path picks and every section's tile list.
 Worth re-running after touching either file, because a throw in nav.js breaks
 every page in the app.
 
+## Sending email
+
+One account, in `notify.js`, and everything that leaves the app goes through it:
+sign-up codes, password resets and the notices to an admin who is not in the app.
+`sendMail(to, subject, lines, opts)` - `lines` is the plain-text letter and is
+never optional, `opts.html` is the dressed one. A sign-up code is read by
+somebody who has never seen Fusion before, and a bare line asking for six digits
+is the exact shape of a scam, so `codeEmail()` in `server.js` gives it the mark
+and the colours. Tables and inline styles, because that is what mail readers
+still understand.
+
+| Setting | What it is | Hostinger |
+|---|---|---|
+| `SMTP_HOST` | the mail server | `smtp.hostinger.com` |
+| `SMTP_PORT` | 465 is SSL, 587 is STARTTLS | `465` |
+| `SMTP_USER` | the mailbox it signs in as | a real mailbox on `availity.pk` |
+| `SMTP_PASS` | that mailbox's password | - |
+| `SMTP_FROM` | what the letter says it is from; falls back to `SMTP_USER` | - |
+
+Set in DigitalOcean, never in git. Until they are set **nobody can sign up at
+all**, because the code has nowhere to go - so the app says which three are
+missing (503) rather than letting somebody wait for an email that is not coming.
+A mail server that is set up but refuses the letter is a different answer (502,
+"try again in a minute"), because telling somebody to wait when the owner has
+not finished setting up leaves them pressing a button that can never work.
+
+Fusion's own admin - `ADMIN_EMAILS`, not a company's administrator, because SMTP
+is the whole server's setting - gets an **Email** tab in Settings. It appears
+only if `/api/mail/status` answers, so the page never offers what the server
+would refuse. `/api/mail/check` asks the mail server whether it would take a
+letter without sending one, which is what tells a wrong password (refused there)
+from a wrong port (never connects). `/api/mail/test` sends a real one, and only
+ever to the address of the person asking: an endpoint that mails wherever it is
+told is a way to send mail in this company's name.
+
 ## Open items
 - Replace the copied old files with the new design once the user describes it.
 - Decide DigitalOcean settings: turn **Edge caching** and **Email obfuscation** Off (app shows

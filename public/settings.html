@@ -57,6 +57,24 @@
   input[type=color]{width:46px;height:30px;padding:0;border:1px solid var(--line);
     border-radius:6px;background:#fff;cursor:pointer}
 
+  /* app.css owns the short names, so what this tab adds is fx - see CLAUDE.md */
+  .fxpost{margin:0;display:grid;grid-template-columns:170px 1fr;gap:10px 18px;font-size:13px}
+  .fxpost dt{color:var(--faint);font-size:11px;letter-spacing:.07em;text-transform:uppercase;
+    padding-top:2px}
+  .fxpost dd{margin:0;font-family:var(--mono);font-size:12.5px;word-break:break-all}
+  .fxflag{display:inline-block;font-family:var(--sans);font-size:11.5px;font-weight:600;
+    padding:2px 9px;border-radius:999px}
+  .fxflag.fxyes{background:rgba(44,160,28,.12);color:#1E7A14}
+  .fxflag.fxno{background:rgba(185,58,44,.12);color:#A8352A}
+  .fxsaid{display:none;margin:16px 0 0;padding:11px 13px;border-radius:9px;font-size:12.5px;
+    line-height:1.55}
+  .fxsaid.on{display:block}
+  .fxsaid.fxgood{background:rgba(44,160,28,.1);border:1px solid rgba(44,160,28,.3);color:#1E7A14}
+  .fxsaid.fxbad{background:rgba(185,58,44,.09);border:1px solid rgba(185,58,44,.28);color:#8E2C22}
+  .fxsteps{font-size:12.5px;color:var(--muted);line-height:1.7;margin:14px 0 0;padding-left:18px}
+  .fxsteps code{font-family:var(--mono);font-size:11.5px;background:var(--panel-2);
+    border:1px solid var(--line);border-radius:4px;padding:1px 5px}
+
   .acts{margin-top:18px;display:flex;gap:9px;align-items:center}
   .note{font-size:11.5px;color:var(--muted)}
 </style>
@@ -80,6 +98,7 @@
         <button data-pane="profile" class="on">Your profile</button>
         <button data-pane="style">Custom form style</button>
         <button data-pane="theme">Custom theme</button>
+        <button data-pane="mail" id="tabMail" style="display:none">Email</button>
       </div>
 
       <!-- ============ profile ============ -->
@@ -192,6 +211,46 @@
       </div>
 
     </div>
+      <!-- ============ email ============ -->
+      <!-- Only Fusion's own admin is shown this, and the tab only appears if the
+           server answers for it - so what is on screen is what the server agrees
+           to, rather than what the page guessed. -->
+      <div class="pane" id="p-mail">
+        <div class="step">
+          <h2>Sending email</h2>
+          <div class="hint">
+            Sign-up codes and password resets go out through this account. Without it
+            nobody new can finish signing up, because the code has nowhere to go.
+          </div>
+          <dl class="fxpost">
+            <dt>Working</dt><dd id="eOk">&mdash;</dd>
+            <dt>Server</dt><dd id="eHost">&mdash;</dd>
+            <dt>Port</dt><dd id="ePort">&mdash;</dd>
+            <dt>Signs in as</dt><dd id="eUser">&mdash;</dd>
+            <dt>Letters come from</dt><dd id="eFrom">&mdash;</dd>
+            <dt>Password</dt><dd id="ePass">&mdash;</dd>
+            <dt>Last letter sent</dt><dd id="eLast">&mdash;</dd>
+          </dl>
+
+          <div class="acts">
+            <button class="mini" id="btnMailCheck">Test the connection</button>
+            <button class="mini" id="btnMailSend">Send me a test email</button>
+          </div>
+          <div class="fxsaid" id="eSaid"></div>
+
+          <ol class="fxsteps" id="eHow">
+            <li>In DigitalOcean, open the app component &rarr; Settings &rarr;
+              Environment Variables.</li>
+            <li>Add <code>SMTP_HOST</code>, <code>SMTP_PORT</code>,
+              <code>SMTP_USER</code>, <code>SMTP_PASS</code> and
+              <code>SMTP_FROM</code>, then press <b>Save</b> &mdash; values typed and
+              left are lost.</li>
+            <li>Wait for the redeploy, come back here and press
+              <b>Test the connection</b>.</li>
+          </ol>
+        </div>
+      </div>
+
   </div>
 </div>
 
@@ -326,6 +385,85 @@
     $('mMail').textContent = s.email || '—';
     $('mCo').textContent = s.companyName || (s.connected ? s.realmId : 'Not connected');
   });
+
+  /* ---------- the post office ---------- */
+  // The tab is drawn only if the server answers; a 403 means this is not Fusion's
+  // own admin, and there is nothing here for them to do.
+
+  function postSaid(kind, text){
+    var box = $('eSaid');
+    box.className = 'fxsaid on ' + kind;
+    box.textContent = text;
+  }
+
+  function paintPost(st){
+    var ok = !!(st && st.configured);
+    $('eOk').innerHTML = '<span class="fxflag ' +
+      (ok ? 'fxyes">Set up' : 'fxno">Not set up yet') + '</span>';
+    $('eHost').textContent = (st && st.host) || 'SMTP_HOST is not set';
+    $('ePort').textContent = st ? (st.port + (st.secure ? ' (SSL)' : ' (STARTTLS)')) : '\u2014';
+    $('eUser').textContent = (st && st.user) || 'SMTP_USER is not set';
+    $('eFrom').textContent = (st && st.from) || '\u2014';
+    $('ePass').textContent = st && st.passwordLength
+      ? st.passwordLength + ' characters' : 'SMTP_PASS is not set';
+    $('eLast').textContent = st && st.lastSentAt
+      ? new Date(st.lastSentAt).toLocaleString() : 'Nothing yet';
+    $('eHow').style.display = ok ? 'none' : '';
+    if (st && st.lastError) {
+      postSaid('fxbad', 'Last complaint from the mail server: ' + st.lastError);
+    }
+  }
+
+  // one press at a time, and the button says what it is doing while it does it
+  function press(btn, working, run){
+    var was = btn.textContent;
+    btn.disabled = true;
+    btn.textContent = working;
+    run().then(function(){ btn.disabled = false; btn.textContent = was; });
+  }
+
+  function askPost(url){
+    return fetch(url, { method: 'POST' }).then(function(r){
+      return r.json().catch(function(){ return {}; })
+        .then(function(d){ return { ok: r.ok, d: d }; });
+    }).catch(function(){
+      return { ok: false, d: { error: 'Could not reach the server.' } };
+    });
+  }
+
+  fetch('/api/mail/status').then(function(r){
+    return r.ok ? r.json() : null;
+  }).then(function(st){
+    if (!st) return;
+    $('tabMail').style.display = '';
+    paintPost(st);
+
+    $('btnMailCheck').addEventListener('click', function(){
+      press($('btnMailCheck'), 'Testing\u2026', function(){
+        return askPost('/api/mail/check').then(function(out){
+          if (out.d.status) paintPost(out.d.status);
+          if (out.ok && out.d.ok) {
+            postSaid('fxgood', 'The mail server accepted us. Codes will go out.');
+          } else {
+            postSaid('fxbad', out.d.error || 'The mail server would not take us.');
+          }
+        });
+      });
+    });
+
+    $('btnMailSend').addEventListener('click', function(){
+      press($('btnMailSend'), 'Sending\u2026', function(){
+        return askPost('/api/mail/test').then(function(out){
+          if (out.d.status) paintPost(out.d.status);
+          if (out.ok && out.d.ok) {
+            postSaid('fxgood', 'Sent to ' + out.d.to + '. Check that inbox, and the spam folder.');
+          } else {
+            postSaid('fxbad', out.d.error || 'It did not go.');
+          }
+        });
+      });
+    });
+  }).catch(function(){ /* not an admin, or offline: the tab stays away */ });
 
   show((location.hash || '#profile').slice(1) || 'profile');
 
