@@ -29,37 +29,93 @@
   // server turns the same pages away at their own address, so the rail is not
   // hiding a door that still opens. A line with no `need` is reading, which was
   // never what was being handed out: the dashboard and the searches stay.
-  var ITEMS = [
-    { group: null, items: [
-      { href:'/finance',       label:'Dashboard',        icon:'grid' }
+  // ==================== the four sections ====================
+  //
+  // The home page is a launcher: every section's tiles on one screen. Going into
+  // a section is what this rail is for - it holds that section's modules and
+  // nothing else, the way the first app's rail held the books. So the rail is
+  // not one fixed list any more; it is whichever section the open page belongs
+  // to.
+  //
+  // Couriers sit under both Logistics and Operations. It is one module seen from
+  // two desks, so the page is the same page - which section's rail it wears is
+  // whichever one it was entered from, remembered for the tab.
+  var SECTIONS = [
+    { key:'finance', label:'Finance', home:'/finance',
+      what:'The books themselves. Needs your QuickBooks company.', qb:true,
+      soon:[{ label:'Reports', tile:'sheet' }, { label:'Customers', tile:'people' }],
+      groups: [
+      { group: null, items: [
+        { href:'/finance',  label:'Dashboard',        icon:'grid', tile:'book', as:'Accounting' }
+      ]},
+      { group: 'Import invoices', items: [
+        { href:'/convert',  label:'Convert',          icon:'shuffle', need:'upload', tile:'shuffle' },
+        { href:'/upload',   label:'Upload',           icon:'up',      need:'upload', tile:'up' }
+      ]},
+      { group: 'Payments', items: [
+        { href:'/payments', label:'Receive payments', icon:'cash',    need:'payments', tile:'cash', as:'Payments' },
+        { href:'/advance',  label:'Advance payments', icon:'wallet',  need:'advance', tile:'wallet', as:'Advances' },
+        { href:'/charges',  label:'Delivery charges', icon:'receipt', need:'charges', tile:'receipt', as:'Delivery fees' },
+        { href:'/find',     label:'Find orders',      icon:'search', tile:'find' },
+        { href:'/audit',    label:'Open invoice audit', icon:'check', tile:'check', as:'Invoice audit' }
+      ]},
+      { group: 'Products', items: [
+        // cost, stock, duplicates and the reports behind them are tabs of one page
+        { href:'/products',  label:'Product health',  icon:'tag',  need:'products', tile:'box', as:'Inventory' },
+        { href:'/purchases', label:'Purchases',       icon:'cart', need:'purchases', tile:'cart' }
+      ]},
+      { group: 'Maintenance', items: [
+        { href:'/fix',      label:'Fix duplicates',   icon:'copy', need:'products', tile:'copy', as:'Duplicates' },
+        // Product, Category and Description are tabs of one page, not three
+        // lines in the rail - a new kind of change is a new tab, not a new link
+        { href:'/replace',  label:'Changes',          icon:'swap', need:'changes', tile:'swap' },
+        { href:'/void',     label:'Void invoices',    icon:'ban',  need:'void', tile:'ban', as:'Void' }
+        // Who may sign in, and what each of them may change, is not a line in this
+        // rail. It sits under the settings gear with the rest of the company's own
+        // settings, the way QuickBooks keeps it, and only the admin sees it there.
+      ]}
     ]},
-    { group: 'Import invoices', items: [
-      { href:'/convert',  label:'Convert',          icon:'shuffle', need:'upload' },
-      { href:'/upload',   label:'Upload',           icon:'up',      need:'upload' }
+
+    { key:'logistics', label:'Logistics', home:'/logistics',
+      what:'Where every order is, across every courier account.', qb:true,
+      soon:[{ label:'Returns', tile:'back' }, { label:'Rates', tile:'tag' }],
+      groups: [
+      { group: null, items: [
+        { href:'/logistics', front:true, label:'Overview',        icon:'grid' }
+      ]},
+      { group: 'Couriers', items: [
+        { href:'/couriers',     label:'Courier accounts', icon:'truck', tree:true,
+          need:'couriersync', tile:'truck', as:'Couriers' },
+        { href:'/courier-dash', label:'Tracking',      icon:'pin',    need:'couriersync', tile:'pin' },
+        { href:'/pickups',      label:'Pickups',       icon:'hand',   need:'couriersync', tile:'hand' },
+        { href:'/cprs',         label:'CPRs',          icon:'sheet',  need:'couriersync', tile:'sheet' },
+        { href:'/receipts',     label:'Receipts',      icon:'receipt',need:'couriersync', tile:'receipt' }
+      ]}
     ]},
-    { group: 'Payments', items: [
-      { href:'/payments', label:'Receive payments', icon:'cash',    need:'payments' },
-      { href:'/advance',  label:'Advance payments', icon:'wallet',  need:'advance' },
-      { href:'/charges',  label:'Delivery charges', icon:'receipt', need:'charges' },
-            { href:'/find',     label:'Find orders',      icon:'search' },
-      { href:'/audit',    label:'Open invoice audit', icon:'receipt' },
-      { href:'/couriers', label:'Couriers',         icon:'truck', tree:true,
-        need:'couriersync' }
+
+    { key:'operations', label:'Operations', home:'/operations',
+      what:'The day as it runs - orders in, parcels out, what went wrong.', qb:true,
+      soon:[{ label:'eCommerce', tile:'bag' }, { label:'Shopify', tile:'cart' },
+            { label:'Helpdesk', tile:'chat' }],
+      groups: [
+      { group: null, items: [
+        { href:'/operations', front:true, label:'Overview',       icon:'grid' }
+      ]},
+      { group: 'Couriers', items: [
+        { href:'/couriers',     label:'Courier accounts', icon:'truck', need:'couriersync', tile:'truck', as:'Couriers' },
+        { href:'/courier-dash', label:'Tracking',      icon:'pin',    need:'couriersync', tile:'pin' },
+        { href:'/cprs',         label:'CPRs',          icon:'sheet',  need:'couriersync', tile:'sheet' }
+      ]}
     ]},
-    { group: 'Products', items: [
-      // cost, stock, duplicates and the reports behind them are tabs of one page
-      { href:'/products',  label:'Product health',  icon:'tag',  need:'products' },
-      { href:'/purchases', label:'Purchases',       icon:'cart', need:'purchases' }
-    ]},
-    { group: 'Maintenance', items: [
-      { href:'/fix',      label:'Fix duplicates',   icon:'copy', need:'products' },
-      // Product, Category and Description are tabs of one page, not three
-      // lines in the rail - a new kind of change is a new tab, not a new link
-      { href:'/replace',  label:'Changes',          icon:'swap', need:'changes' },
-      { href:'/void',     label:'Void invoices',    icon:'ban',  need:'void' }
-      // Who may sign in, and what each of them may change, is not a line in this
-      // rail. It sits under the settings gear with the rest of the company's own
-      // settings, the way QuickBooks keeps it, and only the admin sees it there.
+
+    { key:'hr', label:'HR', home:'/hr',
+      what:'The people who do the work.', qb:false,
+      soon:[{ label:'People', tile:'people' }, { label:'Timesheets', tile:'clock' },
+            { label:'Attendance', tile:'cal' }, { label:'Payroll', tile:'cash' }],
+      groups: [
+      { group: null, items: [
+        { href:'/hr', front:true,       label:'Overview',          icon:'grid' }
+      ]}
     ]}
   ];
 
@@ -77,7 +133,11 @@
     swap:   '<path d="M4 8h13M14 5l3 3-3 3M20 16H7M10 13l-3 3 3 3"/>',
     cart:   '<circle cx="9" cy="20" r="1.4"/><circle cx="18" cy="20" r="1.4"/><path d="M2 3h3l2.4 11.2a2 2 0 002 1.6h7.7a2 2 0 002-1.6L21 7H6"/>',
     people: '<path d="M16 19v-2a4 4 0 00-4-4H6a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="3.2"/><path d="M22 19v-2a4 4 0 00-3-3.8"/><path d="M16.5 3.9a4 4 0 010 6.2"/>',
-    tag:    '<path d="M20.6 13.4l-7.2 7.2a2 2 0 01-2.8 0l-7-7A2 2 0 013 12.2V5a2 2 0 012-2h7.2a2 2 0 011.4.6l7 7a2 2 0 010 2.8z"/><circle cx="7.5" cy="7.5" r="1.2"/>'
+    tag:    '<path d="M20.6 13.4l-7.2 7.2a2 2 0 01-2.8 0l-7-7A2 2 0 013 12.2V5a2 2 0 012-2h7.2a2 2 0 011.4.6l7 7a2 2 0 010 2.8z"/><circle cx="7.5" cy="7.5" r="1.2"/>',
+    check:  '<path d="M9 11l3 3 5-6"/><rect x="3" y="3" width="18" height="18" rx="3"/>',
+    pin:    '<path d="M12 21s7-6.3 7-11.5A7 7 0 005 9.5C5 14.7 12 21 12 21z"/><circle cx="12" cy="9.5" r="2.6"/>',
+    hand:   '<path d="M9 11V4.5a1.5 1.5 0 013 0V11"/><path d="M12 11V3.5a1.5 1.5 0 013 0V11"/><path d="M15 11V6.5a1.5 1.5 0 013 0V15a6 6 0 01-6 6h-1a6 6 0 01-6-6v-3a1.5 1.5 0 013 0"/>',
+    sheet:  '<rect x="4" y="3" width="16" height="18" rx="2"/><path d="M8 8h8M8 12h8M8 16h5"/>'
   };
 
   function svg(name){
@@ -97,11 +157,64 @@
   // down to one form here, before anything is compared against it.
   var path = location.pathname.replace(/\.html$/, '').replace(/\/index$/, '') || '/';
 
+  // Which section this page belongs to, and so which rail it wears.
+  //
+  // Most pages belong to one. The courier pages belong to two, so the one that
+  // was last entered from the home screen wins for as long as the tab is open -
+  // which is the honest answer to "which desk am I at", and it survives moving
+  // about inside the section. Anything belonging to no section at all - the
+  // settings, the people, the chooser - keeps whatever rail was last up rather
+  // than throwing the person back to Finance.
+  var SEC_KEY = 'fusion:section';
+  function holds(sec, p){
+    for (var i = 0; i < sec.groups.length; i++) {
+      var g = sec.groups[i];
+      for (var j = 0; j < g.items.length; j++) {
+        var h = g.items[j].href;
+        if (h === p || (h !== '/' && p.indexOf(h) === 0)) return true;
+      }
+    }
+    return false;
+  }
+  function pickSection(){
+    var kept = null;
+    try { kept = sessionStorage.getItem(SEC_KEY); } catch (e) {}
+    var keptSec = null, firstSec = null;
+    for (var i = 0; i < SECTIONS.length; i++) {
+      if (SECTIONS[i].key === kept) keptSec = SECTIONS[i];
+      if (!firstSec && holds(SECTIONS[i], path)) firstSec = SECTIONS[i];
+    }
+    // the remembered desk, but only if this page is actually on it
+    if (keptSec && holds(keptSec, path)) return keptSec;
+    if (firstSec) return firstSec;
+    return keptSec || SECTIONS[0];
+  }
+  var HERE = pickSection();
+  try { sessionStorage.setItem(SEC_KEY, HERE.key); } catch (e) {}
+  var ITEMS = HERE.groups;
+
+  window.APP = window.APP || {};
+  window.APP.section = HERE.key;
+  // The one list, handed to whoever draws tiles from it (tiles.js). The rail and
+  // the home screen are two readings of the same thing, so a module added here
+  // appears in both and can never appear in only one.
+  window.APP.sections = SECTIONS;
+
   var html =
     '<a class="brand" href="/">' +
       '<img src="/logo.svg" alt="">' +
       '<span><b>FUSION</b><span>AI-powered OS</span></span>' +
-    '</a><nav>';
+    '</a>' +
+    // The way back to the launcher, and the name of the desk you are at. Both
+    // on one line, because together they answer "where am I and how do I get
+    // out" - which is the whole job of the top of a rail.
+    '<a class="allapps" href="/">' +
+      '<svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" ' +
+        'stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">' +
+        '<path d="M4 4h6v6H4zM14 4h6v6h-6zM4 14h6v6H4zM14 14h6v6h-6z"/></svg>' +
+      'All apps<span class="secname">' + HERE.label + '</span>' +
+    '</a>' +
+    '<nav>';
 
   ITEMS.forEach(function(sec){
     if(sec.group) html += '<div class="group">' + sec.group + '</div>';
@@ -743,8 +856,9 @@
       // exactly where they should land: it shows the four sections and lets the
       // one that needs a company ask for it. Every other page still needs one,
       // because every other page is work on a set of books.
-      var atHome = location.pathname === '/' || location.pathname === '/index';
-      if(s.signedIn && (!s.letIn || (!s.connected && !atHome)) &&
+      var front = path === '/' || path === '/finance' || path === '/logistics' ||
+                  path === '/operations' || path === '/hr';
+      if(s.signedIn && (!s.letIn || (!s.connected && !front)) &&
          location.pathname !== '/choose'){
         location.replace('/choose');
         return s;

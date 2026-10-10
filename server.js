@@ -264,7 +264,7 @@ app.get(/^\/$|^\/[A-Za-z0-9-]+$/, async (req, res, next) => {
     // moment it is wanted. Everything else still needs one, because everything
     // else is work on a set of books.
     if (!settled) {
-      if (here === '/index') return next();
+      if (OPEN_WITHOUT_COMPANY.has(here)) return next();
       return here === '/choose' ? next() : res.redirect('/choose');
     }
     if (here === '/choose') return res.redirect('/');
@@ -1167,6 +1167,14 @@ const RIGHT_GROUPS = [
 //
 // Everything not named here is open to anybody who is let in: the dashboard, the
 // searches, the settings. Reading was never what was being handed out.
+// The home screen and the four section fronts open before any company does.
+// They are for choosing, not for working: each one says what its section holds
+// and, where the section needs a company, asks for it there. Everything else
+// still needs one, because everything else is work on a set of books.
+const OPEN_WITHOUT_COMPANY = new Set([
+  '/index', '/finance', '/logistics', '/operations', '/hr'
+]);
+
 const PAGE_NEED = new Map(Object.entries({
   '/convert.html': 'upload',
   '/upload.html': 'upload',

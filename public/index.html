@@ -11,25 +11,24 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@600;700;800&family=Roboto:wght@400;500&family=Roboto+Mono:wght@400;500&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="/app.css">
+<link rel="stylesheet" href="/tiles.css">
 <style>
-  /* The first screen after signing in. Not a page of the books - a way into
-     them. There is no rail here, because a rail is for moving about inside one
-     section, and nothing has been chosen yet.
+  /* The way in. Not a page of the books - a shelf of everything the app can do,
+     with the four sections across the top.
 
-     Four sections across the top, and under them the things that section can
-     do. Everything on this page comes out of the one SECTIONS list in the
-     script below, so adding a tile is one line in one place. */
+     Going into a section is what opens its own rail, which nav.js builds from
+     the same list these tiles come from. So this screen is for choosing and the
+     rail is for working, and neither can drift from the other. */
 
   body{background:var(--page);min-height:100vh}
-  .wrap{max-width:1180px;margin:0 auto;padding:18px 20px 60px}
+  .wrap{max-width:1180px;margin:0 auto;padding:0 20px 60px}
 
-  /* ---------- the bar ---------- */
-  /* Three parts that keep their places whatever is in them: the tools on the
-     left, the sections in the middle, and the way back on the right. A grid,
-     not a flex row, so the middle stays in the middle even when the left side
-     grows a notification count. */
-  .bar{display:grid;grid-template-columns:1fr auto 1fr;align-items:center;gap:14px;
-    margin-bottom:18px}
+  /* The bar stays. It is the only navigation on this screen, and a screen that
+     scrolls past its own navigation has none. */
+  .bar{position:sticky;top:0;z-index:30;display:grid;
+    grid-template-columns:1fr auto 1fr;align-items:center;gap:14px;
+    padding:14px 0 13px;background:var(--page);
+    box-shadow:0 1px 0 var(--line),0 10px 18px -14px rgba(24,35,42,.3)}
   .bar .left{display:flex;gap:7px;align-items:center}
   .bar .right{display:flex;gap:7px;align-items:center;justify-content:flex-end}
 
@@ -44,19 +43,15 @@
     line-height:16px;padding:0 4px;display:none;font-family:var(--mono)}
   .icon .dot.on{display:block}
 
-  /* The pill. One white track with the sections in it, and the one you are on
-     filled in teal - which is the whole of the colour's job in this app. */
+  /* The pill. One white track with the four sections in it; pressing one goes
+     into it, where that section's rail is waiting. */
   .pill{display:flex;background:var(--panel);border:1px solid var(--line);
-    border-radius:999px;padding:4px;gap:2px}
+    border-radius:999px;padding:4px;gap:2px;box-shadow:0 2px 8px rgba(24,35,42,.06)}
   .pill a{display:block;padding:9px 22px;border-radius:999px;font-family:var(--head);
     font-weight:600;font-size:13px;color:var(--ink-2);text-decoration:none;
     white-space:nowrap;transition:background .15s,color .15s}
-  .pill a:hover{background:var(--panel-2)}
-  .pill a.on{background:var(--accent);color:#06251F}
-  .pill a.on:hover{background:var(--accent)}
+  .pill a:hover{background:var(--accent-soft);color:var(--accent-deep)}
 
-  /* The search box opens in place of nothing - it pushes the bar about as
-     little as it can, because the bar is what people aim at. */
   .seek{display:none;position:relative}
   .seek.on{display:block}
   .seek input{width:190px;border:1px solid var(--accent);border-radius:9px;
@@ -64,99 +59,30 @@
   .seek input:focus{outline:0}
 
   /* ---------- the strip ---------- */
-  /* One line about what the app is for, changing every few seconds. It is the
-     only decoration on the page and it carries no button, so nothing is lost
-     by not reading it. */
-  .strip{position:relative;height:96px;border-radius:12px;overflow:hidden;
+  .strip{position:relative;height:92px;border-radius:12px;overflow:hidden;
     background:linear-gradient(100deg,#1B2A30 0%,#223238 48%,#11BAB5 190%);
-    margin-bottom:16px}
+    margin:16px 0 26px}
   .strip .slide{position:absolute;inset:0;display:flex;align-items:center;
-    padding:0 28px;gap:16px;opacity:0;transition:opacity .6s ease}
+    padding:0 26px;gap:16px;opacity:0;transition:opacity .6s ease}
   .strip .slide.on{opacity:1}
-  .strip .slide h3{font-family:var(--head);font-weight:700;font-size:17px;color:#fff;
+  .strip .slide h3{font-family:var(--head);font-weight:700;font-size:16px;color:#fff;
     margin:0 0 3px;letter-spacing:-.01em}
   .strip .slide p{font-size:12.5px;color:#9DB0B5;margin:0;line-height:1.5}
-  .strip .slide .mk{flex:0 0 42px;width:42px;height:42px;border-radius:11px;
+  .strip .slide .mk{flex:0 0 40px;width:40px;height:40px;border-radius:11px;
     display:flex;align-items:center;justify-content:center;background:rgba(255,255,255,.07);
     border:1px solid rgba(255,255,255,.12)}
-  .strip .slide .mk svg{width:22px;height:22px}
-  .strip .pips{position:absolute;right:18px;bottom:12px;display:flex;gap:5px}
+  .strip .slide .mk svg{width:21px;height:21px}
+  .strip .pips{position:absolute;right:18px;bottom:11px;display:flex;gap:5px}
   .strip .pips i{width:6px;height:6px;border-radius:50%;background:rgba(255,255,255,.26);
     cursor:pointer;display:block}
   .strip .pips i.on{background:var(--aqua)}
-
-  /* ---------- the ring ---------- */
-  .ring{position:relative;height:270px;margin-bottom:22px;border-radius:12px;
-    background:var(--panel);border:1px solid var(--line);overflow:hidden}
-  .ring canvas{position:absolute;inset:0;width:100%;height:100%;display:block}
-
-  /* ---------- the tiles ---------- */
-  .head{display:flex;align-items:baseline;gap:12px;margin:0 0 14px}
-  .head h2{font-family:var(--head);font-size:17px;font-weight:700;margin:0;
-    letter-spacing:-.01em}
-  .head .n{font-size:12.5px;color:var(--muted)}
-
-  .tiles{display:grid;grid-template-columns:repeat(auto-fill,minmax(118px,1fr));
-    gap:14px}
-  .tile{display:flex;flex-direction:column;align-items:center;gap:9px;
-    text-decoration:none;color:var(--text);padding:4px 2px 10px}
-  .tile .box{width:72px;height:72px;border-radius:16px;background:var(--panel);
-    border:1px solid var(--line);display:flex;align-items:center;justify-content:center;
-    transition:transform .14s ease,box-shadow .14s ease,border-color .14s ease}
-  .tile .box svg{width:38px;height:38px;display:block}
-  .tile span{font-size:12.5px;font-weight:500;text-align:center;line-height:1.35}
-  .tile:hover .box{transform:translateY(-3px);border-color:var(--accent);
-    box-shadow:0 10px 22px rgba(17,186,181,.18)}
-
-  /* Not built yet, and said so rather than opening onto nothing. */
-  .tile.soon{cursor:default}
-  .tile.soon .box{background:var(--panel-2);border-style:dashed;opacity:.6}
-  .tile.soon:hover .box{transform:none;border-color:var(--line-2);box-shadow:none}
-  .tile.soon span{color:var(--faint)}
-  .tile.soon span:after{content:" · soon";color:var(--faint);font-size:11px}
-
-  /* ---------- the Finance gate ---------- */
-  /* QuickBooks is not asked for at the door any more. It is asked for here, by
-     the one section that cannot work without it, at the moment it is wanted. */
-  .gateq{background:var(--panel);border:1px solid var(--line);border-radius:12px;
-    padding:30px 26px;text-align:center}
-  .gateq img{width:52px;height:auto;aspect-ratio:400/280;margin-bottom:12px}
-  .gateq h3{font-family:var(--head);font-size:16px;font-weight:700;margin:0 0 7px}
-  .gateq p{font-size:13px;color:var(--muted);margin:0 auto 18px;max-width:430px;
-    line-height:1.6}
-  .gateq .solid{display:inline-flex;align-items:center;gap:9px}
-  .gateq .solid b{width:9px;height:9px;border-radius:50%;background:var(--qbo);flex:0 0 9px}
-
-  .none{padding:34px 0;text-align:center;color:var(--muted);font-size:13px}
-
-  /* ---------- the notification sheet ---------- */
-  .sheet{position:fixed;inset:0;background:rgba(24,35,42,.4);display:none;z-index:60}
-  .sheet.on{display:block}
-  .sheet .card{position:absolute;top:62px;left:20px;width:330px;max-width:calc(100vw - 40px);
-    background:var(--panel);border:1px solid var(--line);border-radius:12px;
-    box-shadow:0 22px 50px rgba(24,35,42,.22);overflow:hidden}
-  .sheet .card .cap{display:flex;align-items:center;justify-content:space-between;
-    padding:12px 14px;border-bottom:1px solid var(--line);font-size:12px;
-    font-weight:600;color:var(--ink-2)}
-  .sheet .card .cap button{border:0;background:none;color:var(--accent-deep);
-    font:inherit;font-size:12px;cursor:pointer;padding:0}
-  .sheet .card .list{max-height:60vh;overflow:auto}
-  .sheet .card .item{padding:11px 14px;border-bottom:1px solid var(--line);font-size:12.5px}
-  .sheet .card .item:last-child{border-bottom:0}
-  .sheet .card .item b{display:block;font-weight:600;margin-bottom:2px}
-  .sheet .card .item small{color:var(--muted);font-size:11.5px}
-  .sheet .card .item a{color:var(--accent-deep);text-decoration:none}
 
   @media (max-width:780px){
     .bar{grid-template-columns:1fr;gap:10px}
     .bar .right{display:none}
     .pill{overflow-x:auto;justify-content:flex-start}
     .pill a{padding:9px 16px;font-size:12.5px}
-    .ring{height:220px}
-    .strip{height:auto;min-height:92px}
-    .tiles{grid-template-columns:repeat(auto-fill,minmax(96px,1fr));gap:10px}
-    .tile .box{width:60px;height:60px;border-radius:14px}
-    .tile .box svg{width:32px;height:32px}
+    .strip{height:auto;min-height:88px;padding:14px 0}
   }
   @media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
 </style>
@@ -171,7 +97,7 @@
         <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>
       </button>
       <div class="seek" id="seekBox">
-        <input id="seek" type="search" placeholder="Search sections…" autocomplete="off">
+        <input id="seek" type="search" placeholder="Search apps…" autocomplete="off">
       </div>
       <button class="icon" id="btnBell" title="Notifications" aria-label="Notifications">
         <svg viewBox="0 0 24 24"><path d="M18 8a6 6 0 10-12 0c0 7-2 8-2 8h16s-2-1-2-8"/><path d="M13.7 21a2 2 0 01-3.4 0"/></svg>
@@ -196,13 +122,6 @@
 
   <div class="strip" id="strip"></div>
 
-  <div class="ring"><canvas id="cv"></canvas></div>
-
-  <div class="head">
-    <h2 id="secName">Finance</h2>
-    <span class="n" id="secWhat"></span>
-  </div>
-
   <div id="board"></div>
 
 </div>
@@ -215,248 +134,36 @@
 </div>
 
 <script src="/nav.js"></script>
+<script src="/tiles.js"></script>
 <script>
 "use strict";
 (function(){
   var $ = function(id){ return document.getElementById(id); };
+  var find = '';
 
-  /* ==================== what the app can do ====================
-     One list. A tile is a line in it: where it goes, what it is called, the
-     icon it wears, and the job it belongs to - `need` is the same key the rail
-     and the server use, so a person given part of the books sees part of this
-     page and the pages themselves still turn the rest away.
-
-     `soon` means it is not built. It is on the page because it is coming, and
-     it says so rather than opening onto nothing.
-
-     Couriers appear under both Logistics and Operations on purpose: it is one
-     module seen from two desks, not two modules. */
-  var SECTIONS = [
-    { key:'finance', label:'Finance', qb:true,
-      what:'The books themselves. Needs your QuickBooks company.',
-      tiles:[
-        { href:'/finance',   label:'Accounting',   icon:'book'  },
-        { href:'/convert',   label:'Convert',      icon:'shuffle', need:'upload' },
-        { href:'/upload',    label:'Upload',       icon:'up',      need:'upload' },
-        { href:'/payments',  label:'Payments',     icon:'cash',    need:'payments' },
-        { href:'/advance',   label:'Advances',     icon:'wallet',  need:'advance' },
-        { href:'/charges',   label:'Delivery fees',icon:'receipt', need:'charges' },
-        { href:'/find',      label:'Find orders',  icon:'find'  },
-        { href:'/audit',     label:'Invoice audit',icon:'check' },
-        { href:'/purchases', label:'Purchases',    icon:'cart',    need:'purchases' },
-        { href:'/products',  label:'Inventory',    icon:'box',     need:'products' },
-        { href:'/fix',       label:'Duplicates',   icon:'copy',    need:'products' },
-        { href:'/replace',   label:'Changes',      icon:'swap',    need:'changes' },
-        { href:'/void',      label:'Void',         icon:'ban',     need:'void' }
-      ]},
-
-    { key:'logistics', label:'Logistics', qb:true,
-      what:'Where every order is, across every courier account.',
-      tiles:[
-        { href:'/couriers',     label:'Couriers',  icon:'truck', need:'couriersync' },
-        { href:'/courier-dash', label:'Tracking',  icon:'pin',   need:'couriersync' },
-        { href:'/pickups',      label:'Pickups',   icon:'hand',  need:'couriersync' },
-        { href:'/cprs',         label:'CPRs',      icon:'sheet', need:'couriersync' },
-        { href:'/receipts',     label:'Receipts',  icon:'receipt', need:'couriersync' },
-        { label:'Returns',   icon:'back',  soon:true },
-        { label:'Rates',     icon:'tag',   soon:true }
-      ]},
-
-    { key:'operations', label:'Operations', qb:true,
-      what:'The day as it runs - orders in, parcels out, what went wrong.',
-      tiles:[
-        { href:'/couriers',     label:'Couriers',  icon:'truck', need:'couriersync' },
-        { href:'/courier-dash', label:'Tracking',  icon:'pin',   need:'couriersync' },
-        { href:'/cprs',         label:'CPRs',      icon:'sheet', need:'couriersync' },
-        { label:'eCommerce', icon:'bag',   soon:true },
-        { label:'Shopify',   icon:'cart',  soon:true },
-        { label:'Helpdesk',  icon:'chat',  soon:true }
-      ]},
-
-    { key:'hr', label:'HR', qb:false,
-      what:'The people who do the work.',
-      tiles:[
-        { label:'People',     icon:'people', soon:true },
-        { label:'Timesheets', icon:'clock',  soon:true },
-        { label:'Attendance', icon:'cal',    soon:true },
-        { label:'Payroll',    icon:'cash',   soon:true }
-      ]}
-  ];
-
-  /* The icons. Flat shapes in the brand's own colours - slate for the body of a
-     thing, teal for the part being acted on, grey and light grey for what is
-     behind it. No outlines and no shading, so they stay legible at 38px. */
-  var SL = '#222F34', TL = '#11BAB5', GY = '#7B7B7B', LG = '#BBBBBB', AQ = '#6BF0EA';
-  var ICONS = {
-    book:   '<rect x="8" y="7" width="26" height="34" rx="3" fill="' + SL + '"/>' +
-            '<rect x="14" y="13" width="14" height="3" rx="1.5" fill="' + LG + '"/>' +
-            '<rect x="14" y="20" width="14" height="3" rx="1.5" fill="' + LG + '"/>' +
-            '<circle cx="34" cy="33" r="9" fill="' + TL + '"/>',
-    shuffle:'<rect x="6" y="9" width="17" height="17" rx="3" fill="' + GY + '"/>' +
-            '<rect x="25" y="22" width="17" height="17" rx="3" fill="' + TL + '"/>' +
-            '<path d="M23 17h10v8" stroke="' + SL + '" stroke-width="3" fill="none" stroke-linecap="round"/>',
-    up:     '<rect x="7" y="28" width="34" height="13" rx="3" fill="' + SL + '"/>' +
-            '<path d="M24 7l10 11H14z" fill="' + TL + '"/>' +
-            '<rect x="20" y="16" width="8" height="10" fill="' + TL + '"/>',
-    cash:   '<rect x="5" y="12" width="38" height="24" rx="3" fill="' + SL + '"/>' +
-            '<circle cx="24" cy="24" r="7" fill="' + TL + '"/>' +
-            '<rect x="10" y="17" width="4" height="14" rx="2" fill="' + LG + '"/>' +
-            '<rect x="34" y="17" width="4" height="14" rx="2" fill="' + LG + '"/>',
-    wallet: '<rect x="6" y="11" width="36" height="26" rx="4" fill="' + SL + '"/>' +
-            '<rect x="26" y="19" width="18" height="11" rx="3" fill="' + TL + '"/>' +
-            '<circle cx="34" cy="24.5" r="2.6" fill="' + SL + '"/>',
-    receipt:'<path d="M10 6h28v36l-5-3-5 3-5-3-5 3-5-3-3 2z" fill="' + SL + '"/>' +
-            '<rect x="16" y="14" width="16" height="3" rx="1.5" fill="' + LG + '"/>' +
-            '<rect x="16" y="22" width="11" height="3" rx="1.5" fill="' + TL + '"/>',
-    find:   '<circle cx="21" cy="20" r="13" fill="' + GY + '"/>' +
-            '<circle cx="21" cy="20" r="7" fill="' + LG + '"/>' +
-            '<rect x="29" y="29" width="14" height="6" rx="3" transform="rotate(45 29 29)" fill="' + TL + '"/>',
-    check:  '<rect x="8" y="6" width="28" height="36" rx="3" fill="' + SL + '"/>' +
-            '<rect x="14" y="13" width="16" height="3" rx="1.5" fill="' + LG + '"/>' +
-            '<circle cx="33" cy="33" r="10" fill="' + TL + '"/>' +
-            '<path d="M29 33l3 3 6-6" stroke="#06251F" stroke-width="3" fill="none" stroke-linecap="round" stroke-linejoin="round"/>',
-    cart:   '<path d="M5 9h6l5 20h20" stroke="' + SL + '" stroke-width="4" fill="none" stroke-linecap="round" stroke-linejoin="round"/>' +
-            '<path d="M14 14h27l-4 12H17z" fill="' + TL + '"/>' +
-            '<circle cx="19" cy="38" r="3.5" fill="' + SL + '"/><circle cx="34" cy="38" r="3.5" fill="' + SL + '"/>',
-    box:    '<path d="M24 5l17 8v22l-17 8-17-8V13z" fill="' + SL + '"/>' +
-            '<path d="M24 5l17 8-17 8-17-8z" fill="' + LG + '"/>' +
-            '<path d="M24 21v22l17-8V13z" fill="' + GY + '"/>' +
-            '<circle cx="24" cy="30" r="5" fill="' + TL + '"/>',
-    copy:   '<rect x="6" y="6" width="24" height="28" rx="3" fill="' + LG + '"/>' +
-            '<rect x="16" y="14" width="26" height="28" rx="3" fill="' + SL + '"/>' +
-            '<rect x="22" y="22" width="14" height="3" rx="1.5" fill="' + TL + '"/>',
-    swap:   '<path d="M8 17h26" stroke="' + SL + '" stroke-width="4" fill="none" stroke-linecap="round"/>' +
-            '<path d="M28 10l8 7-8 7" fill="' + TL + '"/>' +
-            '<path d="M40 31H14" stroke="' + GY + '" stroke-width="4" fill="none" stroke-linecap="round"/>' +
-            '<path d="M20 24l-8 7 8 7" fill="' + LG + '"/>',
-    ban:    '<circle cx="24" cy="24" r="17" fill="' + SL + '"/>' +
-            '<rect x="13" y="21" width="22" height="6" rx="3" transform="rotate(-45 13 21)" fill="' + TL + '"/>',
-    truck:  '<rect x="4" y="14" width="23" height="17" rx="2" fill="' + SL + '"/>' +
-            '<path d="M27 19h8l6 7v5H27z" fill="' + TL + '"/>' +
-            '<circle cx="14" cy="34" r="4.5" fill="' + GY + '"/><circle cx="34" cy="34" r="4.5" fill="' + GY + '"/>',
-    pin:    '<path d="M24 5c-7.2 0-13 5.6-13 12.6C11 27 24 43 24 43s13-16 13-25.4C37 10.6 31.2 5 24 5z" fill="' + SL + '"/>' +
-            '<circle cx="24" cy="18" r="6" fill="' + TL + '"/>',
-    hand:   '<rect x="14" y="5" width="7" height="22" rx="3.5" fill="' + LG + '"/>' +
-            '<rect x="22" y="8" width="7" height="19" rx="3.5" fill="' + GY + '"/>' +
-            '<path d="M10 22h24v10a9 9 0 01-9 9h-6a9 9 0 01-9-9z" fill="' + SL + '"/>' +
-            '<circle cx="22" cy="33" r="4.5" fill="' + TL + '"/>',
-    sheet:  '<rect x="7" y="6" width="34" height="36" rx="3" fill="' + SL + '"/>' +
-            '<rect x="13" y="13" width="22" height="3" rx="1.5" fill="' + LG + '"/>' +
-            '<rect x="13" y="21" width="22" height="3" rx="1.5" fill="' + LG + '"/>' +
-            '<rect x="13" y="29" width="13" height="3" rx="1.5" fill="' + TL + '"/>',
-    back:   '<circle cx="24" cy="24" r="17" fill="' + GY + '"/>' +
-            '<path d="M27 15l-9 9 9 9" stroke="#fff" stroke-width="4" fill="none" stroke-linecap="round" stroke-linejoin="round"/>' +
-            '<circle cx="36" cy="12" r="6" fill="' + TL + '"/>',
-    tag:    '<path d="M6 6h18l18 18-18 18L6 24z" fill="' + SL + '"/>' +
-            '<circle cx="16" cy="16" r="4.5" fill="' + TL + '"/>',
-    bag:    '<path d="M9 15h30l-3 27H12z" fill="' + SL + '"/>' +
-            '<path d="M17 18V12a7 7 0 0114 0v6" stroke="' + TL + '" stroke-width="4" fill="none" stroke-linecap="round"/>',
-    chat:   '<path d="M6 10h36v22H20l-9 8v-8H6z" fill="' + SL + '"/>' +
-            '<circle cx="17" cy="21" r="3" fill="' + LG + '"/>' +
-            '<circle cx="25" cy="21" r="3" fill="' + LG + '"/>' +
-            '<circle cx="33" cy="21" r="3" fill="' + TL + '"/>',
-    people: '<circle cx="17" cy="16" r="7" fill="' + SL + '"/>' +
-            '<circle cx="32" cy="18" r="6" fill="' + GY + '"/>' +
-            '<path d="M5 41c0-7.2 5.4-12 12-12s12 4.8 12 12z" fill="' + SL + '"/>' +
-            '<path d="M27 41c0-5.6 3.4-9.5 8-9.5S43 35.4 43 41z" fill="' + TL + '"/>',
-    clock:  '<circle cx="24" cy="24" r="17" fill="' + SL + '"/>' +
-            '<path d="M24 14v10l7 4" stroke="' + TL + '" stroke-width="4" fill="none" stroke-linecap="round" stroke-linejoin="round"/>',
-    cal:    '<rect x="6" y="10" width="36" height="32" rx="3" fill="' + SL + '"/>' +
-            '<rect x="6" y="10" width="36" height="9" rx="3" fill="' + GY + '"/>' +
-            '<rect x="13" y="25" width="7" height="7" rx="2" fill="' + LG + '"/>' +
-            '<rect x="24" y="25" width="7" height="7" rx="2" fill="' + TL + '"/>'
-  };
-
-  function mark(name){
-    return '<svg viewBox="0 0 48 48" aria-hidden="true">' + (ICONS[name] || ICONS.box) + '</svg>';
-  }
   function esc(s){
     return String(s == null ? '' : s)
       .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
   }
 
-  /* ==================== the state of this screen ==================== */
-  var S = { now: 'finance', connected: false, canConnect: false, find: '' };
-
-  function sectionOf(key){
-    for (var i = 0; i < SECTIONS.length; i++) if (SECTIONS[i].key === key) return SECTIONS[i];
-    return SECTIONS[0];
-  }
-
-  // A tile is shown if the person was given the job it belongs to. A tile with
-  // no job is reading, which was never what was being handed out.
-  function mine(t){
-    if (!t.need) return true;
-    return !window.APP || !window.APP.may || window.APP.may(t.need);
-  }
-
+  /* The four sections, straight out of the list nav.js holds. Pressing one goes
+     into it - the tiles stay here for picking a single module out of the lot. */
   function drawPill(){
-    $('pill').innerHTML = SECTIONS.map(function(s){
-      return '<a href="#' + s.key + '" class="' + (s.key === S.now ? 'on' : '') + '">' +
+    var all = (window.APP && window.APP.sections) || [];
+    $('pill').innerHTML = all.map(function(s){
+      return '<a href="' + esc(s.home) + '" data-sec="' + esc(s.key) + '">' +
         esc(s.label) + '</a>';
     }).join('');
+    $('pill').querySelectorAll('a').forEach(function(a){
+      a.addEventListener('click', function(){
+        try { sessionStorage.setItem('fusion:section', a.getAttribute('data-sec')); } catch (e) {}
+      });
+    });
   }
 
   function drawBoard(){
-    var sec = sectionOf(S.now);
-    $('secName').textContent = sec.label;
-    $('secWhat').textContent = sec.what;
-
-    // The one section that cannot work without QuickBooks asks for it here,
-    // when it is wanted - not at the door, where it stopped people who had come
-    // for something else entirely.
-    if (sec.qb && !S.connected) {
-      $('board').innerHTML =
-        '<div class="gateq">' +
-          '<img src="/logo.svg" alt="">' +
-          '<h3>' + esc(sec.label) + ' works on your QuickBooks company</h3>' +
-          '<p>' + (S.canConnect
-            ? 'Connect it once and everything in this section opens. Whoever ' +
-              'connects a company runs it: you hand out the user IDs for it and ' +
-              'say what each person may touch.'
-            : 'No company has been given to you yet. The administrator of your ' +
-              'company says who works in which one.') + '</p>' +
-          (S.canConnect
-            ? '<a class="solid" href="/auth/connect"><b></b>Connect to QuickBooks</a>'
-            : '') +
-        '</div>';
-      return;
-    }
-
-    var want = S.find.toLowerCase();
-    var list = sec.tiles.filter(function(t){
-      if (!mine(t)) return false;
-      return !want || t.label.toLowerCase().indexOf(want) > -1;
-    });
-
-    if (!list.length) {
-      $('board').innerHTML = '<div class="none">' + (want
-        ? 'Nothing in ' + esc(sec.label) + ' matches &ldquo;' + esc(S.find) + '&rdquo;.'
-        : 'Nothing here is yours to open yet.') + '</div>';
-      return;
-    }
-
-    $('board').innerHTML = '<div class="tiles">' + list.map(function(t){
-      if (t.soon) {
-        return '<div class="tile soon"><div class="box">' + mark(t.icon) + '</div>' +
-          '<span>' + esc(t.label) + '</span></div>';
-      }
-      return '<a class="tile" href="' + esc(t.href) + '"><div class="box">' +
-        mark(t.icon) + '</div><span>' + esc(t.label) + '</span></a>';
-    }).join('') + '</div>';
+    if (window.FUSION) window.FUSION.draw($('board'), null, find);
   }
-
-  // The section lives in the address, so the back button walks between sections
-  // and a link to one can be kept.
-  function fromHash(){
-    var key = (location.hash || '').replace('#', '');
-    S.now = sectionOf(key).key;
-  }
-  window.addEventListener('hashchange', function(){
-    fromHash();
-    drawPill();
-    drawBoard();
-  });
 
   /* ==================== the bar ==================== */
   $('btnBack').addEventListener('click', function(){ history.back(); });
@@ -465,10 +172,10 @@
   $('btnSeek').addEventListener('click', function(){
     var on = $('seekBox').classList.toggle('on');
     if (on) $('seek').focus();
-    else { $('seek').value = ''; S.find = ''; drawBoard(); }
+    else { $('seek').value = ''; find = ''; drawBoard(); }
   });
   $('seek').addEventListener('input', function(){
-    S.find = $('seek').value.trim();
+    find = $('seek').value;
     drawBoard();
   });
   $('seek').addEventListener('keydown', function(e){
@@ -476,7 +183,7 @@
   });
 
   /* The bell. The same list the rest of the app shows, read from the same place
-     - this page has no toolbar for nav.js to hang its own on. */
+     - this screen has no toolbar for nav.js to hang its own on. */
   function when(t){
     if (!t) return '';
     var d = new Date(t);
@@ -493,7 +200,7 @@
       })
       .catch(function(){});
   }
-  function openBell(){
+  $('btnBell').addEventListener('click', function(){
     $('sheet').classList.add('on');
     $('bellList').innerHTML = '<div class="item">Loading…</div>';
     fetch('/api/notifications', { cache: 'no-store' })
@@ -520,8 +227,7 @@
       .catch(function(){
         $('bellList').innerHTML = '<div class="item"><small>Could not read them.</small></div>';
       });
-  }
-  $('btnBell').addEventListener('click', openBell);
+  });
   $('sheet').addEventListener('click', function(e){
     if (e.target === $('sheet')) $('sheet').classList.remove('on');
   });
@@ -547,6 +253,8 @@
         p:'Make a user ID, tick what they may touch, and that is what opens.' }
     ];
     var box = $('strip');
+    var mark = (window.FUSION && window.FUSION.mark) || function(){ return ''; };
+
     box.innerHTML = slides.map(function(s, i){
       return '<div class="slide' + (i ? '' : ' on') + '">' +
         '<div class="mk">' + mark(s.mk) + '</div>' +
@@ -577,139 +285,15 @@
     clock();
   })();
 
-  /* ==================== the ring ====================
-     What the app is, drawn once: six desks on a ring, each sending its work
-     into the middle, where it becomes one set of records. It is the same idea
-     as the sign-in page's animation, turned inward - that one is about arriving,
-     this one is about the day running. */
-  (function ring(){
-    var cv = $('cv'), box = cv.parentNode;
-    if (!cv) return;
-    var ctx = cv.getContext('2d');
-    var still = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-
-    var NODES = ['E-commerce', 'Finance', 'Logistics', 'Couriers', 'HR', 'QuickBooks'];
-    var w = 0, h = 0, cx = 0, cy = 0, R = 0, dpr = 1;
-
-    function size(){
-      dpr = Math.min(window.devicePixelRatio || 1, 2);
-      w = box.clientWidth; h = box.clientHeight;
-      cv.width = Math.round(w * dpr); cv.height = Math.round(h * dpr);
-      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-      cx = w / 2; cy = h / 2;
-      R = Math.min(w, h) * 0.34;
-    }
-
-    function at(i, spin){
-      var a = (i / NODES.length) * Math.PI * 2 - Math.PI / 2 + spin;
-      return { x: cx + Math.cos(a) * R, y: cy + Math.sin(a) * R };
-    }
-
-    function frame(ms){
-      var t = ms / 1000;
-      var spin = still ? 0 : t * 0.075;
-      ctx.clearRect(0, 0, w, h);
-
-      // the ring the desks sit on
-      ctx.beginPath();
-      ctx.arc(cx, cy, R, 0, Math.PI * 2);
-      ctx.strokeStyle = '#E4EAEA';
-      ctx.lineWidth = 1.5;
-      ctx.stroke();
-
-      // each desk's line into the middle, and the work moving along it
-      for (var i = 0; i < NODES.length; i++) {
-        var p = at(i, spin);
-
-        ctx.beginPath();
-        ctx.moveTo(p.x, p.y);
-        ctx.lineTo(cx, cy);
-        ctx.strokeStyle = '#EDF2F2';
-        ctx.lineWidth = 1;
-        ctx.stroke();
-
-        if (!still) {
-          // three parcels per line, evenly spaced along it and always moving
-          for (var k = 0; k < 3; k++) {
-            var u = ((t * 0.34) + (i / NODES.length) + (k / 3)) % 1;
-            var e = 0.12 + u * 0.76;                  // never quite at either end
-            var px = p.x + (cx - p.x) * e;
-            var py = p.y + (cy - p.y) * e;
-            ctx.beginPath();
-            ctx.arc(px, py, 2.6, 0, Math.PI * 2);
-            ctx.fillStyle = 'rgba(17,186,181,' + (0.22 + 0.5 * Math.sin(u * Math.PI)).toFixed(3) + ')';
-            ctx.fill();
-          }
-        }
-
-        // the desk itself
-        ctx.beginPath();
-        ctx.arc(p.x, p.y, 7, 0, Math.PI * 2);
-        ctx.fillStyle = '#FFFFFF';
-        ctx.fill();
-        ctx.strokeStyle = '#11BAB5';
-        ctx.lineWidth = 2;
-        ctx.stroke();
-
-        ctx.font = '600 11.5px Montserrat, system-ui, sans-serif';
-        ctx.fillStyle = '#55666B';
-        ctx.textAlign = p.x < cx - 4 ? 'right' : (p.x > cx + 4 ? 'left' : 'center');
-        ctx.textBaseline = 'middle';
-        var off = ctx.textAlign === 'center' ? 0 : (p.x < cx ? -13 : 13);
-        var down = ctx.textAlign === 'center' ? (p.y < cy ? -18 : 18) : 0;
-        ctx.fillText(NODES[i], p.x + off, p.y + down);
-      }
-
-      // the middle: the mark, breathing with the work arriving at it
-      var beat = still ? 0 : (Math.sin(t * 1.5) * 0.5 + 0.5);
-      ctx.beginPath();
-      ctx.arc(cx, cy, 30 + beat * 5, 0, Math.PI * 2);
-      ctx.fillStyle = 'rgba(17,186,181,' + (0.07 + beat * 0.06).toFixed(3) + ')';
-      ctx.fill();
-
-      ctx.beginPath();
-      ctx.arc(cx, cy, 25, 0, Math.PI * 2);
-      ctx.fillStyle = '#222F34';
-      ctx.fill();
-
-      ctx.font = '800 11px Montserrat, system-ui, sans-serif';
-      ctx.fillStyle = '#FFFFFF';
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'middle';
-      ctx.fillText('FUSION', cx, cy);
-
-      if (!still) raf = requestAnimationFrame(frame);
-    }
-
-    var raf = null;
-    function start(){
-      size();
-      if (raf) cancelAnimationFrame(raf);
-      if (still) frame(0);
-      else raf = requestAnimationFrame(frame);
-    }
-    window.addEventListener('resize', start);
-    start();
-
-    // A tab nobody is looking at is not worth drawing.
-    document.addEventListener('visibilitychange', function(){
-      if (document.hidden) { if (raf) cancelAnimationFrame(raf); raf = null; }
-      else if (!still && !raf) raf = requestAnimationFrame(frame);
-    });
-  })();
-
   /* ==================== what the server knows ==================== */
-  fromHash();
   drawPill();
 
-  window.APP.ready.then(function(s){
-    S.connected = !!s.connected;
-    S.canConnect = !!s.canConnect;
+  // The tiles wait for the server, because which of them are this person's to
+  // open is the server's answer, not the page's.
+  window.APP.ready.then(function(){
     drawBoard();
     countBell();
-  }).catch(function(){
-    drawBoard();
-  });
+  }).catch(function(){ drawBoard(); });
 })();
 </script>
 </body>

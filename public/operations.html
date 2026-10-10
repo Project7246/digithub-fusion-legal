@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Operations</title>
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="manifest" href="/manifest.json">
+<meta name="theme-color" content="#222F34">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@600;700;800&family=Roboto:wght@400;500&family=Roboto+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/app.css">
+<link rel="stylesheet" href="/tiles.css">
+</head>
+<body>
+
+<div class="layout">
+  <aside class="rail"></aside>
+
+  <div class="main">
+    <div class="topline">
+      <div>
+        <h1>Operations</h1>
+        <div class="sub">The day as it runs - orders in, parcels out, what went wrong.</div>
+      </div>
+    </div>
+
+    <div class="shell">
+      <div id="board"><div class="none">One moment…</div></div>
+    </div>
+  </div>
+</div>
+
+<script src="/nav.js"></script>
+<script src="/tiles.js"></script>
+<script>
+"use strict";
+(function(){
+  // The section this page is the front of. Everything on it comes out of the one
+  // list in nav.js, which is also what built the rail on the left - so what is
+  // in the rail and what is on this page can never disagree.
+  var KEY = 'operations';
+  var board = document.getElementById('board');
+
+  window.APP.ready.then(function(s){
+    var sec = ((window.APP.sections) || []).filter(function(x){ return x.key === KEY; })[0];
+
+    // Couriers run on the company the books belong to, so this section waits on it too.
+    if (sec && sec.qb && !s.connected) {
+      board.innerHTML =
+        '<div class="gateq">' +
+          '<img src="/logo.svg" alt="">' +
+          '<h3>Operations works on your QuickBooks company</h3>' +
+          '<p>' + (s.canConnect
+            ? 'Connect it once and everything in this section opens. Whoever ' +
+              'connects a company runs it: you hand out the user IDs for it and ' +
+              'say what each person may touch.'
+            : 'No company has been given to you yet. The administrator of your ' +
+              'company says who works in which one.') + '</p>' +
+          (s.canConnect
+            ? '<a class="solid" href="/auth/connect"><b></b>Connect to QuickBooks</a>'
+            : '') +
+        '</div>';
+      return;
+    }
+    window.FUSION.draw(board, KEY, '');
+  }).catch(function(){
+    board.innerHTML = '<div class="none">Could not reach the server.</div>';
+  });
+})();
+</script>
+</body>
+</html>
