@@ -172,6 +172,17 @@ only one. A line is
 `public/tiles.js` draws them (`FUSION.draw(el, sectionKey|null, find)`),
 `public/tiles.css` dresses them. nav.js must load first.
 
+**Every class these new screens introduce starts with `fx`.** `app.css` dresses
+the whole app from a flat set of short names, and nine of the obvious ones were
+already taken - `.bar` is a 7px progress bar with `overflow:hidden`, and `.tile`,
+`.tiles`, `.pill`, `.sheet`, `.dot`, `.right`, `.solid` and `.mini` all exist too.
+Reusing `.bar` cost three wrong fixes: the top bar rendered inside a seven pixel
+box and only a white sliver showed, while the positioning looked like the
+culprit. A new rule overrides only the properties it names; everything else the
+old rule set stays. So before adding a class, check `app.css` for it, or prefix
+it. `.solid` and `.on` are deliberately shared - the button and the state are
+meant to look like the rest of the app.
+
 **QuickBooks is asked for by the section, not at the door.** Somebody signs up
 with their own address and sees all four sections; the three that need a company
 show a Connect panel instead of their tiles. This is why `OPEN_WITHOUT_COMPANY`
