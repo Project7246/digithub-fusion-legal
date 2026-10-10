@@ -27,7 +27,7 @@
     </div>
 
     <div class="shell">
-      <div id="board"><div class="none">One moment…</div></div>
+      <div id="board"><div class="fxnone">One moment…</div></div>
     </div>
   </div>
 </div>
@@ -49,7 +49,7 @@
     // Nothing here needs QuickBooks, so nothing here asks for it.
     if (sec && sec.qb && !s.connected) {
       board.innerHTML =
-        '<div class="gateq">' +
+        '<div class="fxgate">' +
           '<img src="/logo.svg" alt="">' +
           '<h3>HR works on your QuickBooks company</h3>' +
           '<p>' + (s.canConnect
@@ -66,7 +66,7 @@
     }
     window.FUSION.draw(board, KEY, '');
   }).catch(function(){
-    board.innerHTML = '<div class="none">Could not reach the server.</div>';
+    board.innerHTML = '<div class="fxnone">Could not reach the server.</div>';
   });
 })();
 </script>

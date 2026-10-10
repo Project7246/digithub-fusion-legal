@@ -2,65 +2,65 @@
    section's own overview page. Kept out of app.css because app.css dresses the
    pages where work is done, and a tile is for choosing, not for working. */
 
-.shelf{margin:0 0 34px}
-.shelfcap{display:flex;align-items:baseline;gap:12px;margin:0 0 14px;flex-wrap:wrap}
-.shelfcap a{font-family:var(--head);font-size:17px;font-weight:700;letter-spacing:-.01em;
+.fxshelf{margin:0 0 34px}
+.fxshelfcap{display:flex;align-items:baseline;gap:12px;margin:0 0 14px;flex-wrap:wrap}
+.fxshelfcap a{font-family:var(--head);font-size:17px;font-weight:700;letter-spacing:-.01em;
   color:var(--ink-3);text-decoration:none}
-.shelfcap a:hover{color:var(--accent-deep)}
-.shelfcap span{font-size:12.5px;color:var(--muted)}
+.fxshelfcap a:hover{color:var(--accent-deep)}
+.fxshelfcap span{font-size:12.5px;color:var(--muted)}
 
-.tiles{display:grid;grid-template-columns:repeat(auto-fill,minmax(112px,1fr));gap:14px}
+.fxtiles{display:grid;grid-template-columns:repeat(auto-fill,minmax(112px,1fr));gap:14px}
 
-.tile{display:flex;flex-direction:column;align-items:center;gap:9px;
+.fxtile{display:flex;flex-direction:column;align-items:center;gap:9px;
   text-decoration:none;color:var(--text);padding:4px 2px 10px}
-.tile .box{width:72px;height:72px;border-radius:16px;background:var(--panel);
+.fxtile .fxbox{width:72px;height:72px;border-radius:16px;background:var(--panel);
   border:1px solid var(--line);display:flex;align-items:center;justify-content:center;
   transition:transform .14s ease,box-shadow .14s ease,border-color .14s ease}
-.tile .box svg{width:38px;height:38px;display:block}
-.tile span{font-size:12.5px;font-weight:500;text-align:center;line-height:1.35}
-.tile:hover .box{transform:translateY(-3px);border-color:var(--accent);
+.fxtile .fxbox svg{width:38px;height:38px;display:block}
+.fxtile span{font-size:12.5px;font-weight:500;text-align:center;line-height:1.35}
+.fxtile:hover .fxbox{transform:translateY(-3px);border-color:var(--accent);
   box-shadow:0 10px 22px rgba(17,186,181,.18)}
 
 /* Not built yet, and said so rather than opening onto nothing. */
-.tile.soon{cursor:default}
-.tile.soon .box{background:var(--panel-2);border-style:dashed;opacity:.6}
-.tile.soon:hover .box{transform:none;border-color:var(--line-2);box-shadow:none}
-.tile.soon span{color:var(--faint)}
-.tile.soon span:after{content:" · soon";color:var(--faint);font-size:11px}
+.fxtile.fxsoon{cursor:default}
+.fxtile.fxsoon .fxbox{background:var(--panel-2);border-style:dashed;opacity:.6}
+.fxtile.fxsoon:hover .fxbox{transform:none;border-color:var(--line-2);box-shadow:none}
+.fxtile.fxsoon span{color:var(--faint)}
+.fxtile.fxsoon span:after{content:" · soon";color:var(--faint);font-size:11px}
 
-.none{padding:34px 0;text-align:center;color:var(--muted);font-size:13px}
+.fxnone{padding:34px 0;text-align:center;color:var(--muted);font-size:13px}
 
 /* The one section that cannot work without QuickBooks asks for it where it is
    wanted, not at the door. */
-.gateq{background:var(--panel);border:1px solid var(--line);border-radius:12px;
+.fxgate{background:var(--panel);border:1px solid var(--line);border-radius:12px;
   padding:30px 26px;text-align:center}
-.gateq img{width:52px;height:auto;aspect-ratio:400/280;margin-bottom:12px}
-.gateq h3{font-family:var(--head);font-size:16px;font-weight:700;margin:0 0 7px}
-.gateq p{font-size:13px;color:var(--muted);margin:0 auto 18px;max-width:430px;line-height:1.6}
-.gateq .solid{display:inline-flex;align-items:center;gap:9px;text-decoration:none}
-.gateq .solid b{width:9px;height:9px;border-radius:50%;background:var(--qbo);flex:0 0 9px}
+.fxgate img{width:52px;height:auto;aspect-ratio:400/280;margin-bottom:12px}
+.fxgate h3{font-family:var(--head);font-size:16px;font-weight:700;margin:0 0 7px}
+.fxgate p{font-size:13px;color:var(--muted);margin:0 auto 18px;max-width:430px;line-height:1.6}
+.fxgate .solid{display:inline-flex;align-items:center;gap:9px;text-decoration:none}
+.fxgate .solid b{width:9px;height:9px;border-radius:50%;background:var(--qbo);flex:0 0 9px}
 
 /* The bell's own sheet, for the screens that have no toolbar to hang one on. */
-.sheet{position:fixed;inset:0;background:rgba(24,35,42,.4);display:none;z-index:60}
-.sheet.on{display:block}
-.sheet .card{position:absolute;top:62px;left:20px;width:330px;max-width:calc(100vw - 40px);
+.fxsheet{position:fixed;inset:0;background:rgba(24,35,42,.4);display:none;z-index:60}
+.fxsheet.on{display:block}
+.fxsheet .fxcard{position:absolute;top:62px;left:20px;width:330px;max-width:calc(100vw - 40px);
   background:var(--panel);border:1px solid var(--line);border-radius:12px;
   box-shadow:0 22px 50px rgba(24,35,42,.22);overflow:hidden}
-.sheet .card .cap{display:flex;align-items:center;justify-content:space-between;
+.fxsheet .fxcard .fxcap{display:flex;align-items:center;justify-content:space-between;
   padding:12px 14px;border-bottom:1px solid var(--line);font-size:12px;
   font-weight:600;color:var(--ink-2)}
-.sheet .card .cap button{border:0;background:none;color:var(--accent-deep);
+.fxsheet .fxcard .fxcap button{border:0;background:none;color:var(--accent-deep);
   font:inherit;font-size:12px;cursor:pointer;padding:0}
-.sheet .card .list{max-height:60vh;overflow:auto}
-.sheet .card .item{padding:11px 14px;border-bottom:1px solid var(--line);font-size:12.5px}
-.sheet .card .item:last-child{border-bottom:0}
-.sheet .card .item b{display:block;font-weight:600;margin-bottom:2px}
-.sheet .card .item small{color:var(--muted);font-size:11.5px}
-.sheet .card .item a{color:var(--accent-deep);text-decoration:none}
+.fxsheet .fxcard .fxlist{max-height:60vh;overflow:auto}
+.fxsheet .fxcard .fxitem{padding:11px 14px;border-bottom:1px solid var(--line);font-size:12.5px}
+.fxsheet .fxcard .fxitem:last-child{border-bottom:0}
+.fxsheet .fxcard .fxitem b{display:block;font-weight:600;margin-bottom:2px}
+.fxsheet .fxcard .fxitem small{color:var(--muted);font-size:11.5px}
+.fxsheet .fxcard .fxitem a{color:var(--accent-deep);text-decoration:none}
 
 @media (max-width:780px){
-  .tiles{grid-template-columns:repeat(auto-fill,minmax(94px,1fr));gap:10px}
-  .tile .box{width:60px;height:60px;border-radius:14px}
-  .tile .box svg{width:32px;height:32px}
-  .shelfcap a{font-size:15.5px}
+  .fxtiles{grid-template-columns:repeat(auto-fill,minmax(94px,1fr));gap:10px}
+  .fxtile .fxbox{width:60px;height:60px;border-radius:14px}
+  .fxtile .fxbox svg{width:32px;height:32px}
+  .fxshelfcap a{font-size:15.5px}
 }

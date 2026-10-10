@@ -130,11 +130,11 @@
 
   function one(t){
     if (t.soon) {
-      return '<div class="tile soon"><div class="box">' + mark(t.icon) + '</div>' +
+      return '<div class="fxtile fxsoon"><div class="fxbox">' + mark(t.icon) + '</div>' +
         '<span>' + esc(t.label) + '</span></div>';
     }
-    return '<a class="tile" href="' + esc(t.href) + '" data-sec="' + esc(t.sec || '') + '">' +
-      '<div class="box">' + mark(t.icon) + '</div><span>' + esc(t.label) + '</span></a>';
+    return '<a class="fxtile" href="' + esc(t.href) + '" data-sec="' + esc(t.sec || '') + '">' +
+      '<div class="fxbox">' + mark(t.icon) + '</div><span>' + esc(t.label) + '</span></a>';
   }
 
   window.FUSION = window.FUSION || {};
@@ -162,19 +162,19 @@
       // the way into that section's own rail. Inside a section there is only one
       // shelf and the page's own title already said so.
       if (!key) {
-        html += '<div class="shelf">' +
-          '<div class="shelfcap">' +
+        html += '<div class="fxshelf">' +
+          '<div class="fxshelfcap">' +
             '<a href="' + esc(sec.home) + '" data-sec="' + esc(sec.key) + '">' +
               esc(sec.label) + '</a>' +
             '<span>' + esc(sec.what || '') + '</span>' +
           '</div>';
       }
-      html += '<div class="tiles">' +
+      html += '<div class="fxtiles">' +
         list.map(function(t){ t.sec = sec.key; return one(t); }).join('') + '</div>';
       if (!key) html += '</div>';
     });
 
-    el.innerHTML = any ? html : '<div class="none">' + (seek
+    el.innerHTML = any ? html : '<div class="fxnone">' + (seek
       ? 'Nothing matches &ldquo;' + esc(find) + '&rdquo;.'
       : 'Nothing here is yours to open yet.') + '</div>';
 
