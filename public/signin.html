@@ -27,13 +27,24 @@
   body{background:radial-gradient(120% 120% at 20% 0%,#1B2A30 0%,#121B1E 55%,#0B1113 100%);
     min-height:100vh;display:flex;align-items:center;justify-content:center;padding:20px}
 
-  .door{width:100%;max-width:960px;background:rgba(34,47,52,.88);
+  /* Two states, one screen. Closed, it is the mark and the animation with a
+     way in underneath; chosen, the form opens beside it. Nothing is loaded in
+     between - the second column was in the page all along. */
+  .door{width:100%;max-width:600px;transition:max-width .3s ease;background:rgba(34,47,52,.88);
     border:1px solid rgba(255,255,255,.1);border-radius:16px;
     color:#ECF3F3;box-shadow:0 28px 70px rgba(0,0,0,.5);overflow:hidden;
-    display:grid;grid-template-columns:1fr 360px}
+    display:grid;grid-template-columns:1fr}
+  .door.fxopen{max-width:960px;grid-template-columns:1fr 360px}
 
-  .side{padding:24px 22px;border-right:1px solid rgba(255,255,255,.08)}
-  .form{padding:24px 22px;background:rgba(0,0,0,.14)}
+  .side{padding:24px 22px}
+  .door.fxopen .side{border-right:1px solid rgba(255,255,255,.08)}
+  .form{padding:24px 22px;background:rgba(0,0,0,.14);display:none}
+  .door.fxopen .form{display:block}
+
+  /* app.css already owns .gate, so this one is fx - see CLAUDE.md. */
+  .fxway{max-width:300px;margin:18px auto 4px;text-align:center}
+  .fxway .links{text-align:center}
+  .door.fxopen .fxway{display:none}
 
   .top{display:flex;align-items:center;gap:14px}
   .top svg{width:60px;height:auto;aspect-ratio:400/280;flex:0 0 60px;display:block}
@@ -114,11 +125,18 @@
       <div>
         <h1>Fusion</h1>
         <p class="tag">AI-powered OS for e-commerce</p>
-        <p class="sub">Finance, logistics, operations and people &mdash; on one set of books.</p>
       </div>
     </div>
 
     <div class="viz" id="viz"><canvas id="cv"></canvas></div>
+
+    <div class="fxway">
+      <button class="go" id="btn-open" type="button">Sign in</button>
+      <p class="links">
+        <a data-open="up1">Create an account</a><br>
+        <a data-open="f1">Forgot your password</a>
+      </p>
+    </div>
   </div>
 
   <div class="form">
@@ -132,8 +150,7 @@
       <form id="form-in" autocomplete="on">
         <div class="field">
           <label for="who">Email or user ID</label>
-          <input id="who" name="username" type="text" autocomplete="username"
-                 placeholder="you@company.com &nbsp;or&nbsp; hmna-01" required>
+          <input id="who" name="username" type="text" autocomplete="username" required>
         </div>
         <div class="field">
           <label for="pw">Password</label>
@@ -257,6 +274,16 @@
 
   document.querySelectorAll('[data-pane]').forEach(function(a){
     a.addEventListener('click', function(){ show(a.getAttribute('data-pane')); });
+  });
+
+  // The door opens onto whichever pane was asked for, and stays open: somebody
+  // who came to sign in and found they have no account should not be sent back
+  // to the front to start again.
+  var door = document.querySelector('.door');
+  function openDoor(key) { door.classList.add('fxopen'); show(key); }
+  document.getElementById('btn-open').addEventListener('click', function(){ openDoor("in"); });
+  document.querySelectorAll('[data-open]').forEach(function(a){
+    a.addEventListener('click', function(){ openDoor(a.getAttribute("data-open")); });
   });
 
   // Every ask goes the same way: the button says what is happening, the form
