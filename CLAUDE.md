@@ -144,38 +144,50 @@ Rules the doors follow, which are easy to break by accident:
 
 ## How the app is laid out
 
-`/` is the way in, and it is not a page of the books. Four sections across the
-top - **Finance, Logistics, Operations, HR** - then a strip, a ring animation,
-and the tiles for whichever section is open. The section lives in the address
-hash (`/#logistics`), so the back button walks between them.
+`/` is a launcher, not a page of the books: every section's tiles on one screen,
+each shelf headed by the section it belongs to. Going **into** a section opens
+that section's own rail on the left, the way the first app's rail worked.
 
-Every tile is one line in the `SECTIONS` list at the top of `public/index.html`'s
-script: `{ href, label, icon, need }`, or `{ label, icon, soon:true }` for one
-that is not built. `need` is the same job key the rail (`nav.js` `ITEMS`) and the
-server (`PAGE_NEED`, `RIGHT_OF_PATH`) use, so hiding a tile never hides a door
-that still opens. Icons are flat shapes in the brand colours, defined in the
-`ICONS` map on the same page - no icon font, no image files.
+| Section | Front page | Holds | QuickBooks? |
+|---|---|---|---|
+| Finance | `/finance` (the old dashboard) | Everything the first app did | Yes |
+| Logistics | `/logistics` | Couriers, tracking, pickups, CPRs, receipts | Yes |
+| Operations | `/operations` | Couriers, tracking, CPRs - the same module, second desk | Yes |
+| HR | `/hr` | Nothing built yet | No |
 
-What belongs where:
+**One list, in `public/nav.js`: `SECTIONS`.** The rail and the tiles are two
+readings of it, so a module added once appears in both and can never appear in
+only one. A line is
+`{ href, label, icon, need, tile, as, front, tree }`:
 
-| Section | Holds | QuickBooks? |
-|---|---|---|
-| Finance | Everything the first app did: accounting, convert, upload, payments, advances, delivery fees, find, audit, purchases, inventory, duplicates, changes, void | Yes |
-| Logistics | Couriers, tracking, pickups, CPRs, receipts | Yes |
-| Operations | Couriers, tracking, CPRs (same module, second desk), plus eCommerce and Shopify to come | Yes |
-| HR | People, timesheets, attendance, payroll - none built yet | No |
+- `icon` is the rail's 24px stroke icon (`ICONS` in nav.js); `tile` is the 48px
+  colour icon (`ICONS` in `public/tiles.js`)
+- `as` is the shorter name a tile wears when it is being chosen rather than used
+- `need` is the job key the server enforces (`PAGE_NEED`, `RIGHT_OF_PATH`), so
+  hiding a tile never hides a door that still opens
+- `front: true` marks a section's own overview page, which is never a tile
+- each section also has `what`, `qb`, `home`, and `soon: [{label, tile}]` for
+  modules that are coming
+
+`public/tiles.js` draws them (`FUSION.draw(el, sectionKey|null, find)`),
+`public/tiles.css` dresses them. nav.js must load first.
 
 **QuickBooks is asked for by the section, not at the door.** Somebody signs up
-with their own address, lands on `/` with no company, and sees all four sections;
-Finance shows a Connect panel instead of its tiles. This is why `/` is let
-through the page gate when `!settled` (in `server.js`) and why `nav.js` no longer
-sends a company-less person to `/choose` when they are on the home page. Every
-other page still needs a company, because every other page is work on a set of
-books.
+with their own address and sees all four sections; the three that need a company
+show a Connect panel instead of their tiles. This is why `OPEN_WITHOUT_COMPANY`
+in `server.js` lets the five front pages through the gate when `!settled`, and
+why `nav.js` does not send a company-less person to `/choose` on those pages.
+Every other page still needs one.
 
-The old dashboard is `public/finance.html`, served at `/finance`. Inner pages
-still carry the left rail from `nav.js`; bringing the top bar to them is not done
-yet.
+The courier pages sit in two sections. Which rail they wear is whichever section
+they were entered from, kept in `sessionStorage['fusion:section']` for the tab.
+
+Inner pages still use the left rail only - the launcher's top bar is not on them.
+
+There is a harness for this: it runs `nav.js` and `tiles.js` against a stub
+browser and prints the section each path picks and every section's tile list.
+Worth re-running after touching either file, because a throw in nav.js breaks
+every page in the app.
 
 ## Open items
 - Replace the copied old files with the new design once the user describes it.
