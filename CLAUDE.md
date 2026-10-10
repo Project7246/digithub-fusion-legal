@@ -99,9 +99,14 @@ by `whoIs()` in `server.js` and enforced by `PAGE_NEED` for pages and
 | Door | `door` | `sub` | Set up by |
 |---|---|---|---|
 | Email + password | `password` | `pw:<email>` | Themselves: code to the address (`/auth/code`), then `/auth/signup` |
-| Google | `google` | `g:<google sub>` | Themselves, one click (**not built yet** - needs a Google OAuth client) |
 | Company user ID (`hmna-01`) | `member` | `id:<login id>` | The administrator of a company, on `/users`. No email, tied to `home_realm` for life |
-| QuickBooks | `qb` | Intuit's sub | As before |
+
+**Those two, and no others.** QuickBooks is not a way in - `/auth/signin` only
+redirects to the sign-in screen now - and Google was decided against. A new
+customer has no Intuit account, and should not need one to look at couriers or
+at people. `/auth/connect` is a different thing: connecting a set of books, which
+is what makes somebody that company's administrator. Rows with `door = 'qb'` are
+people who signed in before the change.
 
 Three tiers, and the middle one is new:
 
@@ -136,6 +141,41 @@ Rules the doors follow, which are easy to break by accident:
 - Verification codes need SMTP. Without `SMTP_HOST`/`SMTP_USER`/`SMTP_PASS` the
   email doors cannot work and say so plainly (503), rather than leaving somebody
   waiting for a code that is not coming.
+
+## How the app is laid out
+
+`/` is the way in, and it is not a page of the books. Four sections across the
+top - **Finance, Logistics, Operations, HR** - then a strip, a ring animation,
+and the tiles for whichever section is open. The section lives in the address
+hash (`/#logistics`), so the back button walks between them.
+
+Every tile is one line in the `SECTIONS` list at the top of `public/index.html`'s
+script: `{ href, label, icon, need }`, or `{ label, icon, soon:true }` for one
+that is not built. `need` is the same job key the rail (`nav.js` `ITEMS`) and the
+server (`PAGE_NEED`, `RIGHT_OF_PATH`) use, so hiding a tile never hides a door
+that still opens. Icons are flat shapes in the brand colours, defined in the
+`ICONS` map on the same page - no icon font, no image files.
+
+What belongs where:
+
+| Section | Holds | QuickBooks? |
+|---|---|---|
+| Finance | Everything the first app did: accounting, convert, upload, payments, advances, delivery fees, find, audit, purchases, inventory, duplicates, changes, void | Yes |
+| Logistics | Couriers, tracking, pickups, CPRs, receipts | Yes |
+| Operations | Couriers, tracking, CPRs (same module, second desk), plus eCommerce and Shopify to come | Yes |
+| HR | People, timesheets, attendance, payroll - none built yet | No |
+
+**QuickBooks is asked for by the section, not at the door.** Somebody signs up
+with their own address, lands on `/` with no company, and sees all four sections;
+Finance shows a Connect panel instead of its tiles. This is why `/` is let
+through the page gate when `!settled` (in `server.js`) and why `nav.js` no longer
+sends a company-less person to `/choose` when they are on the home page. Every
+other page still needs a company, because every other page is work on a set of
+books.
+
+The old dashboard is `public/finance.html`, served at `/finance`. Inner pages
+still carry the left rail from `nav.js`; bringing the top bar to them is not done
+yet.
 
 ## Open items
 - Replace the copied old files with the new design once the user describes it.
