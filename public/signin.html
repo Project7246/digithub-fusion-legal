@@ -71,18 +71,6 @@
   .go:disabled{opacity:.6;cursor:default}
   .go:focus-visible{outline:2px solid #fff;outline-offset:2px}
 
-  /* QuickBooks keeps its own green here, because it stands for QuickBooks and not
-     for this app - the same rule the rest of Fusion follows. */
-  .qb{display:flex;align-items:center;justify-content:center;gap:9px;width:100%;
-    border:1px solid rgba(44,160,28,.5);border-radius:10px;padding:11px;
-    background:rgba(44,160,28,.12);color:#CFE8C9;font-family:var(--head);
-    font-weight:600;font-size:13px;cursor:pointer}
-  .qb:hover{background:rgba(44,160,28,.2);border-color:var(--qbo)}
-  .qb b{width:9px;height:9px;border-radius:50%;background:var(--qbo);flex:0 0 9px}
-
-  .or{display:flex;align-items:center;gap:10px;margin:16px 0;
-    font-size:10.5px;color:#7C8E93;letter-spacing:.1em;text-transform:uppercase}
-  .or:before,.or:after{content:"";flex:1;height:1px;background:rgba(255,255,255,.12)}
 
   .links{margin:13px 0 0;font-size:12px;color:#9DB0B5;line-height:1.7}
   .links a{color:var(--aqua);text-decoration:none;cursor:pointer}
@@ -154,8 +142,6 @@
         <button class="go" id="btn-in" type="submit">Sign in</button>
       </form>
 
-      <div class="or">or</div>
-      <button class="qb" id="btn-qb" type="button"><b></b>Sign in with QuickBooks</button>
 
       <p class="links">
         New here? <a data-pane="up1">Create an account</a><br>
@@ -296,11 +282,6 @@
     });
   }
 
-  document.getElementById('btn-qb').addEventListener('click', function(){
-    this.disabled = true;
-    this.innerHTML = '<b></b>Taking you to QuickBooks…';
-    location.href = '/auth/signin';
-  });
 
   // ---- signing in ----
   document.getElementById('form-in').addEventListener('submit', function(e){

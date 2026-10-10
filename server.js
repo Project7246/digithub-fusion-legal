@@ -255,7 +255,16 @@ app.get(/^\/$|^\/[A-Za-z0-9-]+$/, async (req, res, next) => {
     const realmId = req.cookies.realm_id;
     const settled = letIn && realmId && await isSettled(sub, realmId);
 
+    // The home page opens before any company does.
+    //
+    // QuickBooks used to be the door, so nothing at all opened until a company
+    // was connected. It is not the door any more: somebody signs up with their
+    // own address, lands here, and sees the four sections - and Finance, the one
+    // section that cannot work without a company, asks for it there, at the
+    // moment it is wanted. Everything else still needs one, because everything
+    // else is work on a set of books.
     if (!settled) {
+      if (here === '/index') return next();
       return here === '/choose' ? next() : res.redirect('/choose');
     }
     if (here === '/choose') return res.redirect('/');
@@ -1257,7 +1266,9 @@ function mayConnect(who) {
 app.get('/auth/connect', async (req, res) => {
   const who = await whoIs(currentUser(req));
   if (!mayConnect(who)) {
-    return res.redirect('/auth/signin');
+    // Not theirs to connect. The chooser is where that is explained, next to
+    // whatever companies they do have.
+    return res.redirect('/choose');
   }
 
   const missing = keysMissing();
@@ -1288,24 +1299,11 @@ app.get('/auth/connect', async (req, res) => {
 // So the company is asked for here instead, on the app's own Choose your company
 // screen, out of the ones an admin has already connected. Connecting is done once
 // per company, by an admin; choosing between them is everyone's, every day.
-app.get('/auth/signin', (req, res) => {
-  const missing = keysMissing();
-  if (missing.length) return sayKeysMissing(res, missing);
-
-  const state = crypto.randomBytes(16).toString('hex');
-  res.cookie('oauth_state', state, { httpOnly: true, maxAge: 600000, sameSite: 'lax' });
-  res.cookie('oauth_door', 'user', { httpOnly: true, maxAge: 600000, sameSite: 'lax' });
-
-  const params = new URLSearchParams({
-    client_id: process.env.QB_CLIENT_ID,
-    response_type: 'code',
-    scope: 'openid profile email',
-    redirect_uri: `${BASE_URL}/auth/callback`,
-    state
-  });
-
-  res.redirect(`${AUTH_URL}?${params}`);
-});
+// The door this used to be is closed. Signing in is an address and a password, or
+// a user id the company handed out - not an Intuit account, which a new customer
+// has no reason to have. The address is kept so a bookmark or an old link lands on
+// the sign-in screen rather than on nothing.
+app.get('/auth/signin', (req, res) => res.redirect('/signin'));
 
 // ==================== the email and user-id doors ====================
 //
@@ -1693,7 +1691,8 @@ app.get('/auth/callback', async (req, res) => {
     res.cookie('realm_id', joinTo, { httpOnly: true, maxAge: 30 * 24 * 3600 * 1000, sameSite: 'lax' });
     inside(res, true);
 
-    res.redirect('/?connected=1');
+    // Straight into the section they went to QuickBooks for.
+    res.redirect('/finance?connected=1');
 
   } catch (err) {
     console.error(err);

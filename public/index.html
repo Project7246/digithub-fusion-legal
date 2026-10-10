@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Dashboard</title>
+<title>Fusion</title>
 <link rel="icon" href="/favicon.svg" type="image/svg+xml">
 <link rel="manifest" href="/manifest.json">
 <meta name="theme-color" content="#222F34">
@@ -12,500 +12,704 @@
 <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@600;700;800&family=Roboto:wght@400;500&family=Roboto+Mono:wght@400;500&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="/app.css">
 <style>
-  .hero{display:grid;grid-template-columns:1.35fr 1fr;gap:20px;margin-bottom:20px}
-  @media (max-width:960px){.hero{grid-template-columns:1fr}}
+  /* The first screen after signing in. Not a page of the books - a way into
+     them. There is no rail here, because a rail is for moving about inside one
+     section, and nothing has been chosen yet.
 
-  .card{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:24px 26px}
-  .card h3{margin:0 0 2px;font-size:12.5px;font-weight:600;color:var(--muted);
-    letter-spacing:.02em}
-  .card .when{font-size:11.5px;color:var(--faint);margin-bottom:20px;font-family:var(--mono)}
+     Four sections across the top, and under them the things that section can
+     do. Everything on this page comes out of the one SECTIONS list in the
+     script below, so adding a tile is one line in one place. */
 
-  .big{font-family:var(--mono);font-size:40px;font-weight:500;line-height:1;
-    font-variant-numeric:tabular-nums;letter-spacing:-.02em}
-  .big small{font-size:16px;color:var(--muted);margin-right:4px;font-weight:400}
+  body{background:var(--page);min-height:100vh}
+  .wrap{max-width:1180px;margin:0 auto;padding:18px 20px 60px}
 
-  .split{display:flex;gap:28px;margin-top:22px;flex-wrap:wrap}
-  .split > div{flex:1;min-width:120px}
-  .split .k{font-size:11px;letter-spacing:.09em;text-transform:uppercase;color:var(--faint);
-    margin-bottom:5px;display:flex;align-items:center;gap:6px}
-  .split .k em{width:9px;height:9px;border-radius:3px;display:inline-block}
-  .split .v{font-family:var(--mono);font-size:19px;font-weight:500;font-variant-numeric:tabular-nums}
-  .split .n{font-size:11.5px;color:var(--muted);margin-top:2px}
+  /* ---------- the bar ---------- */
+  /* Three parts that keep their places whatever is in them: the tools on the
+     left, the sections in the middle, and the way back on the right. A grid,
+     not a flex row, so the middle stays in the middle even when the left side
+     grows a notification count. */
+  .bar{display:grid;grid-template-columns:1fr auto 1fr;align-items:center;gap:14px;
+    margin-bottom:18px}
+  .bar .left{display:flex;gap:7px;align-items:center}
+  .bar .right{display:flex;gap:7px;align-items:center;justify-content:flex-end}
 
-  .stack{display:flex;height:10px;border-radius:5px;overflow:hidden;background:var(--line);
-    margin-top:20px}
-  .stack i{display:block;height:100%}
+  .icon{width:34px;height:34px;border:1px solid var(--line);background:var(--panel);
+    border-radius:9px;cursor:pointer;display:flex;align-items:center;justify-content:center;
+    color:var(--muted);padding:0;position:relative;flex:0 0 34px}
+  .icon:hover{border-color:var(--accent);color:var(--accent-deep)}
+  .icon svg{width:17px;height:17px;fill:none;stroke:currentColor;stroke-width:1.7;
+    stroke-linecap:round;stroke-linejoin:round}
+  .icon .dot{position:absolute;top:-4px;right:-4px;min-width:16px;height:16px;
+    border-radius:9px;background:var(--neg);color:#fff;font-size:10px;font-weight:600;
+    line-height:16px;padding:0 4px;display:none;font-family:var(--mono)}
+  .icon .dot.on{display:block}
 
-  .donut{display:flex;align-items:center;gap:26px;margin-top:8px;flex-wrap:wrap}
-  .donut svg{flex:0 0 auto}
-  .donut .mid{font-family:var(--mono);font-size:19px;font-weight:500;fill:var(--text)}
-  .donut .midsub{font-size:9.5px;fill:var(--faint);letter-spacing:.08em}
+  /* The pill. One white track with the sections in it, and the one you are on
+     filled in teal - which is the whole of the colour's job in this app. */
+  .pill{display:flex;background:var(--panel);border:1px solid var(--line);
+    border-radius:999px;padding:4px;gap:2px}
+  .pill a{display:block;padding:9px 22px;border-radius:999px;font-family:var(--head);
+    font-weight:600;font-size:13px;color:var(--ink-2);text-decoration:none;
+    white-space:nowrap;transition:background .15s,color .15s}
+  .pill a:hover{background:var(--panel-2)}
+  .pill a.on{background:var(--accent);color:#06251F}
+  .pill a.on:hover{background:var(--accent)}
 
-  .chart{margin-top:10px}
-  .chart .bars{display:flex;align-items:flex-end;gap:5px;height:130px;padding-top:8px}
-  .chart .bars > div{flex:1;background:var(--qbo);border-radius:3px 3px 0 0;min-height:2px;
-    position:relative;transition:.15s}
-  .chart .bars > div:hover{background:var(--ink)}
-  .chart .bars > div span{position:absolute;bottom:100%;left:50%;transform:translateX(-50%);
-    background:var(--ink);color:#fff;font-family:var(--mono);font-size:10.5px;padding:3px 7px;
-    border-radius:4px;white-space:nowrap;opacity:0;pointer-events:none;margin-bottom:5px}
-  .chart .bars > div:hover span{opacity:1}
-  .chart .axis{display:flex;gap:5px;margin-top:8px}
-  .chart .axis > div{flex:1;text-align:center;font-family:var(--mono);font-size:9.5px;
-    color:var(--faint);overflow:hidden}
+  /* The search box opens in place of nothing - it pushes the bar about as
+     little as it can, because the bar is what people aim at. */
+  .seek{display:none;position:relative}
+  .seek.on{display:block}
+  .seek input{width:190px;border:1px solid var(--accent);border-radius:9px;
+    padding:8px 11px;font:inherit;font-size:13px;background:var(--panel);color:var(--text)}
+  .seek input:focus{outline:0}
 
-  .quick{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:14px}
-  .quick a{display:block;text-decoration:none;color:inherit;border:1px solid var(--line);
-    border-radius:8px;padding:16px 18px;background:var(--panel);transition:.14s}
-  .quick a:hover{border-color:var(--qbo);transform:translateY(-1px);
-    box-shadow:0 4px 14px rgba(0,0,0,.06)}
-  .quick .t{font-size:14.5px;font-weight:600;margin-bottom:3px}
-  .quick .d{font-size:12.5px;color:var(--muted)}
-  .quick .arw{float:right;color:var(--faint)}
+  /* ---------- the strip ---------- */
+  /* One line about what the app is for, changing every few seconds. It is the
+     only decoration on the page and it carries no button, so nothing is lost
+     by not reading it. */
+  .strip{position:relative;height:96px;border-radius:12px;overflow:hidden;
+    background:linear-gradient(100deg,#1B2A30 0%,#223238 48%,#11BAB5 190%);
+    margin-bottom:16px}
+  .strip .slide{position:absolute;inset:0;display:flex;align-items:center;
+    padding:0 28px;gap:16px;opacity:0;transition:opacity .6s ease}
+  .strip .slide.on{opacity:1}
+  .strip .slide h3{font-family:var(--head);font-weight:700;font-size:17px;color:#fff;
+    margin:0 0 3px;letter-spacing:-.01em}
+  .strip .slide p{font-size:12.5px;color:#9DB0B5;margin:0;line-height:1.5}
+  .strip .slide .mk{flex:0 0 42px;width:42px;height:42px;border-radius:11px;
+    display:flex;align-items:center;justify-content:center;background:rgba(255,255,255,.07);
+    border:1px solid rgba(255,255,255,.12)}
+  .strip .slide .mk svg{width:22px;height:22px}
+  .strip .pips{position:absolute;right:18px;bottom:12px;display:flex;gap:5px}
+  .strip .pips i{width:6px;height:6px;border-radius:50%;background:rgba(255,255,255,.26);
+    cursor:pointer;display:block}
+  .strip .pips i.on{background:var(--aqua)}
 
-  .dateBox{display:flex;align-items:center;gap:6px}
-  .dateBox.hide{display:none}
-  .dateBox input[type=date]{width:auto;min-width:140px}
-  .dateBox .dash{color:var(--faint);font-family:var(--mono);font-size:12px}
-  .dateBox button{white-space:nowrap}
+  /* ---------- the ring ---------- */
+  .ring{position:relative;height:270px;margin-bottom:22px;border-radius:12px;
+    background:var(--panel);border:1px solid var(--line);overflow:hidden}
+  .ring canvas{position:absolute;inset:0;width:100%;height:100%;display:block}
+
+  /* ---------- the tiles ---------- */
+  .head{display:flex;align-items:baseline;gap:12px;margin:0 0 14px}
+  .head h2{font-family:var(--head);font-size:17px;font-weight:700;margin:0;
+    letter-spacing:-.01em}
+  .head .n{font-size:12.5px;color:var(--muted)}
+
+  .tiles{display:grid;grid-template-columns:repeat(auto-fill,minmax(118px,1fr));
+    gap:14px}
+  .tile{display:flex;flex-direction:column;align-items:center;gap:9px;
+    text-decoration:none;color:var(--text);padding:4px 2px 10px}
+  .tile .box{width:72px;height:72px;border-radius:16px;background:var(--panel);
+    border:1px solid var(--line);display:flex;align-items:center;justify-content:center;
+    transition:transform .14s ease,box-shadow .14s ease,border-color .14s ease}
+  .tile .box svg{width:38px;height:38px;display:block}
+  .tile span{font-size:12.5px;font-weight:500;text-align:center;line-height:1.35}
+  .tile:hover .box{transform:translateY(-3px);border-color:var(--accent);
+    box-shadow:0 10px 22px rgba(17,186,181,.18)}
+
+  /* Not built yet, and said so rather than opening onto nothing. */
+  .tile.soon{cursor:default}
+  .tile.soon .box{background:var(--panel-2);border-style:dashed;opacity:.6}
+  .tile.soon:hover .box{transform:none;border-color:var(--line-2);box-shadow:none}
+  .tile.soon span{color:var(--faint)}
+  .tile.soon span:after{content:" · soon";color:var(--faint);font-size:11px}
+
+  /* ---------- the Finance gate ---------- */
+  /* QuickBooks is not asked for at the door any more. It is asked for here, by
+     the one section that cannot work without it, at the moment it is wanted. */
+  .gateq{background:var(--panel);border:1px solid var(--line);border-radius:12px;
+    padding:30px 26px;text-align:center}
+  .gateq img{width:52px;height:auto;aspect-ratio:400/280;margin-bottom:12px}
+  .gateq h3{font-family:var(--head);font-size:16px;font-weight:700;margin:0 0 7px}
+  .gateq p{font-size:13px;color:var(--muted);margin:0 auto 18px;max-width:430px;
+    line-height:1.6}
+  .gateq .solid{display:inline-flex;align-items:center;gap:9px}
+  .gateq .solid b{width:9px;height:9px;border-radius:50%;background:var(--qbo);flex:0 0 9px}
+
+  .none{padding:34px 0;text-align:center;color:var(--muted);font-size:13px}
+
+  /* ---------- the notification sheet ---------- */
+  .sheet{position:fixed;inset:0;background:rgba(24,35,42,.4);display:none;z-index:60}
+  .sheet.on{display:block}
+  .sheet .card{position:absolute;top:62px;left:20px;width:330px;max-width:calc(100vw - 40px);
+    background:var(--panel);border:1px solid var(--line);border-radius:12px;
+    box-shadow:0 22px 50px rgba(24,35,42,.22);overflow:hidden}
+  .sheet .card .cap{display:flex;align-items:center;justify-content:space-between;
+    padding:12px 14px;border-bottom:1px solid var(--line);font-size:12px;
+    font-weight:600;color:var(--ink-2)}
+  .sheet .card .cap button{border:0;background:none;color:var(--accent-deep);
+    font:inherit;font-size:12px;cursor:pointer;padding:0}
+  .sheet .card .list{max-height:60vh;overflow:auto}
+  .sheet .card .item{padding:11px 14px;border-bottom:1px solid var(--line);font-size:12.5px}
+  .sheet .card .item:last-child{border-bottom:0}
+  .sheet .card .item b{display:block;font-weight:600;margin-bottom:2px}
+  .sheet .card .item small{color:var(--muted);font-size:11.5px}
+  .sheet .card .item a{color:var(--accent-deep);text-decoration:none}
+
+  @media (max-width:780px){
+    .bar{grid-template-columns:1fr;gap:10px}
+    .bar .right{display:none}
+    .pill{overflow-x:auto;justify-content:flex-start}
+    .pill a{padding:9px 16px;font-size:12.5px}
+    .ring{height:220px}
+    .strip{height:auto;min-height:92px}
+    .tiles{grid-template-columns:repeat(auto-fill,minmax(96px,1fr));gap:10px}
+    .tile .box{width:60px;height:60px;border-radius:14px}
+    .tile .box svg{width:32px;height:32px}
+  }
+  @media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
 </style>
 </head>
 <body>
 
-<div class="layout">
-  <aside class="rail"></aside>
+<div class="wrap">
 
-  <div class="main">
-    <div class="topline">
-      <div>
-        <h1>Dashboard</h1>
-        <div class="sub" id="periodSub">&nbsp;</div>
+  <div class="bar">
+    <div class="left">
+      <button class="icon" id="btnSeek" title="Search" aria-label="Search">
+        <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>
+      </button>
+      <div class="seek" id="seekBox">
+        <input id="seek" type="search" placeholder="Search sections…" autocomplete="off">
       </div>
-      <div class="right">
-        <select id="rangePick" style="width:auto;min-width:150px">
-          <option value="month" selected>This month</option>
-          <option value="last">Last month</option>
-          <option value="q">Last 3 months</option>
-          <option value="year">This year</option>
-          <option value="custom">Custom range…</option>
-        </select>
-
-        <div class="dateBox hide" id="customBox">
-          <input type="date" id="dFrom">
-          <span class="dash">→</span>
-          <input type="date" id="dTo">
-          <button class="mini" id="btnApply">Apply</button>
-          <button class="mini" id="btnCancel">Cancel</button>
-        </div>
-
-        <span class="mono" id="ageTag" style="font-size:11.5px;color:var(--faint)"></span>
-        <button class="mini" id="btnRefresh">Refresh</button>
-      </div>
+      <button class="icon" id="btnBell" title="Notifications" aria-label="Notifications">
+        <svg viewBox="0 0 24 24"><path d="M18 8a6 6 0 10-12 0c0 7-2 8-2 8h16s-2-1-2-8"/><path d="M13.7 21a2 2 0 01-3.4 0"/></svg>
+        <span class="dot" id="bellN"></span>
+      </button>
+      <a class="icon" href="/settings" title="Settings" aria-label="Settings">
+        <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3.2"/><path d="M12 2.5v2.8M12 18.7v2.8M2.5 12h2.8M18.7 12h2.8M5.2 5.2l2 2M16.8 16.8l2 2M18.8 5.2l-2 2M7.2 16.8l-2 2"/></svg>
+      </a>
     </div>
 
-    <div class="shell">
+    <nav class="pill" id="pill"></nav>
 
-      <div id="gate" class="gate hide">
-        <img src="/logo.svg" alt="">
-        <h2>Connect your QuickBooks company</h2>
-        <p>Everything on this page comes straight from your company file.</p>
-        <button class="solid" id="btnConnect">Connect to QuickBooks</button>
-      </div>
-
-      <div id="loading" class="hide" style="padding:60px 0;text-align:center;color:var(--muted)">
-        Reading QuickBooks…
-      </div>
-
-      <div id="main" class="hide">
-
-        <div class="hero">
-          <div class="card">
-            <h3>Invoiced</h3>
-            <div class="when" id="cardWhen">&nbsp;</div>
-            <div class="big"><small id="cur">PKR</small><span id="bInvoiced">—</span></div>
-
-            <div class="stack">
-              <i id="sPaid"  style="width:0%;background:var(--qbo)"></i>
-              <i id="sOpen"  style="width:0%;background:var(--warn)"></i>
-            </div>
-
-            <div class="split">
-              <div>
-                <div class="k"><em style="background:var(--qbo)"></em>Collected</div>
-                <div class="v" id="vPaid">—</div>
-                <div class="n" id="nPaid">&nbsp;</div>
-              </div>
-              <div>
-                <div class="k"><em style="background:var(--warn)"></em>Still owed</div>
-                <div class="v" id="vOpen">—</div>
-                <div class="n" id="nOpen">&nbsp;</div>
-              </div>
-              <div>
-                <div class="k">Average invoice</div>
-                <div class="v" id="vAvg">—</div>
-                <div class="n" id="nAvg">&nbsp;</div>
-              </div>
-            </div>
-          </div>
-
-          <div class="card">
-            <h3>Invoices</h3>
-            <div class="when" id="cardWhen2">&nbsp;</div>
-            <div class="donut">
-              <svg width="128" height="128" viewBox="0 0 128 128">
-                <circle cx="64" cy="64" r="52" fill="none" stroke="#E8EBEC" stroke-width="17"/>
-                <circle id="ring" cx="64" cy="64" r="52" fill="none" stroke="#2CA01C" stroke-width="17"
-                        stroke-dasharray="0 999" stroke-linecap="round"
-                        transform="rotate(-90 64 64)"/>
-                <text class="mid" x="64" y="62" text-anchor="middle" id="ringPct">—</text>
-                <text class="midsub" x="64" y="78" text-anchor="middle">PAID</text>
-              </svg>
-              <div style="flex:1;min-width:130px">
-                <div style="margin-bottom:15px">
-                  <div class="k" style="font-size:11px;letter-spacing:.09em;text-transform:uppercase;color:var(--faint);margin-bottom:4px">Total raised</div>
-                  <div class="v" style="font-family:var(--mono);font-size:19px;font-weight:500" id="dTotal">—</div>
-                </div>
-                <div style="margin-bottom:15px">
-                  <div class="k" style="font-size:11px;letter-spacing:.09em;text-transform:uppercase;color:var(--faint);margin-bottom:4px">Fully paid</div>
-                  <div class="v" style="font-family:var(--mono);font-size:19px;font-weight:500;color:var(--ok)" id="dPaid">—</div>
-                </div>
-                <div>
-                  <div class="k" style="font-size:11px;letter-spacing:.09em;text-transform:uppercase;color:var(--faint);margin-bottom:4px">Awaiting money</div>
-                  <div class="v" style="font-family:var(--mono);font-size:19px;font-weight:500;color:var(--warn)" id="dOpen">—</div>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <div class="card" style="margin-bottom:20px">
-          <h3>Invoiced by day</h3>
-          <div class="when" id="chartWhen">&nbsp;</div>
-          <div class="chart">
-            <div class="bars" id="bars"></div>
-            <div class="axis" id="axis"></div>
-          </div>
-        </div>
-
-        <div id="alerts" style="margin-bottom:20px"></div>
-
-        <div class="quick" style="margin-bottom:20px">
-          <a href="/convert">
-            <span class="arw">›</span>
-            <div class="t">Convert a Shopify export</div>
-            <div class="d">Build QuickBooks invoices, skipping anything already there.</div>
-          </a>
-          <a href="/payments">
-            <span class="arw">›</span>
-            <div class="t">Receive a CPR</div>
-            <div class="d">Match a courier settlement and record the payment.</div>
-          </a>
-          <a href="/fix">
-            <span class="arw">›</span>
-            <div class="t">Fix duplicates</div>
-            <div class="d">Find invoices that exist twice and tidy them up.</div>
-          </a>
-        </div>
-
-        <div class="sheet hide" id="courierSheet">
-          <div class="sec">
-            <h2>Couriers <span class="aside" id="courierAside"></span></h2>
-            <div class="tbl" style="max-height:280px">
-              <table>
-                <thead><tr>
-                  <th>Courier</th><th class="num">Runs</th><th class="num">Invoices</th>
-                  <th class="num">Amount</th><th>Last received</th>
-                </tr></thead>
-                <tbody id="courierBody"></tbody>
-              </table>
-            </div>
-          </div>
-        </div>
-
-        <div class="sheet hide" id="runSheet">
-          <div class="sec">
-            <h2>Recent CPR runs</h2>
-            <div class="tbl" style="max-height:300px">
-              <table>
-                <thead><tr>
-                  <th>When</th><th>Courier</th><th>CPR</th>
-                  <th class="num">Matched</th><th class="num">Unmatched</th><th class="num">Amount</th>
-                </tr></thead>
-                <tbody id="runBody"></tbody>
-              </table>
-            </div>
-          </div>
-        </div>
-
-        <div class="stat" id="statBox"></div>
-      </div>
+    <div class="right">
+      <button class="icon" id="btnBack" title="Back" aria-label="Back">
+        <svg viewBox="0 0 24 24"><path d="M15 5l-7 7 7 7"/></svg>
+      </button>
+      <button class="icon" id="btnFwd" title="Forward" aria-label="Forward">
+        <svg viewBox="0 0 24 24"><path d="M9 5l7 7-7 7"/></svg>
+      </button>
     </div>
+  </div>
+
+  <div class="strip" id="strip"></div>
+
+  <div class="ring"><canvas id="cv"></canvas></div>
+
+  <div class="head">
+    <h2 id="secName">Finance</h2>
+    <span class="n" id="secWhat"></span>
+  </div>
+
+  <div id="board"></div>
+
+</div>
+
+<div class="sheet" id="sheet">
+  <div class="card">
+    <div class="cap"><span>Notifications</span><button id="bellClear">Clear all</button></div>
+    <div class="list" id="bellList"><div class="item">Loading…</div></div>
   </div>
 </div>
 
 <script src="/nav.js"></script>
 <script>
+"use strict";
 (function(){
-  "use strict";
   var $ = function(id){ return document.getElementById(id); };
 
-  var lastRange = null;
-  var prevKind  = 'month';
+  /* ==================== what the app can do ====================
+     One list. A tile is a line in it: where it goes, what it is called, the
+     icon it wears, and the job it belongs to - `need` is the same key the rail
+     and the server use, so a person given part of the books sees part of this
+     page and the pages themselves still turn the rest away.
 
-  function pad(n){ return String(n).padStart(2, '0'); }
-  function isoOf(d){ return d.getFullYear() + '-' + pad(d.getMonth()+1) + '-' + pad(d.getDate()); }
+     `soon` means it is not built. It is on the page because it is coming, and
+     it says so rather than opening onto nothing.
 
-  function nf(n){ return String(n).replace(/\B(?=(\d{3})+(?!\d))/g, ','); }
-  function money(n){
-    var v = Number(n || 0);
-    var p = Math.abs(v).toFixed(2).split('.');
-    return (v < 0 ? '-' : '') + p[0].replace(/\B(?=(\d{3})+(?!\d))/g, ',') + '.' + p[1];
+     Couriers appear under both Logistics and Operations on purpose: it is one
+     module seen from two desks, not two modules. */
+  var SECTIONS = [
+    { key:'finance', label:'Finance', qb:true,
+      what:'The books themselves. Needs your QuickBooks company.',
+      tiles:[
+        { href:'/finance',   label:'Accounting',   icon:'book'  },
+        { href:'/convert',   label:'Convert',      icon:'shuffle', need:'upload' },
+        { href:'/upload',    label:'Upload',       icon:'up',      need:'upload' },
+        { href:'/payments',  label:'Payments',     icon:'cash',    need:'payments' },
+        { href:'/advance',   label:'Advances',     icon:'wallet',  need:'advance' },
+        { href:'/charges',   label:'Delivery fees',icon:'receipt', need:'charges' },
+        { href:'/find',      label:'Find orders',  icon:'find'  },
+        { href:'/audit',     label:'Invoice audit',icon:'check' },
+        { href:'/purchases', label:'Purchases',    icon:'cart',    need:'purchases' },
+        { href:'/products',  label:'Inventory',    icon:'box',     need:'products' },
+        { href:'/fix',       label:'Duplicates',   icon:'copy',    need:'products' },
+        { href:'/replace',   label:'Changes',      icon:'swap',    need:'changes' },
+        { href:'/void',      label:'Void',         icon:'ban',     need:'void' }
+      ]},
+
+    { key:'logistics', label:'Logistics', qb:true,
+      what:'Where every order is, across every courier account.',
+      tiles:[
+        { href:'/couriers',     label:'Couriers',  icon:'truck', need:'couriersync' },
+        { href:'/courier-dash', label:'Tracking',  icon:'pin',   need:'couriersync' },
+        { href:'/pickups',      label:'Pickups',   icon:'hand',  need:'couriersync' },
+        { href:'/cprs',         label:'CPRs',      icon:'sheet', need:'couriersync' },
+        { href:'/receipts',     label:'Receipts',  icon:'receipt', need:'couriersync' },
+        { label:'Returns',   icon:'back',  soon:true },
+        { label:'Rates',     icon:'tag',   soon:true }
+      ]},
+
+    { key:'operations', label:'Operations', qb:true,
+      what:'The day as it runs - orders in, parcels out, what went wrong.',
+      tiles:[
+        { href:'/couriers',     label:'Couriers',  icon:'truck', need:'couriersync' },
+        { href:'/courier-dash', label:'Tracking',  icon:'pin',   need:'couriersync' },
+        { href:'/cprs',         label:'CPRs',      icon:'sheet', need:'couriersync' },
+        { label:'eCommerce', icon:'bag',   soon:true },
+        { label:'Shopify',   icon:'cart',  soon:true },
+        { label:'Helpdesk',  icon:'chat',  soon:true }
+      ]},
+
+    { key:'hr', label:'HR', qb:false,
+      what:'The people who do the work.',
+      tiles:[
+        { label:'People',     icon:'people', soon:true },
+        { label:'Timesheets', icon:'clock',  soon:true },
+        { label:'Attendance', icon:'cal',    soon:true },
+        { label:'Payroll',    icon:'cash',   soon:true }
+      ]}
+  ];
+
+  /* The icons. Flat shapes in the brand's own colours - slate for the body of a
+     thing, teal for the part being acted on, grey and light grey for what is
+     behind it. No outlines and no shading, so they stay legible at 38px. */
+  var SL = '#222F34', TL = '#11BAB5', GY = '#7B7B7B', LG = '#BBBBBB', AQ = '#6BF0EA';
+  var ICONS = {
+    book:   '<rect x="8" y="7" width="26" height="34" rx="3" fill="' + SL + '"/>' +
+            '<rect x="14" y="13" width="14" height="3" rx="1.5" fill="' + LG + '"/>' +
+            '<rect x="14" y="20" width="14" height="3" rx="1.5" fill="' + LG + '"/>' +
+            '<circle cx="34" cy="33" r="9" fill="' + TL + '"/>',
+    shuffle:'<rect x="6" y="9" width="17" height="17" rx="3" fill="' + GY + '"/>' +
+            '<rect x="25" y="22" width="17" height="17" rx="3" fill="' + TL + '"/>' +
+            '<path d="M23 17h10v8" stroke="' + SL + '" stroke-width="3" fill="none" stroke-linecap="round"/>',
+    up:     '<rect x="7" y="28" width="34" height="13" rx="3" fill="' + SL + '"/>' +
+            '<path d="M24 7l10 11H14z" fill="' + TL + '"/>' +
+            '<rect x="20" y="16" width="8" height="10" fill="' + TL + '"/>',
+    cash:   '<rect x="5" y="12" width="38" height="24" rx="3" fill="' + SL + '"/>' +
+            '<circle cx="24" cy="24" r="7" fill="' + TL + '"/>' +
+            '<rect x="10" y="17" width="4" height="14" rx="2" fill="' + LG + '"/>' +
+            '<rect x="34" y="17" width="4" height="14" rx="2" fill="' + LG + '"/>',
+    wallet: '<rect x="6" y="11" width="36" height="26" rx="4" fill="' + SL + '"/>' +
+            '<rect x="26" y="19" width="18" height="11" rx="3" fill="' + TL + '"/>' +
+            '<circle cx="34" cy="24.5" r="2.6" fill="' + SL + '"/>',
+    receipt:'<path d="M10 6h28v36l-5-3-5 3-5-3-5 3-5-3-3 2z" fill="' + SL + '"/>' +
+            '<rect x="16" y="14" width="16" height="3" rx="1.5" fill="' + LG + '"/>' +
+            '<rect x="16" y="22" width="11" height="3" rx="1.5" fill="' + TL + '"/>',
+    find:   '<circle cx="21" cy="20" r="13" fill="' + GY + '"/>' +
+            '<circle cx="21" cy="20" r="7" fill="' + LG + '"/>' +
+            '<rect x="29" y="29" width="14" height="6" rx="3" transform="rotate(45 29 29)" fill="' + TL + '"/>',
+    check:  '<rect x="8" y="6" width="28" height="36" rx="3" fill="' + SL + '"/>' +
+            '<rect x="14" y="13" width="16" height="3" rx="1.5" fill="' + LG + '"/>' +
+            '<circle cx="33" cy="33" r="10" fill="' + TL + '"/>' +
+            '<path d="M29 33l3 3 6-6" stroke="#06251F" stroke-width="3" fill="none" stroke-linecap="round" stroke-linejoin="round"/>',
+    cart:   '<path d="M5 9h6l5 20h20" stroke="' + SL + '" stroke-width="4" fill="none" stroke-linecap="round" stroke-linejoin="round"/>' +
+            '<path d="M14 14h27l-4 12H17z" fill="' + TL + '"/>' +
+            '<circle cx="19" cy="38" r="3.5" fill="' + SL + '"/><circle cx="34" cy="38" r="3.5" fill="' + SL + '"/>',
+    box:    '<path d="M24 5l17 8v22l-17 8-17-8V13z" fill="' + SL + '"/>' +
+            '<path d="M24 5l17 8-17 8-17-8z" fill="' + LG + '"/>' +
+            '<path d="M24 21v22l17-8V13z" fill="' + GY + '"/>' +
+            '<circle cx="24" cy="30" r="5" fill="' + TL + '"/>',
+    copy:   '<rect x="6" y="6" width="24" height="28" rx="3" fill="' + LG + '"/>' +
+            '<rect x="16" y="14" width="26" height="28" rx="3" fill="' + SL + '"/>' +
+            '<rect x="22" y="22" width="14" height="3" rx="1.5" fill="' + TL + '"/>',
+    swap:   '<path d="M8 17h26" stroke="' + SL + '" stroke-width="4" fill="none" stroke-linecap="round"/>' +
+            '<path d="M28 10l8 7-8 7" fill="' + TL + '"/>' +
+            '<path d="M40 31H14" stroke="' + GY + '" stroke-width="4" fill="none" stroke-linecap="round"/>' +
+            '<path d="M20 24l-8 7 8 7" fill="' + LG + '"/>',
+    ban:    '<circle cx="24" cy="24" r="17" fill="' + SL + '"/>' +
+            '<rect x="13" y="21" width="22" height="6" rx="3" transform="rotate(-45 13 21)" fill="' + TL + '"/>',
+    truck:  '<rect x="4" y="14" width="23" height="17" rx="2" fill="' + SL + '"/>' +
+            '<path d="M27 19h8l6 7v5H27z" fill="' + TL + '"/>' +
+            '<circle cx="14" cy="34" r="4.5" fill="' + GY + '"/><circle cx="34" cy="34" r="4.5" fill="' + GY + '"/>',
+    pin:    '<path d="M24 5c-7.2 0-13 5.6-13 12.6C11 27 24 43 24 43s13-16 13-25.4C37 10.6 31.2 5 24 5z" fill="' + SL + '"/>' +
+            '<circle cx="24" cy="18" r="6" fill="' + TL + '"/>',
+    hand:   '<rect x="14" y="5" width="7" height="22" rx="3.5" fill="' + LG + '"/>' +
+            '<rect x="22" y="8" width="7" height="19" rx="3.5" fill="' + GY + '"/>' +
+            '<path d="M10 22h24v10a9 9 0 01-9 9h-6a9 9 0 01-9-9z" fill="' + SL + '"/>' +
+            '<circle cx="22" cy="33" r="4.5" fill="' + TL + '"/>',
+    sheet:  '<rect x="7" y="6" width="34" height="36" rx="3" fill="' + SL + '"/>' +
+            '<rect x="13" y="13" width="22" height="3" rx="1.5" fill="' + LG + '"/>' +
+            '<rect x="13" y="21" width="22" height="3" rx="1.5" fill="' + LG + '"/>' +
+            '<rect x="13" y="29" width="13" height="3" rx="1.5" fill="' + TL + '"/>',
+    back:   '<circle cx="24" cy="24" r="17" fill="' + GY + '"/>' +
+            '<path d="M27 15l-9 9 9 9" stroke="#fff" stroke-width="4" fill="none" stroke-linecap="round" stroke-linejoin="round"/>' +
+            '<circle cx="36" cy="12" r="6" fill="' + TL + '"/>',
+    tag:    '<path d="M6 6h18l18 18-18 18L6 24z" fill="' + SL + '"/>' +
+            '<circle cx="16" cy="16" r="4.5" fill="' + TL + '"/>',
+    bag:    '<path d="M9 15h30l-3 27H12z" fill="' + SL + '"/>' +
+            '<path d="M17 18V12a7 7 0 0114 0v6" stroke="' + TL + '" stroke-width="4" fill="none" stroke-linecap="round"/>',
+    chat:   '<path d="M6 10h36v22H20l-9 8v-8H6z" fill="' + SL + '"/>' +
+            '<circle cx="17" cy="21" r="3" fill="' + LG + '"/>' +
+            '<circle cx="25" cy="21" r="3" fill="' + LG + '"/>' +
+            '<circle cx="33" cy="21" r="3" fill="' + TL + '"/>',
+    people: '<circle cx="17" cy="16" r="7" fill="' + SL + '"/>' +
+            '<circle cx="32" cy="18" r="6" fill="' + GY + '"/>' +
+            '<path d="M5 41c0-7.2 5.4-12 12-12s12 4.8 12 12z" fill="' + SL + '"/>' +
+            '<path d="M27 41c0-5.6 3.4-9.5 8-9.5S43 35.4 43 41z" fill="' + TL + '"/>',
+    clock:  '<circle cx="24" cy="24" r="17" fill="' + SL + '"/>' +
+            '<path d="M24 14v10l7 4" stroke="' + TL + '" stroke-width="4" fill="none" stroke-linecap="round" stroke-linejoin="round"/>',
+    cal:    '<rect x="6" y="10" width="36" height="32" rx="3" fill="' + SL + '"/>' +
+            '<rect x="6" y="10" width="36" height="9" rx="3" fill="' + GY + '"/>' +
+            '<rect x="13" y="25" width="7" height="7" rx="2" fill="' + LG + '"/>' +
+            '<rect x="24" y="25" width="7" height="7" rx="2" fill="' + TL + '"/>'
+  };
+
+  function mark(name){
+    return '<svg viewBox="0 0 48 48" aria-hidden="true">' + (ICONS[name] || ICONS.box) + '</svg>';
   }
-  function short(n){
-    var v = Number(n || 0);
-    if(Math.abs(v) >= 1000000) return (v/1000000).toFixed(2) + 'M';
-    if(Math.abs(v) >= 1000)    return (v/1000).toFixed(1) + 'k';
-    return v.toFixed(0);
-  }
-  function when(iso){
-    if(!iso) return '—';
-    var d = new Date(iso);
-    if(isNaN(d)) return String(iso).slice(0, 10);
-    return d.toLocaleDateString() + ' ' + d.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'});
-  }
-  function pretty(iso){
-    if(!iso) return '';
-    var p = String(iso).split('-');
-    var M = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
-    return Number(p[2]) + ' ' + M[Number(p[1]) - 1] + ' ' + p[0];
-  }
-  function note(box, cls, text){
-    var d = document.createElement('div');
-    d.className = 'note ' + cls;
-    d.textContent = text;
-    box.appendChild(d);
+  function esc(s){
+    return String(s == null ? '' : s)
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
   }
 
-  /* ---------- date range ---------- */
+  /* ==================== the state of this screen ==================== */
+  var S = { now: 'finance', connected: false, canConnect: false, find: '' };
 
-  function rangeFor(kind){
-    var t = new Date();
-
-    if(kind === 'custom'){
-      return { from: $('dFrom').value, to: $('dTo').value };
-    }
-    if(kind === 'last'){
-      var a = new Date(t.getFullYear(), t.getMonth()-1, 1);
-      var b = new Date(t.getFullYear(), t.getMonth(), 0);
-      return { from: isoOf(a), to: isoOf(b) };
-    }
-    if(kind === 'q'){
-      return { from: isoOf(new Date(t.getFullYear(), t.getMonth()-2, 1)), to: isoOf(t) };
-    }
-    if(kind === 'year'){
-      return { from: t.getFullYear() + '-01-01', to: isoOf(t) };
-    }
-    return { from: isoOf(new Date(t.getFullYear(), t.getMonth(), 1)), to: isoOf(t) };
+  function sectionOf(key){
+    for (var i = 0; i < SECTIONS.length; i++) if (SECTIONS[i].key === key) return SECTIONS[i];
+    return SECTIONS[0];
   }
 
-  /* ---------- events ---------- */
+  // A tile is shown if the person was given the job it belongs to. A tile with
+  // no job is reading, which was never what was being handed out.
+  function mine(t){
+    if (!t.need) return true;
+    return !window.APP || !window.APP.may || window.APP.may(t.need);
+  }
 
-  $('btnConnect').addEventListener('click', function(){ location.href = '/auth/connect'; });
-  $('btnRefresh').addEventListener('click', function(){ load(true); });
+  function drawPill(){
+    $('pill').innerHTML = SECTIONS.map(function(s){
+      return '<a href="#' + s.key + '" class="' + (s.key === S.now ? 'on' : '') + '">' +
+        esc(s.label) + '</a>';
+    }).join('');
+  }
 
-  $('rangePick').addEventListener('change', function(){
-    var custom = this.value === 'custom';
-    $('customBox').classList.toggle('hide', !custom);
+  function drawBoard(){
+    var sec = sectionOf(S.now);
+    $('secName').textContent = sec.label;
+    $('secWhat').textContent = sec.what;
 
-    if(custom){
-      // sirf calendar dikhayein — Apply tak kuch load nahi hoga
-      if(!$('dFrom').value || !$('dTo').value){
-        var t = new Date();
-        $('dFrom').value = isoOf(new Date(t.getFullYear(), t.getMonth(), 1));
-        $('dTo').value   = isoOf(t);
-      }
+    // The one section that cannot work without QuickBooks asks for it here,
+    // when it is wanted - not at the door, where it stopped people who had come
+    // for something else entirely.
+    if (sec.qb && !S.connected) {
+      $('board').innerHTML =
+        '<div class="gateq">' +
+          '<img src="/logo.svg" alt="">' +
+          '<h3>' + esc(sec.label) + ' works on your QuickBooks company</h3>' +
+          '<p>' + (S.canConnect
+            ? 'Connect it once and everything in this section opens. Whoever ' +
+              'connects a company runs it: you hand out the user IDs for it and ' +
+              'say what each person may touch.'
+            : 'No company has been given to you yet. The administrator of your ' +
+              'company says who works in which one.') + '</p>' +
+          (S.canConnect
+            ? '<a class="solid" href="/auth/connect"><b></b>Connect to QuickBooks</a>'
+            : '') +
+        '</div>';
       return;
     }
 
-    prevKind = this.value;
-    load(false);
-  });
-
-  $('btnApply').addEventListener('click', function(){ load(false); });
-
-  $('btnCancel').addEventListener('click', function(){
-    $('customBox').classList.add('hide');
-    $('rangePick').value = prevKind;
-    $('statBox').className = 'stat';
-    $('statBox').textContent = '';
-  });
-
-  window.APP.ready.then(function(s){
-    if(!s.connected){ $('gate').classList.remove('hide'); return; }
-    load(false);
-  });
-
-  /* ---------- load ---------- */
-
-  function load(fresh){
-    var r = rangeFor($('rangePick').value);
-
-    if(!r.from || !r.to){
-      $('statBox').className = 'stat bad';
-      $('statBox').innerHTML = '<b>Pick both dates first.</b>';
-      return;
-    }
-
-    if(r.from > r.to){
-      $('main').classList.remove('hide');
-      $('loading').classList.add('hide');
-      $('statBox').className = 'stat bad';
-      $('statBox').innerHTML = '<b>Start date is after the end date.</b>';
-      return;
-    }
-
-    lastRange = r;
-    $('main').classList.add('hide');
-    $('loading').classList.remove('hide');
-    $('statBox').className = 'stat';
-    $('statBox').textContent = '';
-    $('btnRefresh').disabled = true;
-
-    fetch('/api/dashboard?from=' + r.from + '&to=' + r.to + (fresh ? '&fresh=1' : ''))
-      .then(function(x){ return x.json(); })
-      .then(function(d){
-        $('btnRefresh').disabled = false;
-        $('loading').classList.add('hide');
-        $('main').classList.remove('hide');
-        if(d.error){
-          $('statBox').className = 'stat bad';
-          $('statBox').innerHTML = '<b>' + d.error + '</b>';
-          return;
-        }
-        render(d);
-      })
-      .catch(function(e){
-        $('btnRefresh').disabled = false;
-        $('loading').classList.add('hide');
-        $('main').classList.remove('hide');
-        $('statBox').className = 'stat bad';
-        $('statBox').innerHTML = '<b>Could not reach QuickBooks: ' + e.message + '</b>';
-      });
-  }
-
-  /* ---------- render ---------- */
-
-  function render(d){
-    if(d.cached){
-      var m = Math.round((d.ageSeconds || 0) / 60);
-      $('ageTag').textContent = m < 1 ? 'just now' : ('updated ' + m + ' min ago');
-    } else {
-      $('ageTag').textContent = 'just now';
-    }
-
-    var from = d.from || (lastRange && lastRange.from);
-    var to   = d.to   || (lastRange && lastRange.to);
-    var span = (from && to) ? (pretty(from) + ' → ' + pretty(to)) : '';
-
-    $('periodSub').textContent = span;
-    $('cardWhen').textContent = span;
-    $('cardWhen2').textContent = span;
-    $('chartWhen').textContent = span;
-
-    var collected = d.invoiced - d.outstanding;
-
-    $('bInvoiced').textContent = short(d.invoiced);
-    $('vPaid').textContent = short(collected);
-    $('vOpen').textContent = short(d.outstanding);
-    $('nPaid').textContent = money(collected);
-    $('nOpen').textContent = money(d.outstanding);
-
-    var avg = d.invoiceCount ? d.invoiced / d.invoiceCount : 0;
-    $('vAvg').textContent = short(avg);
-    $('nAvg').textContent = nf(d.invoiceCount) + ' invoice' + (d.invoiceCount===1?'':'s');
-
-    var tot = d.invoiced || 1;
-    $('sPaid').style.width = Math.max(0, collected / tot * 100) + '%';
-    $('sOpen').style.width = Math.max(0, d.outstanding / tot * 100) + '%';
-
-    var pct = d.invoiceCount ? Math.round(d.paidCount / d.invoiceCount * 100) : 0;
-    var circ = 2 * Math.PI * 52;
-    $('ring').setAttribute('stroke-dasharray', (circ * pct / 100) + ' ' + circ);
-    $('ringPct').textContent = pct + '%';
-    $('dTotal').textContent = nf(d.invoiceCount);
-    $('dPaid').textContent = nf(d.paidCount);
-    $('dOpen').textContent = nf(d.invoiceCount - d.paidCount);
-
-    var days = d.daily || [];
-    var max = 0;
-    days.forEach(function(x){ if(x.amount > max) max = x.amount; });
-    max = max || 1;
-
-    var bars = $('bars'), axis = $('axis');
-    bars.innerHTML = ''; axis.innerHTML = '';
-    var step = Math.max(1, Math.ceil(days.length / 12));
-
-    days.forEach(function(x, i){
-      var b = document.createElement('div');
-      b.style.height = Math.max(2, Math.round(x.amount / max * 128)) + 'px';
-      var tip = document.createElement('span');
-      tip.textContent = pretty(x.date) + ' · ' + money(x.amount);
-      b.appendChild(tip);
-      bars.appendChild(b);
-
-      var a = document.createElement('div');
-      a.textContent = (i % step === 0) ? String(x.date).slice(8) : '';
-      axis.appendChild(a);
+    var want = S.find.toLowerCase();
+    var list = sec.tiles.filter(function(t){
+      if (!mine(t)) return false;
+      return !want || t.label.toLowerCase().indexOf(want) > -1;
     });
 
-    var al = $('alerts');
-    al.innerHTML = '';
-    if(d.plainCount){
-      note(al, 'warn', nf(d.plainCount) + ' invoice' + (d.plainCount===1?'':'s') +
-        ' in this period have no # in front of the number. Fix duplicates can add it back.');
-    }
-    if(!d.invoiceCount){
-      note(al, 'info', 'No invoices dated in this period.');
+    if (!list.length) {
+      $('board').innerHTML = '<div class="none">' + (want
+        ? 'Nothing in ' + esc(sec.label) + ' matches &ldquo;' + esc(S.find) + '&rdquo;.'
+        : 'Nothing here is yours to open yet.') + '</div>';
+      return;
     }
 
-    var cs = d.couriers || [];
-    $('courierSheet').classList.toggle('hide', !cs.length);
-    if(cs.length){
-      $('courierAside').textContent = cs.length + ' active';
-      var cb = $('courierBody');
-      cb.innerHTML = '';
-      cs.forEach(function(c){
-        var tr = document.createElement('tr');
-        tr.innerHTML =
-          '<td>' + (c.courier || '—') + '</td>' +
-          '<td class="num">' + nf(c.runs) + '</td>' +
-          '<td class="num">' + nf(c.invoices || 0) + '</td>' +
-          '<td class="num mono">' + money(c.amount) + '</td>' +
-          '<td class="mono" style="font-size:11.5px;color:var(--muted)">' + when(c.last_run) + '</td>';
-        cb.appendChild(tr);
-      });
-    }
-
-    var rs = d.runs || [];
-    $('runSheet').classList.toggle('hide', !rs.length);
-    if(rs.length){
-      var rb = $('runBody');
-      rb.innerHTML = '';
-      rs.forEach(function(r){
-        var tr = document.createElement('tr');
-        tr.innerHTML =
-          '<td class="mono" style="font-size:11.5px">' + when(r.created_at) + '</td>' +
-          '<td>' + (r.courier || '—') + '</td>' +
-          '<td class="mono">' + (r.cpr_number || '—') +
-            '<div style="font-size:10.5px;color:var(--faint)">' + (r.cpr_date || '') + '</div></td>' +
-          '<td class="num">' + nf(r.matched) + '</td>' +
-          '<td class="num" style="color:' + (r.unmatched ? 'var(--warn)' : 'inherit') + '">' +
-            nf(r.unmatched) + '</td>' +
-          '<td class="num mono">' + money(r.amount) + '</td>';
-        rb.appendChild(tr);
-      });
-    }
+    $('board').innerHTML = '<div class="tiles">' + list.map(function(t){
+      if (t.soon) {
+        return '<div class="tile soon"><div class="box">' + mark(t.icon) + '</div>' +
+          '<span>' + esc(t.label) + '</span></div>';
+      }
+      return '<a class="tile" href="' + esc(t.href) + '"><div class="box">' +
+        mark(t.icon) + '</div><span>' + esc(t.label) + '</span></a>';
+    }).join('') + '</div>';
   }
+
+  // The section lives in the address, so the back button walks between sections
+  // and a link to one can be kept.
+  function fromHash(){
+    var key = (location.hash || '').replace('#', '');
+    S.now = sectionOf(key).key;
+  }
+  window.addEventListener('hashchange', function(){
+    fromHash();
+    drawPill();
+    drawBoard();
+  });
+
+  /* ==================== the bar ==================== */
+  $('btnBack').addEventListener('click', function(){ history.back(); });
+  $('btnFwd').addEventListener('click', function(){ history.forward(); });
+
+  $('btnSeek').addEventListener('click', function(){
+    var on = $('seekBox').classList.toggle('on');
+    if (on) $('seek').focus();
+    else { $('seek').value = ''; S.find = ''; drawBoard(); }
+  });
+  $('seek').addEventListener('input', function(){
+    S.find = $('seek').value.trim();
+    drawBoard();
+  });
+  $('seek').addEventListener('keydown', function(e){
+    if (e.key === 'Escape') $('btnSeek').click();
+  });
+
+  /* The bell. The same list the rest of the app shows, read from the same place
+     - this page has no toolbar for nav.js to hang its own on. */
+  function when(t){
+    if (!t) return '';
+    var d = new Date(t);
+    return d.toLocaleDateString() + ' ' +
+      d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  }
+  function countBell(){
+    fetch('/api/notifications/count', { cache: 'no-store' })
+      .then(function(r){ return r.json(); })
+      .then(function(d){
+        var n = Number(d && d.count) || 0;
+        $('bellN').textContent = n > 9 ? '9+' : String(n);
+        $('bellN').classList.toggle('on', n > 0);
+      })
+      .catch(function(){});
+  }
+  function openBell(){
+    $('sheet').classList.add('on');
+    $('bellList').innerHTML = '<div class="item">Loading…</div>';
+    fetch('/api/notifications', { cache: 'no-store' })
+      .then(function(r){ return r.json(); })
+      .then(function(d){
+        var rows = (d && d.items) || (d && d.notifications) || [];
+        if (!rows.length) {
+          $('bellList').innerHTML = '<div class="item"><small>Nothing waiting.</small></div>';
+        } else {
+          $('bellList').innerHTML = rows.map(function(n){
+            var body = '<b>' + esc(n.title || '') + '</b>' +
+              '<small>' + esc(n.body || '') + '</small>';
+            return '<div class="item">' +
+              (n.link ? '<a href="' + esc(n.link) + '">' + body + '</a>' : body) +
+              '<small style="display:block;margin-top:3px;opacity:.7">' +
+              esc(when(n.created_at || n.at)) + '</small></div>';
+          }).join('');
+        }
+        return fetch('/api/notifications/read', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}'
+        });
+      })
+      .then(function(){ countBell(); })
+      .catch(function(){
+        $('bellList').innerHTML = '<div class="item"><small>Could not read them.</small></div>';
+      });
+  }
+  $('btnBell').addEventListener('click', openBell);
+  $('sheet').addEventListener('click', function(e){
+    if (e.target === $('sheet')) $('sheet').classList.remove('on');
+  });
+  $('bellClear').addEventListener('click', function(){
+    fetch('/api/notifications/clear', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}'
+    }).then(function(){
+      $('bellList').innerHTML = '<div class="item"><small>Nothing waiting.</small></div>';
+      countBell();
+    });
+  });
+
+  /* ==================== the strip ==================== */
+  (function strip(){
+    var slides = [
+      { mk:'bag',   h:'Everything e-commerce, in one place',
+        p:'Orders, books, parcels and people - on one set of records.' },
+      { mk:'book',  h:'Finance runs on your own QuickBooks',
+        p:'Connect the company once; the app writes into the real books.' },
+      { mk:'truck', h:'Every courier account, one screen',
+        p:'PostEx, Daewoo and M&P together, with nothing typed twice.' },
+      { mk:'people',h:'Give each person only their own desk',
+        p:'Make a user ID, tick what they may touch, and that is what opens.' }
+    ];
+    var box = $('strip');
+    box.innerHTML = slides.map(function(s, i){
+      return '<div class="slide' + (i ? '' : ' on') + '">' +
+        '<div class="mk">' + mark(s.mk) + '</div>' +
+        '<div><h3>' + esc(s.h) + '</h3><p>' + esc(s.p) + '</p></div></div>';
+    }).join('') +
+      '<div class="pips">' + slides.map(function(_, i){
+        return '<i class="' + (i ? '' : 'on') + '" data-i="' + i + '"></i>';
+      }).join('') + '</div>';
+
+    var at = 0;
+    var els = box.querySelectorAll('.slide');
+    var pips = box.querySelectorAll('.pips i');
+    function go(i){
+      at = (i + slides.length) % slides.length;
+      for (var k = 0; k < els.length; k++) els[k].classList.toggle('on', k === at);
+      for (var j = 0; j < pips.length; j++) pips[j].classList.toggle('on', j === at);
+    }
+    pips.forEach(function(p){
+      p.addEventListener('click', function(){ go(Number(p.getAttribute('data-i'))); clock(); });
+    });
+
+    var t = null;
+    function clock(){
+      if (t) clearInterval(t);
+      if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+      t = setInterval(function(){ go(at + 1); }, 5200);
+    }
+    clock();
+  })();
+
+  /* ==================== the ring ====================
+     What the app is, drawn once: six desks on a ring, each sending its work
+     into the middle, where it becomes one set of records. It is the same idea
+     as the sign-in page's animation, turned inward - that one is about arriving,
+     this one is about the day running. */
+  (function ring(){
+    var cv = $('cv'), box = cv.parentNode;
+    if (!cv) return;
+    var ctx = cv.getContext('2d');
+    var still = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+    var NODES = ['E-commerce', 'Finance', 'Logistics', 'Couriers', 'HR', 'QuickBooks'];
+    var w = 0, h = 0, cx = 0, cy = 0, R = 0, dpr = 1;
+
+    function size(){
+      dpr = Math.min(window.devicePixelRatio || 1, 2);
+      w = box.clientWidth; h = box.clientHeight;
+      cv.width = Math.round(w * dpr); cv.height = Math.round(h * dpr);
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      cx = w / 2; cy = h / 2;
+      R = Math.min(w, h) * 0.34;
+    }
+
+    function at(i, spin){
+      var a = (i / NODES.length) * Math.PI * 2 - Math.PI / 2 + spin;
+      return { x: cx + Math.cos(a) * R, y: cy + Math.sin(a) * R };
+    }
+
+    function frame(ms){
+      var t = ms / 1000;
+      var spin = still ? 0 : t * 0.075;
+      ctx.clearRect(0, 0, w, h);
+
+      // the ring the desks sit on
+      ctx.beginPath();
+      ctx.arc(cx, cy, R, 0, Math.PI * 2);
+      ctx.strokeStyle = '#E4EAEA';
+      ctx.lineWidth = 1.5;
+      ctx.stroke();
+
+      // each desk's line into the middle, and the work moving along it
+      for (var i = 0; i < NODES.length; i++) {
+        var p = at(i, spin);
+
+        ctx.beginPath();
+        ctx.moveTo(p.x, p.y);
+        ctx.lineTo(cx, cy);
+        ctx.strokeStyle = '#EDF2F2';
+        ctx.lineWidth = 1;
+        ctx.stroke();
+
+        if (!still) {
+          // three parcels per line, evenly spaced along it and always moving
+          for (var k = 0; k < 3; k++) {
+            var u = ((t * 0.34) + (i / NODES.length) + (k / 3)) % 1;
+            var e = 0.12 + u * 0.76;                  // never quite at either end
+            var px = p.x + (cx - p.x) * e;
+            var py = p.y + (cy - p.y) * e;
+            ctx.beginPath();
+            ctx.arc(px, py, 2.6, 0, Math.PI * 2);
+            ctx.fillStyle = 'rgba(17,186,181,' + (0.22 + 0.5 * Math.sin(u * Math.PI)).toFixed(3) + ')';
+            ctx.fill();
+          }
+        }
+
+        // the desk itself
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, 7, 0, Math.PI * 2);
+        ctx.fillStyle = '#FFFFFF';
+        ctx.fill();
+        ctx.strokeStyle = '#11BAB5';
+        ctx.lineWidth = 2;
+        ctx.stroke();
+
+        ctx.font = '600 11.5px Montserrat, system-ui, sans-serif';
+        ctx.fillStyle = '#55666B';
+        ctx.textAlign = p.x < cx - 4 ? 'right' : (p.x > cx + 4 ? 'left' : 'center');
+        ctx.textBaseline = 'middle';
+        var off = ctx.textAlign === 'center' ? 0 : (p.x < cx ? -13 : 13);
+        var down = ctx.textAlign === 'center' ? (p.y < cy ? -18 : 18) : 0;
+        ctx.fillText(NODES[i], p.x + off, p.y + down);
+      }
+
+      // the middle: the mark, breathing with the work arriving at it
+      var beat = still ? 0 : (Math.sin(t * 1.5) * 0.5 + 0.5);
+      ctx.beginPath();
+      ctx.arc(cx, cy, 30 + beat * 5, 0, Math.PI * 2);
+      ctx.fillStyle = 'rgba(17,186,181,' + (0.07 + beat * 0.06).toFixed(3) + ')';
+      ctx.fill();
+
+      ctx.beginPath();
+      ctx.arc(cx, cy, 25, 0, Math.PI * 2);
+      ctx.fillStyle = '#222F34';
+      ctx.fill();
+
+      ctx.font = '800 11px Montserrat, system-ui, sans-serif';
+      ctx.fillStyle = '#FFFFFF';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText('FUSION', cx, cy);
+
+      if (!still) raf = requestAnimationFrame(frame);
+    }
+
+    var raf = null;
+    function start(){
+      size();
+      if (raf) cancelAnimationFrame(raf);
+      if (still) frame(0);
+      else raf = requestAnimationFrame(frame);
+    }
+    window.addEventListener('resize', start);
+    start();
+
+    // A tab nobody is looking at is not worth drawing.
+    document.addEventListener('visibilitychange', function(){
+      if (document.hidden) { if (raf) cancelAnimationFrame(raf); raf = null; }
+      else if (!still && !raf) raf = requestAnimationFrame(frame);
+    });
+  })();
+
+  /* ==================== what the server knows ==================== */
+  fromHash();
+  drawPill();
+
+  window.APP.ready.then(function(s){
+    S.connected = !!s.connected;
+    S.canConnect = !!s.canConnect;
+    drawBoard();
+    countBell();
+  }).catch(function(){
+    drawBoard();
+  });
 })();
 </script>
 </body>

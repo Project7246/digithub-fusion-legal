@@ -31,7 +31,7 @@
   // never what was being handed out: the dashboard and the searches stay.
   var ITEMS = [
     { group: null, items: [
-      { href:'/',              label:'Dashboard',        icon:'grid' }
+      { href:'/finance',       label:'Dashboard',        icon:'grid' }
     ]},
     { group: 'Import invoices', items: [
       { href:'/convert',  label:'Convert',          icon:'shuffle', need:'upload' },
@@ -697,37 +697,19 @@
       .catch(function(){});
   })();
 
-  /* ---------- the one door ---------- */
-  // Everybody comes in the same way, so there is one button to press and no choice
-  // to get wrong. It asks Intuit only who you are. The server knows which addresses
-  // are the company's admins, and walks those - and only those - on to QuickBooks'
-  // own connect screen when the company still needs connecting. Every other address
-  // arrives as a user: reads and downloads everything, changes what the admin says.
-  (function oneDoor(){
+  /* ---------- connecting a company ---------- */
+  // QuickBooks is not how anybody signs in any more - that is an address and a
+  // password, or a user id the company handed out. So this button means the one
+  // thing it says: connect a set of books. Each page wires it to /auth/connect
+  // itself; nothing is taken out of its hands here, and the line that used to
+  // sit under it about QuickBooks addresses and admins is gone with the door it
+  // described.
+  (function connectButton(){
     var connect = document.getElementById('btnConnect');
     if(!connect) return;
-
-    connect.textContent = 'Sign in with QuickBooks';
+    connect.textContent = 'Connect to QuickBooks';
     connect.classList.remove('ghost');
     connect.classList.add('solid');
-
-    // Every page still wires this button to /auth/connect further down its own
-    // script, and the id has to stay for that line not to break. The press is
-    // taken here first instead, on the way down, so the page's own handler never
-    // runs and the accounting door is never opened from a button again.
-    document.addEventListener('click', function(ev){
-      if(!connect.contains(ev.target)) return;
-      ev.preventDefault();
-      ev.stopPropagation();
-      location.href = '/auth/signin';
-    }, true);
-
-    var note = document.createElement('div');
-    note.style.cssText = 'margin-top:12px;font-size:12px;color:var(--muted);line-height:1.6';
-    note.textContent = 'Use your own QuickBooks address, and choose the company you ' +
-      'work in. What you may do in the app is the admin’s to decide.';
-    if(connect.parentNode) connect.parentNode.appendChild(note);
-
   })();
 
   /* ---------- connection state ---------- */
@@ -752,10 +734,18 @@
       // the cookie said so before the page drew; the server has the last word
       document.documentElement.classList.toggle('signed-out', !s.signedIn);
 
-      // Signed in, but either nobody has let them in yet or no company is picked.
-      // Both are the same screen: one waits there until the admin says yes, the
-      // other chooses. Neither is a page of the app, so neither is shown one.
-      if(s.signedIn && (!s.connected || !s.letIn) && location.pathname !== '/choose'){
+      // Signed in and still outside. Nobody having let them in is one thing and
+      // always sends them to the chooser; having no company picked is another,
+      // and no longer does.
+      //
+      // QuickBooks is not the door any more. Somebody can sign up with their own
+      // address and arrive here with no company at all, and the home page is
+      // exactly where they should land: it shows the four sections and lets the
+      // one that needs a company ask for it. Every other page still needs one,
+      // because every other page is work on a set of books.
+      var atHome = location.pathname === '/' || location.pathname === '/index';
+      if(s.signedIn && (!s.letIn || (!s.connected && !atHome)) &&
+         location.pathname !== '/choose'){
         location.replace('/choose');
         return s;
       }
