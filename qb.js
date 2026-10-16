@@ -6,6 +6,13 @@ const TOKEN_URL = 'https://oauth.platform.intuit.com/oauth2/v1/tokens/bearer';
 export async function getAccessToken(realmId) {
   const company = await getCompany(realmId);
   if (!company) throw new Error('Company not connected');
+  // A company made at sign-up has everything but books. Asking QuickBooks about
+  // it is not an error in the run that got here - it is a thing that has not been
+  // set up yet - so it says so in the words the person needs to act on.
+  if (!company.refresh_token) {
+    throw new Error('QuickBooks is not connected to this company yet. ' +
+      'Open Finance and connect it, then run this again.');
+  }
 
   const basic = Buffer.from(
     `${process.env.QB_CLIENT_ID}:${process.env.QB_CLIENT_SECRET}`

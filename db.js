@@ -1,3 +1,4 @@
+import crypto from 'node:crypto';
 import pg from 'pg';
 
 const { Pool } = pg;
@@ -26,6 +27,21 @@ export async function initDb() {
       updated_at     TIMESTAMPTZ DEFAULT NOW()
     );
   `);
+
+  // A company exists before QuickBooks does.
+  //
+  // It used to be the other way round: a row here was a set of books the app had
+  // been connected to, so the key was Intuit's realm number and the refresh token
+  // had to be there. But the app is not only the books. Somebody sells on Shopify,
+  // books parcels with three couriers and keeps staff, and may never open
+  // QuickBooks at all - and until this row existed there was nowhere for any of
+  // that to sit, and nobody to hand out user ids. So a company is made when the
+  // person signs up, with an id of our own (fx-...), and QuickBooks is something
+  // it joins later - see graduateWorkspace().
+  await pool.query(
+    `ALTER TABLE companies ADD COLUMN IF NOT EXISTS owner_sub TEXT`);
+  await pool.query(
+    `ALTER TABLE companies ALTER COLUMN refresh_token DROP NOT NULL`);
 
   await pool.query(`
     CREATE TABLE IF NOT EXISTS upload_logs (
@@ -107,6 +123,87 @@ export async function renameCompany(realmId, companyName) {
     'UPDATE companies SET company_name = $1 WHERE realm_id = $2',
     [companyName, realmId]
   );
+}
+
+// ==================== a company before QuickBooks ====================
+// Which kind of id this is. Intuit's realm is all digits; ours never is, so the
+// two can never be mistaken for one another, in a cookie or in a column.
+export function isWorkspace(realmId) {
+  return /^fx-[0-9a-f]{16}$/.test(String(realmId || ''));
+}
+
+// The company somebody makes by signing up. It has a name they typed, an owner,
+// and no books - which is exactly what every courier, Shopify and HR screen
+// needs, and what the owner needs to hand out user ids. Nothing about it is
+// QuickBooks' to give.
+export async function createWorkspace(name, ownerSub) {
+  const id = 'fx-' + crypto.randomBytes(8).toString('hex');
+  await pool.query(
+    `INSERT INTO companies (realm_id, company_name, refresh_token, owner_sub)
+     VALUES ($1, $2, NULL, $3)`,
+    [id, String(name || '').trim() || null, ownerSub || null]);
+  return id;
+}
+
+// The workspaces this person made and runs, newest last.
+export async function workspacesOwnedBy(sub) {
+  if (!sub) return [];
+  const r = await pool.query(
+    `SELECT realm_id, company_name FROM companies
+      WHERE owner_sub = $1 AND refresh_token IS NULL ORDER BY created_at`, [sub]);
+  return r.rows.filter(x => isWorkspace(x.realm_id))
+    .map(x => ({ realmId: x.realm_id, name: x.company_name || '' }));
+}
+
+// The workspace joins QuickBooks, and keeps everything it had.
+//
+// The alternative was to leave the two apart - the workspace with the couriers
+// in it and a second row for the books - and then one person would have two
+// companies, each holding half of their work, and a chooser asking which half
+// they wanted today. So the workspace takes the realm number as its own id
+// instead: from here on it IS that company, every page asks QuickBooks the
+// right thing, and the parcels booked before the books were connected are still
+// sitting where they were.
+//
+// Which columns to carry over is read from the database rather than written out
+// here, because a table added next month would otherwise be left behind holding
+// an id nothing answers to - and nobody would notice until its rows went quiet.
+export async function graduateWorkspace(fromId, toRealm) {
+  if (!isWorkspace(fromId)) return { error: 'That is not a workspace.' };
+  if (!/^[0-9]+$/.test(String(toRealm))) return { error: 'That is not a realm id.' };
+
+  const taken = await pool.query('SELECT 1 FROM companies WHERE realm_id = $1', [toRealm]);
+  if (taken.rowCount) return { taken: true };
+
+  const cols = await pool.query(
+    `SELECT c.table_name AS tbl, c.column_name AS col
+       FROM information_schema.columns c
+       JOIN information_schema.tables t
+         ON t.table_schema = c.table_schema AND t.table_name = c.table_name
+      WHERE c.table_schema = 'public' AND t.table_type = 'BASE TABLE'
+        AND c.column_name IN ('realm_id', 'home_realm')`);
+
+  const quote = s => '"' + String(s).replace(/"/g, '""') + '"';
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    for (const r of cols.rows) {
+      if (r.tbl === 'companies') continue;        // the row itself goes last
+      await client.query(
+        `UPDATE ${quote(r.tbl)} SET ${quote(r.col)} = $2 WHERE ${quote(r.col)} = $1`,
+        [fromId, toRealm]);
+    }
+    await client.query(
+      'UPDATE companies SET realm_id = $2, updated_at = NOW() WHERE realm_id = $1',
+      [fromId, toRealm]);
+    await client.query('COMMIT');
+    return { ok: true, moved: cols.rows.length };
+  } catch (e) {
+    try { await client.query('ROLLBACK'); } catch (e2) { /* the trip is over anyway */ }
+    throw e;
+  } finally {
+    client.release();
+  }
 }
 
 // A table that used to hold one run per company now holds one per person in it.

@@ -20,9 +20,10 @@ get a first deploy working. They can be deleted or rewritten freely.
 | Piece | Where |
 |---|---|
 | Code | GitHub `Project7246/digithub-fusion-legal`, branch `main` |
-| Local folder | `C:\Users\ASUS-1\Desktop\digithub-fusion` |
+| Local folder | `C:\Users\Project Availity\Desktop\digithub-fusion` (the work moved here from the `ASUS-1` profile; paths below that still say `ASUS-1` are on the old machine) |
 | Git author here | `Project7246` / `project.availity@gmail.com` (set in this repo's local git config) |
 | Git push login | Windows Credential Manager holds the old app's `availityltd` token for `github.com`, which this repo is denied (403). Fixed by `credential.https://github.com.useHttpPath=true` in this repo's **local** config, so the credential is looked up per repo path and the old app keeps its own. Do not set this globally |
+| Git on this machine | Installed by `winget install --id Git.Git -e` at `C:\Program Files\Git\cmd\git.exe`. A session opened before that install has the old PATH, so `git` is not a word it knows - call the full path until Claude Code is reopened. The GitHub credential is already in Credential Manager here: `git fetch` works without a browser |
 | Server | DigitalOcean App Platform, app `hammerhead-app`, component `digithub-fusion-legal`, Basic 512 MB, $5/month, region Bangalore (BLR1), Auto-deploy on push is ON |
 | Database | **Neon** (not DigitalOcean). Project `autumn-tooth-08816249`, branch `production`. Connected only through the env var `DATABASE_URL` set in DigitalOcean (component Settings > Environment Variables). Locally it would go in an untracked `.env` |
 | Domain | `https://ca.availity.pk`. DNS is on Hostinger: `CNAME ca -> hammerhead-app-z86ki.ondigitalocean.app`. Other records on `availity.pk` (main site, email MX/TXT) must not be touched |
@@ -112,11 +113,12 @@ Three tiers, and the middle one is new:
 
 - **ADMIN_EMAILS** runs Fusion itself. Named on the server, never in the database,
   so reaching the database is not a way to become one. Sees every company.
-- **The administrator of a company** is whoever connected it (`companies.owner_sub`,
-  claimed once in `/auth/callback`). They hand out that company's user IDs, set
-  what each may touch, and can see and change nobody outside it. `requireAdmin()`
-  and `runsCompany()` are what let them in; `mayConnect()` is what lets somebody
-  connect books at all.
+- **The administrator of a company** is whoever made it - the person who signed up
+  (`claimCompany()` in `/auth/signup`), or whoever connected books that had no
+  owner yet (`/auth/callback`). `companies.owner_sub` is the one record of it.
+  They hand out that company's user IDs, set what each may touch, and can see and
+  change nobody outside it. `requireAdmin()` and `runsCompany()` are what let them
+  in; `mayConnect()` is what lets somebody connect books at all.
 - **Everybody else** has what their company's administrator ticked.
 
 Anything scoped per company must stay scoped: `/api/admin/users`,
@@ -141,6 +143,48 @@ Rules the doors follow, which are easy to break by accident:
 - Verification codes need SMTP. Without `SMTP_HOST`/`SMTP_USER`/`SMTP_PASS` the
   email doors cannot work and say so plainly (503), rather than leaving somebody
   waiting for a code that is not coming.
+
+## A company is made at sign-up, and QuickBooks joins it later
+
+The account **is** a company. `/auth/signup` asks for a company name along with
+the address, and `createWorkspace()` (`db.js`) writes a `companies` row with an id
+of ours - `fx-` plus sixteen hex characters, which `isWorkspace()` recognises and
+Intuit's all-digit realm can never look like. `owner_sub` is the person who typed
+it. So from the first screen they have somewhere for couriers, Shopify orders and
+staff to live, and `requireAdmin()` opens, which is what lets them hand out user
+IDs **without QuickBooks existing at all**. That was the blocker: `refresh_token`
+used to be `NOT NULL` and a company meant a set of books, so nothing could be done
+until Intuit had been visited. `initDb()` drops that NOT NULL.
+
+What a module may do is `role` + `rights`, as before - `custom` means "these
+modules, and full work inside them". Read-only is a different role (`viewer`).
+Giving somebody couriers means they book, sync and settle couriers.
+
+When the owner does connect QuickBooks, the company they already have **takes the
+realm number as its own id** - `graduateWorkspace()` in `db.js`, run from
+`/auth/callback`. Every table that scopes rows by company is found from
+`information_schema` (`realm_id`, plus `users.home_realm`) and carried over in one
+transaction, then the `companies` row itself. The alternative was two companies
+per person, each holding half their work, and a chooser asking which half they
+wanted today. Because the id ends up being the realm, the ~31 places that build
+`/v3/company/<realmId>/...` never had to learn anything.
+
+- `/auth/status` carries both: **`connected`** = there is a company open, which is
+  true from sign-up, and **`qb`** = these books are joined to QuickBooks. Anything
+  that asks Intuit something gates on `qb` (see `finance.html`), never `connected`.
+- `getAccessToken()` (`qb.js`) says so in words when a company has no token yet,
+  rather than failing as if the run went wrong.
+- `listCompanies()` returns workspaces too, each with `connected`.
+- Connecting does **not** change who is signed in. `/auth/callback` used to read
+  the person out of Intuit and sign them in as that, from when QuickBooks was the
+  door - so somebody who had signed up with their own address and pressed Connect
+  was moved onto a new, empty, access-less account while their real one sat there
+  with their company in it. It now attaches the books to whoever is signed in.
+- First time the owner lands on `/`, one notice offers staff user IDs (`.fxask` in
+  `index.html`, `askStaff` on `/auth/status`). Either button answers it for good -
+  `users.staff_asked`, set by `/api/me/staff-asked` - and Manage users stays in the
+  rail either way. Asked once, on the server, so the shop's other computer does
+  not ask again.
 
 ## How the app is laid out
 

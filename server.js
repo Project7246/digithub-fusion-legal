@@ -6,23 +6,24 @@ import crypto from 'crypto';
 import fs from 'node:fs';
 import {
   pool, initDb, saveCompany, getCompany, renameCompany, logUpload,
-  getNegativeItems, setNegativeItems
+  getNegativeItems, setNegativeItems,
+  isWorkspace, createWorkspace, workspacesOwnedBy, graduateWorkspace
 } from './db.js';
 
 import { initMappings, getMappings, saveMapping } from './mappings.js';
 import { listCompanies } from './companies.js';
 import { listSheets, listTabs, readTab, paintRows, testConnection } from './sheets.js';
 import {
-  initUsers, upsertUser, getUser, linkCompany, userOwns,
+  initUsers, getUser, linkCompany, userOwns,
   listUsers, setUserAccess, setUserCompanies, realmsForUser, usersByEmails,
-  askAgain, stopAsking, resumeAsking
+  askAgain, stopAsking
 } from './users.js';
 import {
   initAccounts, hashPassword, checkPassword, passwordComplaint, loginIdComplaint,
   newCode, putCode, codeSentRecently, useCode, EMAIL_OK,
   byEmail, byLoginId, createSelfAccount, upsertGoogleAccount, createMemberAccount,
   listMembers, setMemberPassword, setDisabled, deleteMember, touchSignIn,
-  claimCompany, ownerOf, ownsCompany
+  claimCompany, ownerOf, ownsCompany, markStaffAsked
 } from './accounts.js';
 import {
   initNotify, notify, listFor, unreadCount, markAllRead, clearFor, sendMail,
@@ -317,7 +318,9 @@ const API = 'https://quickbooks.api.intuit.com';
 const BASE_URL = process.env.BASE_URL || 'http://localhost:3000';
 const AUTH_URL = 'https://appcenter.intuit.com/connect/oauth2';
 const TOKEN_URL = 'https://oauth.platform.intuit.com/oauth2/v1/tokens/bearer';
-const USERINFO_URL = 'https://accounts.platform.intuit.com/v1/openid_connect/userinfo';
+// Intuit's userinfo is no longer asked for anything. It was read to find out who
+// was signing in, back when QuickBooks was the door; the books are now attached
+// to whoever is already signed in - see /auth/callback.
 
 const SESSION_SECRET = process.env.SESSION_SECRET || process.env.QB_CLIENT_SECRET || 'dev-secret';
 
@@ -423,6 +426,8 @@ async function whoIs(sub) {
     door: (u && u.door) ? u.door : 'qb',
     loginId: (u && u.login_id) || null,
     homeRealm: (u && u.home_realm) || null,
+    // Whether they have already been asked, once, about user ids for their staff.
+    staffAsked: !!(u && u.staff_asked),
     // Switched off by whoever runs the company. Not deleted, because the runs and
     // the logs with their name on them are still the company's record - but every
     // door is shut to them from the next page they ask for.
@@ -1100,6 +1105,8 @@ const USER_MAY_POST = new Set([
   '/auth/code', '/auth/signup', '/auth/in', '/auth/forgot', '/auth/reset',
   // a person's own bell: reading it and emptying it are their own business
   '/api/notifications/read', '/api/notifications/clear',
+  // putting away the notice that offers staff user ids - their own answer
+  '/api/me/staff-asked',
   // signing this phone up for notices, and off again
   '/api/push/subscribe', '/api/push/unsubscribe',
   // asking the admin, and withdrawing the asking
@@ -1522,10 +1529,14 @@ app.post('/auth/signup', async (req, res) => {
     const code = String(req.body.code || '').trim();
     const password = String(req.body.password || '');
     let name = String(req.body.name || '').trim().slice(0, 120);
+    const company = String(req.body.company || '').trim().slice(0, 160);
 
     if (!EMAIL_OK(email)) return res.status(400).json({ error: 'That does not look like an email address.' });
     if (tooManyTries(req, email)) {
       return res.status(429).json({ error: 'Too many tries. Wait ten minutes and start again.' });
+    }
+    if (company.length < 2) {
+      return res.status(400).json({ error: 'Type the name of your company.' });
     }
     const weak = passwordComplaint(password);
     if (weak) return res.status(400).json({ error: weak });
@@ -1540,16 +1551,38 @@ app.post('/auth/signup', async (req, res) => {
     setSession(res, sub);
     inside(res, true);
 
+    // Their company, made here, with them running it.
+    //
+    // This is the whole of what signing up means now. QuickBooks used to have to
+    // happen first, which left somebody who had just proved their address with
+    // nothing: no company, so no couriers, no Shopify, and no way to make a user
+    // id for the person who was going to do the work. The company is theirs from
+    // this line on; the books join it later, if they ever do.
+    let realmId = null;
+    try {
+      realmId = await createWorkspace(company, sub);
+      await linkCompany(sub, realmId);
+      await claimCompany(realmId, sub);
+      forgetSettled(sub);
+      res.cookie('realm_id', realmId, {
+        httpOnly: true, maxAge: 30 * 24 * 3600 * 1000, sameSite: 'lax'
+      });
+    } catch (e) {
+      // The account is made and they are signed in; a company that could not be
+      // written is the chooser's problem, not a reason to send them back to the
+      // door and make them prove the address again.
+      console.error('signup company:', e.message);
+    }
+
     tellAdmins({
       kind: 'signup',
       title: 'New account: ' + name,
-      body: email + ' has signed up and verified their address.',
+      body: email + ' has signed up and verified their address' +
+            (company ? ', for ' + company + '.' : '.'),
       link: '/users'
     }).catch(() => {});
 
-    // Nobody arrives with a company. Connecting one is the next thing they do, and
-    // the chooser is the screen that says so.
-    res.json({ ok: true, next: '/choose' });
+    res.json({ ok: true, next: realmId ? '/' : '/choose' });
   } catch (e) {
     console.error('auth/signup:', e.message);
     res.status(500).json({ error: 'Could not finish signing up. Try again.' });
@@ -1705,61 +1738,29 @@ app.get('/auth/callback', async (req, res) => {
       return res.status(400).send('Token exchange failed: ' + JSON.stringify(tokens).slice(0, 300));
     }
 
-    let sub = null, email = null, name = null;
-    try {
-      const ui = await fetch(USERINFO_URL, {
-        headers: { 'Authorization': 'Bearer ' + tokens.access_token, 'Accept': 'application/json' }
-      });
-      if (ui.ok) {
-        const info = await ui.json();
-        sub = info.sub;
-        email = info.email || null;
-        name = [info.givenName, info.familyName].filter(Boolean).join(' ') || null;
-      }
-    } catch (e) {
-      console.error('userinfo error:', e.message);
-    }
+    // Who is connecting: whoever is signed in on this browser, and the session is
+    // left exactly as it was.
+    //
+    // This used to read the person out of Intuit and sign them in as that - which
+    // made sense while QuickBooks was the door. It is not the door any more, and
+    // an Intuit account is nobody this app knows: somebody who had signed up with
+    // their own address and pressed Connect was quietly moved onto a new, empty
+    // account with no access, waiting for an admin to let them in - while their
+    // own account, with their company in it, sat there untouched. So the books are
+    // attached to the person who asked for them, and Intuit is asked for nothing
+    // but the books.
+    const sub = currentUser(req);
+    if (!sub) return res.redirect('/signin');
+    const who = await whoIs(sub);
+    if (!mayConnect(who)) return res.redirect('/choose');
 
-    if (!sub) {
-      return res.status(400).send('Could not identify your Intuit account. Please try signing in again.');
-    }
-
-    const firstTime = await upsertUser(sub, email, name);
-    forgetWho(sub);
-
-    // Somebody who withdrew and has come back is asking again by being here. An
-    // address already answered is untouched - signing in rubs out no answer.
-    if (!firstTime) await resumeAsking(sub).catch(() => {});
-
-    if (firstTime) {
-      const label = name || email || 'Somebody';
-      await tellAdmins({
-        kind: 'signin',
-        title: label + ' is waiting to be let in',
-        body: (email || 'no address') + ' signed in for the first time and has no ' +
-              'access yet. Choose their companies and their role on Manage users.',
-        link: '/users.html?who=' + encodeURIComponent(sub),
-        subject: label + ' is waiting to be let in - Shopify to QuickBooks',
-        lines: [
-          label + ' (' + (email || 'no address') + ') has signed in to the app for ' +
-          'the first time.',
-          'They have no access and no company until you say so. Open the link below ' +
-          'on any phone: it lands on them, with the companies to tick and what they ' +
-          'may do. Saving is all it takes - their screen opens by itself.',
-          BASE_URL + '/users.html?who=' + encodeURIComponent(sub)
-        ]
-      });
-    }
-    setSession(res, sub);
-
-    const isAdmin = ADMIN_EMAILS.has(String(email || '').toLowerCase());
+    const isAdmin = !!(who && who.admin);
     res.clearCookie('oauth_door');
 
-    // Coming back from the admin's own connect door, Intuit says which company was
-    // connected. Coming back from the plain sign-in it says nothing, because only
-    // an admin may connect one - so the company is chosen afterwards, on the app's
-    // own screen, out of the ones already connected. One of them and there is
-    // nothing to choose; several and the chooser is where they land.
+    // Intuit says which company was connected, and that is the one. It only ever
+    // leaves this out if the trip came back some other way, so the fallback is
+    // the companies this person already has: one of them and there is nothing to
+    // choose, several and the chooser is where they land.
     let joinTo = realmId;
     if (!joinTo) {
       const mine = await companiesFor(sub);
@@ -1769,29 +1770,58 @@ app.get('/auth/callback', async (req, res) => {
       else return res.redirect('/choose');
     }
 
-    const known = await getCompany(joinTo);
-
-    if (isAdmin) {
-      // The key every page in the app works through, and the admin is the only
-      // one who ever writes it. The company's name is read with it, so the rail
-      // has something to say other than a number.
-      if (tokens.refresh_token) {
-        await saveCompany(joinTo, known ? known.company_name : null, tokens.refresh_token);
+    // The company they already have, meeting the books they have just connected.
+    //
+    // Somebody who signed up got a company of their own there and then - their
+    // couriers, their Shopify orders, their people are all in it. Connecting
+    // QuickBooks must not hand them a second company with the other half of their
+    // work in it. So the one they have takes the realm number as its own id and
+    // goes on being the same company, with the books now in it. One of theirs,
+    // or none: two workspaces is a choice, and a choice is not made for somebody
+    // behind their back.
+    if (tokens.refresh_token && !(await getCompany(joinTo))) {
+      const mine = await workspacesOwnedBy(sub);
+      if (mine.length === 1) {
         try {
-          const info = await getCompanyInfo(joinTo, tokens.access_token);
-          if (info && info.CompanyName) {
-            await saveCompany(joinTo, info.CompanyName, tokens.refresh_token);
+          const moved = await graduateWorkspace(mine[0].realmId, joinTo);
+          if (moved.taken) {
+            console.error('connect: realm ' + joinTo + ' is already a company here');
           }
+          // The company these people work in has a different id from a second
+          // ago. Anything remembered about who is settled where, or which desk a
+          // user id belongs to, is about the old one - and the staff did not ask
+          // for this and are not here to be told. So all of it is dropped rather
+          // than waited out: the next page each of them opens asks again.
+          if (moved.ok) { settledCache.clear(); whoCache.clear(); }
         } catch (e) {
-          console.error('CompanyInfo error:', e.message);
+          console.error('graduate workspace:', e.message);
         }
       }
+    }
+
+    const known = await getCompany(joinTo);
+
+    // The key every page in the app works through. Whoever got this far may write
+    // it - Intuit let them, and Intuit only lets a listed admin of that company
+    // connect an app to it. The company's name is read with it, so the rail has
+    // something to say other than a number; the name they typed at sign-up is kept
+    // until QuickBooks offers a better one.
+    if (tokens.refresh_token) {
+      await saveCompany(joinTo, known ? known.company_name : null, tokens.refresh_token);
+      try {
+        const info = await getCompanyInfo(joinTo, tokens.access_token);
+        if (info && info.CompanyName) {
+          await saveCompany(joinTo, info.CompanyName, tokens.refresh_token);
+        }
+      } catch (e) {
+        console.error('CompanyInfo error:', e.message);
+      }
     } else if (!known) {
-      // A company the app has never been connected to. Connecting one is an
-      // admin's, so the chooser says so rather than leaving them at a dead end.
+      // Intuit sent no key back and the app has never held these books, so there
+      // is nothing to attach. The chooser says so rather than leaving them at a
+      // dead end, with a company that would answer nothing.
       return res.redirect('/choose');
     }
-    // a user's key is read once, for the name and address above, and kept nowhere
 
     await linkCompany(sub, joinTo);
     // Whoever connected these books runs them: they hand out the user ids for this
@@ -1957,13 +1987,26 @@ app.get('/auth/status', async (req, res) => {
 
   const company = await getCompany(realmId);
   inside(res, letIn && !!company);
+
+  // Asking about staff ids is for whoever this company belongs to, and only once.
+  // Not for Fusion's own admin looking at somebody else's books, and not for a
+  // user id that was handed out - that person was given a desk, not a company.
+  const mineToRun = await ownsCompany(sub, realmId);
+  const askStaff = mineToRun && !!who && who.door !== 'member' && !who.staffAsked;
+
   res.json({
     signedIn: true,
     connected: !!company,
+    askStaff,
     decided: !!(user && user.decided_at),
     asking: !(user && user.asked === false),
     companyName: company ? await companyLabel(company) : null,
     realmId,
+    // Whether these books are joined to QuickBooks. "connected" means there is a
+    // company open, which is now true from the moment somebody signs up; this is
+    // the one that says QuickBooks can be asked something, and it is what the
+    // Finance screens gate themselves on.
+    qb: !!company && !isWorkspace(realmId),
     // The pages read these to put away every button the person may not press.
     // "admin" means the administrator of the company now open, which is either
     // whoever runs Fusion or whoever connected these books - a page showing the
@@ -1987,6 +2030,23 @@ app.get('/auth/status', async (req, res) => {
     jobs: RIGHT_GROUPS.map(g => g.key),
     user: user ? (user.name || user.email) : null
   });
+});
+
+// "Not now" on the notice that offers staff user ids. It is kept because the
+// offer is worth making once and worth making only once: Manage users is in the
+// rail from here on, and a question that comes back every morning is a thing
+// being nagged about.
+app.post('/api/me/staff-asked', async (req, res) => {
+  const sub = currentUser(req);
+  if (!sub) return res.status(401).json({ error: 'Not signed in' });
+  try {
+    await markStaffAsked(sub);
+    forgetWho(sub);
+    res.json({ ok: true });
+  } catch (e) {
+    console.error('staff-asked:', e.message);
+    res.status(500).json({ error: 'Could not save that.' });
+  }
 });
 
 app.post('/auth/disconnect', (req, res) => {

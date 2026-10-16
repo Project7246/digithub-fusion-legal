@@ -340,8 +340,12 @@
     $('statBox').textContent = '';
   });
 
+  /* A company of their own is not the same thing as books.
+     "connected" has meant "there is a company open" since a company is made at
+     sign-up, and everything on this page comes out of QuickBooks - so what it
+     waits for is "qb", and the panel asking for the books shows until then. */
   window.APP.ready.then(function(s){
-    if(!s.connected){ $('gate').classList.remove('hide'); return; }
+    if(!s.connected || !s.qb){ $('gate').classList.remove('hide'); return; }
     load(false);
   });
 

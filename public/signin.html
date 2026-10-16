@@ -180,6 +180,15 @@
           <label for="up-email">Email address</label>
           <input id="up-email" type="email" autocomplete="email" placeholder="you@company.com" required>
         </div>
+        <!-- The company is made with the account, not after it. Everything in the
+             app belongs to one - the parcels, the orders, the people - so there is
+             nowhere to put any of it until this is answered. QuickBooks joins it
+             later, and may never. -->
+        <div class="field">
+          <label for="up-co">Your company</label>
+          <input id="up-co" type="text" autocomplete="organization"
+                 placeholder="Hamna Traders" maxlength="160" required>
+        </div>
         <button class="go" id="btn-up1" type="submit">Send me a code</button>
       </form>
       <p class="links"><a data-pane="in">Back to sign in</a></p>
@@ -321,7 +330,7 @@
   });
 
   // ---- signing up ----
-  var upEmail = '', upName = '';
+  var upEmail = '', upName = '', upCo = '';
 
   function sendSignupCode(btn, working) {
     return ask('/auth/code', { email: upEmail, name: upName }, btn, working);
@@ -331,6 +340,7 @@
     e.preventDefault();
     upName = document.getElementById('up-name').value.trim();
     upEmail = document.getElementById('up-email').value.trim();
+    upCo = document.getElementById('up-co').value.trim();
     sendSignupCode(document.getElementById('btn-up1'), 'Sending…').then(function(d){
       if (!d) return;
       document.getElementById('up2-why').textContent =
@@ -348,7 +358,7 @@
   document.getElementById('form-up2').addEventListener('submit', function(e){
     e.preventDefault();
     ask('/auth/signup', {
-      email: upEmail, name: upName,
+      email: upEmail, name: upName, company: upCo,
       code: document.getElementById('code').value.trim(),
       password: document.getElementById('up-pw').value
     }, document.getElementById('btn-up2'), 'Setting up…')

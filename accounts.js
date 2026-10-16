@@ -23,6 +23,7 @@ export async function initAccounts() {
       ADD COLUMN IF NOT EXISTS door       TEXT NOT NULL DEFAULT 'qb',
       ADD COLUMN IF NOT EXISTS made_by    TEXT,
       ADD COLUMN IF NOT EXISTS home_realm TEXT,
+      ADD COLUMN IF NOT EXISTS staff_asked BOOLEAN NOT NULL DEFAULT FALSE,
       ADD COLUMN IF NOT EXISTS disabled   BOOLEAN NOT NULL DEFAULT FALSE
   `);
 
@@ -312,6 +313,15 @@ export async function deleteMember(sub, realmId) {
     `DELETE FROM users WHERE sub = $1 AND door = 'member' AND home_realm = $2`,
     [sub, realmId]);
   return r.rowCount > 0;
+}
+
+// Whether this person has been asked, once, whether they want user ids for their
+// staff. Somebody who runs their own company has no way of knowing the app can
+// hand out ids at all, so it is offered the first time they land - and a question
+// asked twice is a thing being nagged about, so the answer is kept. Saying "not
+// now" only takes the notice away; Manage users is still in the rail.
+export async function markStaffAsked(sub) {
+  await pool.query('UPDATE users SET staff_asked = TRUE WHERE sub = $1', [sub]);
 }
 
 export async function touchSignIn(sub) {
