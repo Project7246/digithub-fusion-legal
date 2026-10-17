@@ -222,3 +222,9 @@ told is a way to send mail in this company's name.
 - Decide DigitalOcean settings: turn **Edge caching** and **Email obfuscation** Off (app shows
   live data).
 - Check the Neon dashboard for the real storage limit.
+
+## Demo link
+`/demo` signs a visitor in as the shared read-only user `demo:viewer` at an empty
+workspace called "Fusion Demo" (no sign-up needed). Every page opens, every POST is
+refused (viewer role). `DEMO=off` in DigitalOcean switches it off. Terms and Privacy
+(`/eula`, `/privacy`) are in the Fusion brand and give `support@availity.pk`.

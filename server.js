@@ -226,6 +226,37 @@ app.get(/\.html$/, (req, res) => {
   res.redirect(bare === '/index' ? '/' + rest : bare + rest);
 });
 
+// A look round the app without signing up: /demo.
+//
+// It signs the visitor in as one shared read-only user (`viewer` - every page
+// opens, every change is refused by the POST gate) at a company of its own that
+// holds nothing, so nobody's real books or couriers can show. Fusion's own admin
+// can switch it off with DEMO=off.
+const DEMO_SUB = 'demo:viewer';
+app.get('/demo', async (req, res) => {
+  try {
+    if (String(process.env.DEMO || '').toLowerCase() === 'off') return res.redirect('/signin');
+    await pool.query(
+      `INSERT INTO users (sub, name, door, allowed, role, decided_at)
+       VALUES ($1, 'Fusion demo', 'password', TRUE, 'viewer', NOW())
+       ON CONFLICT (sub) DO UPDATE SET role = 'viewer', allowed = TRUE, disabled = FALSE`,
+      [DEMO_SUB]);
+    let r = await pool.query(
+      `SELECT realm_id FROM companies WHERE company_name = 'Fusion Demo' AND owner_sub IS NULL
+       AND realm_id LIKE 'fx-%' LIMIT 1`);
+    const realmId = r.rows[0] ? r.rows[0].realm_id : await createWorkspace('Fusion Demo', null);
+    await linkCompany(DEMO_SUB, realmId);
+    forgetWho(DEMO_SUB);
+    forgetSettled(DEMO_SUB);
+    setSession(res, DEMO_SUB);
+    res.cookie('realm_id', realmId, { httpOnly: true, maxAge: 30 * 24 * 3600 * 1000, sameSite: 'lax' });
+    res.redirect('/');
+  } catch (e) {
+    console.error('demo:', e.message);
+    res.redirect('/signin');
+  }
+});
+
 // Three screens, in order: the door, the waiting-or-choosing screen, the app.
 // Only a page of the app reaches here: one bare name and nothing else, which
 // leaves out /api and /auth below it and every file with a dot in it beside it.
