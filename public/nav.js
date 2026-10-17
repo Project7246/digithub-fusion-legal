@@ -239,8 +239,12 @@
     });
   });
 
+  // The company chip and the QuickBooks list belong to Finance, and only once
+  // somebody has attached books - nobody is asked to connect QuickBooks, so the
+  // other sections do not carry it. It is drawn hidden and shown when the server
+  // says the books are joined (see the status call below).
   html += '</nav>' +
-    '<div class="foot">' +
+    '<div class="foot" id="railFoot" style="display:none">' +
       '<div class="conn" id="connBox">' +
         '<span class="dot" id="dot"></span>' +
         '<span class="who" id="connText">Checking…</span>' +
@@ -864,6 +868,8 @@
         return s;
       }
       document.documentElement.classList.add(s.admin ? 'as-admin' : 'as-user');
+      var foot = document.getElementById('railFoot');
+      if(foot && HERE.key === 'finance' && s.qb) foot.style.display = '';
 
       // A button carries the job it belongs to. Only the jobs this person was not
       // given are hidden - never the whole set, because a page shows and hides its
