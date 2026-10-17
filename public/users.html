@@ -199,7 +199,7 @@
               <label for="mkId">User ID</label>
               <input id="mkId" type="text" placeholder="hmna-01" autocomplete="off"
                      spellcheck="false">
-              <small>Letters, numbers and dashes.</small>
+              <small>Whatever you like - no @ and no spaces.</small>
             </div>
             <div class="f">
               <label for="mkName">Their name</label>
@@ -208,7 +208,7 @@
             </div>
             <div class="f">
               <label for="mkPw">Password</label>
-              <input id="mkPw" type="text" placeholder="at least 8, with a number"
+              <input id="mkPw" type="text"
                      autocomplete="off" spellcheck="false">
               <small><a href="#" id="mkDice">Make one up for me</a></small>
             </div>
@@ -523,8 +523,8 @@
       if(newpw){
         newpw.addEventListener('click', function(){
           var pw = prompt('New password for ' + (u.loginId || u.name) + BR + BR +
-            'At least 8 characters, with a number. Write it down before you ' +
-            'press OK - it cannot be read back afterwards.');
+            'Write it down before you press OK - it cannot be read back ' +
+            'afterwards.');
           if(pw === null) return;
           newpw.disabled = true;
           newpw.textContent = 'Saving…';
@@ -674,8 +674,6 @@
     (window.crypto || window.msCrypto).getRandomValues(n);
     var out = '';
     for(var i = 0; i < 12; i++) out += pool.charAt(n[i] % pool.length);
-    // a digit for certain, wherever the draw landed
-    if(!/[0-9]/.test(out)) out = out.slice(0, 11) + '7';
     $('mkPw').value = out;
     $('mkPw').focus();
     $('mkPw').select();

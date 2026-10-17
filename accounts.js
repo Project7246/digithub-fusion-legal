@@ -122,12 +122,15 @@ export function checkPassword(plain, stored) {
 
 // What a password has to be before it is worth storing. Said plainly, because the
 // person reading it is trying to get on with their work.
+// What a password has to be, which is: something. The length and the
+// letter-and-a-number rules were taken out on purpose - people pick the password
+// they will remember, and a rule that makes them write it on the monitor is worse
+// than the one they would have chosen. Empty is still refused, because a blank
+// password is not a password: it would let anybody in by pressing Enter.
 export function passwordComplaint(plain) {
   const s = String(plain || '');
-  if (s.length < 8) return 'Password must be at least 8 characters.';
+  if (!s) return 'Type a password.';
   if (s.length > 200) return 'Password is too long.';
-  if (!/[A-Za-z]/.test(s)) return 'Password needs at least one letter.';
-  if (!/[0-9]/.test(s)) return 'Password needs at least one number.';
   return null;
 }
 
@@ -198,13 +201,19 @@ export const EMAIL_OK = s => /^[^@\s]+@[^@\s.]+\.[^@\s]{2,}$/.test(String(s || '
 // A user id is typed, read aloud and written on a note, so it is kept to letters,
 // numbers and a dash - hmna-01 - and nothing that could be mistaken for something
 // else on a page or in an address.
+// A user ID is whatever whoever hands it out wants it to be. The shape rules -
+// three characters, letters-numbers-dashes, start and end on a letter - are gone.
+// Two things are still refused, and neither is a matter of taste: nothing at all,
+// and anything with an @ or a space in it. The sign-in box takes an address or an
+// ID in the one field and tells them apart by the @, so an ID holding one would be
+// looked up as an address and could never match; a space is lost to the trim and
+// leaves somebody typing an ID that silently is not theirs.
 export function loginIdComplaint(id) {
   const s = String(id || '').trim();
-  if (s.length < 3) return 'User ID must be at least 3 characters.';
+  if (!s) return 'Type a user ID.';
   if (s.length > 40) return 'User ID is too long.';
-  if (!/^[A-Za-z0-9][A-Za-z0-9-]*[A-Za-z0-9]$/.test(s))
-    return 'User ID can use letters, numbers and dashes, and must start and end with a letter or number.';
-  if (s.indexOf('@') > -1) return 'A user ID is not an email address.';
+  if (s.indexOf('@') > -1) return 'A user ID cannot have an @ in it - that is how an email address is told apart.';
+  if (/\s/.test(s)) return 'A user ID cannot have a space in it.';
   return null;
 }
 
