@@ -223,6 +223,43 @@ told is a way to send mail in this company's name.
   live data).
 - Check the Neon dashboard for the real storage limit.
 
+## One Fusion, many client companies
+
+Fusion is run by consultants: one company is one client. `/companies` is the
+portal that stands over the lot of them and is the first screen whoever runs
+Fusion sees after signing in (`/auth/in` sends there when the person is in
+ADMIN_EMAILS, or holds more than one company). It lists each company with its
+id, whether QuickBooks is joined, and how many people are in it; **Open** is
+`/auth/switch`, which is what makes every later query belong to that company.
+
+- **ADMIN_EMAILS holds every client at once** - the way an accounting firm's
+  QuickBooks sign-in opens on its clients' books rather than inside one of them.
+  `companiesFor()` returns every company for them and only what was given or
+  made for everybody else. The demo's workspace (no owner, no books,
+  `isDemoCompany()`) is in nobody's list but `demo:viewer`'s.
+- **Only ADMIN_EMAILS starts a company from nothing** - `POST
+  /api/portal/companies/new`, which is `createWorkspace()` with a name. A client
+  gets theirs at sign-up instead and gets no second one from here.
+- `POST /api/portal/companies/rename` renames one by id; `runsCompany()` decides.
+- **Switch company** is in the profile menu for anybody holding more than one.
+- Signing in with exactly one company opens it without asking; `/choose` is now
+  only for somebody who holds nothing at all and is waiting to be let in.
+
+**Nothing of one company is readable from another.** Every table that holds a
+company's work carries `realm_id` - `courier_accounts`, `courier_orders`,
+`courier_cprs`, `cpr_runs`, `upload_jobs`, `upload_logs`, `item_mappings`,
+`app_settings`, `cache_blobs`, `product_changes`, `recat_*`, `replace_state`,
+`void_runs`, `negative_items` - and `users.home_realm` ties a handed-out user id
+to one company for life. A new table that holds a company's work must carry
+`realm_id` too, and a new admin route must cut its list to the company being run
+(see the three under "Who may open the app"). The two tables without one are
+`app_keys` (the server's own push keypair) and `once_done` (migrations run once),
+and neither holds anybody's work.
+
+So each client's QuickBooks, courier portals and orders live only in that
+client's company, and a change to a module or a report is deployed once and is
+there for every company at the same moment.
+
 ## Demo link
 `/demo` signs a visitor in as the shared read-only user `demo:viewer` at an empty
 workspace called "Fusion Demo" (no sign-up needed). Every page opens, every POST is

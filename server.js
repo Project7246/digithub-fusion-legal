@@ -325,7 +325,11 @@ app.get(/^\/$|^\/[A-Za-z0-9-]+$/, async (req, res, next) => {
     // else is work on a set of books.
     if (!settled) {
       if (OPEN_WITHOUT_COMPANY.has(here)) return next();
-      return here === '/choose' ? next() : res.redirect('/choose');
+      if (here === '/choose') return next();
+      // Somebody who holds companies but has none open is choosing, not waiting:
+      // the portal is that screen. /choose is for whoever has nothing at all.
+      const held = letIn ? await companiesFor(sub) : [];
+      return res.redirect(held.length ? '/companies' : '/choose');
     }
     if (here === '/choose') return res.redirect('/');
 
@@ -1160,6 +1164,8 @@ const USER_MAY_POST = new Set([
   '/api/me/staff-asked',
   // their own name and picture
   '/api/me/profile',
+  // the portal: each route decides for itself who may do it
+  '/api/portal/companies/new', '/api/portal/companies/rename',
   // renaming the company: open to the gate, but the route itself asks for its administrator
   '/api/company/name',
   // signing this phone up for notices, and off again
@@ -1294,7 +1300,9 @@ const RIGHT_GROUPS = [
 // and, where the section needs a company, asks for it there. Everything else
 // still needs one, because everything else is work on a set of books.
 const OPEN_WITHOUT_COMPANY = new Set([
-  '/index', '/finance', '/logistics', '/operations', '/hr', '/csr'
+  '/index', '/finance', '/logistics', '/operations', '/hr', '/csr',
+  // the portal is how a company is picked in the first place
+  '/companies'
 ]);
 
 const PAGE_NEED = new Map(Object.entries({
@@ -1700,14 +1708,17 @@ app.post('/auth/in', async (req, res) => {
     }
     await letOwnerIn(u.sub);
     const mine = await companiesFor(u.sub);
-    // One company (or none yet) is no choice to make: straight in.
+    // One company (or none yet) is no choice to make: straight in. More than one,
+    // and the portal is the first screen - for whoever runs Fusion that is the
+    // whole job, and for anybody else it is the one question worth asking.
     if (mine.length === 1) {
       res.cookie('realm_id', mine[0].realmId, {
         httpOnly: true, maxAge: 30 * 24 * 3600 * 1000, sameSite: 'lax'
       });
       forgetSettled(u.sub);
     }
-    res.json({ ok: true, next: mine.length > 1 ? '/choose' : '/' });
+    const boss = await whoIs(u.sub);
+    res.json({ ok: true, next: (mine.length > 1 || (boss && boss.admin)) ? '/companies' : '/' });
   } catch (e) {
     console.error('auth/in:', e.message);
     res.status(500).json({ error: 'Could not sign you in. Try again.' });
@@ -1967,13 +1978,37 @@ function inside(res, yes) {
 //
 // The admin is the exception, because connecting them is the admin's own doing.
 async function companiesFor(sub) {
-  // Only the companies this person has been given or made - running Fusion does
-  // not put everybody else's companies in front of you - and never the public
-  // demo's, which is a workspace with no owner and is for /demo alone.
-  const connected = await listCompanies();
+  // Fusion is run by consultants, so the one address that runs Fusion holds every
+  // client company at once - the way an accounting firm's QuickBooks sign-in holds
+  // every client's books. Everybody else holds only what they were given or made.
+  //
+  // The public demo is in nobody's list but the demo's own: it is a workspace with
+  // no owner, and /demo is the only way into it.
+  const all = await listCompanies();
+  const real = all.filter(c => sub === DEMO_SUB || !isDemoCompany(c));
+  const who = await whoIs(sub);
+  if (who && who.admin) return real;
+
   const mine = new Set(await realmsForUser(sub));
-  return connected.filter(c => mine.has(c.realmId) &&
-    (sub === DEMO_SUB || !(c.ownerSub === null && !c.connected)));
+  return real.filter(c => mine.has(c.realmId));
+}
+
+// The demo's workspace: made by /demo, owned by nobody.
+function isDemoCompany(c) {
+  return !c.connected && !c.ownerSub;
+}
+
+// How many people each company has - the ids made for it, and anybody given it.
+async function peoplePerCompany() {
+  const out = new Map();
+  const r = await pool.query(
+    `SELECT realm_id, COUNT(*)::int AS n FROM (
+       SELECT user_sub AS sub, realm_id FROM user_companies
+       UNION
+       SELECT sub, home_realm AS realm_id FROM users WHERE home_realm IS NOT NULL
+     ) t GROUP BY realm_id`);
+  for (const row of r.rows) out.set(row.realm_id, row.n);
+  return out;
 }
 
 // Whoever made a company is let into it. A row left over from before the sign-up
@@ -2171,6 +2206,83 @@ app.post('/api/me/profile', async (req, res) => {
   } catch (e) {
     console.error('me/profile:', e.message);
     res.status(500).json({ error: 'Could not save. Try again.' });
+  }
+});
+
+// ==================== the portal: every company, and new ones ====================
+//
+// Fusion is sold as a service: one company is one client, with its own books, its
+// own courier accounts, its own orders and its own people, and nothing of one is
+// ever readable from another - every table that holds a company's work carries its
+// realm_id and every query is cut to the company now open. This is the screen that
+// stands over the lot of them, and it is the first thing whoever runs Fusion sees.
+app.get('/api/portal/companies', async (req, res) => {
+  try {
+    const sub = currentUser(req);
+    if (!sub) return res.status(401).json({ error: 'Sign in first.' });
+    const who = await whoIs(sub);
+    const list = await companiesFor(sub);
+    const people = await peoplePerCompany();
+    const runs = await Promise.all(list.map(c => runsCompany(sub, c.realmId)));
+    res.setHeader('Cache-Control', 'no-store');
+    res.json({
+      // Only whoever runs Fusion starts a company from nothing. A client's own
+      // administrator gets theirs at sign-up and gets no second one from here.
+      mayAdd: !!(who && who.admin),
+      admin: !!(who && who.admin),
+      current: req.cookies.realm_id || null,
+      companies: list.map((c, i) => ({
+        realmId: c.realmId,
+        name: c.name,
+        qb: !!c.connected,
+        mine: runs[i],
+        people: people.get(c.realmId) || 0,
+        updatedAt: c.updatedAt
+      }))
+    });
+  } catch (e) {
+    console.error('portal/companies:', e.message);
+    res.status(500).json({ error: 'Could not read the companies.' });
+  }
+});
+
+app.post('/api/portal/companies/new', async (req, res) => {
+  try {
+    const sub = currentUser(req);
+    const who = await whoIs(sub);
+    if (!who || !who.admin) {
+      return res.status(403).json({ error: 'Only Fusion can start a new company.' });
+    }
+    const name = String(req.body.name || '').trim().slice(0, 160);
+    if (name.length < 2) return res.status(400).json({ error: 'Type the company name.' });
+
+    // Its own id from the first moment, so everything written from now on - the
+    // courier accounts, the orders, the user ids - is written against this company
+    // and no other. QuickBooks joins it later, if the client has it.
+    const realmId = await createWorkspace(name, sub);
+    await linkCompany(sub, realmId);
+    forgetSettled(sub);
+    res.json({ ok: true, realmId, name });
+  } catch (e) {
+    console.error('portal/companies/new:', e.message);
+    res.status(500).json({ error: 'Could not make the company. Try again.' });
+  }
+});
+
+app.post('/api/portal/companies/rename', async (req, res) => {
+  try {
+    const sub = currentUser(req);
+    const realmId = String(req.body.realmId || '');
+    const name = String(req.body.name || '').trim().slice(0, 160);
+    if (name.length < 2) return res.status(400).json({ error: 'Type the company name.' });
+    if (!await runsCompany(sub, realmId)) {
+      return res.status(403).json({ error: 'That company is not yours to rename.' });
+    }
+    await renameCompany(realmId, name);
+    res.json({ ok: true, name });
+  } catch (e) {
+    console.error('portal/companies/rename:', e.message);
+    res.status(500).json({ error: 'Could not save the name. Try again.' });
   }
 });
 

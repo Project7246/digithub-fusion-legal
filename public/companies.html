@@ -1,0 +1,275 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Companies</title>
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="manifest" href="/manifest.json">
+<meta name="theme-color" content="#222F34">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@600;700;800&family=Roboto:wght@400;500&family=Roboto+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/app.css">
+<style>
+  /* The portal. Every company this sign-in holds, and the way into each one.
+     Fusion is run by consultants, so whoever runs Fusion holds every client at
+     once - this is their first screen, the way an accounting firm's sign-in opens
+     on the list of its clients' books rather than inside one of them.
+
+     No rail: a rail belongs to a section of one company's work, and nothing here
+     is inside a company yet. app.css owns the short class names, so everything
+     this page adds is fx - see CLAUDE.md. */
+  body{background:var(--bg,#F2F6F6);margin:0}
+
+  .fxbar{background:var(--ink,#222F34);display:flex;align-items:center;
+    justify-content:space-between;gap:16px;padding:13px 28px;flex-wrap:wrap}
+  .fxlogo{display:flex;align-items:center;gap:12px;text-decoration:none;color:#fff}
+  .fxlogo img{width:44px;height:auto;display:block}
+  .fxlogo b{display:block;font:700 17px/1.1 var(--head)}
+  .fxlogo i{display:block;font:600 11.5px var(--head);color:#6BF0EA;margin-top:2px;font-style:normal}
+  .fxbarend{display:flex;align-items:center;gap:12px}
+
+  .fxwrap{max-width:1060px;margin:0 auto;padding:34px 20px 80px}
+  .fxtop{display:flex;align-items:flex-end;gap:18px;flex-wrap:wrap;margin:0 0 6px}
+  .fxtop h1{font:700 26px/1.2 var(--head);margin:0;color:var(--ink-3,#18212A)}
+  .fxtop .fxcount{font-size:13px;color:var(--muted);padding-bottom:4px}
+  .fxlede{font-size:13.5px;color:var(--muted);margin:0 0 26px;line-height:1.6;max-width:62ch}
+
+  /* Starting a client off. Shut until it is wanted, because the list is what
+     this screen is for and a form standing open above it is in the way. */
+  .fxnew{background:var(--panel,#fff);border:1px solid var(--line);border-radius:14px;
+    padding:18px 22px;margin:0 0 22px;display:none}
+  .fxnew.on{display:block}
+  .fxnew h2{font:700 15px var(--head);margin:0 0 4px}
+  .fxnew p{font-size:12.5px;color:var(--muted);margin:0 0 14px;line-height:1.6}
+  .fxnew form{display:flex;gap:9px;flex-wrap:wrap}
+  .fxnew input{flex:1 1 260px;min-width:0;border:1px solid var(--line-2);border-radius:8px;
+    padding:10px 12px;font:inherit;font-size:14px;background:#fff;color:var(--text)}
+  .fxnew input:focus{outline:0;border-color:var(--accent)}
+
+  .fxadd{border:0;border-radius:9px;padding:10px 18px;font-family:var(--head);
+    font-weight:700;font-size:13px;background:var(--accent);color:#0A1517;cursor:pointer}
+  .fxadd:hover{background:var(--aqua)}
+  .fxadd:disabled{opacity:.6;cursor:default}
+
+  .fxlist{display:grid;grid-template-columns:repeat(auto-fill,minmax(310px,1fr));gap:16px}
+
+  .fxco{background:var(--panel,#fff);border:1px solid var(--line);border-radius:14px;
+    padding:20px 22px 16px;display:flex;flex-direction:column;gap:3px;
+    transition:border-color .14s,box-shadow .14s}
+  .fxco:hover{border-color:var(--accent);box-shadow:0 10px 26px rgba(17,186,181,.13)}
+  .fxco.fxhere{border-color:var(--accent);box-shadow:inset 0 0 0 1px var(--accent)}
+  .fxco .fxname{font:700 17px/1.25 var(--head);color:var(--ink-3,#18212A);word-break:break-word}
+  .fxco .fxid{font-family:var(--mono);font-size:11px;color:var(--faint);word-break:break-all}
+  .fxco .fxmeta{display:flex;gap:7px;flex-wrap:wrap;margin:11px 0 0}
+  .fxtag{font-size:10.5px;letter-spacing:.06em;text-transform:uppercase;padding:3px 9px;
+    border-radius:20px;border:1px solid var(--line-2);color:var(--muted);white-space:nowrap}
+  .fxtag.fxqb{border-color:var(--qbo);color:var(--qbo)}
+  .fxtag.fxon{border-color:var(--accent);color:var(--accent-deep);font-weight:600}
+  .fxco .fxdo{display:flex;gap:8px;margin:16px 0 0;flex-wrap:wrap}
+  .fxco .fxdo button{font-size:12.5px;padding:8px 14px;border-radius:8px;
+    border:1px solid var(--line-2);background:#fff;cursor:pointer;font-family:inherit;
+    color:var(--text)}
+  .fxco .fxdo button:hover{border-color:var(--accent);color:var(--accent-deep)}
+  .fxco .fxdo button.fxopen{background:var(--accent);border-color:var(--accent);
+    color:#0A1517;font-weight:600}
+  .fxco .fxdo button.fxopen:hover{background:var(--aqua);border-color:var(--aqua)}
+  .fxco .fxdo button:disabled{opacity:.55;cursor:default}
+
+  .fxsay{display:none;margin:0 0 18px;padding:11px 14px;border-radius:9px;font-size:13px;
+    line-height:1.55}
+  .fxsay.on{display:block}
+  .fxsay.fxgood{background:rgba(44,160,28,.1);border:1px solid rgba(44,160,28,.3);color:#1E7A14}
+  .fxsay.fxbad{background:rgba(185,58,44,.09);border:1px solid rgba(185,58,44,.28);color:#8E2C22}
+
+  .fxnone{padding:40px 0;text-align:center;color:var(--muted);font-size:13.5px}
+
+  @media (max-width:560px){
+    .fxbar{padding:12px 16px}
+    .fxwrap{padding:24px 16px 60px}
+    .fxtop h1{font-size:22px}
+  }
+</style>
+</head>
+<body>
+
+<header class="fxbar">
+  <a class="fxlogo" href="/">
+    <img src="/logo.svg" alt="">
+    <span><b>Fusion</b><i>AI-powered OS for e-commerce</i></span>
+  </a>
+  <div class="fxbarend">
+    <button class="fxadd" id="btnNew" type="button" style="display:none">New company</button>
+    <div id="me"></div>
+  </div>
+</header>
+
+<div class="fxwrap">
+  <div class="fxtop">
+    <h1>Companies</h1>
+    <div class="fxcount" id="count"></div>
+  </div>
+  <p class="fxlede" id="lede">One moment…</p>
+
+  <div class="fxsay" id="say"></div>
+
+  <div class="fxnew" id="newBox">
+    <h2>Start a company</h2>
+    <p>Its books, courier accounts, orders and people are its own from this moment -
+      nothing in it can be read from any other company. QuickBooks and the courier
+      portals are connected inside it afterwards.</p>
+    <form id="newForm">
+      <input id="newName" type="text" maxlength="160" placeholder="Company name" required
+             autocomplete="organization">
+      <button class="fxadd" id="newGo" type="submit">Create</button>
+    </form>
+  </div>
+
+  <div class="fxlist" id="list"></div>
+</div>
+
+<script src="/nav.js"></script>
+<script>
+"use strict";
+(function(){
+  var $ = function(id){ return document.getElementById(id); };
+  var mine = [], current = null, mayAdd = false;
+
+  function esc(s){
+    return String(s == null ? '' : s)
+      .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  }
+  function say(kind, text){
+    var el = $('say');
+    el.className = 'fxsay on ' + kind;
+    el.textContent = text;
+  }
+
+  function draw(){
+    $('count').textContent = mine.length
+      ? mine.length + (mine.length === 1 ? ' company' : ' companies') : '';
+
+    if (!mine.length) {
+      $('list').innerHTML = '<div class="fxnone">' + (mayAdd
+        ? 'No companies yet. Press <b>New company</b> to start one.'
+        : 'No company has been given to you yet.') + '</div>';
+      return;
+    }
+
+    $('list').innerHTML = mine.map(function(c){
+      var people = c.people === 1 ? '1 person' : c.people + ' people';
+      return '<div class="fxco' + (c.realmId === current ? ' fxhere' : '') +
+          '" data-id="' + esc(c.realmId) + '">' +
+        '<div class="fxname">' + esc(c.name) + '</div>' +
+        '<div class="fxid">' + esc(c.realmId) + '</div>' +
+        '<div class="fxmeta">' +
+          (c.realmId === current ? '<span class="fxtag fxon">Open now</span>' : '') +
+          '<span class="fxtag' + (c.qb ? ' fxqb' : '') + '">' +
+            (c.qb ? 'QuickBooks' : 'No QuickBooks yet') + '</span>' +
+          '<span class="fxtag">' + esc(people) + '</span>' +
+        '</div>' +
+        '<div class="fxdo">' +
+          '<button class="fxopen" data-do="open">' +
+            (c.realmId === current ? 'Go to it' : 'Open') + '</button>' +
+          (c.mine ? '<button data-do="people">People</button>' +
+                    '<button data-do="name">Rename</button>' : '') +
+        '</div>' +
+      '</div>';
+    }).join('');
+
+    Array.prototype.forEach.call($('list').querySelectorAll('[data-do]'), function(b){
+      b.addEventListener('click', function(){ act(b); });
+    });
+  }
+
+  // Opening a company is switching into it: from here on every page, every query
+  // and every run belongs to it and to nothing else.
+  function act(b){
+    var card = b.parentNode.parentNode;
+    var id = card.getAttribute('data-id');
+    var what = b.getAttribute('data-do');
+    var co = mine.filter(function(c){ return c.realmId === id; })[0];
+    if (!co) return;
+
+    if (what === 'name') {
+      var now = prompt('Name for this company', co.name);
+      if (now === null) return;
+      post('/api/portal/companies/rename', { realmId: id, name: now }).then(function(o){
+        if (!o.ok) return say('fxbad', o.d.error || 'That did not work.');
+        co.name = o.d.name;
+        say('fxgood', 'Saved.');
+        draw();
+      });
+      return;
+    }
+
+    b.disabled = true;
+    b.textContent = 'Opening…';
+    post('/auth/switch', { realmId: id }).then(function(o){
+      if (!o.ok) { b.disabled = false; draw(); return say('fxbad', o.d.error || 'That did not work.'); }
+      location.href = what === 'people' ? '/users' : '/';
+    });
+  }
+
+  function post(url, body){
+    return fetch(url, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body)
+    }).then(function(r){
+      return r.json().catch(function(){ return {}; })
+        .then(function(d){ return { ok: r.ok, d: d }; });
+    }).catch(function(){
+      return { ok: false, d: { error: 'Could not reach the server.' } };
+    });
+  }
+
+  $('btnNew').addEventListener('click', function(){
+    var on = $('newBox').classList.toggle('on');
+    if (on) $('newName').focus();
+  });
+
+  $('newForm').addEventListener('submit', function(e){
+    e.preventDefault();
+    var go = $('newGo');
+    go.disabled = true;
+    go.textContent = 'Making…';
+    post('/api/portal/companies/new', { name: $('newName').value }).then(function(o){
+      go.disabled = false;
+      go.textContent = 'Create';
+      if (!o.ok) return say('fxbad', o.d.error || 'That did not work.');
+      $('newName').value = '';
+      $('newBox').classList.remove('on');
+      say('fxgood', o.d.name + ' is ready. Open it to connect QuickBooks and the couriers.');
+      load();
+    });
+  });
+
+  function load(){
+    return fetch('/api/portal/companies', { cache: 'no-store' })
+      .then(function(r){ return r.json(); })
+      .then(function(d){
+        if (d.error) throw new Error(d.error);
+        mine = d.companies || [];
+        current = d.current;
+        mayAdd = !!d.mayAdd;
+        $('btnNew').style.display = mayAdd ? '' : 'none';
+        $('lede').textContent = mayAdd
+          ? 'Every client you run, each with its own books, couriers, orders and people. ' +
+            'Open one to work in it; nothing in it is readable from any other.'
+          : 'The companies you work in. Open one to work in it.';
+        draw();
+      })
+      .catch(function(e){
+        $('lede').textContent = '';
+        $('list').innerHTML = '<div class="fxnone">' + esc(e.message ||
+          'Could not read the companies.') + '</div>';
+      });
+  }
+
+  window.FUSION.profileMenu($('me'));
+  load();
+})();
+</script>
+</body>
+</html>

@@ -383,6 +383,9 @@
             (sub ? '<small>' + esc(sub) + '</small>' : '') + co + '</div></div>' +
           '<div style="padding:6px 0">' +
             '<a href="/settings#profile">Edit profile</a>' +
+            // More than one company, and moving between them is a thing this
+            // person does daily - the way QuickBooks keeps the switch by the name
+            (s.admin || s.companyCount > 1 ? '<a href="/companies">Switch company</a>' : '') +
             (s.admin ? '<a href="/users">Manage users</a>' : '') +
             '<a href="/settings#style">Appearance</a>' +
             '<div class="fxmsep"></div>' +
@@ -938,7 +941,9 @@
       // one that needs a company ask for it. Every other page still needs one,
       // because every other page is work on a set of books.
       var front = path === '/' || path === '/finance' || path === '/logistics' ||
-                  path === '/operations' || path === '/hr' || path === '/csr';
+                  path === '/operations' || path === '/hr' || path === '/csr' ||
+                  // the portal is where a company is picked, so it cannot need one
+                  path === '/companies';
       if(s.signedIn && (!s.letIn || (!s.connected && !front)) &&
          location.pathname !== '/choose'){
         location.replace('/choose');
