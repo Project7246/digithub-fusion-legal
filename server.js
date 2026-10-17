@@ -280,8 +280,13 @@ app.get(/^\/$|^\/[A-Za-z0-9-]+$/, async (req, res, next) => {
     // from the last day of work rather than from the day they first signed in.
     setSession(res, sub);
 
-    const who = await whoIs(sub);
-    const letIn = !!(who && (who.admin || (who.allowed && who.role !== 'none')));
+    let who = await whoIs(sub);
+    let letIn = !!(who && (who.admin || (who.allowed && who.role !== 'none')));
+    if (!letIn && who && !who.disabled) {
+      await letOwnerIn(sub);
+      who = await whoIs(sub);
+      letIn = !!(who && (who.admin || (who.allowed && who.role !== 'none')));
+    }
 
     // A handed-out user id belongs to one company and was never given a choice of
     // them, so it is put at its own desk here instead of being sent to a chooser
@@ -293,8 +298,22 @@ app.get(/^\/$|^\/[A-Za-z0-9-]+$/, async (req, res, next) => {
       req.cookies.realm_id = who.homeRealm;
     }
 
-    const realmId = req.cookies.realm_id;
-    const settled = letIn && realmId && await isSettled(sub, realmId);
+    let realmId = req.cookies.realm_id;
+    let settled = letIn && realmId && await isSettled(sub, realmId);
+
+    // Nobody with a single company is asked which one - it is opened for them.
+    if (letIn && !settled && here !== '/choose') {
+      const only = await companiesFor(sub);
+      if (only.length === 1) {
+        realmId = only[0].realmId;
+        res.cookie('realm_id', realmId, {
+          httpOnly: true, maxAge: 30 * 24 * 3600 * 1000, sameSite: 'lax'
+        });
+        req.cookies.realm_id = realmId;
+        forgetSettled(sub);
+        settled = await isSettled(sub, realmId);
+      }
+    }
 
     // The home page opens before any company does.
     //
@@ -1679,8 +1698,16 @@ app.post('/auth/in', async (req, res) => {
       forgetSettled(u.sub);
       return res.json({ ok: true, next: '/' });
     }
+    await letOwnerIn(u.sub);
     const mine = await companiesFor(u.sub);
-    res.json({ ok: true, next: mine.length === 1 ? '/' : '/choose' });
+    // One company (or none yet) is no choice to make: straight in.
+    if (mine.length === 1) {
+      res.cookie('realm_id', mine[0].realmId, {
+        httpOnly: true, maxAge: 30 * 24 * 3600 * 1000, sameSite: 'lax'
+      });
+      forgetSettled(u.sub);
+    }
+    res.json({ ok: true, next: mine.length > 1 ? '/choose' : '/' });
   } catch (e) {
     console.error('auth/in:', e.message);
     res.status(500).json({ error: 'Could not sign you in. Try again.' });
@@ -1940,12 +1967,27 @@ function inside(res, yes) {
 //
 // The admin is the exception, because connecting them is the admin's own doing.
 async function companiesFor(sub) {
+  // Only the companies this person has been given or made - running Fusion does
+  // not put everybody else's companies in front of you - and never the public
+  // demo's, which is a workspace with no owner and is for /demo alone.
   const connected = await listCompanies();
-  const who = await whoIs(sub);
-  if (who && who.admin) return connected;
-
   const mine = new Set(await realmsForUser(sub));
-  return connected.filter(c => mine.has(c.realmId));
+  return connected.filter(c => mine.has(c.realmId) &&
+    (sub === DEMO_SUB || !(c.ownerSub === null && !c.connected)));
+}
+
+// Whoever made a company is let into it. A row left over from before the sign-up
+// existed (an old QuickBooks sign-in nobody ruled on) would otherwise leave the
+// owner of their own company waiting for an administrator to let them in.
+async function letOwnerIn(sub) {
+  try {
+    const r = await pool.query(
+      `UPDATE users SET allowed = TRUE, role = 'admin'
+        WHERE sub = $1 AND disabled = FALSE AND home_realm IS NULL
+          AND (allowed = FALSE OR role IN ('viewer', 'none'))
+          AND EXISTS (SELECT 1 FROM companies WHERE owner_sub = $1)`, [sub]);
+    if (r.rowCount) forgetWho(sub);
+  } catch (e) { console.error('letOwnerIn:', e.message); }
 }
 
 // A notice kept, and the same notice put on the person's phone. Everything that

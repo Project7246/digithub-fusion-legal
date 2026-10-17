@@ -22,7 +22,7 @@ function nameOf(n) {
 // anything at all.
 export async function listCompanies() {
   const r = await pool.query(
-    'SELECT realm_id, company_name, refresh_token, updated_at FROM companies ORDER BY company_name NULLS LAST'
+    'SELECT realm_id, company_name, refresh_token, updated_at, owner_sub FROM companies ORDER BY company_name NULLS LAST'
   );
   return r.rows
     .filter(x => isWorkspace(x.realm_id) ||
@@ -31,6 +31,7 @@ export async function listCompanies() {
       realmId: x.realm_id,
       name: nameOf(x.company_name) || x.realm_id,
       connected: !isWorkspace(x.realm_id),
-      updatedAt: x.updated_at
+      updatedAt: x.updated_at,
+      ownerSub: x.owner_sub || null
     }));
 }
