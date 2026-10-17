@@ -73,6 +73,13 @@
     padding:11px 12px}
   input:focus{outline:0;border-color:var(--accent);background:rgba(255,255,255,.08)}
   input::placeholder{color:#6F8186}
+  .hint{margin:5px 0 0;font-size:11.5px;color:#7C8E93}
+  /* The browser paints its own pale fill behind a remembered answer, and leaves
+     the text dark - on this panel that was dark-on-dark, or dark on white. */
+  input{color-scheme:dark}
+  input:-webkit-autofill,input:-webkit-autofill:hover,input:-webkit-autofill:focus{
+    -webkit-text-fill-color:#ECF3F3;caret-color:#ECF3F3;
+    box-shadow:0 0 0 1000px #2B3A40 inset;transition:background-color 99999s}
   input#code{font-family:var(--mono);font-size:20px;letter-spacing:.42em;text-align:center}
 
   .go{display:block;width:100%;border:0;border-radius:10px;padding:13px;
@@ -174,20 +181,16 @@
       <form id="form-up1">
         <div class="field">
           <label for="up-name">Your name</label>
-          <input id="up-name" type="text" autocomplete="name" placeholder="Hamna Saim" required>
+          <input id="up-name" type="text" autocomplete="name" required>
         </div>
         <div class="field">
           <label for="up-email">Email address</label>
-          <input id="up-email" type="email" autocomplete="email" placeholder="you@company.com" required>
+          <input id="up-email" type="email" autocomplete="email" required>
         </div>
-        <!-- The company is made with the account, not after it. Everything in the
-             app belongs to one - the parcels, the orders, the people - so there is
-             nowhere to put any of it until this is answered. QuickBooks joins it
-             later, and may never. -->
         <div class="field">
-          <label for="up-co">Your company</label>
-          <input id="up-co" type="text" autocomplete="organization"
-                 placeholder="Hamna Traders" maxlength="160" required>
+          <label for="up-pw">Choose a password</label>
+          <input id="up-pw" type="password" autocomplete="new-password" required>
+          <p class="hint">At least 8 characters, with a number.</p>
         </div>
         <button class="go" id="btn-up1" type="submit">Send me a code</button>
       </form>
@@ -198,17 +201,12 @@
          them in - they have just proved the address and set the password. -->
     <section class="pane" id="pane-up2">
       <h2>Check your email</h2>
-      <p class="why" id="up2-why">Type the code we sent, and choose a password.</p>
+      <p class="why" id="up2-why">Type the code we sent.</p>
       <form id="form-up2">
         <div class="field">
           <label for="code">Six-digit code</label>
           <input id="code" type="text" inputmode="numeric" autocomplete="one-time-code"
-                 maxlength="6" pattern="[0-9]{6}" placeholder="000000" required>
-        </div>
-        <div class="field">
-          <label for="up-pw">Choose a password</label>
-          <input id="up-pw" type="password" autocomplete="new-password"
-                 placeholder="At least 8 characters, with a number" required>
+                 maxlength="6" pattern="[0-9]{6}" required>
         </div>
         <button class="go" id="btn-up2" type="submit">Create my account</button>
       </form>
@@ -227,7 +225,7 @@
       <form id="form-f1">
         <div class="field">
           <label for="f-email">Email address</label>
-          <input id="f-email" type="email" autocomplete="email" placeholder="you@company.com" required>
+          <input id="f-email" type="email" autocomplete="email" required>
         </div>
         <button class="go" id="btn-f1" type="submit">Send me a code</button>
       </form>
@@ -241,12 +239,12 @@
         <div class="field">
           <label for="f-code">Six-digit code</label>
           <input id="f-code" type="text" inputmode="numeric" autocomplete="one-time-code"
-                 maxlength="6" pattern="[0-9]{6}" placeholder="000000" required>
+                 maxlength="6" pattern="[0-9]{6}" required>
         </div>
         <div class="field">
           <label for="f-pw">New password</label>
           <input id="f-pw" type="password" autocomplete="new-password"
-                 placeholder="At least 8 characters, with a number" required>
+                 required>
         </div>
         <button class="go" id="btn-f2" type="submit">Set password and sign in</button>
       </form>
@@ -330,17 +328,17 @@
   });
 
   // ---- signing up ----
-  var upEmail = '', upName = '', upCo = '';
+  var upEmail = '', upName = '', upPw = '';
 
   function sendSignupCode(btn, working) {
-    return ask('/auth/code', { email: upEmail, name: upName }, btn, working);
+    return ask('/auth/code', { email: upEmail, name: upName, password: upPw }, btn, working);
   }
 
   document.getElementById('form-up1').addEventListener('submit', function(e){
     e.preventDefault();
     upName = document.getElementById('up-name').value.trim();
     upEmail = document.getElementById('up-email').value.trim();
-    upCo = document.getElementById('up-co').value.trim();
+    upPw = document.getElementById('up-pw').value;
     sendSignupCode(document.getElementById('btn-up1'), 'Sending…').then(function(d){
       if (!d) return;
       document.getElementById('up2-why').textContent =
@@ -358,9 +356,9 @@
   document.getElementById('form-up2').addEventListener('submit', function(e){
     e.preventDefault();
     ask('/auth/signup', {
-      email: upEmail, name: upName, company: upCo,
+      email: upEmail, name: upName,
       code: document.getElementById('code').value.trim(),
-      password: document.getElementById('up-pw').value
+      password: upPw
     }, document.getElementById('btn-up2'), 'Setting up…')
       .then(function(d){ if (d) location.href = d.next || '/'; });
   });

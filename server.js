@@ -1446,11 +1446,9 @@ function codeEmail(code, why) {
     '<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" ' +
       'style="max-width:520px;margin:0 auto;background:#FFFFFF;border:1px solid #E1E8E9;' +
       'border-radius:14px;overflow:hidden">' +
-    '<tr><td align="center" style="background:#222F34;padding:30px 26px 26px">' +
-      '<img src="cid:fusion-mark" width="96" height="67" alt="" style="display:block;border:0;margin:0 auto 14px">' +
-      '<div style="font:700 22px ' + face + ';color:#FFFFFF;letter-spacing:.32em;padding-left:.32em">FUSION</div>' +
-      '<div style="font:400 12px ' + body + ';color:#11BAB5;margin-top:6px">' +
-        'AI-powered OS for e-commerce</div>' +
+    '<tr><td style="background:#222F34;padding:26px 28px">' +
+      '<img src="cid:fusion-mark" width="300" height="55" alt="Fusion - AI-powered OS for e-commerce" ' +
+        'style="display:block;border:0;width:300px;max-width:100%;height:auto">' +
     '</td></tr>' +
     '<tr><td align="center" style="padding:34px 30px 8px">' +
       '<h1 style="font:700 21px/1.3 ' + face + ';color:#222F34;margin:0 0 12px">Verify your email</h1>' +
@@ -1520,6 +1518,10 @@ app.post('/auth/code', async (req, res) => {
     if (tooManyTries(req, email)) {
       return res.status(429).json({ error: 'Too many tries. Wait ten minutes and start again.' });
     }
+    // The password is chosen on this screen, so a weak one is turned back before a
+    // code is sent. It is checked here and not kept; /auth/signup gets it again.
+    const weak = passwordComplaint(String(req.body.password || ''));
+    if (weak) return res.status(400).json({ error: weak });
 
     // An address that already has a password is not signed up again from here -
     // that is the sign-in, or the forgotten-password route, and saying so is not
@@ -1547,14 +1549,10 @@ app.post('/auth/signup', async (req, res) => {
     const code = String(req.body.code || '').trim();
     const password = String(req.body.password || '');
     let name = String(req.body.name || '').trim().slice(0, 120);
-    const company = String(req.body.company || '').trim().slice(0, 160);
 
     if (!EMAIL_OK(email)) return res.status(400).json({ error: 'That does not look like an email address.' });
     if (tooManyTries(req, email)) {
       return res.status(429).json({ error: 'Too many tries. Wait ten minutes and start again.' });
-    }
-    if (company.length < 2) {
-      return res.status(400).json({ error: 'Type the name of your company.' });
     }
     const weak = passwordComplaint(password);
     if (weak) return res.status(400).json({ error: weak });
@@ -1578,7 +1576,7 @@ app.post('/auth/signup', async (req, res) => {
     // this line on; the books join it later, if they ever do.
     let realmId = null;
     try {
-      realmId = await createWorkspace(company, sub);
+      realmId = await createWorkspace(name, sub);
       await linkCompany(sub, realmId);
       await claimCompany(realmId, sub);
       forgetSettled(sub);
@@ -1596,7 +1594,7 @@ app.post('/auth/signup', async (req, res) => {
       kind: 'signup',
       title: 'New account: ' + name,
       body: email + ' has signed up and verified their address' +
-            (company ? ', for ' + company + '.' : '.'),
+            '.',
       link: '/users'
     }).catch(() => {});
 
@@ -2010,12 +2008,10 @@ app.get('/auth/status', async (req, res) => {
   // Not for Fusion's own admin looking at somebody else's books, and not for a
   // user id that was handed out - that person was given a desk, not a company.
   const mineToRun = await ownsCompany(sub, realmId);
-  const askStaff = mineToRun && !!who && who.door !== 'member' && !who.staffAsked;
 
   res.json({
     signedIn: true,
     connected: !!company,
-    askStaff,
     decided: !!(user && user.decided_at),
     asking: !(user && user.asked === false),
     companyName: company ? await companyLabel(company) : null,

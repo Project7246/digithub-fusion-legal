@@ -146,8 +146,7 @@ Rules the doors follow, which are easy to break by accident:
 
 ## A company is made at sign-up, and QuickBooks joins it later
 
-The account **is** a company. `/auth/signup` asks for a company name along with
-the address, and `createWorkspace()` (`db.js`) writes a `companies` row with an id
+The account **is** a company. `/auth/signup` asks only name, email and password (password on step one, code alone on step two); the company is made with the person's name as a placeholder - setting the real company name, and making staff user IDs, is meant to live in the profile (not built yet) - and `createWorkspace()` (`db.js`) writes a `companies` row with an id
 of ours - `fx-` plus sixteen hex characters, which `isWorkspace()` recognises and
 Intuit's all-digit realm can never look like. `owner_sub` is the person who typed
 it. So from the first screen they have somewhere for couriers, Shopify orders and
@@ -180,69 +179,8 @@ wanted today. Because the id ends up being the realm, the ~31 places that build
   door - so somebody who had signed up with their own address and pressed Connect
   was moved onto a new, empty, access-less account while their real one sat there
   with their company in it. It now attaches the books to whoever is signed in.
-- First time the owner lands on `/`, one notice offers staff user IDs (`.fxask` in
-  `index.html`, `askStaff` on `/auth/status`). Either button answers it for good -
-  `users.staff_asked`, set by `/api/me/staff-asked` - and Manage users stays in the
-  rail either way. Asked once, on the server, so the shop's other computer does
-  not ask again.
-
-## How the app is laid out
-
-`/` is a launcher, not a page of the books: every section's tiles on one screen,
-each shelf headed by the section it belongs to. Going **into** a section opens
-that section's own rail on the left, the way the first app's rail worked.
-
-| Section | Front page | Holds | QuickBooks? |
-|---|---|---|---|
-| Finance | `/finance` (the old dashboard) | Everything the first app did | Yes |
-| Logistics | `/logistics` | Couriers, tracking, pickups, CPRs, receipts | Yes |
-| Operations | `/operations` | Couriers, tracking, CPRs - the same module, second desk | Yes |
-| HR | `/hr` | Nothing built yet | No |
-
-**One list, in `public/nav.js`: `SECTIONS`.** The rail and the tiles are two
-readings of it, so a module added once appears in both and can never appear in
-only one. A line is
-`{ href, label, icon, need, tile, as, front, tree }`:
-
-- `icon` is the rail's 24px stroke icon (`ICONS` in nav.js); `tile` is the 48px
-  colour icon (`ICONS` in `public/tiles.js`)
-- `as` is the shorter name a tile wears when it is being chosen rather than used
-- `need` is the job key the server enforces (`PAGE_NEED`, `RIGHT_OF_PATH`), so
-  hiding a tile never hides a door that still opens
-- `front: true` marks a section's own overview page, which is never a tile
-- each section also has `what`, `qb`, `home`, and `soon: [{label, tile}]` for
-  modules that are coming
-
-`public/tiles.js` draws them (`FUSION.draw(el, sectionKey|null, find)`),
-`public/tiles.css` dresses them. nav.js must load first.
-
-**Every class these new screens introduce starts with `fx`.** `app.css` dresses
-the whole app from a flat set of short names, and nine of the obvious ones were
-already taken - `.bar` is a 7px progress bar with `overflow:hidden`, and `.tile`,
-`.tiles`, `.pill`, `.sheet`, `.dot`, `.right`, `.solid` and `.mini` all exist too.
-Reusing `.bar` cost three wrong fixes: the top bar rendered inside a seven pixel
-box and only a white sliver showed, while the positioning looked like the
-culprit. A new rule overrides only the properties it names; everything else the
-old rule set stays. So before adding a class, check `app.css` for it, or prefix
-it. `.solid` and `.on` are deliberately shared - the button and the state are
-meant to look like the rest of the app.
-
-**QuickBooks is asked for by the section, not at the door.** Somebody signs up
-with their own address and sees all four sections; the three that need a company
-show a Connect panel instead of their tiles. This is why `OPEN_WITHOUT_COMPANY`
-in `server.js` lets the five front pages through the gate when `!settled`, and
-why `nav.js` does not send a company-less person to `/choose` on those pages.
-Every other page still needs one.
-
-The courier pages sit in two sections. Which rail they wear is whichever section
-they were entered from, kept in `sessionStorage['fusion:section']` for the tab.
-
-Inner pages still use the left rail only - the launcher's top bar is not on them.
-
-There is a harness for this: it runs `nav.js` and `tiles.js` against a stub
-browser and prints the section each path picks and every section's tile list.
-Worth re-running after touching either file, because a throw in nav.js breaks
-every page in the app.
+- There is **no** staff-ID notice bar on `/` any more (removed on request): signing up
+  should look like a normal app. Manage users stays in the rail.
 
 ## Sending email
 
