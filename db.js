@@ -206,6 +206,54 @@ export async function graduateWorkspace(fromId, toRealm) {
   }
 }
 
+// Taking a company away, and everything that was ever written against it.
+//
+// Which tables hold its work is read from the database rather than listed here,
+// for the same reason graduateWorkspace() reads it: a table added next month would
+// otherwise be left behind holding rows nobody can reach and nobody can see. The
+// user ids that lived only in this company go with it - they were made for it and
+// cannot be moved - while anybody with an address of their own simply loses this
+// company off their list and keeps their account.
+//
+// One transaction: it all goes, or none of it does.
+export async function deleteCompany(realmId) {
+  const cols = await pool.query(
+    `SELECT c.table_name AS tbl
+       FROM information_schema.columns c
+       JOIN information_schema.tables t
+         ON t.table_schema = c.table_schema AND t.table_name = c.table_name
+      WHERE c.table_schema = 'public' AND t.table_type = 'BASE TABLE'
+        AND c.column_name = 'realm_id'
+        AND c.table_name NOT IN ('companies', 'user_companies')`);
+
+  const quote = s => '"' + String(s).replace(/"/g, '""') + '"';
+  const client = await pool.connect();
+  let rows = 0, ids = 0;
+  try {
+    await client.query('BEGIN');
+    const gone = await client.query('DELETE FROM users WHERE home_realm = $1', [realmId]);
+    ids = gone.rowCount;
+    await client.query('DELETE FROM user_companies WHERE realm_id = $1', [realmId]);
+    for (const r of cols.rows) {
+      const out = await client.query(
+        `DELETE FROM ${quote(r.tbl)} WHERE realm_id = $1`, [realmId]);
+      rows += out.rowCount;
+    }
+    const co = await client.query('DELETE FROM companies WHERE realm_id = $1', [realmId]);
+    if (!co.rowCount) {
+      await client.query('ROLLBACK');
+      return { error: 'No such company.' };
+    }
+    await client.query('COMMIT');
+    return { ok: true, rows, ids, tables: cols.rows.length };
+  } catch (e) {
+    try { await client.query('ROLLBACK'); } catch (e2) { /* the trip is over anyway */ }
+    throw e;
+  } finally {
+    client.release();
+  }
+}
+
 // A table that used to hold one run per company now holds one per person in it.
 // This widens such a table in place: the column is added if it is not there, and
 // the key moves from the company alone to the company and the person together.

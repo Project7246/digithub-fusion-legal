@@ -76,6 +76,8 @@
     color:#0A1517;font-weight:600}
   .fxco .fxdo button.fxopen:hover{background:var(--aqua);border-color:var(--aqua)}
   .fxco .fxdo button:disabled{opacity:.55;cursor:default}
+  .fxco .fxdo button.fxdel{margin-left:auto;color:var(--bad,#9A2E24);border-color:transparent}
+  .fxco .fxdo button.fxdel:hover{border-color:var(--bad,#9A2E24);color:var(--bad,#9A2E24)}
 
   .fxsay{display:none;margin:0 0 18px;padding:11px 14px;border-radius:9px;font-size:13px;
     line-height:1.55}
@@ -134,7 +136,7 @@
 "use strict";
 (function(){
   var $ = function(id){ return document.getElementById(id); };
-  var mine = [], current = null, mayAdd = false;
+  var mine = [], current = null, mayAdd = false, boss = false;
 
   function esc(s){
     return String(s == null ? '' : s)
@@ -174,6 +176,7 @@
             (c.realmId === current ? 'Go to it' : 'Open') + '</button>' +
           (c.mine ? '<button data-do="people">People</button>' +
                     '<button data-do="name">Rename</button>' : '') +
+          (boss ? '<button class="fxdel" data-do="drop">Delete</button>' : '') +
         '</div>' +
       '</div>';
     }).join('');
@@ -200,6 +203,24 @@
         co.name = o.d.name;
         say('fxgood', 'Saved.');
         draw();
+      });
+      return;
+    }
+
+    if (what === 'drop') {
+      // Nothing about this is undoable, so the name is typed back before anything
+      // moves - and what went is counted out afterwards rather than passed over.
+      var BR = String.fromCharCode(10);
+      var sure = prompt('Delete ' + co.name + ' and everything in it?' + BR + BR +
+        'Its courier accounts, orders, runs and the user IDs made for it all go, ' +
+        'and this cannot be undone.' + BR + BR +
+        'Type the company name to confirm:');
+      if (sure === null) return;
+      post('/api/portal/companies/delete', { realmId: id, confirm: sure }).then(function(o){
+        if (!o.ok) return say('fxbad', o.d.error || 'That did not work.');
+        say('fxgood', o.d.name + ' is gone - ' + o.d.rows + ' rows and ' +
+          o.d.ids + ' user IDs removed.');
+        load();
       });
       return;
     }
@@ -253,6 +274,7 @@
         mine = d.companies || [];
         current = d.current;
         mayAdd = !!d.mayAdd;
+        boss = !!d.admin;
         $('btnNew').style.display = mayAdd ? '' : 'none';
         $('lede').textContent = mayAdd
           ? 'Every client you run, each with its own books, couriers, orders and people. ' +
@@ -266,6 +288,16 @@
           'Could not read the companies.') + '</div>';
       });
   }
+
+  // Sent here by a page that needs a company open - say so, rather than look
+  // like the link simply bounced.
+  (function(){
+    var m = /[?&]for=([^&]+)/.exec(location.search);
+    if (!m) return;
+    var page = decodeURIComponent(m[1]).replace(/[^a-z0-9-]/gi, '');
+    say('fxbad', 'Open a company first' + (page ? ', then ' + page + ' is there.' : '.'));
+    history.replaceState(null, '', '/companies');
+  })();
 
   window.FUSION.profileMenu($('me'));
   load();

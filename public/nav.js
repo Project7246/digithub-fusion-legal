@@ -314,6 +314,119 @@
 
   /* ---------- back, forward, refresh ---------- */
 
+  /* ---------- which company you are standing in ---------- */
+  // On every screen, because everything on every screen belongs to one company and
+  // guessing which is how somebody books a parcel on the wrong client's account.
+  // It is a plain label to anybody with one company, and the way between them to
+  // anybody with more - the list is asked for only when it is opened.
+  window.FUSION = window.FUSION || {};
+  (function(){
+    var st = document.createElement('style');
+    st.textContent = [
+      '.fxchip{position:relative;display:flex;align-items:center}',
+      '.fxchip .fxcobtn{display:flex;align-items:center;gap:9px;width:auto;height:auto;',
+      '  max-width:230px;padding:7px 12px;',
+      '  border:1px solid var(--line,#E1E8E9);border-radius:9px;background:var(--panel,#fff);',
+      '  font:inherit;font-size:13px;color:var(--text,#18212A);cursor:default;text-align:left}',
+      '.fxchip.fxchipmany .fxcobtn{cursor:pointer}',
+      '.fxchip.fxchipmany .fxcobtn:hover{border-color:#11BAB5;color:#08827E}',
+      '.fxchip .fxcobtn .fxdot{width:7px;height:7px;border-radius:50%;background:#11BAB5;flex:0 0 7px}',
+      '.fxchip .fxcobtn .fxnm{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:600}',
+      '.fxchip .fxcobtn .fxcar{font-size:9px;color:var(--faint,#8a9a9e);flex:0 0 auto}',
+      '.fxchipdark .fxcobtn{background:rgba(255,255,255,.08);border-color:rgba(255,255,255,.16);',
+      '  color:#fff}',
+      '.fxchipdark .fxcobtn .fxcar{color:#9DB0B5}',
+      '.fxchipdark.fxchipmany .fxcobtn:hover{border-color:#6BF0EA;color:#6BF0EA}',
+      '.fxcomenu{position:absolute;top:calc(100% + 7px);right:0;z-index:300;width:280px;',
+      '  display:none;background:var(--panel,#fff);color:var(--text,#18212A);',
+      '  border:1px solid var(--line,#E1E8E9);border-radius:12px;',
+      '  box-shadow:0 18px 44px rgba(24,35,42,.22);overflow:hidden;text-align:left}',
+      '.fxcomenu.open{display:block}',
+      '.fxcomenu .fxcap{font-family:var(--mono,monospace);font-size:9.5px;letter-spacing:.14em;',
+      '  text-transform:uppercase;color:var(--faint,#8a9a9e);padding:12px 16px 6px}',
+      '.fxcomenu button,.fxcomenu a{display:block;width:100%;text-align:left;padding:10px 16px;',
+      '  font:inherit;font-size:13px;border:0;background:none;cursor:pointer;color:inherit;',
+      '  text-decoration:none}',
+      '.fxcomenu button:hover,.fxcomenu a:hover{background:var(--panel-2,#F2F6F6);color:#08827E}',
+      '.fxcomenu button.fxcur{font-weight:700;color:#08827E}',
+      '.fxcomenu button.fxcur:after{content:" \u2713"}',
+      '.fxcomenu .fxsep{height:1px;background:var(--line,#E1E8E9);margin:5px 0}',
+      '.fxcomenu .fxall{color:#08827E}'
+    ].join('');
+    document.head.appendChild(st);
+
+    window.FUSION.companyChip = function(host, opts){
+      opts = opts || {};
+      host.classList.add('fxchip');
+      if (opts.dark) host.classList.add('fxchipdark');
+      host.innerHTML =
+        '<button class="fxcobtn" type="button"><span class="fxdot"></span>' +
+          '<span class="fxnm">\u2026</span></button>' +
+        '<div class="fxcomenu"></div>';
+      var btn = host.firstChild, menu = host.lastChild, loaded = false;
+
+      btn.addEventListener('click', function(ev){
+        if (!host.classList.contains('fxchipmany')) return;
+        ev.stopPropagation();
+        document.querySelectorAll('.fxmenu.open,.bellmenu.open').forEach(function(m){
+          m.classList.remove('open');
+        });
+        var opening = !menu.classList.contains('open');
+        menu.classList.toggle('open', opening);
+        if (opening && !loaded) fill();
+      });
+      document.addEventListener('click', function(){ menu.classList.remove('open'); });
+      menu.addEventListener('click', function(ev){ ev.stopPropagation(); });
+
+      function fill(){
+        menu.innerHTML = '<div class="fxcap">Loading\u2026</div>';
+        fetch('/auth/companies', { cache: 'no-store' })
+          .then(function(r){ return r.json(); })
+          .then(function(d){
+            loaded = true;
+            var list = d.companies || [];
+            menu.innerHTML = '<div class="fxcap">Your companies</div>' +
+              list.map(function(c){
+                return '<button type="button" data-id="' + esc(c.realmId) + '"' +
+                  (c.realmId === d.current ? ' class="fxcur"' : '') + '>' +
+                  esc(c.name) + '</button>';
+              }).join('') +
+              '<div class="fxsep"></div>' +
+              '<a class="fxall" href="/companies">All companies</a>';
+
+            menu.querySelectorAll('[data-id]').forEach(function(b){
+              b.addEventListener('click', function(){
+                var id = b.getAttribute('data-id');
+                if (id === d.current) { menu.classList.remove('open'); return; }
+                b.textContent = 'Opening\u2026';
+                fetch('/auth/switch', {
+                  method: 'POST', headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ realmId: id })
+                }).then(function(){ location.reload(); });
+              });
+            });
+          })
+          .catch(function(){
+            menu.innerHTML = '<div class="fxcap">Could not read them</div>';
+          });
+      }
+
+      (function go(){
+        if (window.APP && window.APP.ready) {
+          window.APP.ready.then(function(s){
+            if (!s.connected) { host.style.display = 'none'; return; }
+            host.style.display = '';
+            host.querySelector('.fxnm').textContent = s.companyName || s.realmId || '';
+            btn.title = s.companyName || '';
+            var many = !!(s.boss || s.companyCount > 1);
+            host.classList.toggle('fxchipmany', many);
+            if (many) btn.innerHTML += '<span class="fxcar">\u25BE</span>';
+          });
+        } else setTimeout(go, 20);
+      })();
+    };
+  })();
+
   /* ---------- the person: picture, name, and the way to their profile ---------- */
   // One button with one menu, used on the home screen and on every page's top
   // line. It shows the picture the person chose (or the first letter of their
@@ -325,9 +438,10 @@
     var st = document.createElement('style');
     st.textContent = [
       '.fxme{position:relative;display:flex}',
-      '.fxmebtn{width:38px;height:38px;border-radius:50%;padding:0;border:2px solid #11BAB5;',
+      '.fxme .fxmebtn{width:38px;height:38px;border-radius:50%;padding:0;',
+      '  border:2px solid #11BAB5;',
       '  background:#222F34;cursor:pointer;overflow:hidden;display:block}',
-      '.fxmebtn:hover,.fxmebtn:focus-visible{border-color:#6BF0EA;outline:0}',
+      '.fxme .fxmebtn:hover,.fxme .fxmebtn:focus-visible{border-color:#6BF0EA;outline:0}',
       '.fxav{width:100%;height:100%;display:flex;align-items:center;justify-content:center;',
       '  background:#222F34;color:#6BF0EA;font:700 15px var(--head,sans-serif);overflow:hidden}',
       '.fxav img{width:100%;height:100%;object-fit:cover;display:block}',
@@ -386,7 +500,10 @@
             // More than one company, and moving between them is a thing this
             // person does daily - the way QuickBooks keeps the switch by the name
             (s.boss || s.companyCount > 1 ? '<a href="/companies">Switch company</a>' : '') +
-            (s.admin ? '<a href="/users">Manage users</a>' : '') +
+            // /users is the company you are standing in, so it is offered only
+            // while you are standing in one - from the portal it would bounce
+            // straight back here, which looks like a page that does not work
+            (s.admin && s.connected ? '<a href="/users">Manage users</a>' : '') +
             // the two screens above every company, and Fusion's own
             (s.boss ? '<a href="/people">People (all companies)</a>' : '') +
             '<a href="/settings#style">Appearance</a>' +
@@ -503,6 +620,11 @@
       '</div>';
     box.appendChild(bell);
 
+    // Which company this page belongs to, at the right-hand end of its top line.
+    var chip = document.createElement('div');
+    box.insertBefore(chip, box.firstChild);
+    window.FUSION.companyChip(chip);
+
     // The person sits beside the bell: picture, name, profile, sign out.
     var wrap = document.createElement('div');
     wrap.className = 'setwrap';
@@ -513,7 +635,8 @@
 
     // by where they sit, not by how many buttons happen to be in the box - the
     // bell's own menu has one inside it, and counting would have found that first
-    var b = box.querySelectorAll(':scope > button');
+    var b = box.querySelectorAll(':scope > button');   // the chip and the two menus
+                                                      // hold their own, not these
     var bellBtn = box.querySelector('.bellwrap > button');
 
     b[0].addEventListener('click', function(){ history.back(); });

@@ -275,7 +275,36 @@ same two jobs `/users` does, at portal level.
 
 `/auth/status` carries **`admin`** (runs the company now open) and **`boss`**
 (ADMIN_EMAILS - runs Fusion). The profile menu reads `boss` for the two portal
-links and `admin` for Manage users.
+links, and `admin && connected` for Manage users: offered from the portal, where
+no company is open, it would bounce straight back and look broken.
+
+### Which company you are standing in
+
+`FUSION.companyChip(host, {dark})` in `nav.js` puts the open company's name at the
+right-hand end of every screen - nav.js's own top line on an inner page, and the
+launcher's bar, which passes `dark: true`. With more than one company (or
+ADMIN_EMAILS) it is a dropdown that switches between them; with one it is a plain
+label; with none it hides itself. **Its classes are `fxchip`/`fxcobtn`/`fxcomenu`,
+not `fxco`** - `fxco` was taken first by a company card on `/companies`, and the
+collision centred every card on that page until it was renamed. `.ptools button`
+dresses every button in that box as a 30px square, so the chip's and the avatar's
+rules are written `.fxchip .fxcobtn` / `.fxme .fxmebtn` to outweigh it.
+
+`isSettled()` lets ADMIN_EMAILS stand in any company without a `user_companies`
+row - they are not given companies, they hold them all - and `whoIs()` forces
+`allowed` true for them, because the row's flag is a decision about a user and
+there is nobody above that address to make it. Without the second, switching
+company was refused outright.
+
+### Deleting a company
+
+`POST /api/portal/companies/delete`, ADMIN_EMAILS only, and the company's name has
+to be typed back before anything moves. `deleteCompany()` in `db.js` reads which
+tables carry `realm_id` from `information_schema` - the same reason
+`graduateWorkspace()` does, so a table added next month is not left holding rows
+nobody can reach - deletes the user ids whose `home_realm` is that company (they
+were made for it and cannot be moved), clears `user_companies`, and takes the
+`companies` row last, all in one transaction. Nothing about it is undoable.
 - Signing in with exactly one company opens it without asking; `/choose` is now
   only for somebody who holds nothing at all and is waiting to be let in.
 

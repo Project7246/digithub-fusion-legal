@@ -6,7 +6,7 @@ import crypto from 'crypto';
 import fs from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import {
-  pool, initDb, saveCompany, getCompany, renameCompany, logUpload,
+  pool, initDb, saveCompany, getCompany, renameCompany, deleteCompany, logUpload,
   getNegativeItems, setNegativeItems,
   isWorkspace, createWorkspace, workspacesOwnedBy, graduateWorkspace
 } from './db.js';
@@ -329,7 +329,11 @@ app.get(/^\/$|^\/[A-Za-z0-9-]+$/, async (req, res, next) => {
       // Somebody who holds companies but has none open is choosing, not waiting:
       // the portal is that screen. /choose is for whoever has nothing at all.
       const held = letIn ? await companiesFor(sub) : [];
-      return res.redirect(held.length ? '/companies' : '/choose');
+      // and say what was being asked for, so the portal can explain itself rather
+      // than look like the page simply bounced
+      return res.redirect(held.length
+        ? '/companies?for=' + encodeURIComponent(here.replace(/^\//, ''))
+        : '/choose');
     }
     if (here === '/choose') return res.redirect('/');
 
@@ -507,7 +511,11 @@ async function whoIs(sub) {
   // itself. Running a company is a separate thing, decided per company by who
   // connected it - see ownsCompany().
   who.admin = !!who.email && ADMIN_EMAILS.has(who.email);
-  if (who.admin) who.role = 'admin';
+  // Running Fusion is being let in. The row's own allowed flag is somebody else's
+  // decision about a user, and there is nobody above this address to make it -
+  // left as it was, an admin whose row had never been ruled on was refused by
+  // every route that asks (switching company among them).
+  if (who.admin) { who.role = 'admin'; who.allowed = true; }
   if (who.disabled) { who.allowed = false; who.role = 'none'; who.rights = []; }
   whoCache.set(sub, who);
   return who;
@@ -1182,6 +1190,7 @@ const USER_MAY_POST = new Set([
   '/api/me/profile',
   // the portal: each route decides for itself who may do it
   '/api/portal/companies/new', '/api/portal/companies/rename',
+  '/api/portal/companies/delete',
   '/api/portal/people/access', '/api/portal/people/new',
   '/api/portal/people/password', '/api/portal/people/off',
   // renaming the company: open to the gate, but the route itself asks for its administrator
@@ -1960,7 +1969,11 @@ async function isSettled(sub, realmId) {
   const kept = settledCache.get(key);
   if (kept && Date.now() - kept.at < SETTLED_LIFE) return kept.ok;
 
-  const ok = await userOwns(sub, realmId) && !!(await getCompany(realmId));
+  // Whoever runs Fusion is at home in every company without a row saying so -
+  // they are not given companies, they hold them all. Everybody else needs the row.
+  const who = await whoIs(sub);
+  const may = (who && who.admin) || await userOwns(sub, realmId);
+  const ok = may && !!(await getCompany(realmId));
   settledCache.set(key, { ok, at: Date.now() });
   if (settledCache.size > 500) settledCache.clear();
   return ok;
@@ -2516,6 +2529,37 @@ app.post('/api/portal/companies/rename', async (req, res) => {
   } catch (e) {
     console.error('portal/companies/rename:', e.message);
     res.status(500).json({ error: 'Could not save the name. Try again.' });
+  }
+});
+
+// Taking a company away. Fusion's own, and nothing else comes close to it: every
+// courier account, every order, every run and every user id made for it goes, and
+// there is no undoing it. So the name has to be typed back before anything moves,
+// and what was removed is counted and said.
+app.post('/api/portal/companies/delete', async (req, res) => {
+  if (!await requireBoss(req, res)) return;
+  try {
+    const realmId = String(req.body.realmId || '');
+    const typed = String(req.body.confirm || '').trim();
+    const company = await getCompany(realmId);
+    if (!company) return res.status(404).json({ error: 'No such company.' });
+
+    const name = await companyLabel(company);
+    if (typed.toLowerCase() !== String(name).toLowerCase()) {
+      return res.status(400).json({ error: 'Type the company name exactly to delete it.' });
+    }
+
+    const out = await deleteCompany(realmId);
+    if (out.error) return res.status(400).json({ error: out.error });
+
+    // whoever was standing in it is standing nowhere now
+    if (req.cookies.realm_id === realmId) res.clearCookie('realm_id');
+    settledCache.clear();
+    whoCache.clear();
+    res.json({ ok: true, name, rows: out.rows, ids: out.ids });
+  } catch (e) {
+    console.error('portal/companies/delete:', e.message);
+    res.status(500).json({ error: 'Could not delete the company. Nothing was removed.' });
   }
 });
 
