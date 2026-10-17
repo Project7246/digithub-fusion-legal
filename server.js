@@ -4,6 +4,7 @@ import cookieParser from 'cookie-parser';
 import XLSX from 'xlsx';
 import crypto from 'crypto';
 import fs from 'node:fs';
+import { fileURLToPath } from 'node:url';
 import {
   pool, initDb, saveCompany, getCompany, renameCompany, logUpload,
   getNegativeItems, setNegativeItems,
@@ -1426,31 +1427,48 @@ setInterval(() => {
 // so it carries the mark, the colours and nothing to click. Tables and inline
 // styles because that is what mail readers still understand; the plain-text copy
 // underneath is what they see with the pictures off.
+// the mark travels inside the letter (cid:fusion-mark), so it shows even where a
+// mail reader blocks pictures fetched from the web
+const MAIL_MARK = {
+  filename: 'fusion.png', cid: 'fusion-mark', contentDisposition: 'inline',
+  path: fileURLToPath(new URL('./public/mail-mark.png', import.meta.url))
+};
 function codeEmail(code, why) {
   const safe = String(why).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-  const face = 'Segoe UI,Roboto,Helvetica,Arial,sans-serif';
-  return '<div style="margin:0;padding:24px 12px;background:#F2F6F6">' +
+  const face = 'Montserrat,Segoe UI,Roboto,Helvetica,Arial,sans-serif';
+  const body = 'Roboto,Segoe UI,Helvetica,Arial,sans-serif';
+  // the line a mail list shows beside the subject; the padding pushes the
+  // template's own words out of the preview
+  const preview = 'Your Fusion code is ' + code + '. It works once, for 15 minutes.' +
+    '&nbsp;&zwnj;'.repeat(40);
+  return '<div style="margin:0;padding:32px 12px;background:#F2F6F6">' +
+    '<div style="display:none;max-height:0;overflow:hidden;opacity:0;color:#F2F6F6">' + preview + '</div>' +
     '<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" ' +
       'style="max-width:520px;margin:0 auto;background:#FFFFFF;border:1px solid #E1E8E9;' +
       'border-radius:14px;overflow:hidden">' +
-    '<tr><td style="background:#222F34;padding:19px 26px">' +
-      '<span style="font:700 19px ' + face + ';color:#FFFFFF;letter-spacing:.04em">FUSION</span>' +
-      '<span style="font:400 12px ' + face + ';color:#11BAB5;padding-left:9px">' +
-        'AI-powered OS for e-commerce</span>' +
+    '<tr><td align="center" style="background:#222F34;padding:30px 26px 26px">' +
+      '<img src="cid:fusion-mark" width="96" height="67" alt="" style="display:block;border:0;margin:0 auto 14px">' +
+      '<div style="font:700 22px ' + face + ';color:#FFFFFF;letter-spacing:.32em;padding-left:.32em">FUSION</div>' +
+      '<div style="font:400 12px ' + body + ';color:#11BAB5;margin-top:6px">' +
+        'AI-powered OS for e-commerce</div>' +
     '</td></tr>' +
-    '<tr><td style="padding:26px 26px 6px">' +
-      '<p style="font:400 14px/1.6 ' + face + ';color:#18212A;margin:0 0 18px">' + safe + '</p>' +
-      '<div style="font:700 30px/1 Consolas,Menlo,monospace;letter-spacing:.28em;' +
+    '<tr><td align="center" style="padding:34px 30px 8px">' +
+      '<h1 style="font:700 21px/1.3 ' + face + ';color:#222F34;margin:0 0 12px">Verify your email</h1>' +
+      '<p style="font:400 15px/1.6 ' + body + ';color:#3B4A50;margin:0 0 24px">' + safe +
+        ' Enter this code to continue.</p>' +
+      '<div style="font:700 34px/1 Consolas,Menlo,monospace;letter-spacing:.3em;' +
         'color:#0C7F7C;background:#EAFAF9;border:1px solid #BCEDEB;border-radius:10px;' +
-        'padding:18px 10px 18px 24px;text-align:center">' + code + '</div>' +
-      '<p style="font:400 13px/1.6 ' + face + ';color:#55666B;margin:16px 0 0">' +
-        'It works once, for the next 15 minutes.</p>' +
-      '<p style="font:400 13px/1.6 ' + face + ';color:#55666B;margin:10px 0 20px">' +
-        'If you did not ask for it, nothing has happened to your account ' +
-        'and you can ignore this. Nobody from Fusion will ever ask you for this code.</p>' +
+        'padding:20px 10px 20px 24px;text-align:center">' + code + '</div>' +
+      '<p style="font:400 13px/1.6 ' + body + ';color:#55666B;margin:20px 0 0">' +
+        'This code works once and expires in 15 minutes.</p>' +
     '</td></tr>' +
-    '<tr><td style="background:#F7FAFA;border-top:1px solid #E1E8E9;padding:13px 26px">' +
-      '<span style="font:400 11.5px ' + face + ';color:#7C8E93">Fusion &middot; ' +
+    '<tr><td style="padding:22px 30px 30px">' +
+      '<p style="font:400 13px/1.6 ' + body + ';color:#7C8E93;margin:0;border-top:1px solid #E1E8E9;padding-top:18px">' +
+        'If you did not ask for this, you can safely ignore this email - nothing has ' +
+        'happened to your account. Nobody from Fusion will ever ask you for this code.</p>' +
+    '</td></tr>' +
+    '<tr><td align="center" style="background:#F7FAFA;border-top:1px solid #E1E8E9;padding:16px 26px">' +
+      '<span style="font:400 12px ' + body + ';color:#7C8E93">Fusion &middot; Together we can &middot; ' +
         BASE_URL.replace(/^https?:\/\//, '') + '</span>' +
     '</td></tr></table></div>';
 }
@@ -1466,7 +1484,7 @@ async function mailCode(res, email, name, subject, why) {
     'Your code is ' + code,
     'It works for the next 15 minutes, once. If you did not ask for it, nothing has happened to your account and you can ignore this.',
     'Fusion'
-  ], { html: codeEmail(code, why) });
+  ], { html: codeEmail(code, why), attachments: [MAIL_MARK] });
   if (!sent) {
     // The code was written and can never be read, so the row is taken back out
     // rather than left to expire against a person standing there waiting for an

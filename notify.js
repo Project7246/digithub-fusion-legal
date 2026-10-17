@@ -126,7 +126,8 @@ export async function sendMail(to, subject, lines, opts) {
   try {
     await m.sendMail({
       from: process.env.SMTP_FROM || process.env.SMTP_USER,
-      to, subject, text, html
+      to, subject, text, html,
+      attachments: (opts && opts.attachments) || undefined
     });
     lastError = null;
     lastSentAt = new Date().toISOString();
