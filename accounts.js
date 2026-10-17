@@ -242,9 +242,14 @@ export async function createSelfAccount({ email, name, password }) {
     return held.sub;
   }
 
+  // Proving an address is not being let in. Fusion is sold as a service, so who
+  // works in which company is Fusion's to say: the row is made switched off and
+  // with nothing ticked, the admins are told, and the person waits on the
+  // chooser until somebody gives them a company. allowed stays FALSE and
+  // decided_at stays NULL, which is exactly what that screen reads.
   const r = await pool.query(
-    `INSERT INTO users (sub, email, name, pass, email_ok, door, allowed, role, last_in, decided_at)
-     VALUES ($1, $2, $3, $4, TRUE, 'password', TRUE, 'admin', NOW(), NOW())
+    `INSERT INTO users (sub, email, name, pass, email_ok, door, allowed, role, last_in)
+     VALUES ($1, $2, $3, $4, TRUE, 'password', FALSE, 'viewer', NOW())
      ON CONFLICT (sub) DO UPDATE SET
        pass = $4, email_ok = TRUE, name = COALESCE($3, users.name), last_in = NOW()
      RETURNING sub`,

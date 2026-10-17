@@ -1,0 +1,426 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>People</title>
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="manifest" href="/manifest.json">
+<meta name="theme-color" content="#222F34">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@600;700;800&family=Roboto:wght@400;500&family=Roboto+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/app.css">
+<style>
+  /* Fusion's own people screen, above every company at once. /users is the
+     company you are standing in; this is the one place somebody is given a
+     company they are not already in. app.css owns the short names, so what this
+     page adds is fx - see CLAUDE.md. */
+  body{background:var(--bg,#F2F6F6);margin:0}
+
+  .fxbar{background:var(--ink,#222F34);display:flex;align-items:center;
+    justify-content:space-between;gap:16px;padding:13px 28px;flex-wrap:wrap}
+  .fxlogo{display:flex;align-items:center;gap:12px;text-decoration:none;color:#fff}
+  .fxlogo img{width:44px;height:auto;display:block}
+  .fxlogo b{display:block;font:700 17px/1.1 var(--head)}
+  .fxlogo i{display:block;font:600 11.5px var(--head);color:#6BF0EA;margin-top:2px;font-style:normal}
+  .fxbarend{display:flex;align-items:center;gap:12px}
+  .fxbarend a.fxlink{color:#B9CACD;text-decoration:none;font-size:13px;padding:8px 13px;
+    border-radius:9px;border:1px solid rgba(255,255,255,.2)}
+  .fxbarend a.fxlink:hover{border-color:#6BF0EA;color:#6BF0EA}
+
+  .fxwrap{max-width:1060px;margin:0 auto;padding:34px 20px 80px}
+  .fxtop{display:flex;align-items:flex-end;gap:18px;flex-wrap:wrap;margin:0 0 6px}
+  .fxtop h1{font:700 26px/1.2 var(--head);margin:0;color:var(--ink-3,#18212A)}
+  .fxlede{font-size:13.5px;color:var(--muted);margin:0 0 24px;line-height:1.6;max-width:66ch}
+
+  .fxcard{background:var(--panel,#fff);border:1px solid var(--line);border-radius:14px;
+    padding:20px 24px;margin:0 0 18px}
+  .fxcard h2{font:700 15px var(--head);margin:0 0 4px}
+  .fxcard .fxhint{font-size:12.5px;color:var(--muted);margin:0 0 16px;line-height:1.6}
+
+  .fxcap{font-family:var(--mono);font-size:10px;letter-spacing:.14em;text-transform:uppercase;
+    color:var(--faint);margin:26px 0 10px}
+  .fxcap:first-of-type{margin-top:0}
+
+  .fxrow{display:flex;align-items:center;gap:14px;padding:14px 0;
+    border-bottom:1px solid var(--line);flex-wrap:wrap}
+  .fxrow:last-child{border-bottom:0}
+  .fxwho{flex:1 1 220px;min-width:0}
+  .fxwho b{display:block;font-size:13.5px;font-weight:600}
+  .fxwho small{display:block;color:var(--muted);font-size:11.5px;margin-top:2px;word-break:break-all}
+  .fxat{flex:1 1 220px;display:flex;gap:6px;flex-wrap:wrap}
+
+  .fxtag{font-size:10.5px;letter-spacing:.05em;text-transform:uppercase;padding:3px 9px;
+    border-radius:20px;border:1px solid var(--line-2);color:var(--muted);white-space:nowrap}
+  .fxtag.fxwait{border-color:#8a6d3b;color:#8a6d3b}
+  .fxtag.fxoff{border-color:var(--bad,#9A2E24);color:var(--bad,#9A2E24)}
+  .fxtag.fxco{border-color:var(--accent);color:var(--accent-deep)}
+  .fxtag.fxboss{border-color:var(--ink-3);color:var(--ink-3);font-weight:600}
+
+  button.fxmini{font-size:12px;padding:6px 13px;border-radius:7px;border:1px solid var(--line-2);
+    background:#fff;cursor:pointer;font-family:inherit;color:var(--text)}
+  button.fxmini:hover{border-color:var(--accent);color:var(--accent-deep)}
+  button.fxmini:disabled{opacity:.5;cursor:default}
+  .fxacts{display:flex;gap:7px;flex-wrap:wrap}
+
+  .fxedit{flex:1 1 100%;background:var(--panel-2,#F7FAFA);border:1px solid var(--line);
+    border-radius:11px;padding:18px 18px 20px;margin:4px 0 2px;display:none}
+  .fxedit.on{display:block}
+  .fxedit h3{font:700 13px var(--head);margin:0 0 9px}
+  .fxedit h3+h3{margin-top:20px}
+
+  .fxpick{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:8px}
+  .fxpick label{display:flex;gap:9px;align-items:center;border:1px solid var(--line);
+    border-radius:8px;padding:10px 12px;cursor:pointer;background:#fff;font-size:13px;
+    line-height:1.35;text-transform:none;letter-spacing:0;color:var(--text);font-weight:400}
+  .fxpick label:hover{border-color:var(--accent)}
+  .fxpick label.on{border-color:var(--accent);box-shadow:inset 0 0 0 1px var(--accent)}
+  .fxpick input{flex:0 0 auto;margin:0}
+  .fxpick small{display:block;color:var(--muted);font-size:11px;margin-top:2px}
+
+  .fxjobs{display:none}
+  .fxjobs.on{display:block}
+
+  .fxsave{margin-top:18px;display:flex;gap:9px;align-items:center;flex-wrap:wrap}
+  .fxgo{border:0;border-radius:9px;padding:9px 18px;font-family:var(--head);font-weight:700;
+    font-size:13px;background:var(--accent);color:#0A1517;cursor:pointer}
+  .fxgo:hover{background:var(--aqua)}
+  .fxgo:disabled{opacity:.6;cursor:default}
+
+  .fxnew{display:none}
+  .fxnew.on{display:block}
+  .fxfields{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:12px}
+  .fxfields label{display:block;font-size:11px;letter-spacing:.07em;text-transform:uppercase;
+    color:var(--faint);margin:0 0 5px}
+  .fxfields input{width:100%;border:1px solid var(--line-2);border-radius:8px;padding:10px 12px;
+    font:inherit;font-size:14px;background:#fff;color:var(--text)}
+  .fxfields input:focus{outline:0;border-color:var(--accent)}
+
+  .fxsay{display:none;margin:0 0 18px;padding:11px 14px;border-radius:9px;font-size:13px;
+    line-height:1.55}
+  .fxsay.on{display:block}
+  .fxsay.fxgood{background:rgba(44,160,28,.1);border:1px solid rgba(44,160,28,.3);color:#1E7A14}
+  .fxsay.fxbad{background:rgba(185,58,44,.09);border:1px solid rgba(185,58,44,.28);color:#8E2C22}
+
+  .fxnone{padding:18px 0;color:var(--muted);font-size:13px}
+
+  @media (max-width:560px){
+    .fxbar{padding:12px 16px}
+    .fxwrap{padding:24px 16px 60px}
+    .fxtop h1{font-size:22px}
+  }
+</style>
+</head>
+<body>
+
+<header class="fxbar">
+  <a class="fxlogo" href="/">
+    <img src="/logo.svg" alt="">
+    <span><b>Fusion</b><i>AI-powered OS for e-commerce</i></span>
+  </a>
+  <div class="fxbarend">
+    <a class="fxlink" href="/companies">Companies</a>
+    <button class="fxgo" id="btnNew" type="button">New user ID</button>
+    <div id="me"></div>
+  </div>
+</header>
+
+<div class="fxwrap">
+  <div class="fxtop"><h1>People</h1></div>
+  <p class="fxlede">Everybody who has an account, and the companies each one holds.
+    Somebody who signs up with their own address waits here until you give them a
+    company. A user ID needs no address at all - you make it and pass it on.</p>
+
+  <div class="fxsay" id="say"></div>
+
+  <div class="fxcard fxnew" id="newBox">
+    <h2>New user ID</h2>
+    <p class="fxhint">No email address and nothing to verify: the ID and password you
+      set here are what they sign in with. Pick one company and it is their desk for
+      life; pick several and they get the company switcher, which is what your own
+      team needs.</p>
+    <form id="newForm">
+      <div class="fxfields">
+        <div><label for="nId">User ID</label>
+          <input id="nId" type="text" autocomplete="off" required></div>
+        <div><label for="nName">Their name</label>
+          <input id="nName" type="text" autocomplete="off"></div>
+        <div><label for="nPw">Password</label>
+          <input id="nPw" type="text" autocomplete="off" required></div>
+      </div>
+      <h3 class="fxcap">Companies</h3>
+      <div class="fxpick" id="nCos"></div>
+      <h3 class="fxcap">What they may do</h3>
+      <div class="fxpick" id="nRoles"></div>
+      <div class="fxjobs" id="nJobsBox">
+        <h3 class="fxcap">Which areas</h3>
+        <div class="fxpick" id="nJobs"></div>
+      </div>
+      <div class="fxsave">
+        <button class="fxgo" id="nGo" type="submit">Make this user ID</button>
+        <button class="fxmini" id="nCancel" type="button">Cancel</button>
+      </div>
+    </form>
+  </div>
+
+  <div class="fxcard">
+    <div id="list"><div class="fxnone">One moment…</div></div>
+  </div>
+</div>
+
+<script src="/nav.js"></script>
+<script>
+"use strict";
+(function(){
+  var $ = function(id){ return document.getElementById(id); };
+  var D = { people: [], companies: [], roles: [], groups: [], areas: [] };
+  var open = null;
+
+  function esc(s){
+    return String(s == null ? '' : s)
+      .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  }
+  function say(kind, text){
+    var el = $('say');
+    el.className = 'fxsay on ' + kind;
+    el.textContent = text;
+    window.scrollTo(0, 0);
+  }
+  function post(url, body){
+    return fetch(url, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body)
+    }).then(function(r){
+      return r.json().catch(function(){ return {}; })
+        .then(function(d){ return { ok: r.ok, d: d }; });
+    }).catch(function(){
+      return { ok: false, d: { error: 'Could not reach the server.' } };
+    });
+  }
+
+  function coName(id){
+    var c = D.companies.filter(function(x){ return x.realmId === id; })[0];
+    return c ? c.name : id;
+  }
+
+  /* ---------- the tick lists, drawn the same way everywhere ---------- */
+  function ticks(box, items, kind, picked, onPick){
+    box.innerHTML = items.map(function(it){
+      var on = picked.indexOf(it.key) > -1;
+      return '<label class="' + (on ? 'on' : '') + '">' +
+        '<input type="' + kind + '" name="' + box.id + '" value="' + esc(it.key) + '"' +
+          (on ? ' checked' : '') + '>' +
+        '<span>' + esc(it.label) +
+          (it.what ? '<small>' + esc(it.what) + '</small>' : '') + '</span></label>';
+    }).join('');
+    Array.prototype.forEach.call(box.querySelectorAll('input'), function(i){
+      i.addEventListener('change', function(){
+        Array.prototype.forEach.call(box.querySelectorAll('label'), function(l){
+          l.classList.toggle('on', l.querySelector('input').checked);
+        });
+        if (onPick) onPick(chosen(box));
+      });
+    });
+  }
+  function chosen(box){
+    return Array.prototype.filter.call(box.querySelectorAll('input'), function(i){
+      return i.checked;
+    }).map(function(i){ return i.value; });
+  }
+
+  /* ---------- the list ---------- */
+  function row(p){
+    var tags = [];
+    if (p.boss) tags.push('<span class="fxtag fxboss">Runs Fusion</span>');
+    if (p.off) tags.push('<span class="fxtag fxoff">Switched off</span>');
+    if (!p.boss && !p.realms.length) tags.push('<span class="fxtag fxwait">Waiting for access</span>');
+    p.realms.forEach(function(r){
+      tags.push('<span class="fxtag fxco">' + esc(coName(r)) + '</span>');
+    });
+
+    var who = p.loginId
+      ? '<b>' + esc(p.name) + '</b><small>User ID &middot; ' + esc(p.loginId) +
+        (p.homeRealm ? ' &middot; ' + esc(coName(p.homeRealm)) + ' only' : ' &middot; several companies') +
+        '</small>'
+      : '<b>' + esc(p.name) + '</b><small>' + esc(p.email) + '</small>';
+
+    return '<div class="fxrow" data-sub="' + esc(p.sub) + '">' +
+      '<div class="fxwho">' + who + '</div>' +
+      '<div class="fxat">' + tags.join('') + '</div>' +
+      (p.boss ? '' :
+        '<div class="fxacts">' +
+          '<button class="fxmini" data-do="edit">Access</button>' +
+          (p.loginId ? '<button class="fxmini" data-do="pw">New password</button>' : '') +
+          '<button class="fxmini" data-do="off">' + (p.off ? 'Turn on' : 'Turn off') + '</button>' +
+        '</div>') +
+      '<div class="fxedit" id="ed-' + esc(p.sub) + '"></div>' +
+    '</div>';
+  }
+
+  function draw(){
+    var waiting = D.people.filter(function(p){ return !p.boss && !p.realms.length; });
+    var working = D.people.filter(function(p){ return p.boss || p.realms.length; });
+
+    var html = '';
+    if (waiting.length) {
+      html += '<div class="fxcap">Waiting for access &middot; ' + waiting.length + '</div>' +
+        waiting.map(row).join('');
+    }
+    html += '<div class="fxcap">In the app &middot; ' + working.length + '</div>' +
+      (working.length ? working.map(row).join('') : '<div class="fxnone">Nobody yet.</div>');
+    $('list').innerHTML = html;
+
+    Array.prototype.forEach.call($('list').querySelectorAll('[data-do]'), function(b){
+      b.addEventListener('click', function(){
+        act(b.closest('.fxrow').getAttribute('data-sub'), b.getAttribute('data-do'), b);
+      });
+    });
+  }
+
+  function act(sub, what, btn){
+    var p = D.people.filter(function(x){ return x.sub === sub; })[0];
+    if (!p) return;
+
+    if (what === 'pw') {
+      var pw = prompt('New password for ' + p.loginId);
+      if (pw === null) return;
+      post('/api/portal/people/password', { sub: sub, password: pw }).then(function(o){
+        say(o.ok ? 'fxgood' : 'fxbad', o.ok
+          ? 'Password set. Pass it on: ' + pw
+          : (o.d.error || 'That did not work.'));
+      });
+      return;
+    }
+
+    if (what === 'off') {
+      btn.disabled = true;
+      post('/api/portal/people/off', { sub: sub, off: !p.off }).then(function(o){
+        btn.disabled = false;
+        if (!o.ok) return say('fxbad', o.d.error || 'That did not work.');
+        p.off = !p.off;
+        draw();
+      });
+      return;
+    }
+
+    // Access: companies, then what they may do inside them.
+    var box = $('ed-' + sub);
+    if (open === sub) { box.classList.remove('on'); open = null; return; }
+    open = sub;
+    Array.prototype.forEach.call($('list').querySelectorAll('.fxedit'), function(e){
+      e.classList.remove('on');
+    });
+
+    box.innerHTML =
+      (p.homeRealm
+        ? '<h3>Company</h3><p class="fxhint">This user ID was made for ' +
+          esc(coName(p.homeRealm)) + ' and stays there.</p>'
+        : '<h3>Companies</h3><div class="fxpick" id="eCos-' + esc(sub) + '"></div>') +
+      '<h3>What they may do</h3><div class="fxpick" id="eRoles-' + esc(sub) + '"></div>' +
+      '<div class="fxjobs" id="eJobsBox-' + esc(sub) + '">' +
+        '<h3>Which areas</h3><div class="fxpick" id="eJobs-' + esc(sub) + '"></div></div>' +
+      '<div class="fxsave"><button class="fxgo" data-save="1">Save</button>' +
+        '<span class="fxhint" style="margin:0" id="eSay-' + esc(sub) + '"></span></div>';
+    box.classList.add('on');
+
+    if (!p.homeRealm) {
+      ticks($('eCos-' + sub), D.companies.map(function(c){
+        return { key: c.realmId, label: c.name, what: c.qb ? 'QuickBooks joined' : '' };
+      }), 'checkbox', p.realms);
+    }
+    function showJobs(role){
+      $('eJobsBox-' + sub).classList.toggle('on', role === 'custom');
+    }
+    ticks($('eRoles-' + sub), D.roles.filter(function(r){ return r.key !== 'admin'; }),
+      'radio', [p.role === 'admin' ? 'standard' : p.role], function(got){ showJobs(got[0]); });
+    ticks($('eJobs-' + sub), D.groups.map(function(g){
+      return { key: g.key, label: g.label, what: g.what };
+    }), 'checkbox', p.rights);
+    showJobs(p.role);
+
+    box.querySelector('[data-save]').addEventListener('click', function(){
+      var btn2 = box.querySelector('[data-save]');
+      var role = chosen($('eRoles-' + sub))[0] || 'viewer';
+      var body = {
+        sub: sub,
+        realms: p.homeRealm ? [p.homeRealm] : chosen($('eCos-' + sub)),
+        role: role,
+        rights: chosen($('eJobs-' + sub))
+      };
+      btn2.disabled = true;
+      post('/api/portal/people/access', body).then(function(o){
+        btn2.disabled = false;
+        if (!o.ok) return say('fxbad', o.d.error || 'That did not work.');
+        say('fxgood', p.name + ' saved.');
+        open = null;
+        load();
+      });
+    });
+  }
+
+  /* ---------- a new user id ---------- */
+  $('btnNew').addEventListener('click', function(){
+    var on = $('newBox').classList.toggle('on');
+    if (on) $('nId').focus();
+  });
+  $('nCancel').addEventListener('click', function(){ $('newBox').classList.remove('on'); });
+
+  $('newForm').addEventListener('submit', function(e){
+    e.preventDefault();
+    var go = $('nGo');
+    go.disabled = true;
+    go.textContent = 'Making…';
+    var pw = $('nPw').value;
+    post('/api/portal/people/new', {
+      loginId: $('nId').value, name: $('nName').value, password: pw,
+      realms: chosen($('nCos')),
+      role: chosen($('nRoles'))[0] || 'custom',
+      rights: chosen($('nJobs'))
+    }).then(function(o){
+      go.disabled = false;
+      go.textContent = 'Make this user ID';
+      if (!o.ok) return say('fxbad', o.d.error || 'That did not work.');
+      say('fxgood', o.d.loginId + ' is ready. Pass on the ID and the password ' +
+        pw + ' - it is not shown again.');
+      $('newForm').reset();
+      $('newBox').classList.remove('on');
+      load();
+    });
+  });
+
+  function fillNew(){
+    ticks($('nCos'), D.companies.map(function(c){
+      return { key: c.realmId, label: c.name, what: c.qb ? 'QuickBooks joined' : '' };
+    }), 'checkbox', []);
+    ticks($('nRoles'), D.roles.filter(function(r){ return r.key !== 'admin'; }),
+      'radio', ['custom'], function(got){
+        $('nJobsBox').classList.toggle('on', got[0] === 'custom');
+      });
+    ticks($('nJobs'), D.groups.map(function(g){
+      return { key: g.key, label: g.label, what: g.what };
+    }), 'checkbox', []);
+    $('nJobsBox').classList.add('on');
+  }
+
+  function load(){
+    return fetch('/api/portal/people', { cache: 'no-store' })
+      .then(function(r){ return r.json(); })
+      .then(function(d){
+        if (d.error) throw new Error(d.error);
+        D = d;
+        draw();
+        fillNew();
+      })
+      .catch(function(e){
+        $('list').innerHTML = '<div class="fxnone">' +
+          esc(e.message || 'Could not read the people.') + '</div>';
+      });
+  }
+
+  window.FUSION.profileMenu($('me'));
+  load();
+})();
+</script>
+</body>
+</html>

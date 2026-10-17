@@ -144,6 +144,20 @@ Rules the doors follow, which are easy to break by accident:
   email doors cannot work and say so plainly (503), rather than leaving somebody
   waiting for a code that is not coming.
 
+## Signing up is an account, not a company
+
+Fusion is sold as a service, so **who works in which company is Fusion's to say**.
+`/auth/signup` makes the account and nothing else: `createSelfAccount()` writes the
+row with `allowed = FALSE`, `role = 'viewer'` and `decided_at` NULL, and no company
+is made. The person lands on `/choose`, which names who to ask -
+ADMIN_EMAILS' first address and `SUPPORT_PHONE` (default `03361155000`), both sent
+on `/auth/status` as `support`. In the same breath `tellAdmins()` puts a notice on
+the super admin's bell and an email in their inbox, linking to `/people`.
+
+It used to hand you a company of your own at sign-up. That was right when anybody
+could be their own customer; it is wrong now, because a client's company is set up
+for them by the consultant who sold it.
+
 ## A company is made at sign-up, and QuickBooks joins it later
 
 The account **is** a company. `/auth/signup` asks only name, email and password (password on step one, code alone on step two); the company is made with the person's name as a placeholder - the real company name is set in Settings > Your profile (`POST /api/company/name`, administrator only), where "Create user IDs" also leads - and `createWorkspace()` (`db.js`) writes a `companies` row with an id
@@ -242,6 +256,26 @@ id, whether QuickBooks is joined, and how many people are in it; **Open** is
   gets theirs at sign-up instead and gets no second one from here.
 - `POST /api/portal/companies/rename` renames one by id; `runsCompany()` decides.
 - **Switch company** is in the profile menu for anybody holding more than one.
+
+### Two screens for people, and the difference matters
+
+| Screen | Whose | Scope |
+|---|---|---|
+| `/users` | the administrator of the company now open (super admin included) | **only** the people of that company. Being inside MR is being inside MR, so no company picker appears and `/api/admin/users` cuts its list and its company shelf to that one realm |
+| `/people` | ADMIN_EMAILS alone (`requireBoss()`, and the page itself is refused to anybody else) | **every** account there is, with a company picker, because this is the screen above every company |
+
+`/people` is the only place somebody is given a company they are not already in
+(`POST /api/portal/people/access` - companies, role and rights in one answer,
+because they are one decision), and the only place a user id is made for more than
+one company at once (`POST /api/portal/people/new`): one company chosen sets
+`home_realm` and is that desk for life, the way a client's staff id works; several
+leaves `home_realm` NULL and gives them the company switcher, which is what a
+consultant's own team member needs. `/people/password` and `/people/off` are the
+same two jobs `/users` does, at portal level.
+
+`/auth/status` carries **`admin`** (runs the company now open) and **`boss`**
+(ADMIN_EMAILS - runs Fusion). The profile menu reads `boss` for the two portal
+links and `admin` for Manage users.
 - Signing in with exactly one company opens it without asking; `/choose` is now
   only for somebody who holds nothing at all and is waiting to be let in.
 

@@ -348,6 +348,17 @@ app.get(/^\/$|^\/[A-Za-z0-9-]+$/, async (req, res, next) => {
   }
 });
 
+// The portal's people screen is Fusion's own. Anybody else who reaches for it -
+// by typing the address, or from a link they kept - is sent back to the launcher,
+// so the page is never served rather than merely hidden in a menu.
+app.get(['/people.html', '/people'], async (req, res, next) => {
+  try {
+    const who = await whoIs(currentUser(req));
+    if (who && who.admin) return next();
+  } catch (e) { /* fall through */ }
+  res.redirect('/');
+});
+
 // The company's list of people belongs to the admin. Anyone else who reaches for
 // it - by typing the address, or from a link they kept - is sent back to the
 // dashboard, so the page is never served rather than merely hidden in the rail.
@@ -423,6 +434,9 @@ function setSession(res, sub) {
 // as its admin; everyone else signs in and works as a user. The list lives in the
 // server's settings, never in the database, so reaching the database is not a way
 // to become an admin.
+// Said on the waiting screen, because somebody who has just proved their address
+// and found nothing open needs a person to ask, not a closed door.
+const SUPPORT_PHONE = process.env.SUPPORT_PHONE || '03361155000';
 const ADMIN_EMAILS = new Set(
   String(process.env.ADMIN_EMAILS || 'sohailsaim6@gmail.com')
     .split(/[,; ]+/)
@@ -592,14 +606,15 @@ app.get('/api/admin/users', async (req, res) => {
     const byUser = new Map();
     for (const u of everyone) byUser.set(u.sub, await realmsForUser(u.sub));
 
-    // Whoever runs Fusion sees everybody. The administrator of one company sees
-    // only the people in it: the user ids they made, and anyone linked to these
-    // books. Another company's people are not theirs to see, let alone change -
-    // and a list is where that would quietly stop being true.
-    const all = !!(whoAmI && whoAmI.admin);
-    const rows = all ? everyone : everyone.filter(u =>
+    // This page is the company you are standing in, whoever you are. Even whoever
+    // runs Fusion sees only the people of the company now open here - being
+    // inside MR is being inside MR. The portal (/people) is the screen that
+    // stands over every company at once, and that one is Fusion's own.
+    const all = false;
+    const rows = everyone.filter(u =>
       u.home_realm === realmId ||
       (byUser.get(u.sub) || []).indexOf(realmId) > -1);
+    const boss = !!(whoAmI && whoAmI.admin);
 
     res.setHeader('Cache-Control', 'no-store');
     res.json({
@@ -627,10 +642,12 @@ app.get('/api/admin/users', async (req, res) => {
       })),
       // The shelf to tick from, so the page need not ask twice - and for the
       // administrator of one company, a shelf with only their own on it.
-      companies: (await listCompanies()).filter(c => all || c.realmId === realmId),
+      companies: (await listCompanies()).filter(c => c.realmId === realmId),
+      // Fusion's own admin is told where the wider screen is
+      portal: boss,
       // whether this page is being read by the person who runs Fusion or by the
       // administrator of one company, so it can say so instead of implying more
-      scope: all ? 'all' : 'company'
+      scope: 'company'
     });
   } catch (e) {
     res.status(500).json({ error: e.message });
@@ -938,8 +955,7 @@ app.post('/api/admin/users/companies', async (req, res) => {
     // takes away only its own. What they send about somebody else's books is left
     // exactly as it was rather than refused, because they may well be saving a
     // list they were never shown the rest of.
-    const me = await whoIs(currentUser(req));
-    if (!(me && me.admin)) {
+    {
       const theirs = u && (u.home_realm === realmId || had.has(realmId));
       if (!theirs) {
         return res.status(403).json({ error: 'That person is not in this company.' });
@@ -1166,6 +1182,8 @@ const USER_MAY_POST = new Set([
   '/api/me/profile',
   // the portal: each route decides for itself who may do it
   '/api/portal/companies/new', '/api/portal/companies/rename',
+  '/api/portal/people/access', '/api/portal/people/new',
+  '/api/portal/people/password', '/api/portal/people/off',
   // renaming the company: open to the gate, but the route itself asks for its administrator
   '/api/company/name',
   // signing this phone up for notices, and off again
@@ -1301,8 +1319,8 @@ const RIGHT_GROUPS = [
 // still needs one, because everything else is work on a set of books.
 const OPEN_WITHOUT_COMPANY = new Set([
   '/index', '/finance', '/logistics', '/operations', '/hr', '/csr',
-  // the portal is how a company is picked in the first place
-  '/companies'
+  // the portal is how a company is picked in the first place, and who gets one
+  '/companies', '/people'
 ]);
 
 const PAGE_NEED = new Map(Object.entries({
@@ -1627,40 +1645,29 @@ app.post('/auth/signup', async (req, res) => {
     forgetWho(sub);
     triesDone(req, email);
     setSession(res, sub);
-    inside(res, true);
+    inside(res, false);
 
-    // Their company, made here, with them running it.
+    // No company is made here any more.
     //
-    // This is the whole of what signing up means now. QuickBooks used to have to
-    // happen first, which left somebody who had just proved their address with
-    // nothing: no company, so no couriers, no Shopify, and no way to make a user
-    // id for the person who was going to do the work. The company is theirs from
-    // this line on; the books join it later, if they ever do.
-    let realmId = null;
-    try {
-      realmId = await createWorkspace(name, sub);
-      await linkCompany(sub, realmId);
-      await claimCompany(realmId, sub);
-      forgetSettled(sub);
-      res.cookie('realm_id', realmId, {
-        httpOnly: true, maxAge: 30 * 24 * 3600 * 1000, sameSite: 'lax'
-      });
-    } catch (e) {
-      // The account is made and they are signed in; a company that could not be
-      // written is the chooser's problem, not a reason to send them back to the
-      // door and make them prove the address again.
-      console.error('signup company:', e.message);
-    }
-
+    // It used to be: signing up handed you a company of your own. Fusion is sold
+    // as a service, and a client's company is set up for them - so what signing
+    // up means now is an account, and a wait. The chooser tells them who to ask,
+    // and the admins are told in the same breath that somebody is waiting.
     tellAdmins({
       kind: 'signup',
-      title: 'New account: ' + name,
-      body: email + ' has signed up and verified their address' +
-            '.',
-      link: '/users'
+      title: name + ' is waiting for access',
+      body: email + ' has signed up and verified their address. ' +
+            'Give them the companies they are to work in.',
+      link: '/people',
+      subject: 'Fusion: ' + name + ' is waiting for access',
+      lines: [
+        name + ' (' + email + ') has signed up to Fusion and verified their address.',
+        'Nothing is open to them until you say which companies they work in.',
+        'Open the people page to give them one: ' + BASE_URL + '/people'
+      ]
     }).catch(() => {});
 
-    res.json({ ok: true, next: realmId ? '/' : '/choose' });
+    res.json({ ok: true, next: '/choose' });
   } catch (e) {
     console.error('auth/signup:', e.message);
     res.status(500).json({ error: 'Could not finish signing up. Try again.' });
@@ -2109,6 +2116,8 @@ app.get('/auth/status', async (req, res) => {
       canConnect: mayConnect(who),
       email: (who && who.email) || null,
       adminCount: ADMIN_EMAILS.size,
+    // who to ask when nothing has been opened to you yet
+    support: { email: [...ADMIN_EMAILS][0] || null, phone: SUPPORT_PHONE },
       user: user ? (user.name || user.email) : null
     });
   }
@@ -2138,6 +2147,9 @@ app.get('/auth/status', async (req, res) => {
     // whoever runs Fusion or whoever connected these books - a page showing the
     // courier keys and the people list has no use for the difference.
     admin: await runsCompany(sub, realmId),
+    // "admin" above is the administrator of the company now open. This one is
+    // Fusion itself - the portal over every company is theirs and nobody else's.
+    boss: !!(who && who.admin),
     canConnect: mayConnect(who),
     letIn,
     // given areas rather than the whole of the books - the rail is cut to them
@@ -2266,6 +2278,227 @@ app.post('/api/portal/companies/new', async (req, res) => {
   } catch (e) {
     console.error('portal/companies/new:', e.message);
     res.status(500).json({ error: 'Could not make the company. Try again.' });
+  }
+});
+
+// ==================== the portal: everybody, across every company ====================
+//
+// /users is the company you are standing in. This is the screen above it, and it
+// is Fusion's own: every account there is, waiting or working, with the companies
+// each one holds. It is the only place a person is given a company they are not
+// already in, and the only place a user id is made for more than one company at
+// once - which is what a consultant's own team member needs and a client's staff
+// never does.
+async function requireBoss(req, res) {
+  const who = await whoIs(currentUser(req));
+  if (who && who.admin) return who;
+  res.status(403).json({ error: 'Only Fusion can do this.' });
+  return null;
+}
+
+app.get('/api/portal/people', async (req, res) => {
+  if (!await requireBoss(req, res)) return;
+  try {
+    const everyone = await listUsers();
+    const companies = await listCompanies();
+    const real = companies.filter(c => !isDemoCompany(c));
+    const held = new Map();
+    for (const u of everyone) held.set(u.sub, await realmsForUser(u.sub));
+
+    res.setHeader('Cache-Control', 'no-store');
+    res.json({
+      roles: ROLES,
+      areas: AREAS,
+      groups: RIGHT_GROUPS.map(g => ({
+        key: g.key, area: g.area || 'sales', label: g.label, what: g.what
+      })),
+      companies: real.map(c => ({ realmId: c.realmId, name: c.name, qb: !!c.connected })),
+      people: everyone
+        .filter(u => u.sub !== DEMO_SUB)
+        .map(u => {
+          const boss = !!u.email && ADMIN_EMAILS.has(String(u.email).toLowerCase());
+          const realms = u.home_realm ? [u.home_realm] : (held.get(u.sub) || []);
+          return {
+            sub: u.sub,
+            name: u.name || u.login_id || u.email || '',
+            email: u.email || '',
+            loginId: u.login_id || '',
+            // 'member' is a user id tied to one company for life; everybody else
+            // signed up with an address of their own
+            door: u.door || 'password',
+            homeRealm: u.home_realm || null,
+            boss,
+            off: !!u.disabled,
+            allowed: boss || u.allowed !== false,
+            role: boss ? 'admin' : (u.role || 'viewer'),
+            rights: Array.isArray(u.rights) ? u.rights : [],
+            realms,
+            // nobody has ruled on them yet: this is the queue to work through
+            waiting: !boss && !u.decided_at && u.allowed === false,
+            lastIn: u.last_in,
+            since: u.created_at
+          };
+        })
+    });
+  } catch (e) {
+    console.error('portal/people:', e.message);
+    res.status(500).json({ error: 'Could not read the people.' });
+  }
+});
+
+// What somebody may do, and where. Companies, role and rights in one answer,
+// because they are one decision: a person is given these companies, with this
+// much of the app inside them.
+app.post('/api/portal/people/access', async (req, res) => {
+  if (!await requireBoss(req, res)) return;
+  try {
+    const sub = String(req.body.sub || '');
+    const u = sub ? await getUser(sub) : null;
+    if (!u) return res.status(404).json({ error: 'No such person.' });
+    if (u.email && ADMIN_EMAILS.has(String(u.email).toLowerCase())) {
+      return res.status(400).json({ error: 'That address runs Fusion and already has every company.' });
+    }
+
+    const role = String(req.body.role || 'viewer');
+    if (!ROLE_KEYS.has(role) || role === 'admin') {
+      return res.status(400).json({ error: 'Pick what this person may do.' });
+    }
+    const known = new Set(RIGHT_GROUPS.map(g => g.key));
+    const rights = (Array.isArray(req.body.rights) ? req.body.rights : [])
+      .map(String).filter(r => known.has(r));
+
+    // only companies the app actually holds, and never the demo's
+    const all = (await listCompanies()).filter(c => !isDemoCompany(c));
+    const have = new Set(all.map(c => c.realmId));
+    let want = (Array.isArray(req.body.realms) ? req.body.realms : [])
+      .map(String).filter(r => have.has(r));
+
+    // A user id was made for one company and stays in it; what changes here is
+    // what it may do, not where it lives.
+    if (u.home_realm) want = [u.home_realm];
+
+    const had = new Set(await realmsForUser(sub));
+    await setUserCompanies(sub, want);
+    await setUserAccess(sub, {
+      allowed: want.length > 0,
+      role, rights: role === 'custom' ? rights : []
+    });
+    forgetWho(sub);
+    forgetSettled(sub);
+
+    const added = all.filter(c => want.indexOf(c.realmId) > -1 && !had.has(c.realmId));
+    if (added.length) {
+      await tell(sub, {
+        kind: 'company',
+        title: added.length === 1
+          ? 'You can now work in ' + added[0].name
+          : 'You can now work in ' + added.length + ' more companies',
+        body: added.map(c => c.name).join(', ') + ' - sign in and it is open to you.',
+        link: '/'
+      });
+      if (u.email) {
+        sendMail(u.email, 'Fusion: ' + added.map(c => c.name).join(', ') + ' is open to you',
+          ['You have been given ' + added.map(c => c.name).join(', ') + ' in Fusion.',
+           'Sign in and it is there: ' + BASE_URL + '/']
+        ).catch(() => {});
+      }
+    }
+    res.json({ ok: true, realms: want });
+  } catch (e) {
+    console.error('portal/people/access:', e.message);
+    res.status(500).json({ error: 'Could not save. Try again.' });
+  }
+});
+
+// A user id made from the portal. One company chosen and it is that company's
+// desk for life (home_realm), the way a client's staff id is; several, and it is
+// a consultant's own - no home, and the company switcher in the profile menu.
+app.post('/api/portal/people/new', async (req, res) => {
+  if (!await requireBoss(req, res)) return;
+  try {
+    const loginId = String(req.body.loginId || '').trim();
+    const name = String(req.body.name || '').trim().slice(0, 120);
+    const password = String(req.body.password || '');
+    const role = String(req.body.role || 'custom');
+
+    const badId = loginIdComplaint(loginId);
+    if (badId) return res.status(400).json({ error: badId });
+    const weak = passwordComplaint(password);
+    if (weak) return res.status(400).json({ error: weak });
+    if (!ROLE_KEYS.has(role) || role === 'admin') {
+      return res.status(400).json({ error: 'Pick what this user may do. A user ID cannot be made an administrator.' });
+    }
+
+    const all = (await listCompanies()).filter(c => !isDemoCompany(c));
+    const have = new Set(all.map(c => c.realmId));
+    const want = [...new Set((Array.isArray(req.body.realms) ? req.body.realms : [])
+      .map(String).filter(r => have.has(r)))];
+    if (!want.length) return res.status(400).json({ error: 'Pick at least one company.' });
+
+    const known = new Set(RIGHT_GROUPS.map(g => g.key));
+    const rights = (Array.isArray(req.body.rights) ? req.body.rights : [])
+      .map(String).filter(r => known.has(r));
+
+    if (await byLoginId(loginId)) {
+      return res.status(409).json({ error: 'That user ID is already taken. Try another.' });
+    }
+
+    const sub = await createMemberAccount({
+      loginId, name, password,
+      realmId: want.length === 1 ? want[0] : null,
+      madeBy: currentUser(req),
+      role, rights: role === 'custom' ? rights : []
+    });
+    await setUserCompanies(sub, want);
+    forgetSettled(sub);
+    forgetWho(sub);
+    res.json({ ok: true, sub, loginId });
+  } catch (e) {
+    if (/users_login_id_key/.test(e.message)) {
+      return res.status(409).json({ error: 'That user ID is already taken. Try another.' });
+    }
+    console.error('portal/people/new:', e.message);
+    res.status(500).json({ error: 'Could not make that user ID.' });
+  }
+});
+
+// A user id's password, set from the portal - there is no address to send a code
+// to, so whoever made it sets a new one and passes it on.
+app.post('/api/portal/people/password', async (req, res) => {
+  if (!await requireBoss(req, res)) return;
+  try {
+    const sub = String(req.body.sub || '');
+    const password = String(req.body.password || '');
+    const weak = passwordComplaint(password);
+    if (weak) return res.status(400).json({ error: weak });
+    const u = await getUser(sub);
+    if (!u || u.door !== 'member') return res.status(404).json({ error: 'That is not a user ID.' });
+    await setMemberPassword(sub, password);
+    res.json({ ok: true });
+  } catch (e) {
+    console.error('portal/people/password:', e.message);
+    res.status(500).json({ error: 'Could not set the password.' });
+  }
+});
+
+// Switched off, never deleted: the runs and the logs with their name on them are
+// still the company's record.
+app.post('/api/portal/people/off', async (req, res) => {
+  if (!await requireBoss(req, res)) return;
+  try {
+    const sub = String(req.body.sub || '');
+    const off = !!req.body.off;
+    const u = await getUser(sub);
+    if (!u) return res.status(404).json({ error: 'No such person.' });
+    if (u.email && ADMIN_EMAILS.has(String(u.email).toLowerCase())) {
+      return res.status(400).json({ error: 'That address runs Fusion and cannot be switched off here.' });
+    }
+    await setDisabled(sub, off);
+    forgetWho(sub);
+    res.json({ ok: true });
+  } catch (e) {
+    console.error('portal/people/off:', e.message);
+    res.status(500).json({ error: 'Could not save. Try again.' });
   }
 });
 

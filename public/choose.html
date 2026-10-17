@@ -140,7 +140,7 @@
   // than at a page of the app they cannot use - and they wait without having to
   // do anything: the question is asked again every few seconds, so the moment the
   // admin says yes the screen moves on by itself.
-  function waitForAdmin(who){
+  function waitForAdmin(who, help){
     $('head').textContent = 'Waiting to be let in';
     $('btnAsk').style.display = 'none';
     $('btnStop').style.display = '';
@@ -150,11 +150,23 @@
     $('cap').style.display = 'none';
     $('find').style.display = 'none';
     $('btnOut').style.display = '';
+    // Named, not "the admin": somebody who has just proved their address and
+    // found nothing open needs a person to ring, not a closed door.
+    var reach = [];
+    if (help && help.email) {
+      reach.push('<a href="mailto:' + esc(help.email) + '">' + esc(help.email) + '</a>');
+    }
+    if (help && help.phone) {
+      reach.push('<a href="tel:' + esc(String(help.phone).replace(/[^0-9+]/g, '')) + '">' +
+        esc(help.phone) + '</a>');
+    }
     $('list').innerHTML =
-      '<div class="empty"><b>Ask the admin to let you in.</b><br><br>' +
-      'They have been told you are here' + (who ? ', as ' + esc(who) : '') + '. ' +
-      'Once they have said which companies you work in, this page opens by ' +
-      'itself - there is nothing to press.</div>';
+      '<div class="empty"><b>Your account is ready. Nothing is open to it yet.</b><br><br>' +
+      'Fusion sets each company up for its client, so somebody has to say which ' +
+      'company you work in' + (who ? ' - you are signed in as ' + esc(who) : '') + '.' +
+      (reach.length ? '<br><br>Please contact ' + reach.join(' or ') + '.' : '') +
+      '<br><br>They have been told you are here. The moment you are given a ' +
+      'company this page opens by itself - there is nothing to press.</div>';
     $('note').innerHTML = '<span class="pulse">Waiting…</span>';
 
     // often enough that nobody sits there wondering, seldom enough that a
@@ -215,7 +227,7 @@
         if(!st.signedIn){ location.href = '/'; return; }
         if(!st.letIn && st.decided) return turnedAway();
         if(!st.letIn && !st.asking) return withdrawn();
-        if(!st.letIn || !st.companyCount) return waitForAdmin(st.user);
+        if(!st.letIn || !st.companyCount) return waitForAdmin(st.user, st.support);
 
         if(waitTimer){ clearInterval(waitTimer); waitTimer = null; }
         return offer();

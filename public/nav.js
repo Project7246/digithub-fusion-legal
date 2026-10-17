@@ -385,8 +385,10 @@
             '<a href="/settings#profile">Edit profile</a>' +
             // More than one company, and moving between them is a thing this
             // person does daily - the way QuickBooks keeps the switch by the name
-            (s.admin || s.companyCount > 1 ? '<a href="/companies">Switch company</a>' : '') +
+            (s.boss || s.companyCount > 1 ? '<a href="/companies">Switch company</a>' : '') +
             (s.admin ? '<a href="/users">Manage users</a>' : '') +
+            // the two screens above every company, and Fusion's own
+            (s.boss ? '<a href="/people">People (all companies)</a>' : '') +
             '<a href="/settings#style">Appearance</a>' +
             '<div class="fxmsep"></div>' +
             '<button class="fxmi fxout" type="button" id="fxSignOut">Sign out</button>' +

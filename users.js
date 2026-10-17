@@ -60,7 +60,8 @@ export async function upsertUser(sub, email, name) {
 // Everyone who has ever signed in, for the admin's list
 export async function listUsers() {
   const r = await pool.query(
-    `SELECT sub, email, name, allowed, rights, role, last_in, decided_at, asked, created_at
+    `SELECT sub, email, name, login_id, door, home_realm, disabled, made_by,
+            allowed, rights, role, last_in, decided_at, asked, created_at
      FROM users ORDER BY created_at`
   );
   return r.rows;
