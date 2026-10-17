@@ -1108,6 +1108,8 @@ const USER_MAY_POST = new Set([
   '/api/notifications/read', '/api/notifications/clear',
   // putting away the notice that offers staff user ids - their own answer
   '/api/me/staff-asked',
+  // renaming the company: open to the gate, but the route itself asks for its administrator
+  '/api/company/name',
   // signing this phone up for notices, and off again
   '/api/push/subscribe', '/api/push/unsubscribe',
   // asking the admin, and withdrawing the asking
@@ -2050,6 +2052,22 @@ app.get('/auth/status', async (req, res) => {
 // offer is worth making once and worth making only once: Manage users is in the
 // rail from here on, and a question that comes back every morning is a thing
 // being nagged about.
+// The company's name, set from the profile. Only whoever runs this company may
+// change it; the name is what the rail, the bar and the user list show.
+app.post('/api/company/name', async (req, res) => {
+  try {
+    const realmId = await requireAdmin(req, res);
+    if (!realmId) return;
+    const name = String(req.body.name || '').trim().slice(0, 160);
+    if (name.length < 2) return res.status(400).json({ error: 'Type the name of your company.' });
+    await renameCompany(realmId, name);
+    res.json({ ok: true, companyName: name });
+  } catch (e) {
+    console.error('company/name:', e.message);
+    res.status(500).json({ error: 'Could not save the company name. Try again.' });
+  }
+});
+
 app.post('/api/me/staff-asked', async (req, res) => {
   const sub = currentUser(req);
   if (!sub) return res.status(401).json({ error: 'Not signed in' });

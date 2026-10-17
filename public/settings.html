@@ -106,8 +106,7 @@
         <div class="step">
           <h2>Your profile</h2>
           <div class="hint">
-            What the app knows you by. It comes from the QuickBooks address you signed
-            in with, so it is changed there, not here.
+            What the app knows you by, and the company you are working in.
           </div>
           <dl class="me">
             <dt>Name</dt><dd id="mName">&mdash;</dd>
@@ -118,6 +117,20 @@
                  to know, because it is the one they are working in. -->
             <dt>Company</dt><dd id="mCo">&mdash;</dd>
           </dl>
+          <!-- Only the person who runs the company sees this. It is where the name
+               is set, and where staff user IDs are started from. -->
+          <form class="fxco admin-only" id="coForm" style="display:none">
+            <h3 style="font-size:14px;margin:22px 0 6px">Your company</h3>
+            <div class="hint">Set your company's name, then make a user ID for each person
+              who works with you and choose what each may open.</div>
+            <div class="acts">
+              <input id="coName" type="text" maxlength="160" autocomplete="organization"
+                     style="flex:1 1 240px;min-width:0" aria-label="Company name">
+              <button class="mini" id="coSave" type="submit">Save name</button>
+              <a class="mini" href="/users" style="text-decoration:none">Create user IDs</a>
+            </div>
+            <div class="note" id="coSay"></div>
+          </form>
           <div class="acts">
             <button class="mini" id="btnOut">Sign out</button>
             <span class="note">Signing out leaves this computer only.</span>
@@ -384,6 +397,27 @@
     $('mName').textContent = s.user || 'Not signed in';
     $('mMail').textContent = s.email || '—';
     $('mCo').textContent = s.companyName || (s.connected ? s.realmId : 'Not connected');
+    if (s.admin && s.connected) {
+      $('coForm').style.display = '';
+      $('coName').value = s.companyName || '';
+    }
+  });
+
+  $('coForm').addEventListener('submit', function(e){
+    e.preventDefault();
+    var btn = $('coSave'), say = $('coSay');
+    btn.disabled = true; say.textContent = '';
+    fetch('/api/company/name', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: $('coName').value })
+    }).then(function(r){ return r.json().then(function(d){ return { ok: r.ok, d: d }; }); })
+      .then(function(o){
+        btn.disabled = false;
+        if (!o.ok) { say.textContent = o.d.error || 'That did not work.'; return; }
+        $('mCo').textContent = o.d.companyName;
+        say.textContent = 'Saved.';
+      })
+      .catch(function(){ btn.disabled = false; say.textContent = 'Could not reach the server.'; });
   });
 
   /* ---------- the post office ---------- */

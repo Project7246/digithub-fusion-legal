@@ -146,7 +146,7 @@ Rules the doors follow, which are easy to break by accident:
 
 ## A company is made at sign-up, and QuickBooks joins it later
 
-The account **is** a company. `/auth/signup` asks only name, email and password (password on step one, code alone on step two); the company is made with the person's name as a placeholder - setting the real company name, and making staff user IDs, is meant to live in the profile (not built yet) - and `createWorkspace()` (`db.js`) writes a `companies` row with an id
+The account **is** a company. `/auth/signup` asks only name, email and password (password on step one, code alone on step two); the company is made with the person's name as a placeholder - the real company name is set in Settings > Your profile (`POST /api/company/name`, administrator only), where "Create user IDs" also leads - and `createWorkspace()` (`db.js`) writes a `companies` row with an id
 of ours - `fx-` plus sixteen hex characters, which `isWorkspace()` recognises and
 Intuit's all-digit realm can never look like. `owner_sub` is the person who typed
 it. So from the first screen they have somewhere for couriers, Shopify orders and
