@@ -42,6 +42,11 @@ export async function initDb() {
     `ALTER TABLE companies ADD COLUMN IF NOT EXISTS owner_sub TEXT`);
   await pool.query(
     `ALTER TABLE companies ALTER COLUMN refresh_token DROP NOT NULL`);
+  // Deleting a company is not a thing to get wrong once. The row is marked here
+  // instead and vanishes from every list, and the rows it owns are left exactly
+  // where they are - so putting it back is one word, for BIN_DAYS days.
+  await pool.query(
+    `ALTER TABLE companies ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMPTZ`);
 
   await pool.query(`
     CREATE TABLE IF NOT EXISTS upload_logs (
@@ -77,8 +82,17 @@ export async function saveCompany(realmId, companyName, refreshToken) {
   );
 }
 
+// A deleted company answers to nothing: no token, no pages, no runs. The bin
+// reads it with getBinnedCompany() instead, which is the only thing that may.
 export async function getCompany(realmId) {
-  const r = await pool.query('SELECT * FROM companies WHERE realm_id = $1', [realmId]);
+  const r = await pool.query(
+    'SELECT * FROM companies WHERE realm_id = $1 AND deleted_at IS NULL', [realmId]);
+  return r.rows[0] || null;
+}
+
+export async function getBinnedCompany(realmId) {
+  const r = await pool.query(
+    'SELECT * FROM companies WHERE realm_id = $1 AND deleted_at IS NOT NULL', [realmId]);
   return r.rows[0] || null;
 }
 
@@ -150,7 +164,8 @@ export async function workspacesOwnedBy(sub) {
   if (!sub) return [];
   const r = await pool.query(
     `SELECT realm_id, company_name FROM companies
-      WHERE owner_sub = $1 AND refresh_token IS NULL ORDER BY created_at`, [sub]);
+      WHERE owner_sub = $1 AND refresh_token IS NULL AND deleted_at IS NULL
+      ORDER BY created_at`, [sub]);
   return r.rows.filter(x => isWorkspace(x.realm_id))
     .map(x => ({ realmId: x.realm_id, name: x.company_name || '' }));
 }
@@ -206,7 +221,68 @@ export async function graduateWorkspace(fromId, toRealm) {
   }
 }
 
-// Taking a company away, and everything that was ever written against it.
+// How long a deleted company can be put back. Said once, here, because the page
+// that offers the delete and the sweep that finishes it must agree.
+export const BIN_DAYS = 90;
+
+// A company saved before its name could be read carries nothing, or the word
+// 'null' written where a name should have been. Neither is a name to show.
+function cleanName(n) {
+  const s = String(n == null ? '' : n).trim();
+  return (!s || s === 'null' || s === 'undefined') ? '' : s;
+}
+
+// Deleting, the way it is actually offered: the row is marked and the company
+// drops out of every list and every query at once, while every parcel, order and
+// run it owns stays exactly where it is. Nothing is destroyed for BIN_DAYS days.
+export async function binCompany(realmId) {
+  const r = await pool.query(
+    `UPDATE companies SET deleted_at = NOW()
+      WHERE realm_id = $1 AND deleted_at IS NULL RETURNING company_name`, [realmId]);
+  return r.rowCount ? { ok: true, name: r.rows[0].company_name } : { error: 'No such company.' };
+}
+
+export async function unbinCompany(realmId) {
+  const r = await pool.query(
+    `UPDATE companies SET deleted_at = NULL
+      WHERE realm_id = $1 AND deleted_at IS NOT NULL RETURNING company_name`, [realmId]);
+  return r.rowCount ? { ok: true, name: r.rows[0].company_name } : { error: 'That company is not in the bin.' };
+}
+
+export async function listBinnedCompanies() {
+  const r = await pool.query(
+    `SELECT realm_id, company_name, refresh_token, deleted_at FROM companies
+      WHERE deleted_at IS NOT NULL ORDER BY deleted_at DESC`);
+  return r.rows.map(x => ({
+    realmId: x.realm_id,
+    name: cleanName(x.company_name) || x.realm_id,
+    connected: !isWorkspace(x.realm_id),
+    deletedAt: x.deleted_at,
+    // whole days left, never shown as less than none
+    daysLeft: Math.max(0, BIN_DAYS -
+      Math.floor((Date.now() - new Date(x.deleted_at).getTime()) / 86400000))
+  }));
+}
+
+// What the bin is for, at the end of it. Run on startup and once a day after.
+export async function emptyOldBin() {
+  const r = await pool.query(
+    `SELECT realm_id FROM companies
+      WHERE deleted_at IS NOT NULL AND deleted_at < NOW() - INTERVAL '${BIN_DAYS} days'`);
+  const out = [];
+  for (const row of r.rows) {
+    try {
+      await deleteCompany(row.realm_id);
+      out.push(row.realm_id);
+    } catch (e) {
+      console.error('emptying the bin,', row.realm_id + ':', e.message);
+    }
+  }
+  return out;
+}
+
+// Taking a company away for good, and everything that was ever written against
+// it. Reached from the bin alone - by emptyOldBin() when the days are up.
 //
 // Which tables hold its work is read from the database rather than listed here,
 // for the same reason graduateWorkspace() reads it: a table added next month would

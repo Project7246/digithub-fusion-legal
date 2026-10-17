@@ -6,7 +6,8 @@ import crypto from 'crypto';
 import fs from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import {
-  pool, initDb, saveCompany, getCompany, renameCompany, deleteCompany, logUpload,
+  pool, initDb, saveCompany, getCompany, renameCompany, logUpload,
+  binCompany, unbinCompany, listBinnedCompanies, emptyOldBin, BIN_DAYS,
   getNegativeItems, setNegativeItems,
   isWorkspace, createWorkspace, workspacesOwnedBy, graduateWorkspace
 } from './db.js';
@@ -1190,7 +1191,7 @@ const USER_MAY_POST = new Set([
   '/api/me/profile',
   // the portal: each route decides for itself who may do it
   '/api/portal/companies/new', '/api/portal/companies/rename',
-  '/api/portal/companies/delete',
+  '/api/portal/companies/delete', '/api/portal/companies/restore',
   '/api/portal/people/access', '/api/portal/people/new',
   '/api/portal/people/password', '/api/portal/people/off',
   // renaming the company: open to the gate, but the route itself asks for its administrator
@@ -2532,16 +2533,21 @@ app.post('/api/portal/companies/rename', async (req, res) => {
   }
 });
 
-// Taking a company away. Fusion's own, and nothing else comes close to it: every
-// courier account, every order, every run and every user id made for it goes, and
-// there is no undoing it. So the name has to be typed back before anything moves,
-// and what was removed is counted and said.
+// Deleting a company. Fusion's own, and offered from inside the company itself -
+// Settings, not a button sitting on a list where a slip of the mouse reaches it.
+//
+// Nothing is destroyed here. The company drops out of every list and every query
+// at once, which is what deleting it has to mean, and everything it owns stays
+// where it is for BIN_DAYS days so one word puts it all back. The name is typed
+// back first even so, because the company does go dark for everybody working in it.
 app.post('/api/portal/companies/delete', async (req, res) => {
   if (!await requireBoss(req, res)) return;
   try {
-    const realmId = String(req.body.realmId || '');
+    // Settings deletes the company you are standing in and says so by standing
+    // in it; the portal names one outright. Either way it is one company.
+    const realmId = String(req.body.realmId || req.cookies.realm_id || '');
     const typed = String(req.body.confirm || '').trim();
-    const company = await getCompany(realmId);
+    const company = realmId ? await getCompany(realmId) : null;
     if (!company) return res.status(404).json({ error: 'No such company.' });
 
     const name = await companyLabel(company);
@@ -2549,17 +2555,41 @@ app.post('/api/portal/companies/delete', async (req, res) => {
       return res.status(400).json({ error: 'Type the company name exactly to delete it.' });
     }
 
-    const out = await deleteCompany(realmId);
+    const out = await binCompany(realmId);
     if (out.error) return res.status(400).json({ error: out.error });
 
     // whoever was standing in it is standing nowhere now
     if (req.cookies.realm_id === realmId) res.clearCookie('realm_id');
     settledCache.clear();
-    whoCache.clear();
-    res.json({ ok: true, name, rows: out.rows, ids: out.ids });
+    res.json({ ok: true, name, days: BIN_DAYS });
   } catch (e) {
     console.error('portal/companies/delete:', e.message);
-    res.status(500).json({ error: 'Could not delete the company. Nothing was removed.' });
+    res.status(500).json({ error: 'Could not delete the company. Nothing was changed.' });
+  }
+});
+
+// The bin, and putting one back out of it.
+app.get('/api/portal/bin', async (req, res) => {
+  if (!await requireBoss(req, res)) return;
+  try {
+    res.setHeader('Cache-Control', 'no-store');
+    res.json({ days: BIN_DAYS, companies: await listBinnedCompanies() });
+  } catch (e) {
+    console.error('portal/bin:', e.message);
+    res.status(500).json({ error: 'Could not read the bin.' });
+  }
+});
+
+app.post('/api/portal/companies/restore', async (req, res) => {
+  if (!await requireBoss(req, res)) return;
+  try {
+    const out = await unbinCompany(String(req.body.realmId || ''));
+    if (out.error) return res.status(404).json(out);
+    settledCache.clear();
+    res.json({ ok: true, name: out.name });
+  } catch (e) {
+    console.error('portal/companies/restore:', e.message);
+    res.status(500).json({ error: 'Could not put it back. Try again.' });
   }
 });
 
@@ -10982,6 +11012,14 @@ initDb()
     resumeRecat().catch(e => console.error('recat resume failed:', e.message));
     resumeReplace().catch(e => console.error('replace resume failed:', e.message));
     resumeVoidRuns().catch(e => console.error('void resume failed:', e.message));
+
+    // The bin is only a bin if something finally empties it. Once on the way up,
+    // then once a day - and unref'd, so it never holds the process open.
+    const sweep = () => emptyOldBin()
+      .then(gone => { if (gone.length) console.log('bin emptied:', gone.join(', ')); })
+      .catch(e => console.error('emptying the bin failed:', e.message));
+    sweep();
+    setInterval(sweep, 24 * 3600 * 1000).unref();
   }))
   .catch(err => {
     console.error('DB init failed:', err);

@@ -76,8 +76,25 @@
     color:#0A1517;font-weight:600}
   .fxco .fxdo button.fxopen:hover{background:var(--aqua);border-color:var(--aqua)}
   .fxco .fxdo button:disabled{opacity:.55;cursor:default}
-  .fxco .fxdo button.fxdel{margin-left:auto;color:var(--bad,#9A2E24);border-color:transparent}
-  .fxco .fxdo button.fxdel:hover{border-color:var(--bad,#9A2E24);color:var(--bad,#9A2E24)}
+
+  /* The bin. Shut unless there is something in it, because an empty bin on a
+     screen about live companies is only a worry. */
+  .fxbin{margin:26px 0 0}
+  .fxbin summary{cursor:pointer;font-size:13px;color:var(--muted);padding:10px 0;
+    list-style:none}
+  .fxbin summary::-webkit-details-marker{display:none}
+  .fxbin summary:before{content:"▸ ";color:var(--faint)}
+  .fxbin[open] summary:before{content:"▾ "}
+  .fxbin summary:hover{color:var(--accent-deep)}
+  .fxbin .fxgone{display:flex;align-items:center;gap:14px;flex-wrap:wrap;
+    background:var(--panel,#fff);border:1px solid var(--line);border-radius:11px;
+    padding:14px 18px;margin:0 0 9px}
+  .fxbin .fxgone b{font:700 14px var(--head);flex:1 1 180px}
+  .fxbin .fxgone span{font-size:12px;color:var(--muted)}
+  button.fxmini{font-size:12.5px;padding:8px 14px;border-radius:8px;border:1px solid var(--line-2);
+    background:#fff;cursor:pointer;font-family:inherit;color:var(--text)}
+  button.fxmini:hover{border-color:var(--accent);color:var(--accent-deep)}
+  button.fxmini:disabled{opacity:.55;cursor:default}
 
   .fxsay{display:none;margin:0 0 18px;padding:11px 14px;border-radius:9px;font-size:13px;
     line-height:1.55}
@@ -129,6 +146,11 @@
   </div>
 
   <div class="fxlist" id="list"></div>
+
+  <details class="fxbin" id="bin" hidden>
+    <summary id="binCap">Recently deleted</summary>
+    <div id="binList"></div>
+  </details>
 </div>
 
 <script src="/nav.js"></script>
@@ -176,7 +198,6 @@
             (c.realmId === current ? 'Go to it' : 'Open') + '</button>' +
           (c.mine ? '<button data-do="people">People</button>' +
                     '<button data-do="name">Rename</button>' : '') +
-          (boss ? '<button class="fxdel" data-do="drop">Delete</button>' : '') +
         '</div>' +
       '</div>';
     }).join('');
@@ -203,24 +224,6 @@
         co.name = o.d.name;
         say('fxgood', 'Saved.');
         draw();
-      });
-      return;
-    }
-
-    if (what === 'drop') {
-      // Nothing about this is undoable, so the name is typed back before anything
-      // moves - and what went is counted out afterwards rather than passed over.
-      var BR = String.fromCharCode(10);
-      var sure = prompt('Delete ' + co.name + ' and everything in it?' + BR + BR +
-        'Its courier accounts, orders, runs and the user IDs made for it all go, ' +
-        'and this cannot be undone.' + BR + BR +
-        'Type the company name to confirm:');
-      if (sure === null) return;
-      post('/api/portal/companies/delete', { realmId: id, confirm: sure }).then(function(o){
-        if (!o.ok) return say('fxbad', o.d.error || 'That did not work.');
-        say('fxgood', o.d.name + ' is gone - ' + o.d.rows + ' rows and ' +
-          o.d.ids + ' user IDs removed.');
-        load();
       });
       return;
     }
@@ -299,8 +302,44 @@
     history.replaceState(null, '', '/companies');
   })();
 
+  // Deleted companies, and the days each has left. Nothing is destroyed until
+  // then, so putting one back is one press.
+  function loadBin(){
+    if (!boss) return;
+    fetch('/api/portal/bin', { cache: 'no-store' })
+      .then(function(r){ return r.json(); })
+      .then(function(d){
+        var list = (d.companies || []);
+        $('bin').hidden = !list.length;
+        if (!list.length) return;
+        $('binCap').textContent = 'Recently deleted · ' + list.length;
+        $('binList').innerHTML = list.map(function(c){
+          return '<div class="fxgone" data-id="' + esc(c.realmId) + '">' +
+            '<b>' + esc(c.name) + '</b>' +
+            '<span>' + (c.daysLeft > 0
+              ? c.daysLeft + (c.daysLeft === 1 ? ' day' : ' days') + ' left to put it back'
+              : 'going any moment now') + '</span>' +
+            '<button class="fxmini" data-back="1">Put it back</button></div>';
+        }).join('');
+        Array.prototype.forEach.call($('binList').querySelectorAll('[data-back]'), function(b){
+          b.addEventListener('click', function(){
+            var id = b.parentNode.getAttribute('data-id');
+            b.disabled = true;
+            post('/api/portal/companies/restore', { realmId: id }).then(function(o){
+              b.disabled = false;
+              if (!o.ok) return say('fxbad', o.d.error || 'That did not work.');
+              say('fxgood', o.d.name + ' is back, with everything that was in it.');
+              load();
+              loadBin();
+            });
+          });
+        });
+      })
+      .catch(function(){ /* the bin is the least of it if the server is away */ });
+  }
+
   window.FUSION.profileMenu($('me'));
-  load();
+  load().then(loadBin);
 })();
 </script>
 </body>

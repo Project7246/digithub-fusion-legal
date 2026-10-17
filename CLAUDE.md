@@ -296,15 +296,31 @@ row - they are not given companies, they hold them all - and `whoIs()` forces
 there is nobody above that address to make it. Without the second, switching
 company was refused outright.
 
-### Deleting a company
+### Deleting a company, and the bin
 
-`POST /api/portal/companies/delete`, ADMIN_EMAILS only, and the company's name has
-to be typed back before anything moves. `deleteCompany()` in `db.js` reads which
-tables carry `realm_id` from `information_schema` - the same reason
-`graduateWorkspace()` does, so a table added next month is not left holding rows
-nobody can reach - deletes the user ids whose `home_realm` is that company (they
-were made for it and cannot be moved), clears `user_companies`, and takes the
-`companies` row last, all in one transaction. Nothing about it is undoable.
+**Nothing is destroyed when a company is deleted.** `POST
+/api/portal/companies/delete` (ADMIN_EMAILS only, and the company's name typed
+back) calls `binCompany()`, which only sets `companies.deleted_at`. The company
+drops out of `listCompanies()`, `getCompany()` and `workspacesOwnedBy()` at once -
+so it goes dark for everybody working in it, which is what deleting has to mean -
+while every row it owns stays where it is. `POST /api/portal/companies/restore`
+puts it back whole.
+
+- **It is offered from Settings, inside the company itself** (`.fxdanger` in
+  `settings.html`, behind a `<details>`), not from a button on the companies list
+  where a slip of the mouse reaches it.
+- **The bin lives on `/companies`** (`GET /api/portal/bin`), shut unless something
+  is in it, each entry showing the days it has left.
+- `BIN_DAYS` (90) is exported from `db.js` so the page, the route and the sweep
+  cannot disagree. `emptyOldBin()` runs on startup and once a day after
+  (`setInterval(...).unref()`), and is the only caller of `deleteCompany()`.
+- `deleteCompany()` is the real one and is reached from nowhere else. It reads
+  which tables carry `realm_id` from `information_schema` - the same reason
+  `graduateWorkspace()` does, so a table added next month is not left holding rows
+  nobody can reach - deletes the user ids whose `home_realm` is that company (they
+  were made for it and cannot be moved), clears `user_companies`, and takes the
+  `companies` row last, all in one transaction.
+- `getBinnedCompany()` is the only reader that sees a binned row.
 - Signing in with exactly one company opens it without asking; `/choose` is now
   only for somebody who holds nothing at all and is waiting to be let in.
 

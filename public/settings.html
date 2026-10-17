@@ -120,6 +120,16 @@
   .fxpic label.mini{cursor:pointer;display:inline-block}
   .fxnameform label{flex:0 0 100%;font-size:11px;letter-spacing:.07em;text-transform:uppercase;
     color:var(--faint)}
+  .fxdanger{margin-top:24px;padding-top:18px;border-top:1px solid var(--line)}
+  .fxdanger summary{cursor:pointer;font:600 13px var(--head);color:var(--bad,#9A2E24);
+    list-style:none;padding:4px 0}
+  .fxdanger summary::-webkit-details-marker{display:none}
+  .fxdanger summary:before{content:"▸ "}
+  .fxdanger details[open] summary:before{content:"▾ "}
+  .fxdanger .fxrow{margin-top:12px}
+  .fxdanger input{flex:1 1 240px;min-width:0}
+  button.mini.fxred{border-color:var(--bad,#9A2E24);color:var(--bad,#9A2E24)}
+  button.mini.fxred:hover:not([disabled]){background:var(--bad,#9A2E24);color:#fff}
   .fxrow input{flex:1 1 240px;min-width:0}
   @media (max-width:820px){.shell{grid-template-columns:1fr}
     .tabs{position:static;flex-direction:row;overflow-x:auto}.tabs button{width:auto;white-space:nowrap}}
@@ -200,6 +210,25 @@
             </div>
             <div class="note" id="coSay"></div>
           </form>
+
+          <!-- Fusion's own, and nowhere near the buttons that are pressed daily.
+               It is in here, behind its own fold, because a company going dark
+               for everybody working in it is not a thing to reach by accident. -->
+          <div class="fxdanger" id="dropBox" style="display:none">
+            <details>
+              <summary>Delete this company</summary>
+              <p class="hint" id="dropWhy">Everything in it stops at once for everybody.
+                Nothing is destroyed: it sits in the bin on the Companies page and one
+                press puts it back, with its couriers, orders and people exactly as they
+                were.</p>
+              <div class="fxrow">
+                <input id="dropName" type="text" aria-label="Company name to confirm"
+                       placeholder="Type the company name">
+                <button class="mini fxred" id="dropGo" type="button">Delete it</button>
+              </div>
+              <div class="note" id="dropSay"></div>
+            </details>
+          </div>
         </div>
       </div>
 
@@ -526,6 +555,31 @@
       $('coForm').style.display = '';
       $('coName').value = s.companyName || '';
     }
+    // Deleting is Fusion's own, not a company administrator's.
+    if (s.boss && s.connected) {
+      $('dropBox').style.display = '';
+      $('dropWhy').textContent = 'Everything in ' + (s.companyName || 'this company') +
+        ' stops at once for everybody. Nothing is destroyed: it sits in the bin on ' +
+        'the Companies page and one press puts it back, with its couriers, orders ' +
+        'and people exactly as they were.';
+    }
+  });
+
+  $('dropGo').addEventListener('click', function(){
+    var btn = $('dropGo'), out = $('dropSay');
+    btn.disabled = true;
+    out.textContent = '';
+    fetch('/api/portal/companies/delete', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ confirm: $('dropName').value })
+    }).then(function(r){ return r.json().then(function(d){ return { ok: r.ok, d: d }; }); })
+      .then(function(o){
+        btn.disabled = false;
+        if (!o.ok) { out.textContent = o.d.error || 'That did not work.'; return; }
+        // nothing on this screen belongs to anybody now
+        location.href = '/companies';
+      })
+      .catch(function(){ btn.disabled = false; out.textContent = 'Could not reach the server.'; });
   });
 
   $('coForm').addEventListener('submit', function(e){
