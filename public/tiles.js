@@ -159,7 +159,9 @@
           if (!mine(t)) return;
           if (seek && t.label.toLowerCase().indexOf(seek) < 0) return;
           // Couriers, tracking and CPRs sit on two desks; the launcher shows each once
-          if (t.href) { if (seen[t.href]) return; seen[t.href] = 1; }
+          var id = t.href || ('soon:' + t.label);
+          if (seen[id]) return;
+          seen[id] = 1;
           t.sec = sec.key; flat.push(t);
         });
       });

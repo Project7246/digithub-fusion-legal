@@ -1275,7 +1275,7 @@ const RIGHT_GROUPS = [
 // and, where the section needs a company, asks for it there. Everything else
 // still needs one, because everything else is work on a set of books.
 const OPEN_WITHOUT_COMPANY = new Set([
-  '/index', '/finance', '/logistics', '/operations', '/hr'
+  '/index', '/finance', '/logistics', '/operations', '/hr', '/csr'
 ]);
 
 const PAGE_NEED = new Map(Object.entries({

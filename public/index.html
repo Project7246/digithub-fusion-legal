@@ -68,30 +68,28 @@
     line-height:17px;padding:0 4px;display:none;font-family:var(--mono);text-align:center}
   .fxtool .fxcount.on{display:block}
 
+  /* The sections, as the second row of the bar. */
+  .fxsecs{border-top:1px solid rgba(255,255,255,.09);background:rgba(0,0,0,.16)}
+  .fxsecs nav{max-width:1180px;margin:0 auto;padding:0 20px;display:flex;gap:6px;
+    overflow-x:auto;scrollbar-width:none}
+  .fxsecs nav::-webkit-scrollbar{display:none}
+  .fxsecs a{position:relative;padding:13px 20px;font:600 13.5px var(--head);
+    letter-spacing:.02em;color:#B9CACD;text-decoration:none;white-space:nowrap;
+    transition:color .15s,background .15s}
+  .fxsecs a:after{content:"";position:absolute;left:18px;right:18px;bottom:0;height:3px;
+    border-radius:3px 3px 0 0;background:var(--aqua);transform:scaleX(0);transition:transform .18s}
+  .fxsecs a:hover{color:#fff;background:rgba(255,255,255,.05)}
+  .fxsecs a:hover:after{transform:scaleX(1)}
+
   .fxscroll{flex:1 1 auto;overflow-y:auto;overflow-x:hidden}
   .fxwrap{max-width:1180px;margin:0 auto;padding:0 20px 60px}
 
-  /* ---------- the banner ---------- */
-  .fxhero{position:relative;overflow:hidden;border-radius:18px;margin:22px 0 30px;
-    padding:34px 40px;display:flex;align-items:center;gap:30px;color:#fff;
-    background:radial-gradient(120% 160% at 100% 0%,#11BAB5 -20%,rgba(17,186,181,0) 55%),
-      linear-gradient(110deg,#1A282D 0%,#222F34 60%,#1E4A4B 130%)}
-  .fxhero .fxmark{flex:0 0 118px;width:118px;height:auto;display:block}
-  .fxhero .fxtogether{font:600 13px var(--head);letter-spacing:.32em;text-transform:uppercase;
-    color:var(--aqua)}
-  .fxhero h1{font:800 44px/1.05 var(--head);letter-spacing:.06em;margin:6px 0 8px;color:#fff}
-  .fxhero h1 sup{font-size:13px;font-weight:600;letter-spacing:0;vertical-align:top;
-    position:relative;top:6px;margin-left:3px;color:#BBBBBB}
-  .fxhero p{margin:0;font-size:15px;color:#C9D6D8}
-  .fxhead{font:700 16px var(--head);color:var(--ink-3);margin:0 0 14px}
+  .fxhead{font:700 16px var(--head);color:var(--ink-3);margin:28px 0 16px}
 
   @media (max-width:780px){
     .fxbarin{grid-template-columns:auto auto;gap:10px 12px;padding:10px 16px}
     .fxfind{grid-column:1 / -1;order:3}
     .fxlogo i{display:none}
-    .fxhero{padding:24px 22px;gap:18px}
-    .fxhero .fxmark{flex-basis:70px;width:70px}
-    .fxhero h1{font-size:30px}
   }
   @media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
 </style>
@@ -107,7 +105,7 @@
 
     <label class="fxfind">
       <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>
-      <input id="seek" type="search" placeholder="Search apps" autocomplete="off" aria-label="Search apps">
+      <input id="seek" type="search" placeholder="Search" autocomplete="off" aria-label="Search">
     </label>
 
     <div class="fxright">
@@ -118,24 +116,12 @@
       <div id="me"></div>
     </div>
   </div>
+  <div class="fxsecs"><nav id="secs" aria-label="Sections"></nav></div>
 </div>
 
 
 <main class="fxscroll" id="scroll">
   <div class="fxwrap">
-
-    <section class="fxhero">
-      <svg class="fxmark" viewBox="0 0 400 280" aria-hidden="true">
-        <polygon points="0,0 110,2 395,43 107,43" fill="#BBBBBB"/>
-        <polygon points="0,0 107,43 107,275" fill="#7B7B7B"/>
-        <circle cx="190" cy="150" r="40" fill="#11BAB5"/>
-      </svg>
-      <div>
-        <div class="fxtogether">Together we can</div>
-        <h1>FUSION<sup>TM</sup></h1>
-        <p>AI-powered OS for e-commerce</p>
-      </div>
-    </section>
 
     <h2 class="fxhead" id="apps">All apps</h2>
     <div id="board"></div>
@@ -162,6 +148,20 @@
     return String(s == null ? '' : s)
       .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
   }
+
+  // The sections, straight out of the list nav.js holds. Pressing one goes into
+  // it, where that section's own rail is waiting.
+  (function drawSections(){
+    var all = (window.APP && window.APP.sections) || [];
+    $('secs').innerHTML = all.map(function(s){
+      return '<a href="' + esc(s.home) + '" data-sec="' + esc(s.key) + '">' + esc(s.label) + '</a>';
+    }).join('');
+    $('secs').querySelectorAll('a').forEach(function(a){
+      a.addEventListener('click', function(){
+        try { sessionStorage.setItem('fusion:section', a.getAttribute('data-sec')); } catch (e) {}
+      });
+    });
+  })();
 
   function drawBoard(){
     if (window.FUSION) window.FUSION.draw($('board'), null, find);

@@ -116,6 +116,16 @@
       { group: null, items: [
         { href:'/hr', front:true,       label:'Overview',          icon:'grid' }
       ]}
+    ]},
+
+    { key:'csr', label:'CSR', home:'/csr',
+      what:'Customer service, from the first message to the last.', qb:false,
+      soon:[{ label:'Inbox', tile:'chat' }, { label:'Tickets', tile:'sheet' },
+            { label:'Customers', tile:'people' }, { label:'Returns', tile:'back' }],
+      groups: [
+      { group: null, items: [
+        { href:'/csr', front:true,      label:'Overview',          icon:'grid' }
+      ]}
     ]}
   ];
 
@@ -928,7 +938,7 @@
       // one that needs a company ask for it. Every other page still needs one,
       // because every other page is work on a set of books.
       var front = path === '/' || path === '/finance' || path === '/logistics' ||
-                  path === '/operations' || path === '/hr';
+                  path === '/operations' || path === '/hr' || path === '/csr';
       if(s.signedIn && (!s.letIn || (!s.connected && !front)) &&
          location.pathname !== '/choose'){
         location.replace('/choose');
