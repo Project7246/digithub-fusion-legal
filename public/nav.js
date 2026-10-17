@@ -304,6 +304,96 @@
 
   /* ---------- back, forward, refresh ---------- */
 
+  /* ---------- the person: picture, name, and the way to their profile ---------- */
+  // One button with one menu, used on the home screen and on every page's top
+  // line. It shows the picture the person chose (or the first letter of their
+  // name), and opens onto who they are here: name, company or user id, then the
+  // links that belong to a person rather than to a page - profile, the people
+  // they run, how the app looks, signing out.
+  window.FUSION = window.FUSION || {};
+  (function(){
+    var st = document.createElement('style');
+    st.textContent = [
+      '.fxme{position:relative;display:flex}',
+      '.fxmebtn{width:38px;height:38px;border-radius:50%;padding:0;border:2px solid #11BAB5;',
+      '  background:#222F34;cursor:pointer;overflow:hidden;display:block}',
+      '.fxmebtn:hover,.fxmebtn:focus-visible{border-color:#6BF0EA;outline:0}',
+      '.fxav{width:100%;height:100%;display:flex;align-items:center;justify-content:center;',
+      '  background:#222F34;color:#6BF0EA;font:700 15px var(--head,sans-serif);overflow:hidden}',
+      '.fxav img{width:100%;height:100%;object-fit:cover;display:block}',
+      '.fxmenu{position:absolute;top:46px;right:0;z-index:300;width:290px;display:none;',
+      '  background:var(--panel,#fff);color:var(--text,#18212A);border:1px solid var(--line,#E1E8E9);',
+      '  border-radius:14px;box-shadow:0 18px 44px rgba(24,35,42,.22);overflow:hidden;text-align:left}',
+      '.fxmenu.open{display:block}',
+      '.fxmhead{display:flex;gap:13px;align-items:center;padding:18px 18px 16px;',
+      '  background:linear-gradient(120deg,#1B2A30,#223238 60%,#0E6F6C);color:#fff}',
+      '.fxmhead .fxav{width:52px;height:52px;flex:0 0 52px;border-radius:50%;',
+      '  border:2px solid #11BAB5;font-size:21px}',
+      '.fxmhead b{display:block;font:700 15px/1.25 var(--head,sans-serif);word-break:break-word}',
+      '.fxmhead small{display:block;font-size:12px;color:#B9CACD;margin-top:2px;word-break:break-all}',
+      '.fxmenu a,.fxmenu button.fxmi{display:block;width:100%;text-align:left;padding:11px 18px;',
+      '  font:inherit;font-size:13.5px;color:var(--text,#18212A);text-decoration:none;',
+      '  background:none;border:0;cursor:pointer}',
+      '.fxmenu a:hover,.fxmenu button.fxmi:hover{background:var(--panel-2,#F2F6F6);color:#08827E}',
+      '.fxmenu .fxmsep{height:1px;background:var(--line,#E1E8E9);margin:4px 0}',
+      '.fxmenu button.fxmi.fxout{color:#9A2E24}'
+    ].join('');
+    document.head.appendChild(st);
+
+    function who(s){ return (s && (s.user || s.email)) || 'Not signed in'; }
+    function face(s){
+      if (s && s.avatarV) return '<img alt="" src="/api/me/avatar?v=' + s.avatarV + '">';
+      return esc((who(s).trim().charAt(0) || '?').toUpperCase());
+    }
+    window.FUSION.face = face;
+
+    window.FUSION.profileMenu = function(host){
+      host.classList.add('fxme');
+      host.innerHTML =
+        '<button class="fxmebtn" type="button" aria-label="Your profile" aria-haspopup="true">' +
+          '<span class="fxav">?</span></button><div class="fxmenu" role="menu"></div>';
+      var btn = host.firstChild, menu = host.lastChild;
+      btn.addEventListener('click', function(ev){
+        ev.stopPropagation();
+        document.querySelectorAll('.bellmenu.open,.setmenu.open').forEach(function(m){
+          m.classList.remove('open');
+        });
+        menu.classList.toggle('open');
+      });
+      document.addEventListener('click', function(){ menu.classList.remove('open'); });
+      menu.addEventListener('click', function(ev){ ev.stopPropagation(); });
+
+      function fill(s){
+        btn.firstChild.innerHTML = face(s);
+        var sub = s.loginId ? 'User ID \u00B7 ' + s.loginId : (s.email || '');
+        var co = s.companyName ? '<small>' + esc(s.companyName) + '</small>' : '';
+        menu.innerHTML =
+          '<div class="fxmhead"><span class="fxav">' + face(s) + '</span><div>' +
+            '<b>' + esc(who(s)) + '</b>' +
+            (sub ? '<small>' + esc(sub) + '</small>' : '') + co + '</div></div>' +
+          '<div style="padding:6px 0">' +
+            '<a href="/settings#profile">Edit profile</a>' +
+            (s.admin ? '<a href="/users">Manage users</a>' : '') +
+            '<a href="/settings#style">Appearance</a>' +
+            '<div class="fxmsep"></div>' +
+            '<button class="fxmi fxout" type="button" id="fxSignOut">Sign out</button>' +
+          '</div>';
+        var out = menu.querySelector('#fxSignOut');
+        out.addEventListener('click', function(){
+          fetch('/auth/signout', { method: 'POST' })
+            .then(function(){ location.href = '/'; })
+            .catch(function(){ location.href = '/'; });
+        });
+      }
+      // APP.ready is made further down this file; by the time anything is drawn
+      // here it either exists or is about to
+      (function go(){
+        if (window.APP && window.APP.ready) window.APP.ready.then(fill);
+        else setTimeout(go, 20);
+      })();
+    };
+  })();
+
   (function pageTools(){
     var top = document.querySelector('.topline');
     if(!top) return;
@@ -398,23 +488,11 @@
       '</div>';
     box.appendChild(bell);
 
-    // Settings sits with them, the way QuickBooks keeps its own gear up here: the
-    // company's list of people, your own profile, and how the app looks to you.
+    // The person sits beside the bell: picture, name, profile, sign out.
     var wrap = document.createElement('div');
     wrap.className = 'setwrap';
-    wrap.innerHTML =
-      btn('Settings', '<circle cx="12" cy="12" r="3.2"/><path d="M12 2.5v2.8M12 18.7v2.8' +
-        'M2.5 12h2.8M18.7 12h2.8M5.2 5.2l2 2M16.8 16.8l2 2M18.8 5.2l-2 2M7.2 16.8l-2 2"/>') +
-      '<div class="setmenu" id="setMenu">' +
-        '<div class="cap admin-only">Your company</div>' +
-        '<a class="admin-only" href="/users">Manage users</a>' +
-        '<div class="cap">Profile</div>' +
-        '<a href="/settings#profile">Your profile</a>' +
-        '<div class="cap">Custom changes</div>' +
-        '<a href="/settings#style">Custom form style</a>' +
-        '<a href="/settings#theme">Custom theme</a>' +
-      '</div>';
     box.appendChild(wrap);
+    window.FUSION.profileMenu(wrap);
 
     top.appendChild(box);
 
@@ -422,7 +500,6 @@
     // bell's own menu has one inside it, and counting would have found that first
     var b = box.querySelectorAll(':scope > button');
     var bellBtn = box.querySelector('.bellwrap > button');
-    var gearBtn = box.querySelector('.setwrap > button');
 
     b[0].addEventListener('click', function(){ history.back(); });
     b[1].addEventListener('click', function(){ history.forward(); });
@@ -431,19 +508,9 @@
       location.reload();
     });
 
-    var menu = document.getElementById('setMenu');
     var bellMenu = document.getElementById('bellMenu');
 
-    gearBtn.addEventListener('click', function(ev){
-      ev.stopPropagation();
-      menu.classList.toggle('open');
-      bellMenu.classList.remove('open');
-    });
-    document.addEventListener('click', function(){
-      menu.classList.remove('open');
-      bellMenu.classList.remove('open');
-    });
-    menu.addEventListener('click', function(ev){ ev.stopPropagation(); });
+    document.addEventListener('click', function(){ bellMenu.classList.remove('open'); });
     bellMenu.addEventListener('click', function(ev){ ev.stopPropagation(); });
 
     /* ---------- what the bell holds ---------- */
@@ -482,7 +549,7 @@
 
     bellBtn.addEventListener('click', function(ev){
       ev.stopPropagation();
-      menu.classList.remove('open');
+      document.querySelectorAll('.fxmenu.open').forEach(function(m){ m.classList.remove('open'); });
       var opening = !bellMenu.classList.contains('open');
       bellMenu.classList.toggle('open', opening);
       if(!opening) return;

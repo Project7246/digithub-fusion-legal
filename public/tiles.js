@@ -150,6 +150,35 @@
     var seek = String(find || '').trim().toLowerCase();
     var html = '', any = false;
 
+    // The launcher is one shelf, not four: every module in a single grid that
+    // wraps as far as it needs to, what is built first and what is coming last.
+    if (!key) {
+      var flat = [], seen = {};
+      all.forEach(function(sec){
+        tilesOf(sec).forEach(function(t){
+          if (!mine(t)) return;
+          if (seek && t.label.toLowerCase().indexOf(seek) < 0) return;
+          // Couriers, tracking and CPRs sit on two desks; the launcher shows each once
+          if (t.href) { if (seen[t.href]) return; seen[t.href] = 1; }
+          t.sec = sec.key; flat.push(t);
+        });
+      });
+      flat.sort(function(a, b){ return (a.soon ? 1 : 0) - (b.soon ? 1 : 0); });
+      el.innerHTML = flat.length
+        ? '<div class="fxtiles">' + flat.map(one).join('') + '</div>'
+        : '<div class="fxnone">' + (seek
+            ? 'Nothing matches &ldquo;' + esc(find) + '&rdquo;.'
+            : 'Nothing here is yours to open yet.') + '</div>';
+      el.querySelectorAll('[data-sec]').forEach(function(a){
+        var k = a.getAttribute('data-sec');
+        if (!k) return;
+        a.addEventListener('click', function(){
+          try { sessionStorage.setItem('fusion:section', k); } catch (e) {}
+        });
+      });
+      return;
+    }
+
     want.forEach(function(sec){
       var list = tilesOf(sec).filter(function(t){
         if (!mine(t)) return false;

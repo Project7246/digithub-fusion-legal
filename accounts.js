@@ -24,7 +24,9 @@ export async function initAccounts() {
       ADD COLUMN IF NOT EXISTS made_by    TEXT,
       ADD COLUMN IF NOT EXISTS home_realm TEXT,
       ADD COLUMN IF NOT EXISTS staff_asked BOOLEAN NOT NULL DEFAULT FALSE,
-      ADD COLUMN IF NOT EXISTS disabled   BOOLEAN NOT NULL DEFAULT FALSE
+      ADD COLUMN IF NOT EXISTS disabled   BOOLEAN NOT NULL DEFAULT FALSE,
+      ADD COLUMN IF NOT EXISTS avatar     TEXT,
+      ADD COLUMN IF NOT EXISTS avatar_at  TIMESTAMPTZ
   `);
 
   // A user id is typed by a person at a keyboard, so it is matched without regard

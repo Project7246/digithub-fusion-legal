@@ -1139,6 +1139,8 @@ const USER_MAY_POST = new Set([
   '/api/notifications/read', '/api/notifications/clear',
   // putting away the notice that offers staff user ids - their own answer
   '/api/me/staff-asked',
+  // their own name and picture
+  '/api/me/profile',
   // renaming the company: open to the gate, but the route itself asks for its administrator
   '/api/company/name',
   // signing this phone up for notices, and off again
@@ -2075,7 +2077,9 @@ app.get('/auth/status', async (req, res) => {
       ? RIGHT_GROUPS.map(g => g.key)
       : ((who && who.rights) || []),
     jobs: RIGHT_GROUPS.map(g => g.key),
-    user: user ? (user.name || user.email) : null
+    user: user ? (user.name || user.email) : null,
+    loginId: (user && user.login_id) || null,
+    avatarV: (user && user.avatar && user.avatar_at) ? new Date(user.avatar_at).getTime() : null
   });
 });
 
@@ -2083,6 +2087,51 @@ app.get('/auth/status', async (req, res) => {
 // offer is worth making once and worth making only once: Manage users is in the
 // rail from here on, and a question that comes back every morning is a thing
 // being nagged about.
+// A person's own picture and name. The picture is a small JPEG the page has
+// already cut down (about 160px), kept on their row - the app stores no files,
+// and a thumbnail this size is a few kilobytes.
+app.get('/api/me/avatar', async (req, res) => {
+  try {
+    const sub = currentUser(req);
+    const u = sub ? await getUser(sub) : null;
+    const m = u && u.avatar && /^data:(image\/(?:jpeg|png|webp));base64,([A-Za-z0-9+/=]+)$/.exec(u.avatar);
+    if (!m) return res.status(404).end();
+    res.set('Content-Type', m[1]);
+    res.set('Cache-Control', 'private, max-age=31536000, immutable');
+    res.send(Buffer.from(m[2], 'base64'));
+  } catch (e) { res.status(500).end(); }
+});
+
+app.post('/api/me/profile', async (req, res) => {
+  try {
+    const sub = currentUser(req);
+    if (!sub) return res.status(401).json({ error: 'Sign in first.' });
+    if (sub === DEMO_SUB) return res.status(403).json({ error: 'The demo profile cannot be changed.' });
+    const sets = [], vals = [sub];
+    if (req.body.name !== undefined) {
+      const name = String(req.body.name || '').trim().slice(0, 120);
+      if (name.length < 2) return res.status(400).json({ error: 'Type your name.' });
+      vals.push(name); sets.push('name = $' + vals.length);
+    }
+    if (req.body.removeAvatar) {
+      sets.push('avatar = NULL', 'avatar_at = NULL');
+    } else if (req.body.avatar !== undefined) {
+      const a = String(req.body.avatar || '');
+      if (a.length > 90000 || !/^data:image\/(?:jpeg|png|webp);base64,[A-Za-z0-9+/=]+$/.test(a)) {
+        return res.status(400).json({ error: 'That picture could not be used. Try a smaller one.' });
+      }
+      vals.push(a); sets.push('avatar = $' + vals.length, 'avatar_at = NOW()');
+    }
+    if (!sets.length) return res.json({ ok: true });
+    await pool.query('UPDATE users SET ' + sets.join(', ') + ' WHERE sub = $1', vals);
+    forgetWho(sub);
+    res.json({ ok: true });
+  } catch (e) {
+    console.error('me/profile:', e.message);
+    res.status(500).json({ error: 'Could not save. Try again.' });
+  }
+});
+
 // The company's name, set from the profile. Only whoever runs this company may
 // change it; the name is what the rail, the bar and the user list show.
 app.post('/api/company/name', async (req, res) => {

@@ -34,68 +34,64 @@
   body{background:var(--page);margin:0;overflow:hidden;
     display:flex;flex-direction:column}
 
-  .fxbar{flex:0 0 auto;background:var(--panel);border-bottom:1px solid var(--line);
-    box-shadow:0 6px 16px -12px rgba(24,35,42,.4);z-index:5}
-  .fxbarin{max-width:1180px;margin:0 auto;padding:13px 20px;display:grid;
-    grid-template-columns:1fr auto 1fr;align-items:center;gap:14px;min-height:60px}
+  /* The bar is the brand: slate, with the mark and name on the left, search in
+     the middle, and the person on the right. */
+  .fxbar{flex:0 0 auto;background:var(--ink,#222F34);z-index:5;
+    box-shadow:0 8px 20px -14px rgba(0,0,0,.6)}
+  .fxbarin{max-width:1180px;margin:0 auto;padding:11px 20px;display:grid;
+    grid-template-columns:auto minmax(180px,420px) auto;justify-content:space-between;
+    align-items:center;gap:18px;min-height:64px}
+  .fxlogo{display:flex;align-items:center;gap:12px;text-decoration:none;color:#fff}
+  .fxlogo img{width:46px;height:auto;display:block}
+  .fxlogo b{display:block;font:700 19px/1.1 var(--head);letter-spacing:.01em}
+  .fxlogo i{display:block;font:600 11.5px var(--head);color:var(--aqua);margin-top:3px;font-style:normal}
 
+  .fxfind{position:relative;display:block}
+  .fxfind svg{position:absolute;left:13px;top:50%;transform:translateY(-50%);width:16px;height:16px;
+    fill:none;stroke:#9DB0B5;stroke-width:1.8;stroke-linecap:round;pointer-events:none}
+  .fxfind input{width:100%;border:1px solid rgba(255,255,255,.14);border-radius:999px;
+    padding:10px 16px 10px 38px;font:inherit;font-size:13.5px;background:rgba(255,255,255,.07);
+    color:#fff}
+  .fxfind input::placeholder{color:#8EA1A6}
+  .fxfind input:focus{outline:0;background:#fff;color:#18212A;border-color:#fff}
+  .fxfind input:focus::placeholder{color:#7C8E93}
+
+  .fxbar .fxright{display:flex;gap:12px;align-items:center;justify-content:flex-end}
+  .fxtool{width:38px;height:38px;border:0;background:rgba(255,255,255,.08);
+    border-radius:50%;cursor:pointer;display:flex;align-items:center;justify-content:center;
+    color:#DDE8EA;padding:0;position:relative;flex:0 0 38px}
+  .fxtool:hover{background:rgba(255,255,255,.16);color:var(--aqua)}
+  .fxtool svg{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:1.7;
+    stroke-linecap:round;stroke-linejoin:round}
+  .fxtool .fxcount{position:absolute;top:-3px;right:-3px;min-width:17px;height:17px;
+    border-radius:9px;background:var(--neg);color:#fff;font-size:10px;font-weight:600;
+    line-height:17px;padding:0 4px;display:none;font-family:var(--mono);text-align:center}
+  .fxtool .fxcount.on{display:block}
 
   .fxscroll{flex:1 1 auto;overflow-y:auto;overflow-x:hidden}
   .fxwrap{max-width:1180px;margin:0 auto;padding:0 20px 60px}
-  .fxbar .fxleft{display:flex;gap:7px;align-items:center}
-  .fxbar .fxright{display:flex;gap:7px;align-items:center;justify-content:flex-end}
 
-  .fxtool{width:34px;height:34px;border:1px solid var(--line);background:var(--panel-2);
-    border-radius:9px;cursor:pointer;display:flex;align-items:center;justify-content:center;
-    color:var(--muted);padding:0;position:relative;flex:0 0 34px}
-  .fxtool:hover{border-color:var(--accent);color:var(--accent-deep)}
-  .fxtool svg{width:17px;height:17px;fill:none;stroke:currentColor;stroke-width:1.7;
-    stroke-linecap:round;stroke-linejoin:round}
-  .fxtool .fxcount{position:absolute;top:-4px;right:-4px;min-width:16px;height:16px;
-    border-radius:9px;background:var(--neg);color:#fff;font-size:10px;font-weight:600;
-    line-height:16px;padding:0 4px;display:none;font-family:var(--mono)}
-  .fxtool .fxcount.on{display:block}
-
-  /* The pill. One white track with the four sections in it; pressing one goes
-     into it, where that section's rail is waiting. */
-  .fxnav{display:flex;background:var(--panel-2);border:1px solid var(--line);
-    border-radius:999px;padding:4px;gap:2px}
-  .fxnav a{display:block;padding:9px 22px;border-radius:999px;font-family:var(--head);
-    font-weight:600;font-size:13px;color:var(--ink-2);text-decoration:none;
-    white-space:nowrap;transition:background .15s,color .15s}
-  .fxnav a:hover{background:var(--accent-soft);color:var(--accent-deep)}
-
-  .fxseek{display:none;position:relative}
-  .fxseek.on{display:block}
-  .fxseek input{width:190px;border:1px solid var(--accent);border-radius:9px;
-    padding:8px 11px;font:inherit;font-size:13px;background:var(--panel);color:var(--text)}
-  .fxseek input:focus{outline:0}
-
-  /* ---------- the strip ---------- */
-  .fxstrip{position:relative;height:92px;border-radius:12px;overflow:hidden;
-    background:linear-gradient(100deg,#1B2A30 0%,#223238 48%,#11BAB5 190%);
-    margin:18px 0 26px}
-  .fxstrip .fxslide{position:absolute;inset:0;display:flex;align-items:center;
-    padding:0 26px;gap:16px;opacity:0;transition:opacity .6s ease}
-  .fxstrip .fxslide.on{opacity:1}
-  .fxstrip .fxslide h3{font-family:var(--head);font-weight:700;font-size:16px;color:#fff;
-    margin:0 0 3px;letter-spacing:-.01em}
-  .fxstrip .fxslide p{font-size:12.5px;color:#9DB0B5;margin:0;line-height:1.5}
-  .fxstrip .fxslide .fxmk{flex:0 0 40px;width:40px;height:40px;border-radius:11px;
-    display:flex;align-items:center;justify-content:center;background:rgba(255,255,255,.07);
-    border:1px solid rgba(255,255,255,.12)}
-  .fxstrip .fxslide .fxmk svg{width:21px;height:21px}
-  .fxstrip .fxpips{position:absolute;right:18px;bottom:11px;display:flex;gap:5px}
-  .fxstrip .fxpips i{width:6px;height:6px;border-radius:50%;background:rgba(255,255,255,.26);
-    cursor:pointer;display:block}
-  .fxstrip .fxpips i.on{background:var(--aqua)}
+  /* ---------- the banner ---------- */
+  .fxhero{position:relative;overflow:hidden;border-radius:18px;margin:22px 0 30px;
+    padding:34px 40px;display:flex;align-items:center;gap:30px;color:#fff;
+    background:radial-gradient(120% 160% at 100% 0%,#11BAB5 -20%,rgba(17,186,181,0) 55%),
+      linear-gradient(110deg,#1A282D 0%,#222F34 60%,#1E4A4B 130%)}
+  .fxhero .fxmark{flex:0 0 118px;width:118px;height:auto;display:block}
+  .fxhero .fxtogether{font:600 13px var(--head);letter-spacing:.32em;text-transform:uppercase;
+    color:var(--aqua)}
+  .fxhero h1{font:800 44px/1.05 var(--head);letter-spacing:.06em;margin:6px 0 8px;color:#fff}
+  .fxhero h1 sup{font-size:13px;font-weight:600;letter-spacing:0;vertical-align:top;
+    position:relative;top:6px;margin-left:3px;color:#BBBBBB}
+  .fxhero p{margin:0;font-size:15px;color:#C9D6D8}
+  .fxhead{font:700 16px var(--head);color:var(--ink-3);margin:0 0 14px}
 
   @media (max-width:780px){
-    .fxbarin{grid-template-columns:1fr;gap:10px;padding:10px 16px}
-    .fxbar .fxleft{display:none}
-    .fxnav{overflow-x:auto;justify-content:flex-start}
-    .fxnav a{padding:9px 16px;font-size:12.5px}
-    .fxstrip{height:auto;min-height:88px;padding:14px 0}
+    .fxbarin{grid-template-columns:auto auto;gap:10px 12px;padding:10px 16px}
+    .fxfind{grid-column:1 / -1;order:3}
+    .fxlogo i{display:none}
+    .fxhero{padding:24px 22px;gap:18px}
+    .fxhero .fxmark{flex-basis:70px;width:70px}
+    .fxhero h1{font-size:30px}
   }
   @media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
 </style>
@@ -104,31 +100,22 @@
 
 <div class="fxbar" id="bar">
   <div class="fxbarin">
-    <div class="fxleft">
-      <button class="fxtool" id="btnBack" title="Back" aria-label="Back">
-        <svg viewBox="0 0 24 24"><path d="M15 5l-7 7 7 7"/></svg>
-      </button>
-      <button class="fxtool" id="btnFwd" title="Forward" aria-label="Forward">
-        <svg viewBox="0 0 24 24"><path d="M9 5l7 7-7 7"/></svg>
-      </button>
-    </div>
+    <a class="fxlogo" href="/">
+      <img src="/logo.svg" alt="">
+      <span><b>Fusion</b><i>AI-powered OS for e-commerce</i></span>
+    </a>
 
-    <nav class="fxnav" id="pill"></nav>
+    <label class="fxfind">
+      <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>
+      <input id="seek" type="search" placeholder="Search apps" autocomplete="off" aria-label="Search apps">
+    </label>
 
     <div class="fxright">
-      <div class="fxseek" id="seekBox">
-        <input id="seek" type="search" placeholder="Search apps…" autocomplete="off">
-      </div>
-      <button class="fxtool" id="btnSeek" title="Search" aria-label="Search">
-        <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>
-      </button>
       <button class="fxtool" id="btnBell" title="Notifications" aria-label="Notifications">
         <svg viewBox="0 0 24 24"><path d="M18 8a6 6 0 10-12 0c0 7-2 8-2 8h16s-2-1-2-8"/><path d="M13.7 21a2 2 0 01-3.4 0"/></svg>
         <span class="fxcount" id="bellN"></span>
       </button>
-      <a class="fxtool" href="/settings" title="Settings" aria-label="Settings">
-        <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3.2"/><path d="M12 2.5v2.8M12 18.7v2.8M2.5 12h2.8M18.7 12h2.8M5.2 5.2l2 2M16.8 16.8l2 2M18.8 5.2l-2 2M7.2 16.8l-2 2"/></svg>
-      </a>
+      <div id="me"></div>
     </div>
   </div>
 </div>
@@ -137,8 +124,20 @@
 <main class="fxscroll" id="scroll">
   <div class="fxwrap">
 
-    <div class="fxstrip" id="strip"></div>
+    <section class="fxhero">
+      <svg class="fxmark" viewBox="0 0 400 280" aria-hidden="true">
+        <polygon points="0,0 110,2 395,43 107,43" fill="#BBBBBB"/>
+        <polygon points="0,0 107,43 107,275" fill="#7B7B7B"/>
+        <circle cx="190" cy="150" r="40" fill="#11BAB5"/>
+      </svg>
+      <div>
+        <div class="fxtogether">Together we can</div>
+        <h1>FUSION<sup>TM</sup></h1>
+        <p>AI-powered OS for e-commerce</p>
+      </div>
+    </section>
 
+    <h2 class="fxhead" id="apps">All apps</h2>
     <div id="board"></div>
 
   </div>
@@ -164,21 +163,6 @@
       .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
   }
 
-  /* The four sections, straight out of the list nav.js holds. Pressing one goes
-     into it - the tiles stay here for picking a single module out of the lot. */
-  function drawPill(){
-    var all = (window.APP && window.APP.sections) || [];
-    $('pill').innerHTML = all.map(function(s){
-      return '<a href="' + esc(s.home) + '" data-sec="' + esc(s.key) + '">' +
-        esc(s.label) + '</a>';
-    }).join('');
-    $('pill').querySelectorAll('a').forEach(function(a){
-      a.addEventListener('click', function(){
-        try { sessionStorage.setItem('fusion:section', a.getAttribute('data-sec')); } catch (e) {}
-      });
-    });
-  }
-
   function drawBoard(){
     if (window.FUSION) window.FUSION.draw($('board'), null, find);
   }
@@ -191,20 +175,12 @@
   try { if ('scrollRestoration' in history) history.scrollRestoration = 'manual'; } catch (e) {}
   $('scroll').scrollTop = 0;
 
-  $('btnBack').addEventListener('click', function(){ history.back(); });
-  $('btnFwd').addEventListener('click', function(){ history.forward(); });
-
-  $('btnSeek').addEventListener('click', function(){
-    var on = $('seekBox').classList.toggle('on');
-    if (on) $('seek').focus();
-    else { $('seek').value = ''; find = ''; drawBoard(); }
-  });
   $('seek').addEventListener('input', function(){
     find = $('seek').value;
     drawBoard();
   });
   $('seek').addEventListener('keydown', function(e){
-    if (e.key === 'Escape') $('btnSeek').click();
+    if (e.key === 'Escape') { $('seek').value = ''; find = ''; drawBoard(); $('seek').blur(); }
   });
 
   /* The bell. The same list the rest of the app shows, read from the same place
@@ -265,53 +241,8 @@
     });
   });
 
-  /* ==================== the strip ==================== */
-  (function strip(){
-    var slides = [
-      { mk:'bag',   h:'Everything e-commerce, in one place',
-        p:'Orders, books, parcels and people - on one set of records.' },
-      { mk:'book',  h:'Finance runs on your own QuickBooks',
-        p:'Connect the company once; the app writes into the real books.' },
-      { mk:'truck', h:'Every courier account, one screen',
-        p:'PostEx, Daewoo and M&P together, with nothing typed twice.' },
-      { mk:'people',h:'Give each person only their own desk',
-        p:'Make a user ID, tick what they may touch, and that is what opens.' }
-    ];
-    var box = $('strip');
-    var mark = (window.FUSION && window.FUSION.mark) || function(){ return ''; };
-
-    box.innerHTML = slides.map(function(s, i){
-      return '<div class="fxslide' + (i ? '' : ' on') + '">' +
-        '<div class="fxmk">' + mark(s.mk) + '</div>' +
-        '<div><h3>' + esc(s.h) + '</h3><p>' + esc(s.p) + '</p></div></div>';
-    }).join('') +
-      '<div class="fxpips">' + slides.map(function(_, i){
-        return '<i class="' + (i ? '' : 'on') + '" data-i="' + i + '"></i>';
-      }).join('') + '</div>';
-
-    var at = 0;
-    var els = box.querySelectorAll('.fxslide');
-    var pips = box.querySelectorAll('.fxpips i');
-    function go(i){
-      at = (i + slides.length) % slides.length;
-      for (var k = 0; k < els.length; k++) els[k].classList.toggle('on', k === at);
-      for (var j = 0; j < pips.length; j++) pips[j].classList.toggle('on', j === at);
-    }
-    pips.forEach(function(p){
-      p.addEventListener('click', function(){ go(Number(p.getAttribute('data-i'))); clock(); });
-    });
-
-    var t = null;
-    function clock(){
-      if (t) clearInterval(t);
-      if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
-      t = setInterval(function(){ go(at + 1); }, 5200);
-    }
-    clock();
-  })();
-
   /* ==================== what the server knows ==================== */
-  drawPill();
+  window.FUSION.profileMenu($('me'));
 
   // The tiles wait for the server, because which of them are this person's to
   // open is the server's answer, not the page's.

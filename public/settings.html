@@ -109,6 +109,17 @@
   .fxmail{font-size:13px;color:var(--muted);margin-top:3px}
   .fxh3{font:700 14px var(--head);margin:26px 0 5px;padding-top:20px;border-top:1px solid var(--line)}
   .fxrow{display:flex;gap:9px;align-items:center;flex-wrap:wrap}
+  label.mini,a.mini{padding:7px 13px;background:#fff;border:1px solid var(--line-2);border-radius:6px;
+    font:inherit;font-size:12.5px;color:var(--text);cursor:pointer;display:inline-block;text-decoration:none}
+  label.mini:hover,a.mini:hover{border-color:var(--accent);color:var(--accent-deep)}
+  /* the settings page has no history to walk: only the bell and the person stay */
+  .ptools > button{display:none}
+  .fxavatar{overflow:hidden}
+  .fxavatar img{width:100%;height:100%;object-fit:cover;display:block}
+  .fxpic{display:flex;gap:8px;margin-top:9px}
+  .fxpic label.mini{cursor:pointer;display:inline-block}
+  .fxnameform label{flex:0 0 100%;font-size:11px;letter-spacing:.07em;text-transform:uppercase;
+    color:var(--faint)}
   .fxrow input{flex:1 1 240px;min-width:0}
   @media (max-width:820px){.shell{grid-template-columns:1fr}
     .tabs{position:static;flex-direction:row;overflow-x:auto}.tabs button{width:auto;white-space:nowrap}}
@@ -152,15 +163,27 @@
           <div class="fxwho">
             <div class="fxname" id="mName">&mdash;</div>
             <div class="fxmail" id="mMail">&mdash;</div>
+            <div class="fxpic">
+              <label class="mini" for="picFile">Change photo</label>
+              <button class="mini" id="picDel" type="button" style="display:none">Remove</button>
+              <input id="picFile" type="file" accept="image/*" hidden>
+            </div>
           </div>
           <button class="mini" id="btnOut">Sign out</button>
         </div>
+        <div class="fxsaid" id="picSay"></div>
 
         <div class="step">
           <h2>Account</h2>
           <div class="hint">What the app knows you by, and the company you are working in.
             Signing out leaves this computer only.</div>
-          <dl class="me">
+          <form class="fxrow fxnameform" id="nameForm">
+            <label for="nameBox">Your name</label>
+            <input id="nameBox" type="text" maxlength="120" autocomplete="name" required>
+            <button class="mini" id="nameSave" type="submit">Save</button>
+          </form>
+          <dl class="me" style="margin-top:18px">
+            <dt id="mIdLabel">Email</dt><dd id="mId">&mdash;</dd>
             <dt>Company</dt><dd id="mCo">&mdash;</dd>
           </dl>
           <!-- Only the person who runs the company sees this. It is where the name
@@ -173,7 +196,7 @@
               <input id="coName" type="text" maxlength="160" autocomplete="organization"
                      aria-label="Company name">
               <button class="mini" id="coSave" type="submit">Save name</button>
-              <a class="mini" href="/users" style="text-decoration:none">Create user IDs</a>
+              <a class="mini" href="/users">Create user IDs</a>
             </div>
             <div class="note" id="coSay"></div>
           </form>
@@ -435,10 +458,69 @@
       .catch(function(){ location.href = '/'; });
   });
 
+  function paintFace(s){
+    $('mAvatar').innerHTML = FUSION.face(s);
+    $('picDel').style.display = s.avatarV ? '' : 'none';
+    if (s.user) $('mName').textContent = s.user;
+  }
+  function say(kind, text){
+    var el = $('picSay');
+    el.className = 'fxsaid on ' + kind;
+    el.textContent = text;
+  }
+  function post(body){
+    return fetch('/api/me/profile', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body)
+    }).then(function(r){ return r.json().then(function(d){ return { ok: r.ok, d: d }; }); });
+  }
+  // The picture is cut to a 160px square here, so what is kept is a few kilobytes
+  // however large the photo was - the app stores no files.
+  $('picFile').addEventListener('change', function(){
+    var f = this.files && this.files[0];
+    this.value = '';
+    if (!f) return;
+    var img = new Image(), url = URL.createObjectURL(f);
+    img.onload = function(){
+      var n = 160, c = document.createElement('canvas');
+      c.width = c.height = n;
+      var side = Math.min(img.width, img.height);
+      c.getContext('2d').drawImage(img, (img.width - side) / 2, (img.height - side) / 2,
+        side, side, 0, 0, n, n);
+      URL.revokeObjectURL(url);
+      post({ avatar: c.toDataURL('image/jpeg', 0.85) }).then(function(o){
+        if (!o.ok) return say('fxbad', o.d.error || 'That did not work.');
+        say('fxgood', 'Photo saved.');
+        window.APP.ready.then(function(s){ s.avatarV = Date.now(); paintFace(s); });
+      });
+    };
+    img.onerror = function(){ say('fxbad', 'That file is not a picture.'); };
+    img.src = url;
+  });
+  $('picDel').addEventListener('click', function(){
+    post({ removeAvatar: true }).then(function(o){
+      if (!o.ok) return say('fxbad', o.d.error || 'That did not work.');
+      say('fxgood', 'Photo removed.');
+      window.APP.ready.then(function(s){ s.avatarV = null; paintFace(s); });
+    });
+  });
+  $('nameForm').addEventListener('submit', function(e){
+    e.preventDefault();
+    post({ name: $('nameBox').value }).then(function(o){
+      if (!o.ok) return say('fxbad', o.d.error || 'That did not work.');
+      say('fxgood', 'Name saved.');
+      $('mName').textContent = $('nameBox').value.trim();
+      window.APP.ready.then(function(s){ s.user = $('nameBox').value.trim(); });
+    });
+  });
+
   window.APP.ready.then(function(s){
     $('mName').textContent = s.user || 'Not signed in';
     $('mMail').textContent = s.email || '—';
-    $('mAvatar').textContent = ((s.user || s.email || '?').trim().charAt(0) || '?').toUpperCase();
+    paintFace(s);
+    $('nameBox').value = s.user || '';
+    $('mIdLabel').textContent = s.loginId ? 'User ID' : 'Email';
+    $('mId').textContent = s.loginId || s.email || '\u2014';
     $('mCo').textContent = s.companyName || (s.connected ? s.realmId : 'Not connected');
     if (s.admin && s.connected) {
       $('coForm').style.display = '';
