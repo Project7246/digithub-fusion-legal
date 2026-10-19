@@ -90,6 +90,17 @@
     border:1px solid rgba(255,255,255,.22)}
   .fxback:hover{border-color:#6BF0EA;color:#6BF0EA}
   .topline{min-height:78px}
+  .fxbarline{height:12px;border-radius:7px;background:var(--panel-2);overflow:hidden;
+    border:1px solid var(--line);margin:4px 0 9px}
+  .fxbarfill{height:100%;width:0;background:var(--qbo);transition:width .4s ease}
+  .fxbarfill.warn{background:#C9872B}
+  .fxbarfill.bad{background:var(--neg,#9A2E24)}
+  .fxused{font-family:var(--mono);font-size:12.5px;color:var(--muted);margin-bottom:6px}
+  .fxsub{font-family:var(--head);font-size:13.5px;font-weight:700;margin:22px 0 8px}
+  .fxtbl{width:100%;border-collapse:collapse;font-size:12.5px}
+  .fxtbl td{padding:6px 8px;border-bottom:1px solid var(--line)}
+  .fxtbl td:first-child{font-family:var(--mono);font-size:11.5px}
+  .fxtbl td.num{text-align:right;font-family:var(--mono);white-space:nowrap}
   .topline h1{font-family:var(--head);font-size:22px;font-weight:700}
   .shell{max-width:1120px;margin:0 auto;display:grid;grid-template-columns:230px minmax(0,1fr);
     gap:30px;align-items:start;padding-top:30px}
@@ -164,6 +175,7 @@
         <button data-pane="style">Custom form style</button>
         <button data-pane="theme">Custom theme</button>
         <button data-pane="mail" id="tabMail" style="display:none">Email</button>
+        <button data-pane="storage" id="tabStore" style="display:none">Database</button>
       </div>
 
       <!-- ============ profile ============ -->
@@ -321,6 +333,32 @@
       <!-- Only Fusion's own admin is shown this, and the tab only appears if the
            server answers for it - so what is on screen is what the server agrees
            to, rather than what the page guessed. -->
+      <!-- ============ database ============ -->
+      <!-- Neon's free plan is a fixed amount of room for the whole project. This
+           says how much of it has gone, which table is holding it and which
+           client's work it is - so running out is something seen coming rather
+           than discovered on the morning it happens. -->
+      <div class="pane" id="p-storage">
+        <div class="step">
+          <h2>How full the database is</h2>
+          <div class="hint">
+            Every company's work shares one Neon database. Uploaded files are never
+            kept in it &mdash; only the small rows about them &mdash; so what grows
+            here is orders, receipts and logs.
+          </div>
+
+          <div class="fxbarline"><div class="fxbarfill" id="sBar"></div></div>
+          <div class="fxused" id="sUsed">&mdash;</div>
+
+          <h3 class="fxsub">What is holding it</h3>
+          <table class="fxtbl" id="sTables"><tbody></tbody></table>
+          <div class="hint">Row counts are the database's own estimate, not a count.</div>
+
+          <h3 class="fxsub">Courier orders by company</h3>
+          <table class="fxtbl" id="sCos"><tbody></tbody></table>
+        </div>
+      </div>
+
       <div class="pane" id="p-mail">
         <div class="step">
           <h2>Sending email</h2>
@@ -643,6 +681,48 @@
       return { ok: false, d: { error: 'Could not reach the server.' } };
     });
   }
+
+  /* ---------- how full the database is ---------- */
+  // Asked for the same way the mail settings are: if the server will not answer,
+  // the tab is never offered, so the page cannot show what it has no right to.
+  function sizeOf(b){
+    if (b < 1024) return b + ' B';
+    if (b < 1048576) return (b / 1024).toFixed(1) + ' KB';
+    if (b < 1073741824) return (b / 1048576).toFixed(1) + ' MB';
+    return (b / 1073741824).toFixed(2) + ' GB';
+  }
+  function comma(n){ return String(n).replace(/\B(?=(\d{3})+(?!\d))/g, ','); }
+
+  fetch('/api/storage').then(function(r){
+    return r.ok ? r.json() : null;
+  }).then(function(d){
+    if (!d || d.error) return;
+    $('tabStore').style.display = '';
+
+    var limit = (d.limitMb || 1024) * 1048576;
+    var pct = Math.min(100, (d.bytes / limit) * 100);
+    var bar = $('sBar');
+    bar.style.width = Math.max(pct, 0.6) + '%';
+    bar.classList.toggle('warn', pct >= 60 && pct < 85);
+    bar.classList.toggle('bad', pct >= 85);
+    $('sUsed').textContent =
+      sizeOf(d.bytes) + ' of about ' + d.limitMb + ' MB used · ' +
+      pct.toFixed(1) + '%';
+
+    $('sTables').querySelector('tbody').innerHTML =
+      (d.tables || []).filter(function(t){ return t.bytes > 0; }).map(function(t){
+        return '<tr><td>' + t.name + '</td>' +
+          '<td class="num">' + comma(t.rows) + ' rows</td>' +
+          '<td class="num">' + sizeOf(t.bytes) + '</td></tr>';
+      }).join('') || '<tr><td>Nothing yet.</td></tr>';
+
+    $('sCos').querySelector('tbody').innerHTML =
+      (d.companies || []).map(function(c){
+        return '<tr><td style="font-family:inherit;font-size:12.5px">' +
+          String(c.name).replace(/[<>&]/g, '') + '</td>' +
+          '<td class="num">' + comma(c.orders) + ' orders</td></tr>';
+      }).join('') || '<tr><td>No courier orders pulled yet.</td></tr>';
+  }).catch(function(){});
 
   fetch('/api/mail/status').then(function(r){
     return r.ok ? r.json() : null;

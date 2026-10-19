@@ -346,6 +346,16 @@
     watchKeeper();
   });
 
+  // courier key -> the name a person knows it by, read once from the same list
+  // the rail is built from, so a courier added there needs nothing here
+  var COURIER_NAME = {};
+  fetch('/api/courier/kinds', { cache:'no-store' })
+    .then(function(r){ return r.json(); })
+    .then(function(d){
+      (d.kinds || []).forEach(function(k){ COURIER_NAME[k.key] = k.name; });
+    })
+    .catch(function(){});
+
   function head(){
     var p = new URLSearchParams();
     if(account) p.set('account', account);
@@ -947,10 +957,16 @@
       '<span class="aside">bar is volume, colour is delivery rate</span></h3>' +
       '<div class="bars">' + (bars || '<div class="note">No cities.</div>') + '</div></div>';
 
+    // Standing over every courier, or over one courier's accounts, the first
+    // question is which account this is - so the breakdown by account opens the
+    // overview rather than hiding at the foot of the cities tab. Inside a single
+    // account there is nothing to break down and it is left off.
     if((d.accounts || []).length > 1 || !account){
+      var wide = !account && !courier;   // every courier at once: say which
       var accRows = (d.accounts || []).map(function(a){
         return '<tr><td><a href="/courier-dash?account=' + a.id + '">' +
                esc(a.label) + '</a></td>' +
+               (wide ? '<td>' + esc(COURIER_NAME[a.courier] || a.courier || '') + '</td>' : '') +
                '<td class="r">' + n0(a.orders) + '</td>' +
                '<td class="r">' + n0(a.delivered) + '</td>' +
                '<td class="r">' + n0(a.returned) + '</td>' +
@@ -960,11 +976,14 @@
                '<td class="r">' + money(a.pendingAmount) + '</td></tr>';
       }).join('');
 
-      T.cities += '<div class="box"><h3>Accounts side by side</h3><table class="t">' +
-              '<tr><th>Account</th><th class="r">Orders</th><th class="r">Delivered</th>' +
+      T.overview += '<div class="box"><h3>Accounts side by side' +
+              '<span class="aside">every account on its own line, kept apart</span></h3>' +
+              '<table class="t">' +
+              '<tr><th>Account</th>' + (wide ? '<th>Courier</th>' : '') +
+              '<th class="r">Orders</th><th class="r">Delivered</th>' +
               '<th class="r">Returned</th><th class="r">Rate</th>' +
               '<th class="r">Collected</th><th class="r">Pending</th></tr>' +
-              (accRows || '<tr><td colspan="7" style="color:var(--muted)">No accounts.</td></tr>') +
+              (accRows || '<tr><td colspan="8" style="color:var(--muted)">No accounts.</td></tr>') +
               '</table></div>';
     }
 

@@ -2310,6 +2310,67 @@ async function requireBoss(req, res) {
   return null;
 }
 
+/* ---------- how full the database is ---------- */
+// Neon's free plan is a fixed amount of room for the whole project, not per
+// company, so this is one number about the server rather than about anybody's
+// books - which is why it is Fusion's own to see, like the mail settings, and
+// not a client administrator's.
+//
+// Nothing anyone wrote is read here. Only how many rows a table holds and what
+// it weighs, which is what answers "are we about to run out".
+const DB_LIMIT_MB = Number(process.env.DB_LIMIT_MB || 0) || 1024;
+
+app.get('/api/storage', async (req, res) => {
+  if (!await requireBoss(req, res)) return;
+  try {
+    res.setHeader('Cache-Control', 'no-store');
+
+    const size = await pool.query(
+      'SELECT pg_database_size(current_database())::bigint AS bytes');
+
+    // reltuples is the planner's own count, so it costs nothing on a table of
+    // any size. It is an estimate and the page says so.
+    const tables = await pool.query(`
+      SELECT c.relname                            AS name,
+             pg_total_relation_size(c.oid)::bigint AS bytes,
+             GREATEST(c.reltuples, 0)::bigint      AS est_rows
+        FROM pg_class c
+        JOIN pg_namespace n ON n.oid = c.relnamespace
+       WHERE n.nspname = 'public' AND c.relkind = 'r'
+       ORDER BY pg_total_relation_size(c.oid) DESC
+       LIMIT 40
+    `);
+
+    // Which client is using the room. courier_orders is the table that grows
+    // with the day's work, so it is the one worth naming per company.
+    let byCompany = [];
+    try {
+      const r = await pool.query(`
+        SELECT o.realm_id,
+               COALESCE(c.company_name, o.realm_id) AS name,
+               COUNT(*)::bigint                     AS orders
+          FROM courier_orders o
+          LEFT JOIN companies c ON c.realm_id = o.realm_id
+         GROUP BY o.realm_id, c.company_name
+         ORDER BY COUNT(*) DESC
+         LIMIT 30
+      `);
+      byCompany = r.rows;
+    } catch (e) { byCompany = []; }
+
+    res.json({
+      bytes: Number(size.rows[0].bytes),
+      limitMb: DB_LIMIT_MB,
+      tables: tables.rows.map(t => ({
+        name: t.name, bytes: Number(t.bytes), rows: Number(t.est_rows)
+      })),
+      companies: byCompany.map(c => ({ name: c.name, orders: Number(c.orders) }))
+    });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 app.get('/api/portal/people', async (req, res) => {
   if (!await requireBoss(req, res)) return;
   try {

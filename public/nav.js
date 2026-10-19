@@ -41,7 +41,7 @@
   // two desks, so the page is the same page - which section's rail it wears is
   // whichever one it was entered from, remembered for the tab.
   var SECTIONS = [
-    { key:'finance', label:'Finance', home:'/finance',
+    { key:'finance', label:'Finance', home:'/finance', tile:'book',
       what:'The books themselves. Needs your QuickBooks company.', qb:true,
       soon:[{ label:'Reports', tile:'sheet' }, { label:'Customers', tile:'people' }],
       groups: [
@@ -76,7 +76,7 @@
       ]}
     ]},
 
-    { key:'logistics', label:'Logistics', home:'/logistics',
+    { key:'logistics', label:'Logistics', home:'/logistics', tile:'truck',
       what:'Where every order is, across every courier account.', qb:true,
       soon:[{ label:'Returns', tile:'back' }, { label:'Rates', tile:'tag' }],
       groups: [
@@ -93,7 +93,7 @@
       ]}
     ]},
 
-    { key:'operations', label:'Operations', home:'/operations',
+    { key:'operations', label:'Operations', home:'/operations', tile:'box',
       what:'The day as it runs - orders in, parcels out, what went wrong.', qb:true,
       soon:[{ label:'eCommerce', tile:'bag' }, { label:'Shopify', tile:'cart' },
             { label:'Helpdesk', tile:'chat' }],
@@ -108,7 +108,7 @@
       ]}
     ]},
 
-    { key:'hr', label:'HR', home:'/hr',
+    { key:'hr', label:'HR', home:'/hr', tile:'people',
       what:'The people who do the work.', qb:false,
       soon:[{ label:'People', tile:'people' }, { label:'Timesheets', tile:'clock' },
             { label:'Attendance', tile:'cal' }, { label:'Payroll', tile:'cash' }],
@@ -118,7 +118,7 @@
       ]}
     ]},
 
-    { key:'csr', label:'CSR', home:'/csr',
+    { key:'csr', label:'CSR', home:'/csr', tile:'chat',
       what:'Customer service, from the first message to the last.', qb:false,
       soon:[{ label:'Inbox', tile:'chat' }, { label:'Tickets', tile:'sheet' },
             { label:'Customers', tile:'people' }, { label:'Returns', tile:'back' }],
@@ -337,21 +337,21 @@
       '  color:#fff}',
       '.fxchipdark .fxcobtn .fxcar{color:#9DB0B5}',
       '.fxchipdark.fxchipmany .fxcobtn:hover{border-color:#6BF0EA;color:#6BF0EA}',
-      '.fxcomenu{position:absolute;top:calc(100% + 7px);right:0;z-index:300;width:280px;',
+      '.fxchip .fxcomenu{position:absolute;top:calc(100% + 7px);right:0;z-index:300;width:280px;',
       '  display:none;background:var(--panel,#fff);color:var(--text,#18212A);',
       '  border:1px solid var(--line,#E1E8E9);border-radius:12px;',
       '  box-shadow:0 18px 44px rgba(24,35,42,.22);overflow:hidden;text-align:left}',
-      '.fxcomenu.open{display:block}',
-      '.fxcomenu .fxcap{font-family:var(--mono,monospace);font-size:9.5px;letter-spacing:.14em;',
+      '.fxchip .fxcomenu.open{display:block}',
+      '.fxchip .fxcomenu .fxcap{font-family:var(--mono,monospace);font-size:9.5px;letter-spacing:.14em;',
       '  text-transform:uppercase;color:var(--faint,#8a9a9e);padding:12px 16px 6px}',
-      '.fxcomenu button,.fxcomenu a{display:block;width:100%;text-align:left;padding:10px 16px;',
+      '.fxchip .fxcomenu button,.fxchip .fxcomenu a{display:block;width:100%;text-align:left;padding:10px 16px;',
       '  font:inherit;font-size:13px;border:0;background:none;cursor:pointer;color:inherit;',
       '  text-decoration:none}',
-      '.fxcomenu button:hover,.fxcomenu a:hover{background:var(--panel-2,#F2F6F6);color:#08827E}',
-      '.fxcomenu button.fxcur{font-weight:700;color:#08827E}',
-      '.fxcomenu button.fxcur:after{content:" \u2713"}',
-      '.fxcomenu .fxsep{height:1px;background:var(--line,#E1E8E9);margin:5px 0}',
-      '.fxcomenu .fxall{color:#08827E}'
+      '.fxchip .fxcomenu button:hover,.fxchip .fxcomenu a:hover{background:var(--panel-2,#F2F6F6);color:#08827E}',
+      '.fxchip .fxcomenu button.fxcur{font-weight:700;color:#08827E}',
+      '.fxchip .fxcomenu button.fxcur:after{content:" \u2713"}',
+      '.fxchip .fxcomenu .fxsep{height:1px;background:var(--line,#E1E8E9);margin:5px 0}',
+      '.fxchip .fxcomenu .fxall{color:#08827E}'
     ].join('');
     document.head.appendChild(st);
 
@@ -529,6 +529,10 @@
   (function pageTools(){
     var top = document.querySelector('.topline');
     if(!top) return;
+    // Settings is not a page of the app but the place the app is set up, so it
+    // carries nothing to navigate with: no back/forward, no bell, no company
+    // chip, no profile. Its own header holds the way out.
+    if(path === '/settings') return;
 
     var css = document.createElement('style');
     css.textContent = [
@@ -922,6 +926,7 @@
       '.ctree a:hover{color:#fff;background:rgba(255,255,255,.05)}',
       '.ctree a.on{color:#fff;background:rgba(255,255,255,.09);font-weight:600}',
       '.ctree a.all{font-weight:600;color:rgba(255,255,255,.78);padding-left:34px}',
+      '.ctree .kids a.all{padding-left:46px;font-weight:600;color:rgba(255,255,255,.72)}',
       '.ctree .grp{display:flex;align-items:center;gap:8px;cursor:pointer;',
       '  padding:7px 14px 7px 34px;font-size:12px;color:rgba(255,255,255,.62);',
       '  user-select:none;line-height:1.4}',
@@ -975,16 +980,27 @@
                '" href="/courier-dash?scope=all">All courier companies</a>';
 
         (d.couriers || []).forEach(function(c){
-          // only the company whose account is on screen opens itself
-          var mine = c.accounts.some(function(a){
-            return here.indexOf('account=' + a.id) > -1;
-          });
+          // only the company whose account - or whose own shelf - is on
+          // screen opens itself
+          var mine = here.indexOf('courier=' + c.key) > -1 ||
+            c.accounts.some(function(a){
+              return here.indexOf('account=' + a.id) > -1;
+            });
 
           out += '<div class="grp' + (mine ? ' open' : '') + '">' +
                  '<span class="car">\u25B8</span>' + esc(c.name) +
                  (c.ready ? '' : ' <span class="soon">soon</span>') + '</div>';
 
           out += '<div class="kids' + (mine ? ' open' : '') + '">';
+          // The courier itself is a page too: every one of its accounts on one
+          // screen, each number still carrying the account's own name. Without
+          // it the courier's name was only a hinge, and there was nowhere to
+          // ask "how is PostEx doing" as against "how is PostEx - RB doing".
+          if (c.accounts.length) {
+            out += '<a class="all' + (here.indexOf('courier=' + c.key) > -1 ? ' on' : '') +
+                   '" href="/courier-dash?courier=' + esc(c.key) + '">' +
+                   'All ' + esc(c.name) + ' accounts</a>';
+          }
           // An account is one entry here. What can be done with it - orders,
           // payments, receipts - are tabs inside the account's own page, not
           // more lines in this tree.

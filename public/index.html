@@ -86,6 +86,32 @@
 
   .fxhead{font:700 16px var(--head);color:var(--ink-3);margin:28px 0 16px}
 
+  /* The way in is five doors, not forty.
+     
+     Every module used to be laid out here at once, which is the shape of a
+     drawer rather than of a front door: the eye had to read thirty-odd names
+     to find the one desk it wanted. The desks are what somebody chooses
+     between - Finance or Logistics - and the modules belong inside whichever
+     was chosen, where that section's own rail holds them.
+     
+     Searching still reaches every module by name, because somebody who knows
+     what they want should not have to remember which desk keeps it. */
+  .fxdesks{display:grid;grid-template-columns:repeat(auto-fit,minmax(252px,1fr));gap:18px}
+  .fxdesk{display:block;background:var(--panel);border:1px solid var(--line);
+    border-radius:16px;padding:22px 20px 18px;text-decoration:none;color:var(--text);
+    transition:transform .14s ease,box-shadow .14s ease,border-color .14s ease}
+  .fxdesk:hover{transform:translateY(-3px);border-color:var(--accent);
+    box-shadow:0 14px 30px rgba(17,186,181,.16)}
+  .fxdeskbox{width:60px;height:60px;border-radius:15px;background:var(--panel-2);
+    border:1px solid var(--line);display:flex;align-items:center;justify-content:center;
+    margin-bottom:15px}
+  .fxdeskbox svg{width:34px;height:34px;display:block}
+  .fxdesk b{display:block;font:700 17.5px var(--head);letter-spacing:-.01em;color:var(--ink-3)}
+  .fxdesk em{display:block;font-style:normal;font-size:12.5px;color:var(--muted);
+    line-height:1.55;margin-top:6px;min-height:40px}
+  .fxdesk i{display:block;font-style:normal;font-size:11.5px;color:var(--faint);
+    margin-top:14px;padding-top:12px;border-top:1px solid var(--line);line-height:1.5}
+
   @media (max-width:780px){
     .fxbarin{grid-template-columns:auto auto;gap:10px 12px;padding:10px 16px}
     .fxfind{grid-column:1 / -1;order:3}
@@ -124,7 +150,7 @@
 <main class="fxscroll" id="scroll">
   <div class="fxwrap">
 
-    <h2 class="fxhead" id="apps">All apps</h2>
+    <h2 class="fxhead" id="apps">Your desks</h2>
     <div id="board"></div>
 
   </div>
@@ -164,8 +190,41 @@
     });
   })();
 
+  // Nothing typed: the five desks. Something typed: every module whose name
+  // matches it, out of all five, because a search is for reaching past the
+  // doors rather than through them.
   function drawBoard(){
-    if (window.FUSION) window.FUSION.draw($('board'), null, find);
+    var seek = String(find || '').trim();
+    if (seek) {
+      $('apps').textContent = 'All apps';
+      if (window.FUSION) window.FUSION.draw($('board'), null, find);
+      return;
+    }
+    $('apps').textContent = 'Your desks';
+
+    var all = (window.APP && window.APP.sections) || [];
+    $('board').innerHTML = '<div class="fxdesks">' + all.map(function(sec){
+      // only what this person was given, so the line under a desk never names
+      // a module they cannot open
+      var list = ((window.FUSION && window.FUSION.tilesOf(sec)) || []).filter(function(t){
+        if (t.soon) return false;
+        if (!t.need) return true;
+        return !window.APP || !window.APP.may || window.APP.may(t.need);
+      });
+      var shown = list.slice(0, 3).map(function(t){ return esc(t.label); }).join(' · ');
+      var more  = list.length > 3 ? ' · +' + (list.length - 3) + ' more' : '';
+      return '<a class="fxdesk" href="' + esc(sec.home) + '" data-sec="' + esc(sec.key) + '">' +
+        '<div class="fxdeskbox">' + window.FUSION.mark(sec.tile) + '</div>' +
+        '<b>' + esc(sec.label) + '</b>' +
+        '<em>' + esc(sec.what || '') + '</em>' +
+        '<i>' + (shown ? shown + more : 'Being built') + '</i></a>';
+    }).join('') + '</div>';
+
+    $('board').querySelectorAll('[data-sec]').forEach(function(a){
+      a.addEventListener('click', function(){
+        try { sessionStorage.setItem('fusion:section', a.getAttribute('data-sec')); } catch (e) {}
+      });
+    });
   }
 
   /* ==================== the bar ==================== */
