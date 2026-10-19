@@ -25,7 +25,7 @@
 
 import { pool } from './db.js';
 import { getSetting, setSetting } from './settings.js';
-import { getMappings, saveMapping } from './mappings.js';
+import { getMappings } from './mappings.js';
 import {
   fetchOne, fetchProduct, saveOne, dueOrders,
   setDone, setHeld, setFailed, setOff, releaseHeld, note, toInvoice, ask
@@ -33,7 +33,7 @@ import {
 import { decrypt } from './secrets.js';
 import {
   getAccessToken, qbQuery, loadItems, loadTerms, getOrCreateCustomer,
-  postInvoice, createItem, isRetryable
+  postInvoice, createItem, setItemSku, listAccounts, isRetryable
 } from './qb.js';
 
 const KEY = 'shopify';
@@ -56,7 +56,14 @@ export const DEFAULTS = {
   shippingItem: '',
   keepTitles: true,
   makeItems: true,                         // make the item if the books lack it
-  itemType: 'NonInventory',                // or Inventory, or Service
+  // Which kind of item to make is NOT a setting. Shopify already knows whether
+  // it tracks stock for a product; an item made here is made as the same kind
+  // of thing. A box ticked here could only ever disagree with the shop.
+  //
+  // The three accounts are not a choice about the product either - they are
+  // what QuickBooks requires before it will make any item at all. Left blank
+  // they are worked out from the company's own chart (see standingAccounts),
+  // so most books never need them touched.
   incomeAccount: '',
   cogsAccount: '',
   assetAccount: ''
@@ -77,24 +84,43 @@ export async function saveSettings(realmId, patch) {
   return next;
 }
 
-// Can an item be made at all? Inventory needs three accounts; the other kinds
-// need one. Said in words rather than left to QuickBooks to refuse, because
-// "ValidationFault 2030" is not something anybody should have to read.
-export function itemsPossible(s) {
+// The accounts QuickBooks will want, found in the company's own chart rather
+// than asked for. These are the accounts QuickBooks itself makes when a company
+// is set up, so in almost every book they are already there under these names;
+// anything chosen by hand in the settings wins over what is found.
+export function standingAccounts(all, s) {
+  const bySub  = want => (all.find(a => a.sub === want) || {}).id;
+  const byType = want => (all.find(a => a.type === want) || {}).id;
+  const byName = re   => (all.find(a => re.test(a.name)) || {}).id;
+
+  return {
+    income: s.incomeAccount || bySub('SalesOfProductIncome') ||
+            byName(/sales of product/i) || byType('Income'),
+    asset:  s.assetAccount  || bySub('Inventory') ||
+            byName(/inventory asset/i) || byType('Other Current Asset'),
+    cogs:   s.cogsAccount   || byType('Cost of Goods Sold') ||
+            byName(/cost of goods|cost of sales/i)
+  };
+}
+
+// Can an item be made at all? Said in words rather than left to QuickBooks to
+// refuse, because "ValidationFault 2030" is not something anybody should read.
+export function itemsPossible(s, found) {
   if (!s.makeItems) return { can: false, why: 'making items is switched off' };
-  if (!s.incomeAccount) return { can: false, why: 'no income account chosen in Shopify settings' };
-  if (s.itemType === 'Inventory' && (!s.assetAccount || !s.cogsAccount)) {
-    return { can: false, why: 'inventory items need an asset and a cost-of-sales account' };
+  const a = found || {};
+  if (!a.income) {
+    return { can: false, why: 'QuickBooks has no income account to put sales in' };
   }
-  return { can: true };
+  return { can: true, inventory: !!(a.asset && a.cogs) };
 }
 
 /* ==================== the books, held open for one pass ==================== */
 
 // Everything a pass needs from QuickBooks, read once. A hundred orders should
 // not be a hundred readings of the item list.
-async function openBooks(realmId) {
+export async function openBooks(realmId, s) {
   const token = await getAccessToken(realmId);
+  const settings = s || await settingsOf(realmId);
   return {
     realmId,
     token,
@@ -103,6 +129,7 @@ async function openBooks(realmId) {
     customers: {},
     skus: await skuIndex(realmId, token),        // sku -> name
     saved: await getMappings(realmId),
+    accounts: standingAccounts(await listAccounts(realmId, token), settings),
     made: 0
   };
 }
@@ -128,28 +155,45 @@ async function skuIndex(realmId, token) {
 
 // What a product is in the books, and if it is nothing yet, making it.
 //
-// The looking-up order is the same one the by-hand page uses, and it matters:
-// what somebody said beats what was guessed, and a SKU beats a name. Only after
-// all three have missed is anything created - a new item in real books is not a
-// thing to do lightly, and an item made because a name was spelled differently
-// is a duplicate somebody has to merge later.
+// The SKU, and only the SKU.
+//
+// It used to try the name as well when the SKU missed. That is the one thing
+// here that could quietly put the wrong product on a real invoice: two products
+// called "Serum 30ml" in a shop of four thousand is not unusual, and nobody
+// would ever see it happen. The same SKU is used on both sides, so the SKU is
+// the answer; anything it does not find is not in the books yet, and is made.
+//
+// A line with no SKU at all is the one case left - Shopify allows it - and
+// there the title is all there is to go on, so it is matched and made by name
+// and the log says so.
 async function itemFor(books, line, s, ctx) {
-  const key = String(line.sku || line.title || '').toLowerCase().trim();
+  const sku = String(line.sku || '').toLowerCase().trim();
+  const title = String(line.title || '').trim();
+  const key = sku || title.toLowerCase();
 
+  // somebody overruled it by hand on the orders page - the escape hatch for an
+  // odd product, and it is only ever consulted, never required
   const hand = books.saved[key];
   if (hand && hand.skip) return { skip: true };
   if (hand && hand.qbItem && books.items[hand.qbItem.toLowerCase()]) {
     return { name: hand.qbItem };
   }
 
-  const sku = String(line.sku || '').toLowerCase().trim();
   if (sku && books.skus.has(sku)) return { name: books.skus.get(sku) };
+  if (!sku && title && books.items[title.toLowerCase()]) return { name: title };
 
-  const title = String(line.title || '').trim();
-  if (title && books.items[title.toLowerCase()]) return { name: title };
+  const can = itemsPossible(s, books.accounts);
+  if (!can.can) return { missing: line.sku || title, why: can.why };
 
-  const can = itemsPossible(s);
-  if (!can.can) return { missing: line.sku || line.title, why: can.why };
+  // Shopify's own answer to what this is. Stock-tracked there, stock-tracked
+  // here; and if the books have nowhere to keep stock, it is made as the next
+  // best thing rather than refused, with that said in the log.
+  let kind = line.tracked ? 'Inventory' : 'NonInventory';
+  let downgraded = '';
+  if (kind === 'Inventory' && !can.inventory) {
+    kind = 'NonInventory';
+    downgraded = ' (as non-inventory: QuickBooks has no inventory asset or cost-of-sales account)';
+  }
 
   const name = title || line.sku;
   if (!name) return { missing: '(a line with no name)', why: 'the line has neither a SKU nor a title' };
@@ -157,39 +201,47 @@ async function itemFor(books, line, s, ctx) {
   const made = await createItem(books.realmId, books.token, {
     name,
     sku: line.sku || '',
-    type: s.itemType,
+    type: kind,
     price: line.rate,
-    incomeAccount: s.incomeAccount,
-    cogsAccount: s.cogsAccount,
-    assetAccount: s.assetAccount
+    cost: line.cost || 0,
+    incomeAccount: books.accounts.income,
+    cogsAccount: books.accounts.cogs,
+    assetAccount: books.accounts.asset
   });
 
   if (made.ok) {
     books.items[String(made.name).toLowerCase()] = made.id;
     if (made.sku) books.skus.set(String(made.sku).toLowerCase(), made.name);
     books.made++;
-    // remembered, so the by-hand page shows the same answer and nothing is made twice
-    await saveMapping(books.realmId, key, line.sku || null, line.title || null, made.name, false);
-    books.saved[key] = { qbItem: made.name, skip: false };
     await note(books.realmId, 'item', {
       shopId: ctx.shopId, sku: line.sku, title: line.title,
-      note: 'made "' + made.name + '" in QuickBooks as ' + s.itemType,
-      detail: { id: made.id, price: line.rate }
+      note: 'made "' + made.name + '" in QuickBooks as ' + kind + downgraded,
+      detail: { id: made.id, price: line.rate, cost: line.cost || 0, tracked: !!line.tracked }
     });
     return { name: made.name };
   }
 
-  // Already there under that name - which happens when the name matches but the
-  // case or the spacing did not. Found rather than made, and remembered.
+  // Already there under that name - the SKU missed but the name did not, which
+  // means the item in the books has no SKU on it or a different one. Found,
+  // and the SKU put on it so it is found by SKU from now on.
   if (/duplicate name/i.test(made.error || '')) {
     const safe = String(name).replace(/'/g, "''");
     const q = await qbQuery(books.realmId, books.token,
-      `SELECT Id, Name FROM Item WHERE Name = '${safe}' MAXRESULTS 1`);
+      `SELECT Id, Name, Sku, SyncToken FROM Item WHERE Name = '${safe}' MAXRESULTS 1`);
     const found = (q.Item || [])[0];
     if (found) {
       books.items[String(found.Name).toLowerCase()] = found.Id;
-      await saveMapping(books.realmId, key, line.sku || null, line.title || null, found.Name, false);
-      books.saved[key] = { qbItem: found.Name, skip: false };
+      if (sku && !found.Sku) {
+        const put = await setItemSku(books.realmId, books.token, found, line.sku);
+        await note(books.realmId, put.ok ? 'item' : 'error', {
+          shopId: ctx.shopId, sku: line.sku, title: line.title, ok: put.ok,
+          note: put.ok
+            ? 'QuickBooks already had "' + found.Name + '" without a SKU - put ' +
+              line.sku + ' on it, so it matches by SKU from now on'
+            : 'QuickBooks already had "' + found.Name + '" but would not take the SKU: ' + put.error
+        });
+        if (put.ok) books.skus.set(sku, found.Name);
+      }
       return { name: found.Name };
     }
   }
@@ -197,10 +249,12 @@ async function itemFor(books, line, s, ctx) {
   await note(books.realmId, 'error', {
     shopId: ctx.shopId, ok: false, sku: line.sku, title: line.title,
     note: 'QuickBooks would not make the item: ' + made.error,
-    detail: { status: made.status, tid: made.tid }
+    detail: { status: made.status, tid: made.tid, kind }
   });
-  return { missing: line.sku || line.title, why: 'QuickBooks refused to make the item' };
+  return { missing: line.sku || title, why: 'QuickBooks refused to make the item' };
 }
+
+export { itemFor };
 
 /* ==================== one order ==================== */
 
@@ -628,3 +682,26 @@ export async function wireHooks(realmId, shop, baseUrl) {
 }
 
 export { releaseHeld };
+
+// The same rule as itemFor, asked without doing anything about it - what the
+// orders page shows before a single invoice is written, so "what will happen"
+// and "what happened" can never be two different answers.
+export function previewItem(books, line, s) {
+  const sku = String(line.sku || '').toLowerCase().trim();
+  const title = String(line.title || '').trim();
+  const key = sku || title.toLowerCase();
+
+  const hand = books.saved[key];
+  if (hand && hand.skip) return { how: 'set aside', item: null, skip: true };
+  if (hand && hand.qbItem && books.items[hand.qbItem.toLowerCase()]) {
+    return { how: 'matched by hand', item: hand.qbItem };
+  }
+  if (sku && books.skus.has(sku)) return { how: 'SKU', item: books.skus.get(sku) };
+  if (!sku && title && books.items[title.toLowerCase()]) return { how: 'name (no SKU)', item: title };
+
+  const can = itemsPossible(s, books.accounts);
+  if (!can.can) return { how: '', item: null, why: can.why };
+
+  const kind = (line.tracked && can.inventory) ? 'Inventory' : 'NonInventory';
+  return { how: 'will be made as ' + kind, item: null, willMake: true, kind };
+}

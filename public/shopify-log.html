@@ -156,38 +156,41 @@
 
           <h3 style="font:600 13px var(--head);margin:22px 0 6px">A product that is not in the books yet</h3>
           <div class="hint">
-            When an order carries a product QuickBooks has never heard of, the item can
-            be made here and then used &mdash; so one new product does not stop an
-            invoice. QuickBooks needs to be told where the money lands; an inventory
-            item needs two more accounts than the others.
+            Products are matched on the <b>SKU</b> and nothing else &mdash; the same
+            SKU is used on both sides. A product QuickBooks has never heard of is
+            <b>made</b> when an invoice needs it, as the same kind of thing it is in
+            Shopify: stock-tracked there, inventory here. There is nothing to choose,
+            because choosing could only disagree with the shop.
+            <br><br>
+            QuickBooks does need to be told where the money lands before it will make
+            any item. Those accounts are found in your own chart below; change them
+            only if the ones found are the wrong ones.
           </div>
 
           <label class="onoff">
             <input type="checkbox" id="sMake"> <span>Make the item in QuickBooks when it is missing</span>
           </label>
 
-          <div class="fields">
-            <div>
-              <label for="sType">Make it as</label>
-              <select id="sType">
-                <option value="NonInventory">Non-inventory</option>
-                <option value="Inventory">Inventory (counts stock)</option>
-                <option value="Service">Service</option>
-              </select>
+          <div class="said" id="accFound" style="margin-bottom:12px"></div>
+
+          <details style="margin-bottom:14px">
+            <summary style="cursor:pointer;font-size:12.5px;color:var(--muted)">
+              Choose the accounts myself</summary>
+            <div class="fields" style="margin-top:12px">
+              <div>
+                <label for="sIncome">Income account</label>
+                <select id="sIncome"></select>
+              </div>
+              <div>
+                <label for="sCogs">Cost of sales account</label>
+                <select id="sCogs"></select>
+              </div>
+              <div>
+                <label for="sAsset">Inventory asset account</label>
+                <select id="sAsset"></select>
+              </div>
             </div>
-            <div>
-              <label for="sIncome">Income account</label>
-              <select id="sIncome"></select>
-            </div>
-            <div id="wrapCogs">
-              <label for="sCogs">Cost of sales account</label>
-              <select id="sCogs"></select>
-            </div>
-            <div id="wrapAsset">
-              <label for="sAsset">Inventory asset account</label>
-              <select id="sAsset"></select>
-            </div>
-          </div>
+          </details>
 
           <div class="acts">
             <button class="go" id="btnSave">Save</button>
@@ -389,13 +392,6 @@
       }).join('');
   }
 
-  function typeChanged(){
-    var inv = $('sType').value === 'Inventory';
-    $('wrapCogs').style.display = inv ? '' : 'none';
-    $('wrapAsset').style.display = inv ? '' : 'none';
-  }
-  $('sType').addEventListener('change', typeChanged);
-
   function loadSetup(){
     get('/api/shopify/settings').then(function(d){
       var s = d.settings || {};
@@ -403,15 +399,13 @@
       $('sMake').checked = s.makeItems !== false;
       $('sCust').value = s.customer || '';
       $('sPrefix').value = s.prefix || '';
-      $('sType').value = s.itemType || 'NonInventory';
-      typeChanged();
-
       if(!accounts){
         get('/api/shopify/accounts').then(function(a){
           accounts = a;
           fill('sIncome', a.income || [], s.incomeAccount);
           fill('sCogs', a.cogs || [], s.cogsAccount);
           fill('sAsset', a.asset || [], s.assetAccount);
+          if(window.__paintFound) window.__paintFound();
         }).catch(function(e){
           say($('setSaid'),'bad','Could not read the chart of accounts: ' + e.message);
         });
@@ -432,6 +426,34 @@
         }).catch(function(){});
       }
 
+      // what will actually be used, said in the names of the accounts rather
+      // than in ids nobody recognises
+      var a = d.accounts || {};
+      function nameOf(list, id){
+        var hit = (list || []).filter(function(x){ return String(x.id) === String(id); })[0];
+        return hit ? hit.name : null;
+      }
+      function paintFound(){
+        if(!accounts) return;
+        var bits = [];
+        var inc = nameOf(accounts.income, a.income);
+        var asst = nameOf(accounts.asset, a.asset);
+        var cogs = nameOf(accounts.cogs, a.cogs);
+        bits.push(inc ? 'Sales go to <b>' + esc(inc) + '</b>'
+                      : 'No income account found — items cannot be made');
+        if(asst && cogs){
+          bits.push('stock-tracked products become inventory, held in <b>' + esc(asst) +
+                    '</b> with cost in <b>' + esc(cogs) + '</b>');
+        } else {
+          bits.push('no inventory asset or cost-of-sales account found, so ' +
+                    'stock-tracked products will be made as non-inventory');
+        }
+        $('accFound').className = 'said ' + (inc ? 'good' : 'bad');
+        $('accFound').innerHTML = bits.join(' · ') + '.';
+      }
+      window.__paintFound = paintFound;
+      paintFound();
+
       if(d.canMakeItems === false && $('sMake').checked){
         say($('setSaid'),'bad', 'Items cannot be made yet: ' + d.why);
       }
@@ -447,7 +469,6 @@
       customer: $('sCust').value.trim(),
       prefix: $('sPrefix').value.trim(),
       shippingItem: $('sShip').value,
-      itemType: $('sType').value,
       incomeAccount: $('sIncome').value,
       cogsAccount: $('sCogs').value,
       assetAccount: $('sAsset').value

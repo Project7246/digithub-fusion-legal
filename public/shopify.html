@@ -166,14 +166,16 @@
       <div class="step">
         <h2><i>03</i>What each product is in QuickBooks</h2>
         <div class="hint">
-          Matched on your saved choice first, then the SKU on the item in
-          QuickBooks, then its name. Anything still unmatched is set here, and the
-          choice is remembered for next time. An order with an unmatched product is
-          left out rather than written half-finished.
+          Matched on the <b>SKU</b>, and nothing else &mdash; the same SKU is used on
+          both sides, so there is nothing to set up and nothing to get wrong. A
+          product QuickBooks has never heard of is <b>made</b> when the invoice needs
+          it, as the same kind of thing it is in Shopify: stock-tracked there,
+          inventory here. This list is only to show you what will happen; the
+          dropdown is there for the odd product you want to overrule.
         </div>
         <div id="prodBox"><div class="none">Read some orders first.</div></div>
         <div class="acts" style="margin-top:12px">
-          <button class="ghost" id="btnMapSave" type="button">Save these matches</button>
+          <button class="ghost" id="btnMapSave" type="button">Save the overrules</button>
           <span class="said" id="mapSaid"></span>
         </div>
       </div>
@@ -433,24 +435,34 @@
       $('prodBox').innerHTML = '<div class="none">Read some orders first.</div>';
       return;
     }
-    var short = products.filter(function(p){ return !p.item; }).length;
+    var make = products.filter(function(p){ return p.willMake; }).length;
+    var stuck = products.filter(function(p){ return !p.item && !p.willMake; }).length;
 
     $('prodBox').innerHTML =
       '<div class="hint" style="margin:0 0 10px">' +
         n0(products.length) + ' products in these days · ' +
-        (short ? '<b>' + n0(short) + ' still unmatched</b>' : 'all matched') + '</div>' +
+        n0(products.length - make - stuck) + ' already in QuickBooks' +
+        (make ? ' · <b>' + n0(make) + ' will be made</b>' : '') +
+        (stuck ? ' · <b style="color:var(--bad)">' + n0(stuck) + ' cannot be</b>' : '') +
+      '</div>' +
       '<div class="scroll"><table class="t">' +
       '<tr><th>SKU</th><th>Shopify product</th><th class="num">Lines</th>' +
-      '<th>Becomes in QuickBooks</th><th>How</th></tr>' +
+      '<th>In QuickBooks</th><th>Overrule it</th></tr>' +
       products.map(function(p, i){
         var chosen = p.item === 'skip' ? '__skip__' : (p.item || '');
+        var state = p.willMake
+          ? '<span class="pill mid">' + esc(p.how) + '</span>'
+          : (p.item
+              ? '<span class="pill ok">' + esc(p.item) + '</span>' +
+                '<br><small>' + esc(p.how) + '</small>'
+              : '<span class="pill no">' + esc(p.why || 'cannot be made') + '</span>');
         return '<tr>' +
-          '<td>' + esc(p.sku) + '</td>' +
-          '<td>' + esc(p.title) + '</td>' +
+          '<td>' + esc(p.sku || '—') + '</td>' +
+          '<td>' + esc(p.title) +
+            (p.tracked ? ' <span class="pill ok">stock</span>' : '') + '</td>' +
           '<td class="num">' + n0(p.lines) + '</td>' +
-          '<td><select data-row="' + i + '">' + itemOptions(chosen) + '</select></td>' +
-          '<td>' + (p.item ? '<span class="pill ok">' + esc(p.how) + '</span>'
-                           : '<span class="pill no">nothing yet</span>') + '</td></tr>';
+          '<td>' + state + '</td>' +
+          '<td><select data-row="' + i + '">' + itemOptions(chosen) + '</select></td></tr>';
       }).join('') + '</table></div>';
 
     $('prodBox').querySelectorAll('[data-row]').forEach(function(sel){
@@ -471,7 +483,7 @@
       };
     }).filter(function(m){ return m.key; });
 
-    if(!list.length){ say($('mapSaid'),'','Nothing chosen yet.'); return; }
+    if(!list.length){ say($('mapSaid'),'','Nothing overruled - which is usually right.'); return; }
 
     ask('/api/mappings', { mappings: list })
       .then(function(){
@@ -497,7 +509,9 @@
       .then(function(d){
         lastPairs = d.pairs || [];
         say($('buildSaid'), d.ready ? 'good' : 'bad',
-          d.ready + ' invoice' + (d.ready === 1 ? '' : 's') + ' ready out of ' + d.read + ' orders.');
+          d.ready + ' invoice' + (d.ready === 1 ? '' : 's') + ' ready out of ' + d.read + ' orders' +
+          (d.made ? ' · ' + d.made + ' new item' + (d.made === 1 ? '' : 's') +
+                    ' made in QuickBooks' : '') + '.');
         if(d.ready) $('btnUpload').style.display = '';
 
         var why = {};

@@ -387,6 +387,7 @@ query FusionOrders($q: String!, $cursor: String) {
           sku title quantity
           originalUnitPriceSet { shopMoney { amount } }
           discountedTotalSet   { shopMoney { amount } }
+          variant { id inventoryItem { tracked unitCost { amount } } }
         }
       }
     }
@@ -458,12 +459,18 @@ async function saveOrder(realmId, shopId, o) {
   const lines = ((o.lineItems && o.lineItems.nodes) || []).map(L => {
     const rate = amt(L.originalUnitPriceSet);
     const qty = Number(L.quantity) || 0;
+    const inv = (L.variant && L.variant.inventoryItem) || null;
     return {
       sku: String(L.sku || '').trim(),
       title: String(L.title || '').trim(),
       qty,
       rate,
-      amt: money(rate * qty)
+      amt: money(rate * qty),
+      // what the shop says this product is. An item made in QuickBooks from it
+      // is made as the same kind of thing, rather than as whatever was ticked
+      // in a settings box months ago.
+      tracked: inv ? inv.tracked !== false : false,
+      cost: inv && inv.unitCost ? money(inv.unitCost.amount) : 0
     };
   });
 
@@ -680,6 +687,7 @@ query FusionOrder($id: ID!) {
         sku title quantity
         originalUnitPriceSet { shopMoney { amount } }
         discountedTotalSet   { shopMoney { amount } }
+        variant { id inventoryItem { tracked unitCost { amount } } }
       }
     }
   }

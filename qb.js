@@ -338,6 +338,9 @@ export async function createItem(realmId, token, item) {
   if (item.sku) body.Sku = String(item.sku).slice(0, 100);
   if (item.description) body.Description = String(item.description).slice(0, 4000);
   if (item.price != null) body.UnitPrice = Number(item.price) || 0;
+  // What it cost, when the shop knows - so the first sale does not work its
+  // cost of sales out of nothing.
+  if (item.cost) body.PurchaseCost = Number(item.cost) || 0;
 
   if (kind === 'Inventory') {
     body.TrackQtyOnHand = true;
@@ -379,4 +382,31 @@ export async function findInvoiceByNumber(realmId, token, docNumber) {
     `WHERE DocNumber = '${safe}' MAXRESULTS 5`);
   const arr = q.Invoice || [];
   return arr.length ? arr[0] : null;
+}
+
+// Put a SKU on an item that has none. QuickBooks updates are whole-object and
+// need the SyncToken, so the item is read back first - sparse update keeps us
+// from blanking the fields we did not send.
+export async function setItemSku(realmId, token, item, sku) {
+  const res = await qbFetch(
+    `${API}/v3/company/${realmId}/item?minorversion=70`,
+    token,
+    {
+      method: 'POST',
+      body: JSON.stringify({
+        Id: item.Id,
+        SyncToken: item.SyncToken,
+        sparse: true,
+        Sku: String(sku).slice(0, 100)
+      })
+    }
+  );
+  if (res.ok) return { ok: true };
+  const text = await res.text();
+  let msg = text.slice(0, 300);
+  try {
+    const f = JSON.parse(text).Fault;
+    if (f && f.Error && f.Error.length) msg = `${f.Error[0].Message} | ${f.Error[0].Detail || ''}`;
+  } catch (e) { /* keep raw */ }
+  return { ok: false, error: msg };
 }

@@ -26,7 +26,8 @@ import {
 } from './shopify.js';
 import {
   settingsOf as shopifySettings, saveSettings as saveShopifySettings,
-  itemsPossible, sweep as shopifySweep, syncState, startShopifySync,
+  itemsPossible, standingAccounts, openBooks, itemFor, previewItem,
+  sweep as shopifySweep, syncState, startShopifySync,
   nudgeOrder, nudgeProduct, wireHooks
 } from './shopifysync.js';
 import { listCompanies } from './companies.js';
@@ -7506,51 +7507,10 @@ app.get('/api/shopify/orders', async (req, res) => {
   }
 });
 
-// Every item in the books, by SKU and by name. Read once per build rather than
-// once per order, because a thousand orders would otherwise be a thousand asks.
-async function qbItemIndex(realmId) {
-  const token = await getAccessToken(realmId);
-  const bySku = new Map(), byName = new Map();
-  let start = 1;
-  while (true) {
-    const q = await qbQuery(realmId, token,
-      'SELECT * FROM Item STARTPOSITION ' + start + ' MAXRESULTS 1000');
-    const arr = q.Item || [];
-    arr.forEach(it => {
-      if (!it.Name) return;
-      const n = String(it.Name).toLowerCase();
-      if (!byName.has(n) || it.Active !== false) byName.set(n, it.Name);
-      if (it.Sku) {
-        const k = String(it.Sku).toLowerCase().trim();
-        if (!bySku.has(k) || it.Active !== false) bySku.set(k, it.Name);
-      }
-    });
-    if (arr.length < 1000) break;
-    start += 1000;
-    if (start > 9000) break;
-  }
-  return { bySku, byName };
-}
-
-// The order a product is looked up in, and it matters: what somebody said by
-// hand beats what was guessed, and a SKU beats a name.
-function matchItem(sku, title, saved, items) {
-  const key = String(sku || title || '').toLowerCase().trim();
-  const hand = saved[key];
-  if (hand && hand.skip) return { item: 'skip', how: 'set aside' };
-  if (hand && hand.qbItem) return { item: hand.qbItem, how: 'matched by hand' };
-
-  const s = String(sku || '').toLowerCase().trim();
-  if (s && items.bySku.has(s)) return { item: items.bySku.get(s), how: 'SKU' };
-
-  const t = String(title || '').toLowerCase().trim();
-  if (t && items.byName.has(t)) return { item: items.byName.get(t), how: 'name' };
-
-  return { item: null, how: '' };
-}
-
-// Every product the range carries, beside what it is matched to in QuickBooks -
-// the step that has to be finished before anything is written to real books.
+// Every product the range carries, beside what it is in QuickBooks - and where
+// it is nothing yet, what will be made for it. Asked through the same rule the
+// writing uses, so what this page promises and what the books get can never be
+// two different answers.
 app.get('/api/shopify/products', async (req, res) => {
   const realmId = await requireCompany(req, res);
   if (!realmId) return;
@@ -7559,15 +7519,17 @@ app.get('/api/shopify/products', async (req, res) => {
     const seen = await productsSeen(realmId, {
       from: req.query.from, to: req.query.to, shop: req.query.shop
     });
-    const saved = await getMappings(realmId);
-    const items = await qbItemIndex(realmId);
+    const s = await shopifySettings(realmId);
+    const books = await openBooks(realmId, s);
 
     res.json({
+      accounts: books.accounts,
       products: seen.map(p => {
-        const m = matchItem(p.sku, p.title, saved, items);
+        const m = previewItem(books, p, s);
         return {
           sku: p.sku, title: p.title, lines: p.lines, qty: p.qty,
-          item: m.item, how: m.how
+          tracked: !!p.tracked,
+          item: m.item, how: m.how, willMake: !!m.willMake, why: m.why || ''
         };
       })
     });
@@ -7579,6 +7541,10 @@ app.get('/api/shopify/products', async (req, res) => {
 // Turn the range into invoices and hand them to the upload engine - the same
 // one the Convert page hands its work to, so Stop, Resume, the log and the
 // retry of what failed are not written a second time.
+//
+// A product the books have never heard of is made here too, exactly as the
+// live sync makes it, so the by-hand path and the automatic one cannot put
+// different things into the same books.
 app.post('/api/shopify/build', async (req, res) => {
   const realmId = await requireCompany(req, res);
   if (!realmId) return;
@@ -7588,17 +7554,16 @@ app.post('/api/shopify/build', async (req, res) => {
 
   try {
     const rows = await listShopOrders(realmId, { from, to, shop });
-    const saved = await getMappings(realmId);
-    const items = await qbItemIndex(realmId);
+    const s = await shopifySettings(realmId);
+    const books = await openBooks(realmId, s);
 
     // what QuickBooks already holds, so the same order is never written twice
     const already = new Set();
     if (req.body.skipExisting !== false) {
       try {
-        const token = await getAccessToken(realmId);
         let start = 1;
         while (true) {
-          const q = await qbQuery(realmId, token,
+          const q = await qbQuery(realmId, books.token,
             "SELECT DocNumber, TxnDate FROM Invoice WHERE TxnDate >= '" + from +
             "' AND TxnDate <= '" + to + "' STARTPOSITION " + start + ' MAXRESULTS 1000');
           const arr = q.Invoice || [];
@@ -7610,43 +7575,67 @@ app.post('/api/shopify/build', async (req, res) => {
       } catch (e) { /* books that will not answer is not a reason to stop */ }
     }
 
-    const match = (sku, title) => matchItem(sku, title, saved, items).item;
     const opts = {
-      match,
-      customer: req.body.customer,
-      prefix: req.body.prefix || '',
-      terms: req.body.terms || '',
-      shippingItem: req.body.shippingItem || '',
-      keepTitles: req.body.keepTitles !== false
+      match: () => 'placeholder',          // the lines are worked out below
+      customer: req.body.customer || s.customer,
+      prefix: req.body.prefix !== undefined ? req.body.prefix : s.prefix,
+      terms: s.terms,
+      keepTitles: s.keepTitles
     };
+    const shipItem = req.body.shippingItem !== undefined
+      ? req.body.shippingItem : s.shippingItem;
 
     const invoices = [], unmatched = new Map(), skipped = [], pairs = [];
+    let made = 0;
 
-    rows.forEach(r => {
-      if (r.cancelled) { skipped.push({ name: r.name, why: 'cancelled in Shopify' }); return; }
+    for (const r of rows) {
+      if (r.cancelled) { skipped.push({ name: r.name, why: 'cancelled in Shopify' }); continue; }
 
-      const built = toInvoice(r, opts);
-      if (built.skip === 'unmatched') {
-        built.missing.forEach(m => unmatched.set(String(m).toLowerCase(), m));
-        skipped.push({ name: r.name, why: 'product not matched' });
-        return;
+      const lines = [], missing = [];
+      for (const L of (r.lines || [])) {
+        if (!L.qty) continue;
+        const got = await itemFor(books, L, s, { shopId: r.shop_id });
+        if (got.skip) continue;
+        if (got.missing) { missing.push(got.missing); continue; }
+        lines.push({
+          item: got.name, desc: s.keepTitles === false ? '' : (L.title || ''),
+          qty: L.qty, rate: L.rate, amt: L.amt
+        });
       }
-      if (built.skip === 'empty') { skipped.push({ name: r.name, why: 'nothing to bill' }); return; }
 
-      if (already.has(String(built.invoice.docNumber).trim())) {
+      if (missing.length) {
+        missing.forEach(m => unmatched.set(String(m).toLowerCase(), m));
+        skipped.push({ name: r.name, why: 'product not in QuickBooks and could not be made' });
+        continue;
+      }
+
+      const built = toInvoice(Object.assign({}, r), opts);
+      if (built.skip) { skipped.push({ name: r.name, why: 'nothing to bill' }); continue; }
+
+      const inv = built.invoice;
+      inv.lines = lines;
+      if (Number(r.shipping) > 0 && shipItem) {
+        inv.lines.push({ item: shipItem, desc: 'Delivery',
+                         qty: 1, rate: Number(r.shipping), amt: Number(r.shipping) });
+      }
+      if (!inv.lines.length) { skipped.push({ name: r.name, why: 'every line was set aside' }); continue; }
+
+      if (already.has(String(inv.docNumber).trim())) {
         skipped.push({ name: r.name, why: 'already in QuickBooks' });
-        return;
+        continue;
       }
 
-      invoices.push(built.invoice);
-      pairs.push({ gid: built.gid, docNumber: built.invoice.docNumber });
-    });
+      invoices.push(inv);
+      pairs.push({ gid: r.order_gid, docNumber: inv.docNumber });
+    }
 
+    made = books.made;
     if (invoices.length) handovers.set(req.desk, { invoices, at: Date.now() });
 
     res.json({
       ready: invoices.length,
       read: rows.length,
+      made,
       skipped,
       unmatched: [...unmatched.values()],
       pairs,
@@ -7854,8 +7843,20 @@ app.get('/api/shopify/settings', async (req, res) => {
   try {
     res.setHeader('Cache-Control', 'no-store');
     const s = await shopifySettings(realmId);
-    const can = itemsPossible(s);
-    res.json({ settings: s, canMakeItems: can.can, why: can.why || '', state: syncState() });
+    // worked out from the company's own chart rather than asked for, so the
+    // page can say which accounts will be used instead of demanding three
+    let found = {}, can = { can: false, why: 'QuickBooks is not connected yet' };
+    try {
+      const token = await getAccessToken(realmId);
+      found = standingAccounts(await qbAccountList(realmId, token), s);
+      can = itemsPossible(s, found);
+    } catch (e) { can = { can: false, why: e.message }; }
+
+    res.json({
+      settings: s, accounts: found,
+      canMakeItems: can.can, inventoryPossible: !!can.inventory,
+      why: can.why || '', state: syncState()
+    });
   } catch (e) {
     res.status(500).json({ error: e.message });
   }
@@ -7866,8 +7867,16 @@ app.post('/api/shopify/settings', async (req, res) => {
   if (!realmId) return;
   try {
     const s = await saveShopifySettings(realmId, req.body || {});
-    const can = itemsPossible(s);
-    res.json({ settings: s, canMakeItems: can.can, why: can.why || '' });
+    let found = {}, can = { can: false, why: 'QuickBooks is not connected yet' };
+    try {
+      const token = await getAccessToken(realmId);
+      found = standingAccounts(await qbAccountList(realmId, token), s);
+      can = itemsPossible(s, found);
+    } catch (e) { can = { can: false, why: e.message }; }
+    res.json({
+      settings: s, accounts: found,
+      canMakeItems: can.can, inventoryPossible: !!can.inventory, why: can.why || ''
+    });
   } catch (e) {
     res.status(400).json({ error: e.message });
   }
@@ -7882,7 +7891,10 @@ app.get('/api/shopify/accounts', async (req, res) => {
     res.setHeader('Cache-Control', 'no-store');
     const token = await getAccessToken(realmId);
     const all = await qbAccountList(realmId, token);
+    const s = await shopifySettings(realmId);
     res.json({
+      // what will be used unless somebody says otherwise
+      found: standingAccounts(all, s),
       income: all.filter(a => a.type === 'Income' || a.type === 'Other Income'),
       cogs:   all.filter(a => a.type === 'Cost of Goods Sold' || a.type === 'Expense'),
       asset:  all.filter(a => a.type === 'Other Current Asset' || a.type === 'Fixed Asset')
