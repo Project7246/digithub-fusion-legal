@@ -53,7 +53,7 @@ import {
 import { initPush, publicKey, addSub, dropSub, hasSub, pushTo } from './push.js';
 import {
   getAccessToken, getCompanyInfo, loadItems, loadTerms,
-  getOrCreateCustomer, postInvoice, qbQuery, qbReport, listAccounts as qbAccountList} from './qb.js';
+  getOrCreateCustomer, postInvoice, qbQuery, qbReport, listAccounts as qbAccountList, forgetToken} from './qb.js';
 import {
   readItems, readItemSales, readValuation, readPurchases,
   buildRows as buildProductRows, summarise as summariseProducts,
@@ -1941,6 +1941,10 @@ app.get('/auth/callback', async (req, res) => {
     // until QuickBooks offers a better one.
     if (tokens.refresh_token) {
       await saveCompany(joinTo, known ? known.company_name : null, tokens.refresh_token);
+      // A fresh sign-in clears whatever was remembered about the old one -
+      // including that Intuit had stopped accepting it, which is usually why
+      // somebody is standing here pressing Connect.
+      forgetToken(joinTo);
       try {
         const info = await getCompanyInfo(joinTo, tokens.access_token);
         if (info && info.CompanyName) {

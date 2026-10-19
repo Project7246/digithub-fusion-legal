@@ -48,6 +48,15 @@ export async function initDb() {
   await pool.query(
     `ALTER TABLE companies ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMPTZ`);
 
+  // The access token lives for an hour. Keeping it means a hundred jobs in a
+  // minute are one sign-in and not a hundred, and a hundred refreshes in a
+  // minute is exactly what invalidates a refresh token.
+  await pool.query(
+    `ALTER TABLE companies
+       ADD COLUMN IF NOT EXISTS access_token   TEXT,
+       ADD COLUMN IF NOT EXISTS access_expires TIMESTAMPTZ,
+       ADD COLUMN IF NOT EXISTS qb_error       TEXT`);
+
   await pool.query(`
     CREATE TABLE IF NOT EXISTS upload_logs (
       id           SERIAL PRIMARY KEY,
@@ -94,6 +103,35 @@ export async function getBinnedCompany(realmId) {
   const r = await pool.query(
     'SELECT * FROM companies WHERE realm_id = $1 AND deleted_at IS NOT NULL', [realmId]);
   return r.rows[0] || null;
+}
+
+// The access token, kept beside the refresh token rather than fetched again by
+// everybody who needs one. Intuit hands out a new refresh token every time one
+// is used and kills the old one, so two refreshes racing each other is how a
+// company gets signed out of its own books - see getAccessToken in qb.js.
+export async function saveQbTokens(realmId, { access, expires, refresh }) {
+  await pool.query(
+    `UPDATE companies
+        SET access_token  = $2,
+            access_expires = $3,
+            refresh_token = COALESCE($4, refresh_token),
+            qb_error      = NULL,
+            updated_at    = NOW()
+      WHERE realm_id = $1`,
+    [realmId, access || null, expires || null, refresh || null]
+  );
+}
+
+// Intuit has stopped accepting our refresh token. Nothing here can mend that -
+// somebody has to connect the books again - so it is written down, said in
+// words, and not hammered at every minute by the background sweeps.
+export async function markQbBroken(realmId, why) {
+  await pool.query(
+    `UPDATE companies SET qb_error = $2, access_token = NULL, access_expires = NULL,
+            updated_at = NOW()
+      WHERE realm_id = $1`,
+    [realmId, String(why || '').slice(0, 300)]
+  );
 }
 
 export async function updateRefreshToken(realmId, refreshToken) {

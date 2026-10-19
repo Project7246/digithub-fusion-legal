@@ -1,17 +1,88 @@
-import { getCompany, updateRefreshToken } from './db.js';
+import { getCompany, saveQbTokens, markQbBroken } from './db.js';
 
 const API = 'https://quickbooks.api.intuit.com';
 const TOKEN_URL = 'https://oauth.platform.intuit.com/oauth2/v1/tokens/bearer';
 
-export async function getAccessToken(realmId) {
+/* ==================== signing in to the books ==================== */
+//
+// Intuit hands out a NEW refresh token every time one is used, and kills the
+// one before it. So two refreshes running at the same moment is not a slow
+// path - it is how a company gets signed out of its own books: the second one
+// finishes with a token Intuit has already superseded, and from then on every
+// call says "invalid_grant".
+//
+// Which is exactly what will happen the moment a background sweep runs beside
+// somebody working: both reach for a token, both refresh, one of them wins.
+//
+// Three things stop it:
+//
+//  1. The access token is kept - in this process and in the companies row - and
+//     handed out until it is nearly an hour old. A hundred jobs in a minute are
+//     one sign-in, not a hundred.
+//  2. Only one refresh per company can be in flight. Everybody else waits on
+//     the same promise and gets the same answer.
+//  3. When Intuit does refuse, it is written down and left alone for a while.
+//     Nothing here can mend a dead refresh token - somebody has to connect the
+//     books again - so hammering it every minute only fills the log.
+
+const live = new Map();      // realmId -> { token, until }
+const inFlight = new Map();  // realmId -> Promise
+const broken = new Map();    // realmId -> { until, why }
+
+// An hour is what Intuit gives; five minutes of it are left spare so a long
+// run that started on a good token does not end on a dead one.
+const SPARE = 5 * 60 * 1000;
+const REST_AFTER_REFUSAL = 10 * 60 * 1000;
+
+const SIGNED_OUT =
+  'QuickBooks has signed this company out. Open Finance and press ' +
+  '"Connect to QuickBooks" to sign in again - nothing is lost, and ' +
+  'everything waiting will go through once it is back.';
+
+export function forgetToken(realmId) {
+  live.delete(realmId);
+  broken.delete(realmId);
+}
+
+export async function getAccessToken(realmId, force) {
+  const now = Date.now();
+
+  if (!force) {
+    const have = live.get(realmId);
+    if (have && have.until > now) return have.token;
+  }
+
+  const sore = broken.get(realmId);
+  if (sore && sore.until > now) throw new Error(SIGNED_OUT);
+
+  const going = inFlight.get(realmId);
+  if (going) return going;
+
+  const p = signIn(realmId, force).finally(() => inFlight.delete(realmId));
+  inFlight.set(realmId, p);
+  return p;
+}
+
+async function signIn(realmId, force) {
   const company = await getCompany(realmId);
   if (!company) throw new Error('Company not connected');
+
   // A company made at sign-up has everything but books. Asking QuickBooks about
   // it is not an error in the run that got here - it is a thing that has not been
   // set up yet - so it says so in the words the person needs to act on.
   if (!company.refresh_token) {
     throw new Error('QuickBooks is not connected to this company yet. ' +
       'Open Finance and connect it, then run this again.');
+  }
+
+  // Somebody else - another process, or this one before a restart - may have
+  // signed in minutes ago. Theirs is as good as ours.
+  if (!force && company.access_token && company.access_expires) {
+    const until = new Date(company.access_expires).getTime() - SPARE;
+    if (until > Date.now()) {
+      live.set(realmId, { token: company.access_token, until });
+      return company.access_token;
+    }
   }
 
   const basic = Buffer.from(
@@ -31,15 +102,39 @@ export async function getAccessToken(realmId) {
     })
   });
 
-  const data = await res.json();
+  const data = await res.json().catch(() => ({}));
+
   if (!data.access_token) {
-    throw new Error('Token refresh failed: ' + JSON.stringify(data).slice(0, 200));
+    const why = String(data.error || '') + ' ' + String(data.error_description || '');
+    // invalid_grant is the one that cannot be waited out
+    if (/invalid_grant/i.test(why)) {
+      broken.set(realmId, { until: Date.now() + REST_AFTER_REFUSAL, why });
+      live.delete(realmId);
+      try { await markQbBroken(realmId, why.trim()); } catch (e) { /* saying so is enough */ }
+      throw new Error(SIGNED_OUT);
+    }
+    throw new Error('QuickBooks would not sign us in: ' + why.trim());
   }
 
-  if (data.refresh_token && data.refresh_token !== company.refresh_token) {
-    await updateRefreshToken(realmId, data.refresh_token);
+  // Both at once, in one write: the new refresh token Intuit just handed us
+  // (losing it is the other way a company gets signed out) and the access token
+  // so nobody has to ask again for an hour.
+  const life = (Number(data.expires_in) || 3600) * 1000;
+  const expires = new Date(Date.now() + life);
+  try {
+    await saveQbTokens(realmId, {
+      access: data.access_token,
+      expires,
+      refresh: data.refresh_token && data.refresh_token !== company.refresh_token
+        ? data.refresh_token : null
+    });
+  } catch (e) {
+    // the token is good even if writing it down failed; the next restart will
+    // simply sign in again
   }
 
+  broken.delete(realmId);
+  live.set(realmId, { token: data.access_token, until: Date.now() + life - SPARE });
   return data.access_token;
 }
 

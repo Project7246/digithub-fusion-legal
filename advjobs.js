@@ -27,7 +27,7 @@ function push(job, type, msg, extra) {
 
 async function tokenFor(realmId, job, force) {
   if (force || !job.token || (Date.now() - job.tokenAt) > TOKEN_LIFE) {
-    job.token = await getAccessToken(realmId);
+    job.token = await getAccessToken(realmId, force);
     job.tokenAt = Date.now();
     if (force) push(job, 'log', 'QuickBooks sign-in had expired - signed in again.');
   }
