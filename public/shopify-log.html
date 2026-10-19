@@ -41,6 +41,19 @@
   .pulse.bad{color:var(--bad,#9A2E24)}
   .pulse.bad b{color:var(--bad,#9A2E24)}
   .pulse.bad .beat{background:var(--bad,#9A2E24)}
+  .runbox{border:1px solid var(--line);border-radius:10px;overflow:hidden;
+    margin-bottom:16px;background:var(--panel)}
+  .runtop{display:flex;align-items:center;gap:10px;padding:9px 13px;
+    border-bottom:1px solid var(--line);font-size:12.5px}
+  .runtop span{font-size:11.5px;color:var(--muted);font-family:var(--mono)}
+  .runtop button{padding:5px 13px;font-size:11.5px}
+  .runlog{margin:0;padding:13px 15px;background:#16222A;color:#CFE3E6;
+    font:12px/1.75 var(--mono);max-height:300px;overflow:auto;white-space:pre-wrap;
+    word-break:break-word}
+  .runlog .ok{color:#7FD88F}
+  .runlog .no{color:#F09A92}
+  .runlog .mid{color:#F2C879}
+  .runlog .dim{color:#8CA3A8}
   .tabs{display:flex;gap:4px;flex-wrap:wrap;margin-bottom:14px;border-bottom:1px solid var(--line)}
   .tabs button{border:0;background:none;font:inherit;font-size:13px;cursor:pointer;
     padding:10px 14px;color:var(--muted);border-bottom:2px solid transparent;margin-bottom:-1px}
@@ -109,6 +122,19 @@
       <div class="tot" id="tot"></div>
       <div class="step" id="offNote" style="border-color:#C9872B;display:none"></div>
       <div class="pulse" id="pulse"></div>
+
+      <!-- The same thing the upload page has, for the same reason: a list of
+           totals tells you where you got to, a log tells you it is still
+           moving. Newest at the bottom, the way a run reads. -->
+      <div class="runbox">
+        <div class="runtop">
+          <b>Live log</b>
+          <span id="runWhen"></span>
+          <span style="flex:1"></span>
+          <button class="ghost" id="btnSwitch">&nbsp;</button>
+        </div>
+        <pre class="runlog" id="runLog">Waiting&hellip;</pre>
+      </div>
 
       <div class="step">
         <div class="tabs" id="tabs">
@@ -310,6 +336,7 @@
       // Is it alive, and what did it do when it last looked? Without this the
       // page says what the totals are but never that anything is still happening,
       // and somebody watching a backlog has no way to tell working from stuck.
+      paintSwitch(!(d.settings && d.settings.on === false));
       var st = d.state || {};
       var did = st.lastDid || {};
       var beat = st.running ? 'on' : (d.settings && d.settings.on === false ? 'off' : '');
@@ -578,13 +605,74 @@
       .then(function(){ $('btnSave').disabled = false; });
   });
 
+  /* ---------- the live log ---------- */
+  //
+  // Colour by what the line means, newest at the bottom, and it only scrolls
+  // itself down when somebody is already at the bottom - scrolling a log out
+  // from under a person reading it is its own small cruelty.
+  var KIND_CLASS = {
+    invoice: 'ok', item: 'dim', price: 'dim', paid: 'ok',
+    held: 'mid', error: 'no', refund: 'mid', cancelled: 'mid', edited: 'mid'
+  };
+  var KIND_WORD = {
+    invoice: 'OK  ', item: 'ITEM', price: 'PRICE', paid: 'PAID',
+    held: 'WAIT', error: 'FAIL', refund: 'RFND', cancelled: 'CANC', edited: 'EDIT'
+  };
+
+  function clock(t){
+    var d = new Date(t);
+    return d.toLocaleTimeString([], { hour:'2-digit', minute:'2-digit', second:'2-digit' });
+  }
+
+  function loadLog(){
+    return get('/api/shopify/events?kind=all&limit=120').then(function(d){
+      var rows = (d.events || []).slice().reverse();   // oldest first, like a run
+      var box = $('runLog');
+      var atEnd = box.scrollTop + box.clientHeight >= box.scrollHeight - 30;
+
+      box.innerHTML = rows.length ? rows.map(function(e){
+        var who = e.order_name || e.title || e.sku || '';
+        return '<span class="' + (KIND_CLASS[e.kind] || 'dim') + '">' +
+          esc(clock(e.at)) + '  ' + esc(KIND_WORD[e.kind] || e.kind.toUpperCase()) + '  ' +
+          esc(who) + (who ? '  ' : '') + esc(e.note || '') + '</span>';
+      }).join(String.fromCharCode(10)) : 'Nothing has happened yet.';
+
+      $('runWhen').textContent = rows.length
+        ? 'last ' + clock(rows[rows.length - 1].at) : '';
+      if(atEnd) box.scrollTop = box.scrollHeight;
+    }).catch(function(){});
+  }
+
+  // Started by hand, stopped by hand, and nothing else stops it.
+  function paintSwitch(on){
+    var b = $('btnSwitch');
+    b.textContent = on ? 'Stop writing' : 'Start writing';
+    b.className = on ? 'ghost' : 'go';
+    b.dataset.on = on ? '1' : '0';
+  }
+
+  $('btnSwitch').addEventListener('click', function(){
+    var on = $('btnSwitch').dataset.on === '1';
+    $('btnSwitch').disabled = true;
+    post('/api/shopify/settings', { on: !on })
+      .then(function(d){
+        paintSwitch(d.settings && d.settings.on !== false);
+        loadTally();
+      })
+      .catch(function(){})
+      .then(function(){ $('btnSwitch').disabled = false; });
+  });
+
   /* ---------- off we go ---------- */
   window.APP.ready.then(function(){
     loadTally();
     loadHeld();
+    loadLog();
     // the page is left open on a wall more often than not
     // every half minute, and whichever tab is open goes with it - a page left
     // on a desk should be telling the truth when somebody looks up at it
+    // the log is the thing somebody watches, so it moves faster than the rest
+    setInterval(loadLog, 10000);
     setInterval(function(){
       loadTally();
       if(tab === 'held') loadHeld();

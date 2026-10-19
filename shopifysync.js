@@ -543,12 +543,22 @@ export async function writeOne(books, row, s) {
 
 /* ==================== the sweep ==================== */
 
-const state = { running: false, lastAt: null, lastDid: null, note: '', everyMs: BUSY_EVERY };
+const state = {
+  running: false, startedAt: 0, lastAt: null, lastDid: null, note: '',
+  everyMs: BUSY_EVERY
+};
+
+// If a pass ever dies in a way that leaves `running` true, every pass after it
+// returns at the first line and the writing stops for good - silently, and
+// until somebody redeploys. Ten minutes is far longer than any honest pass, so
+// past that the flag is treated as wreckage and stepped over.
+const STUCK_AFTER = 10 * 60 * 1000;
 export function syncState() { return Object.assign({}, state); }
 
 export async function sweep() {
-  if (state.running) return;
+  if (state.running && (Date.now() - state.startedAt) < STUCK_AFTER) return;
   state.running = true;
+  state.startedAt = Date.now();
   const did = { done: 0, held: 0, failed: 0, off: 0, items: 0, looked: 0 };
 
   try {
@@ -601,12 +611,15 @@ export async function sweep() {
     }
   } catch (e) {
     state.note = e.message;
+  } finally {
+    // whatever happened in there, this comes off - otherwise the next pass and
+    // every pass after it turns round at the door
+    state.running = false;
+    state.lastAt = new Date().toISOString();
+    state.lastDid = did;
   }
 
-  if (!did.failed) state.note = '';
-  state.running = false;
-  state.lastAt = new Date().toISOString();
-  state.lastDid = did;
+  if (!did.failed && !state.note) state.note = '';
   return did;
 }
 
@@ -625,10 +638,13 @@ async function tick() {
     did = await sweep();
   } catch (e) {
     console.error('shopify sweep:', e.message);
+  } finally {
+    // the next one is booked whatever just happened. Once this is switched on
+    // it does not stop for a failure, a deploy, a page being closed or anything
+    // else - only for somebody switching it off.
+    const busy = did && (did.done || did.held || did.failed || did.off);
+    schedule(busy ? BUSY_EVERY : IDLE_EVERY);
   }
-  // "busy" means it actually had something to do, not merely that it looked
-  const busy = did && (did.done || did.held || did.failed || did.off);
-  schedule(busy ? BUSY_EVERY : IDLE_EVERY);
 }
 
 // Something has just been put back in the queue - a webhook that could not be
