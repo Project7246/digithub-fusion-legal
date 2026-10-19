@@ -101,9 +101,6 @@
       { group: null, items: [
         { href:'/operations', front:true, label:'Overview',       icon:'grid' }
       ]},
-      { group: 'eCommerce', items: [
-        { href:'/shopify',  label:'Shopify',       icon:'cart',  need:'shopify', tile:'cart' }
-      ]},
       { group: 'Couriers', items: [
         { href:'/couriers',     label:'Courier accounts', icon:'truck', need:'couriersync', tile:'truck', as:'Couriers' },
         { href:'/courier-dash', label:'Tracking',      icon:'pin',    need:'couriersync', tile:'pin' },
@@ -128,6 +125,21 @@
       groups: [
       { group: null, items: [
         { href:'/csr', front:true,      label:'Overview',          icon:'grid' }
+      ]}
+    ]},
+
+    // Shopify is not a module of Operations and not a module of Finance. It is
+    // the shop itself - where the orders and the products are born - and what
+    // every other desk later works on comes out of it. So it stands beside the
+    // five rather than inside one of them.
+    { key:'shopify', label:'Shopify', home:'/shopify', tile:'cart',
+      what:'The shop’s own orders and products, straight into the books.', qb:false,
+      soon:[{ label:'Products', tile:'tag' }, { label:'Live sync', tile:'swap' },
+            { label:'Inventory', tile:'box' }],
+      groups: [
+      { group: null, items: [
+        { href:'/shopify', label:'Orders to QuickBooks', icon:'cart',
+          need:'shopify', tile:'cart', as:'Orders' }
       ]}
     ]}
   ];

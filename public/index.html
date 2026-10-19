@@ -68,19 +68,6 @@
     line-height:17px;padding:0 4px;display:none;font-family:var(--mono);text-align:center}
   .fxtool .fxcount.on{display:block}
 
-  /* The sections, as the second row of the bar. */
-  .fxsecs{border-top:1px solid rgba(255,255,255,.09);background:rgba(0,0,0,.16)}
-  .fxsecs nav{max-width:1180px;margin:0 auto;padding:0 20px;display:flex;gap:6px;
-    overflow-x:auto;scrollbar-width:none}
-  .fxsecs nav::-webkit-scrollbar{display:none}
-  .fxsecs a{position:relative;padding:13px 20px;font:600 13.5px var(--head);
-    letter-spacing:.02em;color:#B9CACD;text-decoration:none;white-space:nowrap;
-    transition:color .15s,background .15s}
-  .fxsecs a:after{content:"";position:absolute;left:18px;right:18px;bottom:0;height:3px;
-    border-radius:3px 3px 0 0;background:var(--aqua);transform:scaleX(0);transition:transform .18s}
-  .fxsecs a:hover{color:#fff;background:rgba(255,255,255,.05)}
-  .fxsecs a:hover:after{transform:scaleX(1)}
-
   .fxscroll{flex:1 1 auto;overflow-y:auto;overflow-x:hidden}
   .fxwrap{max-width:1180px;margin:0 auto;padding:0 20px 60px}
 
@@ -143,7 +130,6 @@
       <div id="me"></div>
     </div>
   </div>
-  <div class="fxsecs"><nav id="secs" aria-label="Sections"></nav></div>
 </div>
 
 
@@ -176,20 +162,6 @@
       .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
   }
 
-  // The sections, straight out of the list nav.js holds. Pressing one goes into
-  // it, where that section's own rail is waiting.
-  (function drawSections(){
-    var all = (window.APP && window.APP.sections) || [];
-    $('secs').innerHTML = all.map(function(s){
-      return '<a href="' + esc(s.home) + '" data-sec="' + esc(s.key) + '">' + esc(s.label) + '</a>';
-    }).join('');
-    $('secs').querySelectorAll('a').forEach(function(a){
-      a.addEventListener('click', function(){
-        try { sessionStorage.setItem('fusion:section', a.getAttribute('data-sec')); } catch (e) {}
-      });
-    });
-  })();
-
   // Nothing typed: the five desks. Something typed: every module whose name
   // matches it, out of all five, because a search is for reaching past the
   // doors rather than through them.
@@ -213,6 +185,11 @@
       });
       var shown = list.slice(0, 3).map(function(t){ return esc(t.label); }).join(' · ');
       var more  = list.length > 3 ? ' · +' + (list.length - 3) + ' more' : '';
+      if (!shown) {
+        shown = (sec.soon || []).slice(0, 3)
+          .map(function(t){ return esc(t.label); }).join(' · ');
+        more = shown ? ' · soon' : '';
+      }
       return '<a class="fxdesk" href="' + esc(sec.home) + '" data-sec="' + esc(sec.key) + '">' +
         '<div class="fxdeskbox">' + window.FUSION.mark(sec.tile) + '</div>' +
         '<b>' + esc(sec.label) + '</b>' +
