@@ -28,7 +28,7 @@ const GROUPS = {
 
 // PostEx keeps adding statuses, so an exact match is not enough. When a name
 // is not one we know, the words in it decide where the order belongs.
-function groupOf(status) {
+export function groupOf(status) {
   const s = String(status || '').trim().toLowerCase();
   if (!s) return 'other';
   if (GROUPS[s]) return GROUPS[s];

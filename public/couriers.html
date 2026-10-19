@@ -52,6 +52,20 @@
   .plog .out{font-size:12.5px;margin-top:10px}
   .plog .out.bad{color:var(--bad)}
   .plog .out.good{color:var(--qbo)}
+  .hookrow{display:grid;grid-template-columns:150px 1fr auto;gap:10px;align-items:center;
+    padding:9px 0;border-bottom:1px solid var(--line);font-size:12.5px}
+  .hookrow label{font-size:11px;letter-spacing:.07em;text-transform:uppercase;color:var(--faint)}
+  .hookrow code{font-family:var(--mono);font-size:11.5px;word-break:break-all;
+    background:var(--panel-2);padding:5px 8px;border-radius:6px;display:block}
+  .hookrow button{font-size:11.5px;padding:5px 12px;border-radius:6px;border:1px solid var(--line);
+    background:#fff;cursor:pointer;font-family:inherit;white-space:nowrap}
+  .hookrow button:hover{border-color:var(--qbo);color:var(--qbo)}
+  @media (max-width:640px){.hookrow{grid-template-columns:1fr}}
+  .hooklog{margin-top:14px;max-height:260px;overflow:auto;border:1px solid var(--line);
+    border-radius:8px}
+  .hooklog table{width:100%;border-collapse:collapse;font-size:12px}
+  .hooklog td{padding:6px 9px;border-bottom:1px solid var(--line)}
+  .hooklog td.mono{font-family:var(--mono);font-size:11px;white-space:nowrap}
   .tag{display:inline-block;padding:1px 7px;border-radius:20px;font-size:10px;font-weight:600}
   .tag.on{background:#E7F5EC;color:#1B7A44}
   .tag.off{background:#EEF1F4;color:#5A6672}
@@ -134,6 +148,28 @@
           <h2>Accounts <span class="aside" id="accCount"></span></h2>
           <div class="hint">Nothing is pulled until you ask for it below.</div>
           <div class="accs" id="accs"></div>
+        </div>
+
+        <!-- Half an hour is the best a courier that only answers questions can
+             give us. One that will call instead - PostEx has a Status Updates
+             Webhook in its merchant portal - can say "delivered" the moment it
+             happens. This is the address to paste there. -->
+        <div class="step hide" id="stepHook">
+          <h2>Live updates from the courier</h2>
+          <div class="hint">
+            Without this, a parcel's status is at most half an hour old &mdash; that is
+            how often Fusion asks. Paste the address below into the courier&rsquo;s
+            own portal and it will tell Fusion the moment a status changes.
+            In PostEx that is <b>merchant.postex.pk &rarr; Integration guide &rarr;
+            Webhook Configuration</b>.
+          </div>
+          <div class="range">
+            <div>
+              <label>Account</label>
+              <select id="hookAcc"></select>
+            </div>
+          </div>
+          <div id="hookBox"></div>
         </div>
 
         <div class="step hide" id="stepPull">
@@ -442,7 +478,88 @@
     } else {
       $('stepPull').classList.add('hide');
     }
+
+    fillHookAccounts();
   }
+
+  /* ---------- the courier calling us ---------- */
+
+  function fillHookAccounts(){
+    var sel = $('hookAcc');
+    var was = sel.value;
+    sel.innerHTML = S.accounts.map(function(a){
+      return '<option value="' + a.id + '">' + esc(a.label) + '</option>';
+    }).join('');
+    if(was) sel.value = was;
+    $('stepHook').classList.toggle('hide', !S.accounts.length);
+    if(S.accounts.length) showHook();
+  }
+
+  function when(t){
+    if(!t) return '';
+    var d = new Date(t);
+    return d.toLocaleDateString() + ' ' +
+      d.toLocaleTimeString([], { hour:'2-digit', minute:'2-digit' });
+  }
+
+  function copyBtn(id, text){
+    return '<button type="button" data-copy="' + esc(text) + '" id="' + id + '">Copy</button>';
+  }
+
+  function showHook(){
+    var id = Number($('hookAcc').value);
+    if(!id) return;
+    $('hookBox').innerHTML = '<div class="hint">Loading…</div>';
+
+    get('/api/courier/hook?account=' + id)
+      .then(function(d){
+        var rows = d.recent || [];
+        $('hookBox').innerHTML =
+          '<div class="hookrow"><label>Webhook URL</label>' +
+            '<code>' + esc(d.url) + '</code>' + copyBtn('cpUrl', d.url) + '</div>' +
+          '<div class="hookrow"><label>Header key</label>' +
+            '<code>' + esc(d.header) + '</code>' + copyBtn('cpKey', d.header) + '</div>' +
+          '<div class="hookrow"><label>Header value</label>' +
+            '<code>' + esc(d.secret) + '</code>' + copyBtn('cpVal', d.secret) + '</div>' +
+          '<div class="hint" style="margin:12px 0 0">' +
+            (d.hits
+              ? nf(d.hits) + ' call' + (d.hits === 1 ? '' : 's') + ' so far · last ' + esc(when(d.lastAt))
+              : 'Nothing has arrived yet. Once the courier is saving to this address, ' +
+                'the calls appear below and we can read exactly what it sends.') +
+            ' · <a href="#" id="rollHook">make a new address</a></div>' +
+          (rows.length
+            ? '<div class="hooklog"><table>' + rows.map(function(r){
+                return '<tr><td class="mono">' + esc(when(r.at)) + '</td>' +
+                  '<td class="mono">' + esc(r.tracking || '—') + '</td>' +
+                  '<td>' + esc(r.status || '') + '</td>' +
+                  '<td>' + (r.matched
+                    ? '<span class="tag on">applied</span>'
+                    : '<span class="tag off">' + esc(r.note || 'kept') + '</span>') + '</td></tr>';
+              }).join('') + '</table></div>'
+            : '');
+
+        $('hookBox').querySelectorAll('[data-copy]').forEach(function(b){
+          b.addEventListener('click', function(){
+            var t = b.getAttribute('data-copy');
+            if(navigator.clipboard) navigator.clipboard.writeText(t);
+            var was = b.textContent; b.textContent = 'Copied';
+            setTimeout(function(){ b.textContent = was; }, 1400);
+          });
+        });
+
+        var roll = $('rollHook');
+        if(roll) roll.addEventListener('click', function(e){
+          e.preventDefault();
+          if(!confirm('Make a new address? Whatever is pasted in the courier’s portal stops working until you paste the new one.')) return;
+          post('/api/courier/hook-roll', { account: id }).then(showHook);
+        });
+      })
+      .catch(function(e){
+        $('hookBox').innerHTML = '<div class="result bad">✗ ' + esc(e.message) + '</div>';
+      });
+  }
+
+  $('hookAcc').addEventListener('change', showHook);
 
   $('btnPull').addEventListener('click', function(){
     var id = Number($('pullAcc').value);

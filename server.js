@@ -14,6 +14,10 @@ import {
 
 import { initMappings, getMappings, saveMapping } from './mappings.js';
 import {
+  initHooks, hookFor, rollHook, accountByHookKey, sameSecret,
+  readHook, applyStatus, logHook, recentHooks
+} from './hooks.js';
+import {
   initShopify, listShops, getShop, saveShop, removeShop, checkShop, cleanDomain,
   pullOrders, listOrders as listShopOrders, productsSeen, markSynced, unmark,
   toInvoice, API_VERSION as SHOPIFY_VERSION
@@ -93,7 +97,7 @@ import {
   markSync, saveOrders,
   listCprs, cprOrders, cprProgress
 } from './couriers.js';
-import { adapter as postexAdapter } from './postex.js';
+import { adapter as postexAdapter, groupOf } from './postex.js';
 import {
   liveStats, liveOrders, trackOne, peekRaw, chaseCpr, forget as forgetLive
 } from './courierlive.js';
@@ -1308,7 +1312,7 @@ const RIGHT_GROUPS = [
   { key: 'couriersync', area: 'purchases', label: 'Bring courier data in',
     what: 'Pull courier orders and receipts in',
     paths: ['/api/courier/sync', '/api/courier/backfill', '/api/courier/cpr-chase',
-            '/api/courier/keeper-now', '/api/courier/backfill-clear',
+            '/api/courier/keeper-now', '/api/courier/hook-roll', '/api/courier/backfill-clear',
             '/api/courier/backfill-resume', '/api/receipts/login', '/api/receipts/logout'] },
 
   // The links to the audit's sheets (/api/audit/link, /link-remove, /pick) are in no group on purpose: only the admin attaches, changes or
@@ -7650,6 +7654,111 @@ app.post('/api/shopify/unmark', async (req, res) => {
   }
 });
 
+/* ==================== couriers calling us ==================== */
+// Everything above this line is asked for by somebody who signed in. This is
+// not: it is a courier's own server, which has never signed in and never will.
+// So it is outside /api on purpose - the rights middleware guards POSTs under
+// /api and /auth, and a courier has no rights to check - and it carries its own
+// two locks instead: the key in the address says which account, the header says
+// it is really them.
+//
+// It answers 200 to almost everything. A courier that gets a 500 retries, backs
+// off and eventually switches the hook off, so a parcel we have never seen is
+// written into the log and accepted rather than refused.
+
+// A courier may send a form rather than JSON; express.json above only reads
+// one of those two, so the other is read here, for this route alone.
+app.post('/hooks/courier/:courier/:key',
+         express.urlencoded({ extended: true, limit: '1mb' }),
+         async (req, res) => {
+  let account = null;
+  try {
+    account = await accountByHookKey(req.params.key);
+    if (!account) return res.status(404).json({ ok: false });
+
+    // the address alone is not enough, and the wrong courier's hook on the
+    // right account's address is a mix-up worth refusing
+    if (String(req.params.courier).toLowerCase() !== String(account.courier).toLowerCase()) {
+      return res.status(404).json({ ok: false });
+    }
+    if (!sameSecret(req.get('X-Fusion-Key') || req.get('x-fusion-key'), account.hook_secret)) {
+      return res.status(401).json({ ok: false, error: 'Wrong key' });
+    }
+
+    const body = req.body && typeof req.body === 'object' ? req.body : {};
+    const read = readHook(body);
+
+    if (!read.tracking) {
+      await logHook(account, { note: 'no tracking number in it', body });
+      return res.json({ ok: true, note: 'kept, but no tracking number was found' });
+    }
+
+    const group = groupOf(read.status);
+    const matched = await applyStatus(account, {
+      tracking: read.tracking, status: read.status, group, when: read.when
+    });
+
+    await logHook(account, {
+      tracking: read.tracking,
+      status: read.status,
+      matched,
+      note: matched ? null : 'that parcel is not here yet',
+      body
+    });
+
+    res.json({ ok: true });
+  } catch (e) {
+    // Said plainly in our own log, and still 200 to the courier: their retry
+    // would not fix whatever broke in here.
+    console.error('webhook:', e.message);
+    try { if (account) await logHook(account, { note: 'failed: ' + e.message, body: req.body }); }
+    catch (e2) { /* nothing more to do about it */ }
+    res.json({ ok: true });
+  }
+});
+
+// What to paste into the courier's portal, and what has arrived since.
+app.get('/api/courier/hook', async (req, res) => {
+  const realmId = await requireCompany(req, res);
+  if (!realmId) return;
+  try {
+    res.setHeader('Cache-Control', 'no-store');
+    const h = await hookFor(realmId, req.query.account);
+    const base = (process.env.BASE_URL || '').replace(/\/+$/, '') ||
+                 (req.protocol + '://' + req.get('host'));
+    res.json({
+      url: base + '/hooks/courier/' + h.courier + '/' + h.key,
+      header: h.header,
+      secret: h.secret,
+      label: h.label,
+      lastAt: h.lastAt,
+      hits: h.hits,
+      recent: (await recentHooks(realmId, h.id, 20)).map(r => ({
+        at: r.at, tracking: r.tracking, status: r.status,
+        matched: r.matched, note: r.note, body: r.body
+      }))
+    });
+  } catch (e) {
+    res.status(400).json({ error: e.message });
+  }
+});
+
+app.post('/api/courier/hook-roll', async (req, res) => {
+  const realmId = await requireCompany(req, res);
+  if (!realmId) return;
+  try {
+    const h = await rollHook(realmId, req.body.account);
+    const base = (process.env.BASE_URL || '').replace(/\/+$/, '') ||
+                 (req.protocol + '://' + req.get('host'));
+    res.json({
+      url: base + '/hooks/courier/' + h.courier + '/' + h.key,
+      header: h.header, secret: h.secret
+    });
+  } catch (e) {
+    res.status(400).json({ error: e.message });
+  }
+});
+
 app.get('/api/courier/dash', async (req, res) => {
   const realmId = await requireCompany(req, res);
   if (!realmId) return;
@@ -11366,6 +11475,7 @@ initDb()
   .then(() => initCache())
   .then(() => initCouriers())
   .then(() => initShopify())
+  .then(() => initHooks())
     .then(() => import('./jobstore.js').then(m => m.initJobStore()))
   .then(() => initRecatStore())
   .then(() => initProdStore())
