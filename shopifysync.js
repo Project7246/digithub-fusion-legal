@@ -33,7 +33,7 @@ import {
 import { decrypt } from './secrets.js';
 import {
   getAccessToken, qbQuery, loadItems, loadTerms, getOrCreateCustomer,
-  postInvoice, createItem, setItemSku, listAccounts, isRetryable
+  postInvoice, createItem, setItemSku, listAccounts, salesPrefs, isRetryable
 } from './qb.js';
 
 const KEY = 'shopify';
@@ -144,6 +144,7 @@ export async function openBooks(realmId, s) {
     skus: await skuIndex(realmId, token),        // sku -> name
     saved: await getMappings(realmId),
     accounts: standingAccounts(await listAccounts(realmId, token), settings),
+    prefs: await salesPrefs(realmId, token),
     made: 0
   };
 }
@@ -429,6 +430,18 @@ export async function writeOne(books, row, s) {
   const inv = built.invoice;
   inv.lines = lines;
 
+  if (Number(inv.discount) > 0 && books.prefs && books.prefs.discount === false) {
+    await setHeld(realmId, row.order_gid,
+      'turn Discount on in QuickBooks: Settings → Account and settings → ' +
+      'Sales → Sales form content → Discount');
+    await note(realmId, 'held', {
+      shopId: row.shop_id, orderName: row.name, gid: row.order_gid, ok: false,
+      note: 'it carries a discount of ' + inv.discount + ' and these books have ' +
+            'the discount box switched off, so QuickBooks would refuse it'
+    });
+    return 'held';
+  }
+
   // Delivery the buyer paid for goes on the invoice. If there is no item for it
   // and none can be made, the order waits - an invoice that quietly leaves
   // money off is worse than one that has not been written yet.
@@ -443,7 +456,7 @@ export async function writeOne(books, row, s) {
       });
       return 'held';
     }
-    inv.lines.push({ item, desc: 'Delivery', qty: 1, rate: ship, amt: ship });
+    inv.lines.push({ item, desc: '', qty: 1, rate: ship, amt: ship });
   }
   if (!inv.lines.length) {
     await setOff(realmId, row.order_gid, 'every line was set aside');

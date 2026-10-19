@@ -516,3 +516,25 @@ export async function setItemSku(realmId, token, item, sku) {
   } catch (e) { /* keep raw */ }
   return { ok: false, error: msg };
 }
+
+// Whether these books allow a discount under the subtotal at all.
+//
+// It is off until somebody turns it on in Settings, and with it off QuickBooks
+// refuses any invoice carrying a discount line - so an order with a discount on
+// it would fail, over and over, with a message about preferences that nobody
+// would connect to a Shopify order. Asked once per run instead.
+export async function salesPrefs(realmId, token) {
+  try {
+    const q = await qbQuery(realmId, token, 'SELECT * FROM Preferences');
+    const p = (q.Preferences || [])[0] || {};
+    const sales = p.SalesFormsPrefs || {};
+    return {
+      discount: sales.AllowDiscount === true,
+      shipping: sales.AllowShipping === true,
+      deposit: sales.AllowDeposit === true
+    };
+  } catch (e) {
+    // not knowing is not a reason to stop; QuickBooks will say so if it minds
+    return { discount: true, shipping: true, deposit: true, unknown: true };
+  }
+}

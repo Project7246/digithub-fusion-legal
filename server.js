@@ -7640,12 +7640,19 @@ app.post('/api/shopify/build', async (req, res) => {
           skipped.push({ name: r.name, why: 'nothing in QuickBooks to put delivery on' });
           continue;
         }
-        inv.lines.push({ item, desc: 'Delivery', qty: 1, rate: ship, amt: ship });
+        inv.lines.push({ item, desc: '', qty: 1, rate: ship, amt: ship });
       }
       if (!inv.lines.length) { skipped.push({ name: r.name, why: 'every line was set aside' }); continue; }
 
       if (already.has(String(inv.docNumber).trim())) {
         skipped.push({ name: r.name, why: 'already in QuickBooks' });
+        continue;
+      }
+
+      // QuickBooks refuses a discount line while the discount box is switched
+      // off, and says so in words about preferences that mean nothing here
+      if (Number(inv.discount) > 0 && books.prefs && books.prefs.discount === false) {
+        skipped.push({ name: r.name, why: 'discount is switched off in QuickBooks' });
         continue;
       }
 
