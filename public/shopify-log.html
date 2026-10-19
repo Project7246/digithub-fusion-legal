@@ -141,8 +141,11 @@
 
           <h3 style="font:600 13px var(--head);margin:4px 0 6px">Which orders</h3>
           <div class="hint">
-            An order called off in Shopify is never written &mdash; an invoice for an
-            order that did not happen is simply wrong. The rest is yours to say.
+            Nothing placed before this day is ever written, so turning the writing on
+            does not go back over every order already here. What to leave out &mdash;
+            voided, refunded, not shipped yet &mdash; is ticked on the
+            <a href="/shopify">orders page</a>, beside the days, and the same ticks
+            apply here. Cancelled orders are never written at all.
           </div>
           <div class="fields">
             <div>
@@ -150,15 +153,6 @@
               <input id="sFrom" type="date">
             </div>
           </div>
-          <label class="onoff">
-            <input type="checkbox" id="sFulfil">
-            <span>Only once the order has shipped &mdash; an unshipped order waits
-              and goes in by itself the moment it is fulfilled</span>
-          </label>
-          <label class="onoff">
-            <input type="checkbox" id="sRefund">
-            <span>Leave out orders refunded in full, and ones voided in Shopify</span>
-          </label>
 
           <h3 style="font:600 13px var(--head);margin:22px 0 6px">What the invoice says</h3>
           <div class="hint">
@@ -424,8 +418,6 @@
       var s = d.settings || {};
       $('sOn').checked = s.on !== false;
       $('sFrom').value = s.startFrom || '';
-      $('sFulfil').checked = !!s.onlyFulfilled;
-      $('sRefund').checked = s.skipRefunded !== false;
       $('sMake').checked = s.makeItems !== false;
       $('sCust').value = s.customer || '';
       $('sPrefix').value = s.prefix || '';
@@ -496,8 +488,6 @@
     post('/api/shopify/settings', {
       on: $('sOn').checked,
       startFrom: $('sFrom').value || '',
-      onlyFulfilled: $('sFulfil').checked,
-      skipRefunded: $('sRefund').checked,
       makeItems: $('sMake').checked,
       customer: $('sCust').value.trim(),
       prefix: $('sPrefix').value.trim(),

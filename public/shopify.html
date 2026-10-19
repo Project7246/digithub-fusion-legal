@@ -50,6 +50,9 @@
   .ghost:hover{border-color:var(--qbo);color:var(--qbo)}
   .acts{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
 
+  .skips{display:flex;gap:20px;align-items:center;flex-wrap:wrap;margin:0 0 14px}
+  .skips label{display:flex;align-items:center;gap:7px;font-size:12.5px;cursor:pointer}
+  .skipnote{font-size:11.5px;color:var(--faint)}
   .said{font-size:12.5px;margin-top:11px;line-height:1.6}
   .said.bad{color:var(--bad)}
   .said.good{color:var(--qbo)}
@@ -196,6 +199,16 @@
             <select id="whichShop"><option value="">Every shop</option></select>
           </div>
         </div>
+        <!-- The two that get decided every time, where the days are picked rather
+             than on a settings page somebody has to go and find. Ticked means
+             left out. They are the same two the automatic writing uses, so there
+             is one answer and not two. -->
+        <div class="skips">
+          <label><input type="checkbox" id="skVoid"> Leave out voided and refunded</label>
+          <label><input type="checkbox" id="skUnf"> Leave out not shipped yet</label>
+          <span class="skipnote">Cancelled orders are always left out.</span>
+        </div>
+
         <div class="acts">
           <button class="go" id="btnPull" type="button">Read orders from Shopify</button>
           <button class="ghost" id="btnShow" type="button">Show what is here</button>
@@ -426,6 +439,30 @@
       .then(function(){ $('btnKeys').disabled = false; });
   });
 
+  /* ---------- what to leave out ---------- */
+  // Kept on the server, not in this page, because the automatic writing reads
+  // the same two - a tick here is a tick there.
+  function loadSkips(){
+    return fetch('/api/shopify/settings', { cache:'no-store' })
+      .then(function(r){ return r.json(); })
+      .then(function(d){
+        var s = d.settings || {};
+        $('skVoid').checked = s.skipRefunded !== false;
+        $('skUnf').checked = !!s.onlyFulfilled;
+      })
+      .catch(function(){});
+  }
+
+  function saveSkips(){
+    return ask('/api/shopify/settings', {
+      skipRefunded: $('skVoid').checked,
+      onlyFulfilled: $('skUnf').checked
+    }).catch(function(){});
+  }
+
+  $('skVoid').addEventListener('change', saveSkips);
+  $('skUnf').addEventListener('change', saveSkips);
+
   /* ---------- 02 the days ---------- */
 
   function setRange(days){
@@ -600,10 +637,12 @@
     $('btnUpload').style.display = 'none';
     say($('buildSaid'),'','Building, and asking QuickBooks what it already has…');
 
-    ask('/api/shopify/build', {
-      from: $('from').value, to: $('to').value, shop: $('whichShop').value || null,
-      customer: $('cust').value, prefix: $('prefix').value.trim(),
-      shippingItem: $('shipItem').value
+    saveSkips().then(function(){
+      return ask('/api/shopify/build', {
+        from: $('from').value, to: $('to').value, shop: $('whichShop').value || null,
+        customer: $('cust').value, prefix: $('prefix').value.trim(),
+        shippingItem: $('shipItem').value
+      });
     })
       .then(function(d){
         lastPairs = d.pairs || [];
@@ -644,6 +683,7 @@
     loadShops();
 
     loadKeys();
+    loadSkips();
 
     // The item list is wanted twice: to match products against, and to say where
     // delivery charged to the buyer should land.

@@ -468,6 +468,9 @@ function personOf(o) {
   return n || '';
 }
 
+// The billing block on the invoice: who it is and where they are, and nothing
+// else. A phone number and a country on an invoice are clutter - the phone is
+// the courier's business and the country is the same one every time.
 function addressOf(o) {
   const a = o.shippingAddress || o.billingAddress;
   if (!a) return [];
@@ -475,8 +478,7 @@ function addressOf(o) {
     a.name,
     a.address1,
     a.address2,
-    [a.city, a.province].filter(Boolean).join(', '),
-    [a.country, a.phone].filter(Boolean).join(' · ')
+    [a.city, a.province].filter(Boolean).join(', ')
   ].filter(Boolean).map(String);
 }
 
@@ -712,7 +714,9 @@ export function toInvoice(order, opts) {
       txnDate: date,
       dueDate: date,
       terms: o.terms || '',
-      memo: [order.name, order.city].filter(Boolean).join(' · '),
+      // nothing in the memo: the order number is already the invoice number and
+      // the address is already in the billing block, so a memo only repeats
+      memo: '',
       billTo: Array.isArray(order.bill_to) ? order.bill_to : [],
       discount: money(order.discount),
       lines
