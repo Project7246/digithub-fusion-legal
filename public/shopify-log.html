@@ -131,9 +131,10 @@
             retries on its own, on a doubling wait.
           </div>
           <div class="acts" style="margin-bottom:12px">
-            <button class="ghost" id="btnRetry">Try all of them again now</button>
+            <button class="go" id="btnRetry">Try all of them again now</button>
             <span class="said" id="retrySaid"></span>
           </div>
+          <div class="hint" id="whyStuck" style="display:none"></div>
           <div id="heldBox"><div class="none">Loading&hellip;</div></div>
         </div>
 
@@ -331,13 +332,32 @@
         if (did.held)   parts.push('<b>' + n0(did.held) + '</b> need you');
         if (did.failed) parts.push('<b>' + n0(did.failed) + '</b> will retry');
         if (did.off)    parts.push('<b>' + n0(did.off) + '</b> left out');
-        var gap = Number(st.everyMs) || 0;
-        var again = gap >= 120000
-          ? ' · looking again in ' + Math.round(gap / 60000) + ' minutes'
-          : (gap ? ' · looking again in ' + Math.round(gap / 1000) + ' seconds' : '');
-        words = 'Last looked at ' + when +
-          (parts.length ? ' · ' + parts.join(' · ') : ' · nothing waiting') +
-          again + '. A new order does not wait for this — Shopify tells us at once.';
+
+        // waiting and due are not the same thing, and saying only "nothing
+        // waiting" over five hundred that are waiting is how an hour gets lost
+        var t = d.tally || {};
+        var back = st.lastDid ? ('Last looked at ' + when +
+          (parts.length ? ' · ' + parts.join(' · ') : '')) : '';
+
+        if (t.due) {
+          words = back + ' · <b>' + n0(t.due) + '</b> ready to go.';
+        } else if (t.nextTry) {
+          stuck = true;
+          var at = new Date(t.nextTry);
+          words = back + '<br><b>' + n0(t.states && t.states.waiting || 0) +
+            ' waiting, none of them due yet</b> — they are backing off after a ' +
+            'failure and come round at ' +
+            at.toLocaleTimeString([], { hour:'2-digit', minute:'2-digit' }) + '.' +
+            (t.lastError ? '<br>Last failure: ' + esc(t.lastError) : '') +
+            '<br>Press <b>Needs you → Try all of them again now</b> to go at once.';
+        } else {
+          var gap = Number(st.everyMs) || 0;
+          var again = gap >= 120000
+            ? ' · looking again in ' + Math.round(gap / 60000) + ' minutes'
+            : (gap ? ' · looking again in ' + Math.round(gap / 1000) + ' seconds' : '');
+          words = back + ' · nothing waiting' + again +
+            '. A new order does not wait for this — Shopify tells us at once.';
+        }
       } else {
         words = 'Waiting for the first look…';
       }
@@ -370,7 +390,8 @@
     get('/api/shopify/held?limit=400').then(function(d){
       var rows = d.held || [];
       if(!rows.length){
-        $('heldBox').innerHTML = '<div class="none">Nothing is stuck. Everything that came in has gone in.</div>';
+        $('heldBox').innerHTML = '<div class="none">Nothing is stuck. ' +
+          'Anything still waiting is only waiting its turn.</div>';
         return;
       }
       $('heldBox').innerHTML = '<div class="scroll"><table class="t">' +

@@ -243,10 +243,49 @@ export async function tally(realmId) {
       WHERE realm_id = $1 AND state IN ('held','waiting') AND held_why IS NOT NULL
       GROUP BY held_why ORDER BY COUNT(*) DESC LIMIT 20`, [realmId]);
 
-  const out = { states: {}, kinds: {}, why: held.rows };
+  // "Waiting" and "waiting on something that has not come round yet" are two
+  // different things, and saying only the first is how five hundred orders sit
+  // under the words "nothing waiting". How many are due now, when the next one
+  // comes round, and what went wrong last time.
+  const due = await pool.query(
+    `SELECT COUNT(*)::int AS n FROM shopify_orders
+      WHERE realm_id = $1 AND state = 'waiting' AND cancelled = FALSE
+        AND (next_try IS NULL OR next_try <= NOW())`, [realmId]);
+
+  const soon = await pool.query(
+    `SELECT MIN(next_try) AS at FROM shopify_orders
+      WHERE realm_id = $1 AND state = 'waiting' AND next_try > NOW()`, [realmId]);
+
+  const sore = await pool.query(
+    `SELECT sync_error, COUNT(*)::int AS n FROM shopify_orders
+      WHERE realm_id = $1 AND state = 'waiting' AND sync_error IS NOT NULL
+      GROUP BY sync_error ORDER BY COUNT(*) DESC LIMIT 1`, [realmId]);
+
+  const out = {
+    states: {}, kinds: {}, why: held.rows,
+    due: due.rows[0].n,
+    nextTry: soon.rows[0].at || null,
+    lastError: sore.rows[0] ? sore.rows[0].sync_error : null,
+    lastErrorCount: sore.rows[0] ? sore.rows[0].n : 0
+  };
   byState.rows.forEach(r => { out.states[r.state || 'waiting'] = r.n; });
   byKind.rows.forEach(r => { out.kinds[r.kind] = r.n; });
   return out;
+}
+
+// Stop waiting and try now. Everything held goes back in the queue and
+// everything backing off has its wait cleared - which is what somebody means
+// when they have fixed the thing and do not want to sit through an hour of
+// doubling to find out.
+export async function wakeAll(realmId) {
+  const r = await pool.query(
+    `UPDATE shopify_orders
+        SET state = 'waiting', next_try = NULL, tries = 0,
+            held_why = NULL, sync_error = NULL
+      WHERE realm_id = $1 AND state IN ('held', 'waiting') AND cancelled = FALSE`,
+    [realmId]
+  );
+  return r.rowCount;
 }
 
 /* ==================== the shops ==================== */

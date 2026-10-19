@@ -22,7 +22,7 @@ import {
   pullOrders, listOrders as listShopOrders, productsSeen, markSynced, unmark,
   toInvoice, API_VERSION as SHOPIFY_VERSION,
   note as shopNote, events as shopifyEvents, tally as shopifyTally,
-  heldList as shopifyHeld, releaseHeld, shopHookKey, shopByHookKey,
+  heldList as shopifyHeld, releaseHeld, wakeAll, shopHookKey, shopByHookKey,
   appKeysFor, saveAppKeys, forgetAppKeys, installUrl, callbackIsReal,
   exchangeCode, SCOPES
 } from './shopify.js';
@@ -8136,7 +8136,11 @@ app.post('/api/shopify/retry', async (req, res) => {
   const realmId = await requireCompany(req, res);
   if (!realmId) return;
   try {
-    const freed = await releaseHeld(realmId, req.body.why || null);
+    // "Try all of them again now" means now, including whatever is sitting out
+    // a doubling wait - not only what is held
+    const freed = req.body.why
+      ? await releaseHeld(realmId, req.body.why)
+      : await wakeAll(realmId);
     const did = await shopifySweep();
     // a batch bigger than one pass goes back to the fast cadence rather than
     // waiting ten minutes for the rest
