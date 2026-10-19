@@ -50,6 +50,7 @@
   .ghost:hover{border-color:var(--qbo);color:var(--qbo)}
   .acts{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
 
+  .whose{font-weight:400;font-size:12px;color:var(--faint);margin-left:8px}
   .skips{display:flex;gap:20px;align-items:center;flex-wrap:wrap;margin:0 0 14px}
   .skips label{display:flex;align-items:center;gap:7px;font-size:12.5px;cursor:pointer}
   .skipnote{font-size:11.5px;letter-spacing:.07em;text-transform:uppercase;
@@ -98,7 +99,7 @@
 
       <!-- ============ 01 the shops ============ -->
       <div class="step">
-        <h2><i>01</i>The shops</h2>
+        <h2><i>01</i>The shops <span class="whose" id="whose"></span></h2>
         <div class="hint">
           One row per shop, so a client with two storefronts keeps them apart.
           Type the shop&rsquo;s address and press Connect: Shopify will ask you to
@@ -268,7 +269,7 @@
           </div>
           <div>
             <label for="shipItem">Delivery charged to the buyer goes to</label>
-            <select id="shipItem"><option value="">leave it off</option></select>
+            <select id="shipItem"><option value="">work it out</option></select>
           </div>
         </div>
         <div class="acts">
@@ -680,6 +681,10 @@
   /* ---------- what the server knows ---------- */
 
   window.APP.ready.then(function(s){
+    if (s.companyName) {
+      $('whose').textContent = '· ' + s.companyName;
+      $('whose').title = 'Shops and keys belong to this company alone';
+    }
     setRange(30);
     loadShops();
 
@@ -692,7 +697,7 @@
       .then(function(r){ return r.json(); })
       .then(function(d){
         qbItems = (d.products || []).filter(function(p){ return p.active !== false; });
-        $('shipItem').innerHTML = '<option value="">leave it off</option>' +
+        $('shipItem').innerHTML = '<option value="">work it out</option>' +
           qbItems.map(function(it){
             return '<option value="' + esc(it.name) + '">' + esc(it.name) + '</option>';
           }).join('');

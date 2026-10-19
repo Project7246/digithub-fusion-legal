@@ -171,7 +171,7 @@
             </div>
             <div>
               <label for="sShip">Delivery charged to the buyer goes to</label>
-              <select id="sShip"><option value="">leave it off</option></select>
+              <select id="sShip"><option value="">work it out</option></select>
             </div>
           </div>
 
@@ -440,7 +440,7 @@
       if(!items.length){
         get('/api/qb-products').then(function(p){
           items = (p.products||[]).filter(function(x){ return x.active !== false; });
-          $('sShip').innerHTML = '<option value="">leave it off</option>' +
+          $('sShip').innerHTML = '<option value="">work it out</option>' +
             items.map(function(it){
               return '<option value="' + esc(it.name) + '"' +
                 (s.shippingItem === it.name ? ' selected' : '') + '>' + esc(it.name) + '</option>';

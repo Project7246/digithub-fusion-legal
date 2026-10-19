@@ -29,6 +29,7 @@ import {
 import {
   settingsOf as shopifySettings, saveSettings as saveShopifySettings,
   itemsPossible, standingAccounts, openBooks, itemFor, previewItem, whyNot,
+  shippingItemFor,
   sweep as shopifySweep, syncState, startShopifySync,
   nudgeOrder, nudgeProduct, wireHooks
 } from './shopifysync.js';
@@ -7589,8 +7590,11 @@ app.post('/api/shopify/build', async (req, res) => {
       terms: s.terms,
       keepTitles: s.keepTitles
     };
-    const shipItem = req.body.shippingItem !== undefined
-      ? req.body.shippingItem : s.shippingItem;
+    // whatever the page asked for, else whatever the company has set
+    const shipSetting = Object.assign({}, s, {
+      shippingItem: req.body.shippingItem !== undefined
+        ? req.body.shippingItem : s.shippingItem
+    });
 
     const invoices = [], unmatched = new Map(), skipped = [], pairs = [];
     let made = 0;
@@ -7622,9 +7626,18 @@ app.post('/api/shopify/build', async (req, res) => {
 
       const inv = built.invoice;
       inv.lines = lines;
-      if (Number(r.shipping) > 0 && shipItem) {
-        inv.lines.push({ item: shipItem, desc: 'Delivery',
-                         qty: 1, rate: Number(r.shipping), amt: Number(r.shipping) });
+
+      // Delivery the buyer paid for goes on, worked out the same way the live
+      // writing works it out - whatever was chosen, else an item the books
+      // already have, else a Service item made once and used from then on.
+      const ship = Number(r.shipping) || 0;
+      if (ship > 0) {
+        const item = await shippingItemFor(books, shipSetting, { shopId: r.shop_id });
+        if (!item) {
+          skipped.push({ name: r.name, why: 'nothing in QuickBooks to put delivery on' });
+          continue;
+        }
+        inv.lines.push({ item, desc: 'Delivery', qty: 1, rate: ship, amt: ship });
       }
       if (!inv.lines.length) { skipped.push({ name: r.name, why: 'every line was set aside' }); continue; }
 

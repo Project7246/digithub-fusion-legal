@@ -411,9 +411,22 @@ export async function writeOne(books, row, s) {
   }
   const inv = built.invoice;
   inv.lines = lines;
-  if (Number(row.shipping) > 0 && s.shippingItem) {
-    inv.lines.push({ item: s.shippingItem, desc: 'Delivery',
-                     qty: 1, rate: Number(row.shipping), amt: Number(row.shipping) });
+
+  // Delivery the buyer paid for goes on the invoice. If there is no item for it
+  // and none can be made, the order waits - an invoice that quietly leaves
+  // money off is worse than one that has not been written yet.
+  const ship = Number(row.shipping) || 0;
+  if (ship > 0) {
+    const item = await shippingItemFor(books, s, ctx);
+    if (!item) {
+      await setHeld(realmId, row.order_gid, 'no item in QuickBooks for delivery charges');
+      await note(realmId, 'held', {
+        shopId: row.shop_id, orderName: row.name, gid: row.order_gid, ok: false,
+        note: 'it carries ' + ship + ' of delivery and there is nothing to put it on'
+      });
+      return 'held';
+    }
+    inv.lines.push({ item, desc: 'Delivery', qty: 1, rate: ship, amt: ship });
   }
   if (!inv.lines.length) {
     await setOff(realmId, row.order_gid, 'every line was set aside');
@@ -764,4 +777,61 @@ export function previewItem(books, line, s) {
 
   const kind = (line.tracked && can.inventory) ? 'Inventory' : 'NonInventory';
   return { how: 'will be made as ' + kind, item: null, willMake: true, kind };
+}
+
+// Delivery charged to the buyer is money taken, so it belongs on the invoice.
+//
+// It used to be left off unless somebody had gone and picked an item for it,
+// which meant four invoices went into real books short of their delivery and
+// nothing said so. Being quiet about money is the one thing this must not do.
+//
+// So it is worked out rather than asked for: whatever was chosen, else an item
+// the books already have under one of the names everybody uses, else a Service
+// item called Shipping, made once and used from then on.
+const SHIP_NAMES = [
+  'Shipping', 'Delivery', 'Shipping Charges', 'Delivery Charges',
+  'Shipping Fee', 'Delivery Fee', 'Freight'
+];
+
+export async function shippingItemFor(books, s, ctx) {
+  if (s.shippingItem && books.items[String(s.shippingItem).toLowerCase()]) {
+    return s.shippingItem;
+  }
+  for (const name of SHIP_NAMES) {
+    if (books.items[name.toLowerCase()]) return name;
+  }
+
+  if (!books.accounts.income) return null;
+
+  const made = await createItem(books.realmId, books.token, {
+    name: 'Shipping',
+    type: 'Service',
+    incomeAccount: books.accounts.income
+  });
+
+  if (made.ok) {
+    books.items[String(made.name).toLowerCase()] = made.id;
+    await note(books.realmId, 'item', {
+      shopId: ctx && ctx.shopId, title: 'Shipping',
+      note: 'made a Service item "' + made.name + '" so delivery charged to the ' +
+            'buyer goes on the invoice'
+    });
+    return made.name;
+  }
+
+  if (/duplicate name/i.test(made.error || '')) {
+    const q = await qbQuery(books.realmId, books.token,
+      "SELECT Id, Name FROM Item WHERE Name = 'Shipping' MAXRESULTS 1");
+    const found = (q.Item || [])[0];
+    if (found) {
+      books.items[String(found.Name).toLowerCase()] = found.Id;
+      return found.Name;
+    }
+  }
+
+  await note(books.realmId, 'error', {
+    shopId: ctx && ctx.shopId, ok: false, title: 'Shipping',
+    note: 'could not make an item for delivery charges: ' + made.error
+  });
+  return null;
 }
