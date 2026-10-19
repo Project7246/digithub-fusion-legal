@@ -30,7 +30,7 @@ import {
   settingsOf as shopifySettings, saveSettings as saveShopifySettings,
   itemsPossible, standingAccounts, openBooks, itemFor, previewItem, whyNot,
   shippingItemFor,
-  sweep as shopifySweep, syncState, startShopifySync,
+  sweep as shopifySweep, syncState, startShopifySync, wakeSoon,
   nudgeOrder, nudgeProduct, wireHooks
 } from './shopifysync.js';
 import { listCompanies } from './companies.js';
@@ -8125,6 +8125,9 @@ app.post('/api/shopify/retry', async (req, res) => {
   try {
     const freed = await releaseHeld(realmId, req.body.why || null);
     const did = await shopifySweep();
+    // a batch bigger than one pass goes back to the fast cadence rather than
+    // waiting ten minutes for the rest
+    if (freed > (did && did.done ? did.done : 0)) wakeSoon();
     res.json({ freed, did });
   } catch (e) {
     res.status(500).json({ error: e.message });

@@ -38,10 +38,17 @@ import {
 
 const KEY = 'shopify';
 
-// How often the queue is looked at, and how many are taken each time. A webhook
-// pushes its own order through at once, so this sweep is mostly for what failed
-// and is due again - it does not need to be fast, it needs to be certain.
-const EVERY = Math.max(20, Number(process.env.SHOPIFY_SWEEP_SECONDS) || 60) * 1000;
+// A new order does not wait for this sweep at all - Shopify calls us and it is
+// written there and then. So the sweep is only for what is left over: a backlog
+// being worked through, and anything that failed and is due to be tried again.
+//
+// Which means asking every minute for ever is wasted breath. It asks every
+// minute while there is work, and every ten minutes once there is none - and
+// anything that puts work back in the queue wakes it immediately rather than
+// letting it sleep out its ten minutes.
+const BUSY_EVERY = Math.max(20, Number(process.env.SHOPIFY_SWEEP_SECONDS) || 60) * 1000;
+const IDLE_EVERY = Math.max(BUSY_EVERY,
+  (Number(process.env.SHOPIFY_IDLE_SECONDS) || 600) * 1000);
 const BATCH = Math.max(1, Number(process.env.SHOPIFY_BATCH) || 20);
 
 export const DEFAULTS = {
@@ -536,7 +543,7 @@ export async function writeOne(books, row, s) {
 
 /* ==================== the sweep ==================== */
 
-const state = { running: false, lastAt: null, lastDid: null, note: '' };
+const state = { running: false, lastAt: null, lastDid: null, note: '', everyMs: BUSY_EVERY };
 export function syncState() { return Object.assign({}, state); }
 
 export async function sweep() {
@@ -587,12 +594,36 @@ export async function sweep() {
   return did;
 }
 
+let timer = null;
+
+function schedule(ms) {
+  if (timer) clearTimeout(timer);
+  state.everyMs = ms;
+  timer = setTimeout(tick, ms);
+  if (timer.unref) timer.unref();
+}
+
+async function tick() {
+  let did = null;
+  try {
+    did = await sweep();
+  } catch (e) {
+    console.error('shopify sweep:', e.message);
+  }
+  // "busy" means it actually had something to do, not merely that it looked
+  const busy = did && (did.done || did.held || did.failed || did.off);
+  schedule(busy ? BUSY_EVERY : IDLE_EVERY);
+}
+
+// Something has just been put back in the queue - a webhook that could not be
+// written, a held order released. Waiting out the idle ten minutes for it would
+// be the one time this pacing costs anybody anything.
+export function wakeSoon() {
+  schedule(3000);
+}
+
 export function startShopifySync() {
-  sweep().catch(e => console.error('shopify sweep:', e.message));
-  const t = setInterval(() => {
-    sweep().catch(e => console.error('shopify sweep:', e.message));
-  }, EVERY);
-  t.unref();
+  tick();
 }
 
 /* ==================== the nudge ==================== */
@@ -669,13 +700,14 @@ export async function nudgeOrder(realmId, shop, gid, topic) {
 
   // not written yet: push it through now
   const s = await settingsOf(realmId);
-  if (!s.on) return 'waiting';
+  if (!s.on) return 'waiting';   // kept for whenever it is turned on
 
   try {
     const books = await openBooks(realmId);
     return await writeOne(books, row, s);
   } catch (e) {
     await setFailed(realmId, gid, e.message);
+    wakeSoon();
     return 'failed';
   }
 }
