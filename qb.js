@@ -296,3 +296,87 @@ export async function qbQueryStrict(realmId, token, sql) {
   }
   return json.QueryResponse;
 }
+
+/* ==================== accounts and items ==================== */
+// Needed by anything that has to make an item rather than only find one. A
+// product that turned up on Shopify this morning has no item in the books yet,
+// and an invoice cannot name what does not exist.
+
+export async function listAccounts(realmId, token) {
+  const out = [];
+  let start = 1;
+  while (true) {
+    const q = await qbQuery(realmId, token,
+      'SELECT Id, Name, AccountType, AccountSubType, Classification, Active ' +
+      'FROM Account STARTPOSITION ' + start + ' MAXRESULTS 1000');
+    const arr = q.Account || [];
+    arr.forEach(a => {
+      if (a.Active === false) return;
+      out.push({
+        id: a.Id, name: a.Name, type: a.AccountType,
+        sub: a.AccountSubType || '', group: a.Classification || ''
+      });
+    });
+    if (arr.length < 1000) break;
+    start += 1000;
+    if (start > 9000) break;
+  }
+  return out;
+}
+
+// One item, made the way QuickBooks wants it for its kind. Inventory needs
+// three accounts and a date it started being counted; the other two kinds need
+// only where the money lands. Getting that wrong is the usual reason a created
+// item is refused.
+export async function createItem(realmId, token, item) {
+  const kind = String(item.type || 'NonInventory');
+  const body = {
+    Name: String(item.name || '').slice(0, 100),
+    Type: kind,
+    IncomeAccountRef: { value: String(item.incomeAccount) }
+  };
+  if (item.sku) body.Sku = String(item.sku).slice(0, 100);
+  if (item.description) body.Description = String(item.description).slice(0, 4000);
+  if (item.price != null) body.UnitPrice = Number(item.price) || 0;
+
+  if (kind === 'Inventory') {
+    body.TrackQtyOnHand = true;
+    body.QtyOnHand = Number(item.qty) || 0;
+    body.InvStartDate = item.startDate || new Date().toISOString().slice(0, 10);
+    body.AssetAccountRef = { value: String(item.assetAccount) };
+    body.ExpenseAccountRef = { value: String(item.cogsAccount) };
+  }
+
+  const res = await qbFetch(
+    `${API}/v3/company/${realmId}/item?minorversion=70`,
+    token,
+    { method: 'POST', body: JSON.stringify(body) }
+  );
+
+  if (res.ok) {
+    const json = await res.json();
+    return { ok: true, id: json.Item.Id, name: json.Item.Name, sku: json.Item.Sku || '' };
+  }
+
+  const text = await res.text();
+  let msg = text.slice(0, 400);
+  try {
+    const fault = JSON.parse(text).Fault;
+    if (fault && fault.Error && fault.Error.length) {
+      msg = `${fault.Error[0].Message} | ${fault.Error[0].Detail || ''}`;
+    }
+  } catch (e) { /* keep raw */ }
+
+  return { ok: false, error: msg, status: res.status, tid: tidOf(res) };
+}
+
+// The one order the webhook nudged us about, read back from Shopify's own API
+// rather than believed out of the call's body - see hooks in shopifysync.js.
+export async function findInvoiceByNumber(realmId, token, docNumber) {
+  const safe = String(docNumber).replace(/'/g, "''");
+  const q = await qbQuery(realmId, token,
+    `SELECT Id, DocNumber, TxnDate, TotalAmt, SyncToken FROM Invoice ` +
+    `WHERE DocNumber = '${safe}' MAXRESULTS 5`);
+  const arr = q.Invoice || [];
+  return arr.length ? arr[0] : null;
+}

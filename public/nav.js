@@ -134,12 +134,13 @@
     // five rather than inside one of them.
     { key:'shopify', label:'Shopify', home:'/shopify', tile:'cart',
       what:'The shop’s own orders and products, straight into the books.', qb:false,
-      soon:[{ label:'Products', tile:'tag' }, { label:'Live sync', tile:'swap' },
-            { label:'Inventory', tile:'box' }],
+      soon:[{ label:'Products', tile:'tag' }, { label:'Inventory', tile:'box' }],
       groups: [
       { group: null, items: [
         { href:'/shopify', label:'Orders to QuickBooks', icon:'cart',
-          need:'shopify', tile:'cart', as:'Orders' }
+          need:'shopify', tile:'cart', as:'Orders' },
+        { href:'/shopify-log', label:'Reports', icon:'sheet',
+          need:'shopify', tile:'sheet' }
       ]}
     ]}
   ];

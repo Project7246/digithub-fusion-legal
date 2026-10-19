@@ -20,8 +20,15 @@ import {
 import {
   initShopify, listShops, getShop, saveShop, removeShop, checkShop, cleanDomain,
   pullOrders, listOrders as listShopOrders, productsSeen, markSynced, unmark,
-  toInvoice, API_VERSION as SHOPIFY_VERSION
+  toInvoice, API_VERSION as SHOPIFY_VERSION,
+  note as shopNote, events as shopifyEvents, tally as shopifyTally,
+  heldList as shopifyHeld, releaseHeld, shopHookKey, shopByHookKey
 } from './shopify.js';
+import {
+  settingsOf as shopifySettings, saveSettings as saveShopifySettings,
+  itemsPossible, sweep as shopifySweep, syncState, startShopifySync,
+  nudgeOrder, nudgeProduct, wireHooks
+} from './shopifysync.js';
 import { listCompanies } from './companies.js';
 import { listSheets, listTabs, readTab, paintRows, testConnection } from './sheets.js';
 import {
@@ -43,8 +50,7 @@ import {
 import { initPush, publicKey, addSub, dropSub, hasSub, pushTo } from './push.js';
 import {
   getAccessToken, getCompanyInfo, loadItems, loadTerms,
-  getOrCreateCustomer, postInvoice, qbQuery, qbReport
-} from './qb.js';
+  getOrCreateCustomer, postInvoice, qbQuery, qbReport, listAccounts as qbAccountList} from './qb.js';
 import {
   readItems, readItemSales, readValuation, readPurchases,
   buildRows as buildProductRows, summarise as summariseProducts,
@@ -1321,7 +1327,8 @@ const RIGHT_GROUPS = [
   { key: 'shopify', area: 'sales', label: 'Shopify',
     what: 'Connect shops and bring their orders in',
     paths: ['/api/shopify/shops', '/api/shopify/shops/remove', '/api/shopify/pull',
-            '/api/shopify/build', '/api/shopify/mark', '/api/shopify/unmark'] },
+            '/api/shopify/build', '/api/shopify/mark', '/api/shopify/unmark',
+            '/api/shopify/settings', '/api/shopify/retry', '/api/shopify/wire'] },
 
   { key: 'settings', area: 'items', label: 'SKU mappings',
     what: 'Remembered SKU-to-item matches',
@@ -1367,7 +1374,8 @@ const PAGE_NEED = new Map(Object.entries({
   '/courier-dash.html': 'couriersync',
   '/receipts.html': 'couriersync',
   '/cprs.html': 'couriersync',
-  '/shopify.html': 'shopify'
+  '/shopify.html': 'shopify',
+  '/shopify-log.html': 'shopify'
 }));
 
 // route -> the job it belongs to, worked out once
@@ -3125,7 +3133,13 @@ app.post('/api/mappings', async (req, res) => {
       if (!m.key) continue;
       await saveMapping(realmId, m.key, m.sku, m.name, m.qbItem, m.skip);
     }
-    res.json({ ok: true, saved: list.length });
+    // Most of what is held is held on a product with no item in the books -
+    // which is exactly what was just saved. So it goes back in the queue now,
+    // rather than when somebody thinks to press something.
+    let freed = 0;
+    try { freed = await releaseHeld(realmId); } catch (e) { /* not worth failing the save */ }
+
+    res.json({ ok: true, saved: list.length, freed });
   } catch (e) {
     res.status(500).json({ error: e.message });
   }
@@ -7400,7 +7414,21 @@ app.post('/api/shopify/shops', async (req, res) => {
       domain, token, label: req.body.label || shop.name || domain
     });
 
-    res.json({ ok: true, shop: saved, checked: shop });
+    // Shopify lets an app set up its own webhooks, so nobody should have to
+    // paste anything. A failure here does not undo the shop - it is said, and
+    // the Wire button on the page tries again.
+    let wired = null;
+    try {
+      const full = await getShop(realmId, saved.id);
+      full.hook_key = await shopHookKey(realmId, saved.id);
+      const base = (process.env.BASE_URL || '').replace(/\/+$/, '') ||
+                   (req.protocol + '://' + req.get('host'));
+      wired = await wireHooks(realmId, full, base);
+    } catch (e) {
+      wired = { failed: ['could not set up the live updates: ' + e.message] };
+    }
+
+    res.json({ ok: true, shop: saved, checked: shop, wired });
   } catch (e) {
     res.status(400).json({ error: e.message });
   }
@@ -7754,6 +7782,192 @@ app.post('/api/courier/hook-roll', async (req, res) => {
       url: base + '/hooks/courier/' + h.courier + '/' + h.key,
       header: h.header, secret: h.secret
     });
+  } catch (e) {
+    res.status(400).json({ error: e.message });
+  }
+});
+
+/* ==================== Shopify calling us ==================== */
+// Outside /api, because Shopify has never signed in and never will. The key in
+// the address says which shop; what the call *says* is not trusted at all - the
+// order is read back from Shopify's own API before anything is done with it, so
+// a forged call can at worst make us re-read a real order.
+//
+// Shopify wants an answer within five seconds and retries for two days if it
+// does not get one. So the answer goes out first and the work happens after.
+
+app.post('/hooks/shopify/:key',
+         express.urlencoded({ extended: true, limit: '2mb' }),
+         async (req, res) => {
+  const topic = String(req.get('X-Shopify-Topic') || '').toLowerCase();
+  const body = (req.body && typeof req.body === 'object') ? req.body : {};
+
+  let shop = null;
+  try { shop = await shopByHookKey(req.params.key); } catch (e) { /* below */ }
+  if (!shop) return res.status(404).json({ ok: false });
+
+  // the shop that called must be the shop this address belongs to
+  const said = String(req.get('X-Shopify-Shop-Domain') || '').toLowerCase();
+  if (said && said !== String(shop.domain).toLowerCase()) {
+    return res.status(404).json({ ok: false });
+  }
+
+  res.json({ ok: true });              // answered; now the work
+
+  (async () => {
+    try {
+      if (topic.indexOf('product') === 0) {
+        const id = body.id || body.admin_graphql_api_id;
+        if (!id) return;
+        const gid = String(id).indexOf('gid://') === 0
+          ? String(id) : 'gid://shopify/Product/' + id;
+        await nudgeProduct(shop.realm_id, shop, gid, topic);
+        return;
+      }
+
+      // refunds/create carries the refund, not the order
+      const id = topic === 'refunds/create'
+        ? (body.order_id || (body.order && body.order.id))
+        : (body.id || body.admin_graphql_api_id);
+      if (!id) return;
+
+      const gid = String(id).indexOf('gid://') === 0
+        ? String(id) : 'gid://shopify/Order/' + id;
+      await nudgeOrder(shop.realm_id, shop, gid, topic);
+    } catch (e) {
+      console.error('shopify hook:', topic, e.message);
+      try {
+        await shopNote(shop.realm_id, 'error', {
+          shopId: shop.id, ok: false,
+          note: 'a ' + topic + ' call could not be worked through: ' + e.message
+        });
+      } catch (e2) { /* nothing more to do */ }
+    }
+  })();
+});
+
+/* ==================== how the live sync is set up ==================== */
+
+app.get('/api/shopify/settings', async (req, res) => {
+  const realmId = await requireCompany(req, res);
+  if (!realmId) return;
+  try {
+    res.setHeader('Cache-Control', 'no-store');
+    const s = await shopifySettings(realmId);
+    const can = itemsPossible(s);
+    res.json({ settings: s, canMakeItems: can.can, why: can.why || '', state: syncState() });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.post('/api/shopify/settings', async (req, res) => {
+  const realmId = await requireCompany(req, res);
+  if (!realmId) return;
+  try {
+    const s = await saveShopifySettings(realmId, req.body || {});
+    const can = itemsPossible(s);
+    res.json({ settings: s, canMakeItems: can.can, why: can.why || '' });
+  } catch (e) {
+    res.status(400).json({ error: e.message });
+  }
+});
+
+// The company's own chart of accounts, so the three choices for making items
+// are picked from a list rather than typed as ids.
+app.get('/api/shopify/accounts', async (req, res) => {
+  const realmId = await requireCompany(req, res);
+  if (!realmId) return;
+  try {
+    res.setHeader('Cache-Control', 'no-store');
+    const token = await getAccessToken(realmId);
+    const all = await qbAccountList(realmId, token);
+    res.json({
+      income: all.filter(a => a.type === 'Income' || a.type === 'Other Income'),
+      cogs:   all.filter(a => a.type === 'Cost of Goods Sold' || a.type === 'Expense'),
+      asset:  all.filter(a => a.type === 'Other Current Asset' || a.type === 'Fixed Asset')
+    });
+  } catch (e) {
+    res.status(400).json({ error: e.message });
+  }
+});
+
+/* ==================== what happened ==================== */
+
+app.get('/api/shopify/report', async (req, res) => {
+  const realmId = await requireCompany(req, res);
+  if (!realmId) return;
+  try {
+    res.setHeader('Cache-Control', 'no-store');
+    res.json({
+      tally: await shopifyTally(realmId),
+      state: syncState(),
+      settings: await shopifySettings(realmId)
+    });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.get('/api/shopify/events', async (req, res) => {
+  const realmId = await requireCompany(req, res);
+  if (!realmId) return;
+  try {
+    res.setHeader('Cache-Control', 'no-store');
+    const rows = await shopifyEvents(realmId, {
+      kind: req.query.kind, limit: req.query.limit, since: req.query.since
+    });
+    res.json({ events: rows });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// Everything stuck, and why - the one list somebody actually has to act on.
+app.get('/api/shopify/held', async (req, res) => {
+  const realmId = await requireCompany(req, res);
+  if (!realmId) return;
+  try {
+    res.setHeader('Cache-Control', 'no-store');
+    const rows = await shopifyHeld(realmId, req.query.limit);
+    res.json({
+      held: rows.map(r => ({
+        gid: r.order_gid, name: r.name, placedAt: r.placed_at,
+        total: Number(r.total), shop: r.shop_label, state: r.state,
+        why: r.held_why || r.sync_error, tries: r.tries, nextTry: r.next_try
+      }))
+    });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// Put what is stuck back in the queue and run it now. Pressed after the thing
+// it was stuck on - a SKU with no item, mostly - has been dealt with.
+app.post('/api/shopify/retry', async (req, res) => {
+  const realmId = await requireCompany(req, res);
+  if (!realmId) return;
+  try {
+    const freed = await releaseHeld(realmId, req.body.why || null);
+    const did = await shopifySweep();
+    res.json({ freed, did });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// Ask Shopify to start calling us for this shop. Done for us rather than pasted
+// by a person: Shopify is the one of these that lets an app set up its own.
+app.post('/api/shopify/wire', async (req, res) => {
+  const realmId = await requireCompany(req, res);
+  if (!realmId) return;
+  try {
+    const shop = await getShop(realmId, req.body.shop);
+    if (!shop) return res.status(404).json({ error: 'No such shop' });
+    shop.hook_key = await shopHookKey(realmId, shop.id);
+    const base = (process.env.BASE_URL || '').replace(/\/+$/, '') ||
+                 (req.protocol + '://' + req.get('host'));
+    res.json(await wireHooks(realmId, shop, base));
   } catch (e) {
     res.status(400).json({ error: e.message });
   }
@@ -11484,6 +11698,7 @@ initDb()
   .then(() => app.listen(PORT, () => {
     console.log(`Server running on port ${PORT}`);
     startKeeper();
+    startShopifySync();
         resumeUnfinished().catch(e => console.error('resume failed:', e.message));
     resumeRecat().catch(e => console.error('recat resume failed:', e.message));
     resumeReplace().catch(e => console.error('replace resume failed:', e.message));

@@ -1,0 +1,476 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Shopify reports</title>
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="manifest" href="/manifest.json">
+<meta name="theme-color" content="#222F34">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@600;700;800&family=Roboto:wght@400;500&family=Roboto+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/app.css">
+<style>
+  /* Is it working? That should be a page, not a feeling.
+     Every tab here is one question somebody actually asks: what went in, what
+     is stuck and why, what QuickBooks refused, what was made, what moved. */
+  .step{background:var(--panel);border:1px solid var(--line);border-radius:10px;
+    padding:20px 24px;margin-bottom:16px}
+  .step h2{margin:0 0 4px;font-size:14.5px;font-weight:600}
+  .step .hint{font-size:12.5px;color:var(--muted);margin-bottom:14px;line-height:1.6}
+
+  .tot{display:grid;grid-template-columns:repeat(auto-fit,minmax(132px,1fr));gap:12px;
+    margin-bottom:16px}
+  .tot .c{border:1px solid var(--line);border-radius:9px;background:var(--panel);
+    padding:14px 15px}
+  .tot .c b{display:block;font-family:var(--mono);font-size:21px;font-weight:500;line-height:1.2}
+  .tot .c span{display:block;font-size:10.5px;letter-spacing:.08em;text-transform:uppercase;
+    color:var(--faint);margin-top:5px}
+  .tot .c.good b{color:var(--qbo)}
+  .tot .c.warn b{color:#C9872B}
+  .tot .c.bad  b{color:var(--bad,#9A2E24)}
+
+  .tabs{display:flex;gap:4px;flex-wrap:wrap;margin-bottom:14px;border-bottom:1px solid var(--line)}
+  .tabs button{border:0;background:none;font:inherit;font-size:13px;cursor:pointer;
+    padding:10px 14px;color:var(--muted);border-bottom:2px solid transparent;margin-bottom:-1px}
+  .tabs button:hover{color:var(--text)}
+  .tabs button.on{color:var(--qbo);border-bottom-color:var(--qbo);font-weight:600}
+  .tabs button i{font-style:normal;font-family:var(--mono);font-size:11px;opacity:.7;
+    margin-left:5px}
+  .pane{display:none}
+  .pane.on{display:block}
+
+  table.t{width:100%;border-collapse:collapse;font-size:12.5px}
+  table.t th{text-align:left;font-weight:600;font-size:10.5px;letter-spacing:.07em;
+    text-transform:uppercase;color:var(--faint);padding:8px;border-bottom:1px solid var(--line)}
+  table.t td{padding:7px 8px;border-bottom:1px solid var(--line);vertical-align:top}
+  table.t td.mono{font-family:var(--mono);font-size:11.5px;white-space:nowrap}
+  table.t td.num{text-align:right;font-family:var(--mono);white-space:nowrap}
+  table.t tr.bad td{background:#FDF6F5}
+  .scroll{max-height:520px;overflow:auto;border:1px solid var(--line);border-radius:8px}
+  .none{padding:30px;text-align:center;color:var(--muted);font-size:12.5px}
+
+  .pill{display:inline-block;padding:1px 8px;border-radius:20px;font-size:10px;font-weight:600}
+  .pill.ok{background:#E7F5EC;color:#1B7A44}
+  .pill.no{background:#FBEDEC;color:#9A2E24}
+  .pill.mid{background:#FFF3E0;color:#8A5A12}
+
+  .fields{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:14px;
+    margin-bottom:14px}
+  .fields label{display:block;font-size:11px;letter-spacing:.07em;text-transform:uppercase;
+    color:var(--faint);margin-bottom:4px}
+  .fields input,.fields select{width:100%;border:1px solid var(--line);border-radius:7px;
+    padding:9px 11px;font:inherit;font-size:13px;background:#fff;color:var(--text)}
+  .onoff{display:flex;align-items:center;gap:9px;font-size:13px;margin-bottom:14px}
+
+  .go{background:var(--qbo);border:1px solid var(--qbo);color:#fff;border-radius:8px;
+    padding:10px 20px;font:inherit;font-size:13px;font-weight:600;cursor:pointer}
+  .go[disabled]{opacity:.55;cursor:default}
+  .ghost{background:#fff;border:1px solid var(--line);color:var(--text);border-radius:8px;
+    padding:9px 16px;font:inherit;font-size:12.5px;cursor:pointer}
+  .ghost:hover{border-color:var(--qbo);color:var(--qbo)}
+  .acts{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+  .said{font-size:12.5px}
+  .said.bad{color:var(--bad,#9A2E24)}
+  .said.good{color:var(--qbo)}
+</style>
+</head>
+<body>
+
+<div class="layout">
+  <aside class="rail"></aside>
+
+  <div class="main">
+    <div class="topline">
+      <div>
+        <h1>Shopify reports</h1>
+        <div class="sub">What went into the books, what is stuck, and why.</div>
+      </div>
+    </div>
+
+    <div class="shell">
+
+      <div class="tot" id="tot"></div>
+
+      <div class="step">
+        <div class="tabs" id="tabs">
+          <button data-tab="held" class="on">Needs you <i id="cHeld"></i></button>
+          <button data-tab="invoice">Invoices in <i id="cInv"></i></button>
+          <button data-tab="error">QuickBooks said no <i id="cErr"></i></button>
+          <button data-tab="item">Items made <i id="cItem"></i></button>
+          <button data-tab="price">Price and cost <i id="cPrice"></i></button>
+          <button data-tab="changes">Paid, refunded, cancelled <i id="cChg"></i></button>
+          <button data-tab="setup">How it runs</button>
+        </div>
+
+        <!-- ============ needs you ============ -->
+        <div class="pane on" id="p-held">
+          <div class="hint">
+            Nothing here is lost &mdash; each one is an order that could not be written
+            yet and is waiting on something. The usual reason is a product with no item
+            in QuickBooks: match it on the Shopify page and everything waiting on it
+            goes through by itself. Anything QuickBooks merely refused for a moment
+            retries on its own, on a doubling wait.
+          </div>
+          <div class="acts" style="margin-bottom:12px">
+            <button class="ghost" id="btnRetry">Try all of them again now</button>
+            <span class="said" id="retrySaid"></span>
+          </div>
+          <div id="heldBox"><div class="none">Loading&hellip;</div></div>
+        </div>
+
+        <!-- ============ the event tabs ============ -->
+        <div class="pane" id="p-invoice"><div id="box-invoice"></div></div>
+        <div class="pane" id="p-error"><div id="box-error"></div></div>
+        <div class="pane" id="p-item"><div id="box-item"></div></div>
+        <div class="pane" id="p-price"><div id="box-price"></div></div>
+        <div class="pane" id="p-changes"><div id="box-changes"></div></div>
+
+        <!-- ============ how it runs ============ -->
+        <div class="pane" id="p-setup">
+          <div class="hint">
+            With this on, an order placed on Shopify becomes an invoice in QuickBooks
+            by itself, within seconds. The page where you pick dates stays for filling
+            in a month that was missed.
+          </div>
+
+          <label class="onoff">
+            <input type="checkbox" id="sOn"> <span>Write invoices by themselves</span>
+          </label>
+
+          <div class="fields">
+            <div>
+              <label for="sCust">Customer on the invoices</label>
+              <input id="sCust" type="text" placeholder="Shopify Sale - {mon}{yy}">
+            </div>
+            <div>
+              <label for="sPrefix">Put before the number</label>
+              <input id="sPrefix" type="text" placeholder="none">
+            </div>
+            <div>
+              <label for="sShip">Delivery charged to the buyer goes to</label>
+              <select id="sShip"><option value="">leave it off</option></select>
+            </div>
+          </div>
+
+          <h3 style="font:600 13px var(--head);margin:22px 0 6px">A product that is not in the books yet</h3>
+          <div class="hint">
+            When an order carries a product QuickBooks has never heard of, the item can
+            be made here and then used &mdash; so one new product does not stop an
+            invoice. QuickBooks needs to be told where the money lands; an inventory
+            item needs two more accounts than the others.
+          </div>
+
+          <label class="onoff">
+            <input type="checkbox" id="sMake"> <span>Make the item in QuickBooks when it is missing</span>
+          </label>
+
+          <div class="fields">
+            <div>
+              <label for="sType">Make it as</label>
+              <select id="sType">
+                <option value="NonInventory">Non-inventory</option>
+                <option value="Inventory">Inventory (counts stock)</option>
+                <option value="Service">Service</option>
+              </select>
+            </div>
+            <div>
+              <label for="sIncome">Income account</label>
+              <select id="sIncome"></select>
+            </div>
+            <div id="wrapCogs">
+              <label for="sCogs">Cost of sales account</label>
+              <select id="sCogs"></select>
+            </div>
+            <div id="wrapAsset">
+              <label for="sAsset">Inventory asset account</label>
+              <select id="sAsset"></select>
+            </div>
+          </div>
+
+          <div class="acts">
+            <button class="go" id="btnSave">Save</button>
+            <span class="said" id="setSaid"></span>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<script src="/nav.js"></script>
+<script src="/update.js"></script>
+<script>
+"use strict";
+(function(){
+  var $ = function(id){ return document.getElementById(id); };
+  var tab = 'held', accounts = null, items = [];
+
+  function esc(s){
+    return String(s == null ? '' : s)
+      .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  }
+  function n0(n){ return (Number(n)||0).toLocaleString(); }
+  function money(n){
+    return (Number(n)||0).toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2});
+  }
+  function when(t){
+    if(!t) return '';
+    var d = new Date(t);
+    return d.toLocaleDateString() + ' ' +
+      d.toLocaleTimeString([], { hour:'2-digit', minute:'2-digit' });
+  }
+  function say(el, cls, text){ el.className = 'said ' + (cls||''); el.textContent = text || ''; }
+
+  function get(url){
+    return fetch(url, { cache:'no-store' }).then(function(r){
+      return r.json().then(function(d){ if(!r.ok) throw new Error(d.error||'Server said '+r.status); return d; });
+    });
+  }
+  function post(url, body){
+    return fetch(url, {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify(body||{})
+    }).then(function(r){
+      return r.json().then(function(d){ if(!r.ok) throw new Error(d.error||'Server said '+r.status); return d; });
+    });
+  }
+
+  /* ---------- the tabs ---------- */
+
+  function show(name){
+    tab = name;
+    $('tabs').querySelectorAll('button').forEach(function(b){
+      b.classList.toggle('on', b.getAttribute('data-tab') === name);
+    });
+    document.querySelectorAll('.pane').forEach(function(p){
+      p.classList.toggle('on', p.id === 'p-' + name);
+    });
+    if(name === 'held') loadHeld();
+    else if(name === 'setup') loadSetup();
+    else loadEvents(name);
+  }
+
+  $('tabs').querySelectorAll('button').forEach(function(b){
+    b.addEventListener('click', function(){ show(b.getAttribute('data-tab')); });
+  });
+
+  /* ---------- the headline ---------- */
+
+  function loadTally(){
+    get('/api/shopify/report').then(function(d){
+      var st = (d.tally && d.tally.states) || {}, k = (d.tally && d.tally.kinds) || {};
+      $('tot').innerHTML =
+        card('good', st.done || 0, 'Invoices in') +
+        card('warn', (st.waiting || 0), 'Waiting') +
+        card('bad',  (st.held || 0), 'Needs you') +
+        card('', (st.off || 0), 'Left out') +
+        card('', k.item || 0, 'Items made · 30d') +
+        card('', k.price || 0, 'Price moves · 30d');
+
+      $('cHeld').textContent  = st.held ? '(' + n0(st.held) + ')' : '';
+      $('cInv').textContent   = k.invoice ? '(' + n0(k.invoice) + ')' : '';
+      $('cErr').textContent   = k.error ? '(' + n0(k.error) + ')' : '';
+      $('cItem').textContent  = k.item ? '(' + n0(k.item) + ')' : '';
+      $('cPrice').textContent = k.price ? '(' + n0(k.price) + ')' : '';
+      var chg = (k.paid||0) + (k.refund||0) + (k.cancelled||0) + (k.edited||0);
+      $('cChg').textContent   = chg ? '(' + n0(chg) + ')' : '';
+
+      if(d.settings && d.settings.on === false){
+        $('tot').insertAdjacentHTML('afterend',
+          '<div class="step" style="border-color:#C9872B"><b>Writing by itself is switched off.</b> ' +
+          'Orders are being kept here but nothing is going into QuickBooks on its own. ' +
+          'Turn it on under <b>How it runs</b>.</div>');
+      }
+    }).catch(function(){});
+  }
+
+  function card(cls, n, what){
+    return '<div class="c' + (cls ? ' ' + cls : '') + '"><b>' + n0(n) + '</b><span>' +
+      esc(what) + '</span></div>';
+  }
+
+  /* ---------- needs you ---------- */
+
+  function loadHeld(){
+    $('heldBox').innerHTML = '<div class="none">Loading&hellip;</div>';
+    get('/api/shopify/held?limit=400').then(function(d){
+      var rows = d.held || [];
+      if(!rows.length){
+        $('heldBox').innerHTML = '<div class="none">Nothing is stuck. Everything that came in has gone in.</div>';
+        return;
+      }
+      $('heldBox').innerHTML = '<div class="scroll"><table class="t">' +
+        '<tr><th>Order</th><th>Placed</th><th>Shop</th><th class="num">Total</th>' +
+        '<th>What it is waiting on</th><th>Next try</th></tr>' +
+        rows.map(function(r){
+          return '<tr class="' + (r.state === 'held' ? 'bad' : '') + '">' +
+            '<td class="mono">' + esc(r.name) + '</td>' +
+            '<td class="mono">' + esc(String(r.placedAt||'').slice(0,10)) + '</td>' +
+            '<td>' + esc(r.shop) + '</td>' +
+            '<td class="num">' + money(r.total) + '</td>' +
+            '<td>' + esc(r.why || '') + '</td>' +
+            '<td class="mono">' + (r.state === 'held'
+                ? '<span class="pill no">waiting on you</span>'
+                : esc(when(r.nextTry)) + (r.tries ? ' · try ' + r.tries : '')) + '</td></tr>';
+        }).join('') + '</table></div>';
+    }).catch(function(e){
+      $('heldBox').innerHTML = '<div class="none">' + esc(e.message) + '</div>';
+    });
+  }
+
+  $('btnRetry').addEventListener('click', function(){
+    $('btnRetry').disabled = true;
+    say($('retrySaid'), '', 'Trying…');
+    post('/api/shopify/retry', {})
+      .then(function(d){
+        var did = d.did || {};
+        say($('retrySaid'), 'good',
+          n0(d.freed) + ' put back · ' + n0(did.done||0) + ' written, ' +
+          n0(did.held||0) + ' still waiting on you, ' + n0(did.failed||0) + ' will retry');
+        loadHeld(); loadTally();
+      })
+      .catch(function(e){ say($('retrySaid'),'bad', e.message); })
+      .then(function(){ $('btnRetry').disabled = false; });
+  });
+
+  /* ---------- the event tabs ---------- */
+
+  var COLS = {
+    invoice: ['Order','Shop time','What happened'],
+    error:   ['Order / product','When','What QuickBooks said'],
+    item:    ['Product','When','What was made'],
+    price:   ['Product','When','What moved'],
+    changes: ['Order','When','What happened']
+  };
+
+  function loadEvents(name){
+    var box = $('box-' + name);
+    box.innerHTML = '<div class="none">Loading&hellip;</div>';
+    var kinds = name === 'changes' ? ['paid','refund','cancelled','edited'] : [name];
+
+    Promise.all(kinds.map(function(k){
+      return get('/api/shopify/events?kind=' + k + '&limit=300').then(function(d){ return d.events||[]; });
+    })).then(function(sets){
+      var rows = [].concat.apply([], sets);
+      rows.sort(function(a,b){ return new Date(b.at) - new Date(a.at); });
+
+      if(!rows.length){
+        box.innerHTML = '<div class="none">Nothing yet.</div>';
+        return;
+      }
+      var c = COLS[name] || ['What','When','Note'];
+      box.innerHTML = '<div class="scroll"><table class="t">' +
+        '<tr><th>' + c[0] + '</th><th>' + c[1] + '</th><th>' + c[2] + '</th></tr>' +
+        rows.map(function(e){
+          var who = e.order_name || e.title || e.sku || '';
+          return '<tr class="' + (e.ok === false ? 'bad' : '') + '">' +
+            '<td class="mono">' + esc(who) +
+              (e.sku && e.order_name ? '<br><small>' + esc(e.sku) + '</small>' : '') + '</td>' +
+            '<td class="mono">' + esc(when(e.at)) + '</td>' +
+            '<td>' + (name === 'changes'
+                ? '<span class="pill ' + (e.kind === 'paid' ? 'ok' : 'mid') + '">' + esc(e.kind) + '</span> '
+                : '') + esc(e.note || '') + '</td></tr>';
+        }).join('') + '</table></div>';
+    }).catch(function(e){
+      box.innerHTML = '<div class="none">' + esc(e.message) + '</div>';
+    });
+  }
+
+  /* ---------- how it runs ---------- */
+
+  function fill(sel, list, chosen){
+    $(sel).innerHTML = '<option value="">choose one</option>' +
+      list.map(function(a){
+        return '<option value="' + esc(a.id) + '"' + (String(chosen) === String(a.id) ? ' selected' : '') +
+          '>' + esc(a.name) + '</option>';
+      }).join('');
+  }
+
+  function typeChanged(){
+    var inv = $('sType').value === 'Inventory';
+    $('wrapCogs').style.display = inv ? '' : 'none';
+    $('wrapAsset').style.display = inv ? '' : 'none';
+  }
+  $('sType').addEventListener('change', typeChanged);
+
+  function loadSetup(){
+    get('/api/shopify/settings').then(function(d){
+      var s = d.settings || {};
+      $('sOn').checked = s.on !== false;
+      $('sMake').checked = s.makeItems !== false;
+      $('sCust').value = s.customer || '';
+      $('sPrefix').value = s.prefix || '';
+      $('sType').value = s.itemType || 'NonInventory';
+      typeChanged();
+
+      if(!accounts){
+        get('/api/shopify/accounts').then(function(a){
+          accounts = a;
+          fill('sIncome', a.income || [], s.incomeAccount);
+          fill('sCogs', a.cogs || [], s.cogsAccount);
+          fill('sAsset', a.asset || [], s.assetAccount);
+        }).catch(function(e){
+          say($('setSaid'),'bad','Could not read the chart of accounts: ' + e.message);
+        });
+      } else {
+        fill('sIncome', accounts.income || [], s.incomeAccount);
+        fill('sCogs', accounts.cogs || [], s.cogsAccount);
+        fill('sAsset', accounts.asset || [], s.assetAccount);
+      }
+
+      if(!items.length){
+        get('/api/qb-products').then(function(p){
+          items = (p.products||[]).filter(function(x){ return x.active !== false; });
+          $('sShip').innerHTML = '<option value="">leave it off</option>' +
+            items.map(function(it){
+              return '<option value="' + esc(it.name) + '"' +
+                (s.shippingItem === it.name ? ' selected' : '') + '>' + esc(it.name) + '</option>';
+            }).join('');
+        }).catch(function(){});
+      }
+
+      if(d.canMakeItems === false && $('sMake').checked){
+        say($('setSaid'),'bad', 'Items cannot be made yet: ' + d.why);
+      }
+    }).catch(function(e){ say($('setSaid'),'bad', e.message); });
+  }
+
+  $('btnSave').addEventListener('click', function(){
+    $('btnSave').disabled = true;
+    say($('setSaid'),'','Saving…');
+    post('/api/shopify/settings', {
+      on: $('sOn').checked,
+      makeItems: $('sMake').checked,
+      customer: $('sCust').value.trim(),
+      prefix: $('sPrefix').value.trim(),
+      shippingItem: $('sShip').value,
+      itemType: $('sType').value,
+      incomeAccount: $('sIncome').value,
+      cogsAccount: $('sCogs').value,
+      assetAccount: $('sAsset').value
+    })
+      .then(function(d){
+        say($('setSaid'), d.canMakeItems === false && d.settings.makeItems ? 'bad' : 'good',
+          d.canMakeItems === false && d.settings.makeItems
+            ? 'Saved, but items still cannot be made: ' + d.why
+            : 'Saved.');
+        loadTally();
+      })
+      .catch(function(e){ say($('setSaid'),'bad', e.message); })
+      .then(function(){ $('btnSave').disabled = false; });
+  });
+
+  /* ---------- off we go ---------- */
+  window.APP.ready.then(function(){
+    loadTally();
+    loadHeld();
+    // the page is left open on a wall more often than not
+    setInterval(function(){ loadTally(); if(tab === 'held') loadHeld(); }, 60000);
+  });
+})();
+</script>
+</body>
+</html>

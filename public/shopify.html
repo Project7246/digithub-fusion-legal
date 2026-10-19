@@ -123,6 +123,12 @@
           <button class="go" id="btnAdd" type="button">Check and save</button>
           <span class="said" id="addSaid"></span>
         </div>
+        <div class="hint" style="margin:12px 0 0">
+          Saving a shop also asks Shopify to start telling us the moment an order is
+          placed, paid, changed, cancelled or refunded, and when a product is added or
+          its price moves. Nothing is written into QuickBooks on its own until you turn
+          that on under <a href="/shopify-log">Reports &rarr; How it runs</a>.
+        </div>
       </div>
 
       <!-- ============ 02 the days ============ -->
@@ -286,9 +292,12 @@
     say($('addSaid'), '', 'Asking Shopify…');
     ask('/api/shopify/shops', { domain: dom, token: tok, label: $('nick').value.trim() })
       .then(function(d){
-        var c = d.checked || {};
-        say($('addSaid'),'good', 'Connected to ' + (c.name || dom) +
-          (c.currency ? ' (' + c.currency + ')' : '') + '.');
+        var c = d.checked || {}, w = d.wired || {};
+        var bad = (w.failed || []).length;
+        say($('addSaid'), bad ? 'bad' : 'good',
+          'Connected to ' + (c.name || dom) + (c.currency ? ' (' + c.currency + ')' : '') +
+          (bad ? ' · live updates: ' + w.failed.join('; ')
+               : ' · live updates on (' + ((w.done||[]).length) + ')'));
         $('dom').value = ''; $('tok').value = ''; $('nick').value = '';
         return loadShops();
       })

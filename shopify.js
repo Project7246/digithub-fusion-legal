@@ -14,6 +14,7 @@
 // Shopify's REST admin endpoints are the old way; everything here goes through
 // the GraphQL Admin API, which is the one Shopify still adds to.
 
+import crypto from 'crypto';
 import { pool } from './db.js';
 import { encrypt, decrypt } from './secrets.js';
 
@@ -86,6 +87,161 @@ export async function initShopify() {
     CREATE INDEX IF NOT EXISTS shopify_orders_dates
       ON shopify_orders (realm_id, placed_at)
   `);
+
+  // Where an order has got to on its way into the books, and why it has not
+  // got further. `state` is the whole of it:
+  //
+  //   waiting  nothing has been tried yet, or a try failed and it is due again
+  //   held     something a person has to decide - a product with no item, say
+  //   done     QuickBooks holds the invoice, and said so
+  //   off      deliberately left out (cancelled in Shopify, or nothing to bill)
+  //
+  // `next_try` is what makes a failure retry itself instead of waiting for
+  // somebody to notice: a run that fails backs off and comes round again.
+  await pool.query(`
+    ALTER TABLE shopify_orders
+      ADD COLUMN IF NOT EXISTS state      TEXT DEFAULT 'waiting',
+      ADD COLUMN IF NOT EXISTS tries      INTEGER DEFAULT 0,
+      ADD COLUMN IF NOT EXISTS next_try   TIMESTAMPTZ,
+      ADD COLUMN IF NOT EXISTS held_why   TEXT,
+      ADD COLUMN IF NOT EXISTS qb_id      TEXT
+  `);
+
+  await pool.query(`
+    CREATE INDEX IF NOT EXISTS shopify_orders_due
+      ON shopify_orders (state, next_try)
+  `);
+
+  // Anything QuickBooks was already told about is done, not waiting. Without
+  // this the first sweep after the columns appeared would look at every order
+  // ever pulled and call it unwritten.
+  await pool.query(`
+    UPDATE shopify_orders SET state = 'done'
+      WHERE synced_at IS NOT NULL AND state = 'waiting'
+  `);
+  await pool.query(`
+    UPDATE shopify_orders SET state = 'off', held_why = 'cancelled in Shopify'
+      WHERE cancelled = TRUE AND state = 'waiting'
+  `);
+
+  // Everything that happened, in words, so "is it working" is a page rather
+  // than a feeling. One row per thing: an invoice written, an item made, a
+  // refund seen, a price moved, QuickBooks refusing something.
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS shopify_events (
+      id         SERIAL PRIMARY KEY,
+      realm_id   TEXT NOT NULL,
+      shop_id    INTEGER,
+      at         TIMESTAMPTZ DEFAULT NOW(),
+      kind       TEXT NOT NULL,
+      ok         BOOLEAN DEFAULT TRUE,
+      order_name TEXT,
+      order_gid  TEXT,
+      sku        TEXT,
+      title      TEXT,
+      note       TEXT,
+      detail     JSONB
+    )
+  `);
+
+  await pool.query(`
+    CREATE INDEX IF NOT EXISTS shopify_events_look
+      ON shopify_events (realm_id, kind, id DESC)
+  `);
+
+  // Which webhooks are registered with which shop, so they are not registered
+  // twice and can be taken off again.
+  await pool.query(`
+    ALTER TABLE shopify_shops
+      ADD COLUMN IF NOT EXISTS hook_key  TEXT,
+      ADD COLUMN IF NOT EXISTS hooks_at  TIMESTAMPTZ,
+      ADD COLUMN IF NOT EXISTS hooks     JSONB
+  `);
+
+  await pool.query(`
+    CREATE UNIQUE INDEX IF NOT EXISTS shopify_shops_hook
+      ON shopify_shops (hook_key) WHERE hook_key IS NOT NULL
+  `);
+}
+
+/* ==================== what happened, in words ==================== */
+
+// How many of each kind are kept. A log that grows for ever becomes the
+// database's problem; a log that is swept too hard stops answering "what
+// happened last Tuesday". A few thousand is both.
+const KEEP_EVENTS = 4000;
+
+export const EVENT_KINDS = [
+  'invoice',      // an invoice written into QuickBooks
+  'held',         // waiting on a person - a product with no item, mostly
+  'error',        // QuickBooks or Shopify refused something
+  'item',         // an item made in QuickBooks for a new product
+  'price',        // a product's price moved
+  'paid',         // money taken against an order
+  'refund',       // money given back
+  'cancelled',    // the order called off
+  'edited'        // the order changed after it was placed
+];
+
+export async function note(realmId, kind, row) {
+  await pool.query(
+    `INSERT INTO shopify_events
+       (realm_id, shop_id, kind, ok, order_name, order_gid, sku, title, note, detail)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
+    [realmId, row.shopId || null, kind, row.ok !== false,
+     row.orderName || null, row.gid || null, row.sku || null, row.title || null,
+     row.note || null, JSON.stringify(row.detail || {})]
+  );
+
+  // swept now and then rather than on every row - a delete per event would
+  // cost more than the events do
+  if (Math.random() < 0.02) {
+    await pool.query(
+      `DELETE FROM shopify_events
+        WHERE realm_id = $1
+          AND id <= (SELECT id FROM shopify_events WHERE realm_id = $1
+                      ORDER BY id DESC OFFSET $2 LIMIT 1)`,
+      [realmId, KEEP_EVENTS]
+    ).catch(() => {});
+  }
+}
+
+export async function events(realmId, { kind, limit, since }) {
+  const where = ['realm_id = $1'];
+  const args = [realmId];
+  if (kind && kind !== 'all') { args.push(kind); where.push(`kind = $${args.length}`); }
+  if (since) { args.push(since); where.push(`at >= $${args.length}`); }
+  args.push(Math.min(Number(limit) || 200, 1000));
+
+  const r = await pool.query(
+    `SELECT at, kind, ok, order_name, order_gid, sku, title, note, detail
+       FROM shopify_events WHERE ${where.join(' AND ')}
+      ORDER BY id DESC LIMIT $${args.length}`,
+    args
+  );
+  return r.rows;
+}
+
+// The headline numbers, counted rather than guessed at.
+export async function tally(realmId) {
+  const byState = await pool.query(
+    `SELECT state, COUNT(*)::int AS n FROM shopify_orders
+      WHERE realm_id = $1 GROUP BY state`, [realmId]);
+
+  const byKind = await pool.query(
+    `SELECT kind, COUNT(*)::int AS n FROM shopify_events
+      WHERE realm_id = $1 AND at > NOW() - INTERVAL '30 days'
+      GROUP BY kind`, [realmId]);
+
+  const held = await pool.query(
+    `SELECT held_why, COUNT(*)::int AS n FROM shopify_orders
+      WHERE realm_id = $1 AND state IN ('held','waiting') AND held_why IS NOT NULL
+      GROUP BY held_why ORDER BY COUNT(*) DESC LIMIT 20`, [realmId]);
+
+  const out = { states: {}, kinds: {}, why: held.rows };
+  byState.rows.forEach(r => { out.states[r.state || 'waiting'] = r.n; });
+  byKind.rows.forEach(r => { out.kinds[r.kind] = r.n; });
+  return out;
 }
 
 /* ==================== the shops ==================== */
@@ -496,4 +652,189 @@ export function toInvoice(order, opts) {
     },
     gid: order.order_gid
   };
+}
+
+/* ==================== one order, read back from the shop ==================== */
+
+// A webhook is a nudge, never a source. Shopify's call says "order 123 moved";
+// this is what actually says what order 123 now is. Reading it back means a
+// forged call can at worst make us re-read a real order, and it means the shape
+// of the webhook body - which Shopify may change, and which differs per topic -
+// never has to be understood at all.
+const ONE_ORDER = `
+query FusionOrder($id: ID!) {
+  order(id: $id) {
+    id name createdAt processedAt cancelledAt
+    displayFinancialStatus displayFulfillmentStatus
+    currentSubtotalPriceSet { shopMoney { amount } }
+    totalDiscountsSet       { shopMoney { amount } }
+    totalShippingPriceSet   { shopMoney { amount } }
+    totalTaxSet             { shopMoney { amount } }
+    currentTotalPriceSet    { shopMoney { amount } }
+    totalRefundedSet        { shopMoney { amount } }
+    customer { firstName lastName }
+    billingAddress  { name address1 address2 city province country phone }
+    shippingAddress { name address1 address2 city province country phone }
+    lineItems(first: 100) {
+      nodes {
+        sku title quantity
+        originalUnitPriceSet { shopMoney { amount } }
+        discountedTotalSet   { shopMoney { amount } }
+      }
+    }
+  }
+}`;
+
+export async function fetchOne(shop, gid) {
+  const token = decrypt(shop.token);
+  const d = await ask(shop.domain, token, ONE_ORDER, { id: gid });
+  return (d && d.order) || null;
+}
+
+// Save one order the way a pull does, and hand back the row as it now stands.
+export async function saveOne(realmId, shopId, order) {
+  await saveOrder(realmId, shopId, order);
+  const r = await pool.query(
+    `SELECT * FROM shopify_orders WHERE realm_id = $1 AND shop_id = $2 AND order_gid = $3`,
+    [realmId, shopId, order.id]
+  );
+  return r.rows[0] || null;
+}
+
+// One product, read back the same way, for the product webhooks.
+const ONE_PRODUCT = `
+query FusionProduct($id: ID!) {
+  product(id: $id) {
+    id title status
+    variants(first: 100) {
+      nodes { id sku title price compareAtPrice inventoryItem { unitCost { amount } } }
+    }
+  }
+}`;
+
+export async function fetchProduct(shop, gid) {
+  const token = decrypt(shop.token);
+  const d = await ask(shop.domain, token, ONE_PRODUCT, { id: gid });
+  return (d && d.product) || null;
+}
+
+/* ==================== the queue ==================== */
+
+// What is due to be tried. Ordered oldest first so a backlog is cleared in the
+// order it happened, which is the order the books want it in.
+export async function dueOrders(limit) {
+  const r = await pool.query(
+    `SELECT o.*, s.label AS shop_label, s.domain AS shop_domain
+       FROM shopify_orders o
+       JOIN shopify_shops s ON s.id = o.shop_id
+      WHERE o.state = 'waiting'
+        AND o.cancelled = FALSE
+        AND (o.next_try IS NULL OR o.next_try <= NOW())
+      ORDER BY o.placed_at ASC NULLS LAST
+      LIMIT $1`,
+    [Math.min(Number(limit) || 25, 200)]
+  );
+  return r.rows;
+}
+
+export async function setDone(realmId, gid, qbId, docNumber) {
+  await pool.query(
+    `UPDATE shopify_orders
+        SET state = 'done', qb_id = $3, qb_doc_number = $4,
+            synced_at = NOW(), sync_error = NULL, held_why = NULL
+      WHERE realm_id = $1 AND order_gid = $2`,
+    [realmId, gid, qbId || null, String(docNumber || '')]
+  );
+}
+
+// Held is a person's to clear: a product with no item, an order with nothing on
+// it. It is not retried on a timer, because time will not fix it - but the
+// moment the thing it was waiting for is done, releaseHeld puts it back in the
+// queue, which is what makes "match the SKU" enough on its own.
+export async function setHeld(realmId, gid, why) {
+  await pool.query(
+    `UPDATE shopify_orders
+        SET state = 'held', held_why = $3, sync_error = NULL, next_try = NULL
+      WHERE realm_id = $1 AND order_gid = $2`,
+    [realmId, gid, String(why || '').slice(0, 300)]
+  );
+}
+
+// A failure retries itself. The wait doubles each time and stops doubling at an
+// hour: long enough that books which are down all afternoon are not hammered,
+// short enough that nothing is still sitting there in the morning. Postgres
+// reads the old `tries` on the right-hand side, so the first failure waits a
+// minute, the second two, the third four.
+export async function setFailed(realmId, gid, err) {
+  await pool.query(
+    `UPDATE shopify_orders
+        SET state      = 'waiting',
+            tries      = COALESCE(tries, 0) + 1,
+            sync_error = $3,
+            next_try   = NOW() + make_interval(
+                           mins => LEAST(60, POWER(2, GREATEST(0, COALESCE(tries, 0))))::int)
+      WHERE realm_id = $1 AND order_gid = $2`,
+    [realmId, gid, String(err || '').slice(0, 500)]
+  );
+}
+
+export async function setOff(realmId, gid, why) {
+  await pool.query(
+    `UPDATE shopify_orders SET state = 'off', held_why = $3, next_try = NULL
+      WHERE realm_id = $1 AND order_gid = $2`,
+    [realmId, gid, String(why || '').slice(0, 300)]
+  );
+}
+
+// Everything that was held goes back in the queue. Called when a mapping is
+// saved or an item is made, because that is exactly the thing most of them were
+// held on - and called by hand from the page, for anything else.
+export async function releaseHeld(realmId, why) {
+  const args = [realmId];
+  let where = `realm_id = $1 AND state = 'held'`;
+  if (why) { args.push(why); where += ` AND held_why = $2`; }
+  const r = await pool.query(
+    `UPDATE shopify_orders
+        SET state = 'waiting', next_try = NULL, tries = 0, held_why = NULL
+      WHERE ${where}`, args);
+  return r.rowCount;
+}
+
+// An order that changed after it was written is not quietly rewritten - the
+// books already hold an invoice with that number. It is noted and shown, and
+// whoever keeps the books decides.
+export async function heldList(realmId, limit) {
+  const r = await pool.query(
+    `SELECT o.order_gid, o.name, o.placed_at, o.total, o.held_why, o.sync_error,
+            o.tries, o.next_try, o.state, s.label AS shop_label
+       FROM shopify_orders o
+       JOIN shopify_shops s ON s.id = o.shop_id
+      WHERE o.realm_id = $1 AND o.state IN ('held','waiting')
+        AND (o.held_why IS NOT NULL OR o.sync_error IS NOT NULL)
+      ORDER BY o.placed_at DESC NULLS LAST
+      LIMIT $2`,
+    [realmId, Math.min(Number(limit) || 200, 1000)]
+  );
+  return r.rows;
+}
+
+// The address Shopify will call us on. Made once per shop and kept, because it
+// is registered with Shopify and must not move underneath them.
+export async function shopHookKey(realmId, shopId) {
+  const r = await pool.query(
+    'SELECT hook_key FROM shopify_shops WHERE realm_id = $1 AND id = $2',
+    [realmId, Number(shopId)]
+  );
+  if (!r.rows[0]) throw new Error('No such shop');
+  if (r.rows[0].hook_key) return r.rows[0].hook_key;
+
+  const key = crypto.randomBytes(16).toString('hex');
+  await pool.query('UPDATE shopify_shops SET hook_key = $2 WHERE id = $1', [Number(shopId), key]);
+  return key;
+}
+
+export async function shopByHookKey(key) {
+  if (!key || !/^[a-f0-9]{8,64}$/.test(String(key))) return null;
+  const r = await pool.query('SELECT * FROM shopify_shops WHERE hook_key = $1', [String(key)]);
+  return r.rows[0] || null;
 }
