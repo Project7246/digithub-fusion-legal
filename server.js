@@ -13,6 +13,11 @@ import {
 } from './db.js';
 
 import { initMappings, getMappings, saveMapping } from './mappings.js';
+import {
+  initShopify, listShops, getShop, saveShop, removeShop, checkShop, cleanDomain,
+  pullOrders, listOrders as listShopOrders, productsSeen, markSynced, unmark,
+  toInvoice, API_VERSION as SHOPIFY_VERSION
+} from './shopify.js';
 import { listCompanies } from './companies.js';
 import { listSheets, listTabs, readTab, paintRows, testConnection } from './sheets.js';
 import {
@@ -1309,6 +1314,11 @@ const RIGHT_GROUPS = [
   // The links to the audit's sheets (/api/audit/link, /link-remove, /pick) are in no group on purpose: only the admin attaches, changes or
   // removes them, and it cannot be handed out.
 
+  { key: 'shopify', area: 'sales', label: 'Shopify',
+    what: 'Connect shops and bring their orders in',
+    paths: ['/api/shopify/shops', '/api/shopify/shops/remove', '/api/shopify/pull',
+            '/api/shopify/build', '/api/shopify/mark', '/api/shopify/unmark'] },
+
   { key: 'settings', area: 'items', label: 'SKU mappings',
     what: 'Remembered SKU-to-item matches',
     paths: ['/api/mappings'] }
@@ -1352,7 +1362,8 @@ const PAGE_NEED = new Map(Object.entries({
   '/couriers.html': 'couriersync',
   '/courier-dash.html': 'couriersync',
   '/receipts.html': 'couriersync',
-  '/cprs.html': 'couriersync'
+  '/cprs.html': 'couriersync',
+  '/shopify.html': 'shopify'
 }));
 
 // route -> the job it belongs to, worked out once
@@ -7346,6 +7357,299 @@ app.post('/api/courier/keeper-now', async (req, res) => {
 });
 // ---------- The dashboard, read from our own table ----------
 
+/* ==================== Shopify ==================== */
+// A shop is connected the way a courier account is: one row, the token kept
+// encrypted, and the shop asked whether the token is really its own before
+// anything is saved. Everything below is cut to the company now open, so one
+// client's shops and orders are never in another client's answer.
+
+app.get('/api/shopify/shops', async (req, res) => {
+  const realmId = await requireCompany(req, res);
+  if (!realmId) return;
+  try {
+    res.setHeader('Cache-Control', 'no-store');
+    const rows = await listShops(realmId);
+    res.json({
+      version: SHOPIFY_VERSION,
+      shops: rows.map(r => ({
+        id: r.id, domain: r.domain, label: r.label, active: r.active,
+        lastSync: r.last_sync, lastError: r.last_error
+      }))
+    });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.post('/api/shopify/shops', async (req, res) => {
+  const realmId = await requireCompany(req, res);
+  if (!realmId) return;
+  try {
+    const domain = cleanDomain(req.body.domain);
+    const token = String(req.body.token || '').trim();
+    if (!token) return res.status(400).json({ error: 'Paste the Admin API access token' });
+
+    // asked before it is kept, so a wrong paste is caught now rather than at
+    // the first pull three days from now
+    const shop = await checkShop(domain, token);
+    const saved = await saveShop(realmId, {
+      domain, token, label: req.body.label || shop.name || domain
+    });
+
+    res.json({ ok: true, shop: saved, checked: shop });
+  } catch (e) {
+    res.status(400).json({ error: e.message });
+  }
+});
+
+app.post('/api/shopify/shops/remove', async (req, res) => {
+  const realmId = await requireCompany(req, res);
+  if (!realmId) return;
+  try {
+    await removeShop(realmId, req.body.id);
+    res.json({ ok: true });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// Bring a date range in. One shop at a time, because a failure half way through
+// should say which shop it was.
+app.post('/api/shopify/pull', async (req, res) => {
+  const realmId = await requireCompany(req, res);
+  if (!realmId) return;
+
+  const { from, to } = req.body;
+  if (!from || !to) return res.status(400).json({ error: 'Pick a date range' });
+
+  try {
+    const want = req.body.shop
+      ? [await getShop(realmId, req.body.shop)].filter(Boolean)
+      : (await listShops(realmId)).filter(s => s.active);
+
+    if (!want.length) return res.status(400).json({ error: 'No shop is connected yet' });
+
+    const out = [];
+    for (const row of want) {
+      const shop = row.token ? row : await getShop(realmId, row.id);
+      try {
+        const r = await pullOrders(realmId, shop, { from, to });
+        out.push({ shop: shop.label, seen: r.seen, saved: r.saved });
+      } catch (e) {
+        await pool.query('UPDATE shopify_shops SET last_error = $2 WHERE id = $1',
+          [shop.id, e.message]);
+        out.push({ shop: shop.label, error: e.message });
+      }
+    }
+    res.json({ shops: out });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.get('/api/shopify/orders', async (req, res) => {
+  const realmId = await requireCompany(req, res);
+  if (!realmId) return;
+  try {
+    res.setHeader('Cache-Control', 'no-store');
+    const rows = await listShopOrders(realmId, {
+      from: req.query.from, to: req.query.to,
+      shop: req.query.shop, state: req.query.state
+    });
+    res.json({
+      count: rows.length,
+      orders: rows.map(r => ({
+        gid: r.order_gid, name: r.name, number: r.number,
+        placedAt: r.placed_at, customer: r.customer, city: r.city,
+        shop: r.shop_label,
+        subtotal: Number(r.subtotal), discount: Number(r.discount),
+        shipping: Number(r.shipping), tax: Number(r.tax), total: Number(r.total),
+        financial: r.financial, fulfillment: r.fulfillment, cancelled: r.cancelled,
+        lines: r.lines || [],
+        docNumber: r.qb_doc_number, syncedAt: r.synced_at
+      }))
+    });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// Every item in the books, by SKU and by name. Read once per build rather than
+// once per order, because a thousand orders would otherwise be a thousand asks.
+async function qbItemIndex(realmId) {
+  const token = await getAccessToken(realmId);
+  const bySku = new Map(), byName = new Map();
+  let start = 1;
+  while (true) {
+    const q = await qbQuery(realmId, token,
+      'SELECT * FROM Item STARTPOSITION ' + start + ' MAXRESULTS 1000');
+    const arr = q.Item || [];
+    arr.forEach(it => {
+      if (!it.Name) return;
+      const n = String(it.Name).toLowerCase();
+      if (!byName.has(n) || it.Active !== false) byName.set(n, it.Name);
+      if (it.Sku) {
+        const k = String(it.Sku).toLowerCase().trim();
+        if (!bySku.has(k) || it.Active !== false) bySku.set(k, it.Name);
+      }
+    });
+    if (arr.length < 1000) break;
+    start += 1000;
+    if (start > 9000) break;
+  }
+  return { bySku, byName };
+}
+
+// The order a product is looked up in, and it matters: what somebody said by
+// hand beats what was guessed, and a SKU beats a name.
+function matchItem(sku, title, saved, items) {
+  const key = String(sku || title || '').toLowerCase().trim();
+  const hand = saved[key];
+  if (hand && hand.skip) return { item: 'skip', how: 'set aside' };
+  if (hand && hand.qbItem) return { item: hand.qbItem, how: 'matched by hand' };
+
+  const s = String(sku || '').toLowerCase().trim();
+  if (s && items.bySku.has(s)) return { item: items.bySku.get(s), how: 'SKU' };
+
+  const t = String(title || '').toLowerCase().trim();
+  if (t && items.byName.has(t)) return { item: items.byName.get(t), how: 'name' };
+
+  return { item: null, how: '' };
+}
+
+// Every product the range carries, beside what it is matched to in QuickBooks -
+// the step that has to be finished before anything is written to real books.
+app.get('/api/shopify/products', async (req, res) => {
+  const realmId = await requireCompany(req, res);
+  if (!realmId) return;
+  try {
+    res.setHeader('Cache-Control', 'no-store');
+    const seen = await productsSeen(realmId, {
+      from: req.query.from, to: req.query.to, shop: req.query.shop
+    });
+    const saved = await getMappings(realmId);
+    const items = await qbItemIndex(realmId);
+
+    res.json({
+      products: seen.map(p => {
+        const m = matchItem(p.sku, p.title, saved, items);
+        return {
+          sku: p.sku, title: p.title, lines: p.lines, qty: p.qty,
+          item: m.item, how: m.how
+        };
+      })
+    });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// Turn the range into invoices and hand them to the upload engine - the same
+// one the Convert page hands its work to, so Stop, Resume, the log and the
+// retry of what failed are not written a second time.
+app.post('/api/shopify/build', async (req, res) => {
+  const realmId = await requireCompany(req, res);
+  if (!realmId) return;
+
+  const { from, to, shop } = req.body;
+  if (!from || !to) return res.status(400).json({ error: 'Pick a date range' });
+
+  try {
+    const rows = await listShopOrders(realmId, { from, to, shop });
+    const saved = await getMappings(realmId);
+    const items = await qbItemIndex(realmId);
+
+    // what QuickBooks already holds, so the same order is never written twice
+    const already = new Set();
+    if (req.body.skipExisting !== false) {
+      try {
+        const token = await getAccessToken(realmId);
+        let start = 1;
+        while (true) {
+          const q = await qbQuery(realmId, token,
+            "SELECT DocNumber, TxnDate FROM Invoice WHERE TxnDate >= '" + from +
+            "' AND TxnDate <= '" + to + "' STARTPOSITION " + start + ' MAXRESULTS 1000');
+          const arr = q.Invoice || [];
+          arr.forEach(inv => { if (inv.DocNumber) already.add(String(inv.DocNumber).trim()); });
+          if (arr.length < 1000) break;
+          start += 1000;
+          if (start > 9000) break;
+        }
+      } catch (e) { /* books that will not answer is not a reason to stop */ }
+    }
+
+    const match = (sku, title) => matchItem(sku, title, saved, items).item;
+    const opts = {
+      match,
+      customer: req.body.customer,
+      prefix: req.body.prefix || '',
+      terms: req.body.terms || '',
+      shippingItem: req.body.shippingItem || '',
+      keepTitles: req.body.keepTitles !== false
+    };
+
+    const invoices = [], unmatched = new Map(), skipped = [], pairs = [];
+
+    rows.forEach(r => {
+      if (r.cancelled) { skipped.push({ name: r.name, why: 'cancelled in Shopify' }); return; }
+
+      const built = toInvoice(r, opts);
+      if (built.skip === 'unmatched') {
+        built.missing.forEach(m => unmatched.set(String(m).toLowerCase(), m));
+        skipped.push({ name: r.name, why: 'product not matched' });
+        return;
+      }
+      if (built.skip === 'empty') { skipped.push({ name: r.name, why: 'nothing to bill' }); return; }
+
+      if (already.has(String(built.invoice.docNumber).trim())) {
+        skipped.push({ name: r.name, why: 'already in QuickBooks' });
+        return;
+      }
+
+      invoices.push(built.invoice);
+      pairs.push({ gid: built.gid, docNumber: built.invoice.docNumber });
+    });
+
+    if (invoices.length) handovers.set(req.desk, { invoices, at: Date.now() });
+
+    res.json({
+      ready: invoices.length,
+      read: rows.length,
+      skipped,
+      unmatched: [...unmatched.values()],
+      pairs,
+      customers: [...new Set(invoices.map(i => i.customer))]
+    });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// What QuickBooks confirms it holds is what gets written down here. Nothing is
+// marked done because the app sent it - only because the books answered.
+app.post('/api/shopify/mark', async (req, res) => {
+  const realmId = await requireCompany(req, res);
+  if (!realmId) return;
+  try {
+    const pairs = Array.isArray(req.body.pairs) ? req.body.pairs : [];
+    if (!pairs.length) return res.json({ marked: 0 });
+    res.json({ marked: await markSynced(realmId, pairs) });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.post('/api/shopify/unmark', async (req, res) => {
+  const realmId = await requireCompany(req, res);
+  if (!realmId) return;
+  try {
+    await unmark(realmId, Array.isArray(req.body.gids) ? req.body.gids : []);
+    res.json({ ok: true });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 app.get('/api/courier/dash', async (req, res) => {
   const realmId = await requireCompany(req, res);
   if (!realmId) return;
@@ -11061,6 +11365,7 @@ initDb()
   .then(() => initSettings())
   .then(() => initCache())
   .then(() => initCouriers())
+  .then(() => initShopify())
     .then(() => import('./jobstore.js').then(m => m.initJobStore()))
   .then(() => initRecatStore())
   .then(() => initProdStore())

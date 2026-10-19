@@ -95,11 +95,14 @@
 
     { key:'operations', label:'Operations', home:'/operations', tile:'box',
       what:'The day as it runs - orders in, parcels out, what went wrong.', qb:true,
-      soon:[{ label:'eCommerce', tile:'bag' }, { label:'Shopify', tile:'cart' },
-            { label:'Helpdesk', tile:'chat' }],
+      soon:[{ label:'Helpdesk', tile:'chat' }, { label:'Rates', tile:'tag' },
+            { label:'Timesheets', tile:'clock' }],
       groups: [
       { group: null, items: [
         { href:'/operations', front:true, label:'Overview',       icon:'grid' }
+      ]},
+      { group: 'eCommerce', items: [
+        { href:'/shopify',  label:'Shopify',       icon:'cart',  need:'shopify', tile:'cart' }
       ]},
       { group: 'Couriers', items: [
         { href:'/couriers',     label:'Courier accounts', icon:'truck', need:'couriersync', tile:'truck', as:'Couriers' },

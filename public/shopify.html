@@ -1,0 +1,526 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Shopify</title>
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="manifest" href="/manifest.json">
+<meta name="theme-color" content="#222F34">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@600;700;800&family=Roboto:wght@400;500&family=Roboto+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/app.css">
+<style>
+  /* Shopify, read straight from the shop rather than from an export somebody
+     remembered to take. The steps are the same four the Convert page has:
+     which shop, which days, what each product is in the books, and then the
+     writing - because the writing goes to the same engine, and that is the one
+     with Stop, Resume and a log on it. */
+  .step{background:var(--panel);border:1px solid var(--line);border-radius:10px;
+    padding:20px 24px;margin-bottom:16px}
+  .step h2{margin:0 0 4px;font-size:14.5px;font-weight:600}
+  .step h2 i{font-family:var(--mono);font-style:normal;font-size:11px;color:var(--faint);
+    margin-right:9px}
+  .step .hint{font-size:12.5px;color:var(--muted);margin-bottom:14px;line-height:1.6}
+
+  .fields{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:14px;
+    margin-bottom:14px}
+  .fields label{display:block;font-size:11px;letter-spacing:.07em;text-transform:uppercase;
+    color:var(--faint);margin-bottom:4px}
+  .fields input,.fields select{width:100%;border:1px solid var(--line);border-radius:7px;
+    padding:9px 11px;font:inherit;font-size:13px;background:#fff;color:var(--text)}
+
+  .shops{display:flex;flex-direction:column;gap:10px;margin-bottom:16px}
+  .shop{border:1px solid var(--line);border-radius:8px;background:#fff;padding:14px 16px;
+    display:flex;justify-content:space-between;align-items:center;gap:14px;flex-wrap:wrap}
+  .shop.bad{border-color:var(--bad);background:#FDF3F3}
+  .shop b{font-size:13.5px;font-weight:600;display:block}
+  .shop small{font-size:11.5px;color:var(--muted);display:block;margin-top:3px}
+  .shop button{font-size:11.5px;padding:5px 12px;border-radius:6px;border:1px solid var(--line);
+    background:#fff;cursor:pointer;font-family:inherit}
+  .shop button:hover{border-color:var(--bad);color:var(--bad)}
+
+  .go{background:var(--qbo);border:1px solid var(--qbo);color:#fff;border-radius:8px;
+    padding:10px 20px;font:inherit;font-size:13px;font-weight:600;cursor:pointer}
+  .go[disabled]{opacity:.55;cursor:default}
+  .ghost{background:#fff;border:1px solid var(--line);color:var(--text);border-radius:8px;
+    padding:10px 18px;font:inherit;font-size:13px;cursor:pointer}
+  .ghost:hover{border-color:var(--qbo);color:var(--qbo)}
+  .acts{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+
+  .said{font-size:12.5px;margin-top:11px;line-height:1.6}
+  .said.bad{color:var(--bad)}
+  .said.good{color:var(--qbo)}
+
+  .tot{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:12px;
+    margin:4px 0 16px}
+  .tot .c{border:1px solid var(--line);border-radius:9px;background:#fff;padding:13px 15px}
+  .tot .c b{display:block;font-family:var(--mono);font-size:20px;font-weight:500;
+    line-height:1.2}
+  .tot .c span{display:block;font-size:10.5px;letter-spacing:.08em;text-transform:uppercase;
+    color:var(--faint);margin-top:5px}
+
+  table.t{width:100%;border-collapse:collapse;font-size:12.5px}
+  table.t th{text-align:left;font-weight:600;font-size:10.5px;letter-spacing:.07em;
+    text-transform:uppercase;color:var(--faint);padding:8px;border-bottom:1px solid var(--line)}
+  table.t td{padding:7px 8px;border-bottom:1px solid var(--line);vertical-align:middle}
+  table.t td.num{text-align:right;font-family:var(--mono);white-space:nowrap}
+  table.t select{width:100%;max-width:300px;border:1px solid var(--line);border-radius:6px;
+    padding:5px 7px;font:inherit;font-size:12px;background:#fff}
+  .scroll{max-height:460px;overflow:auto;border:1px solid var(--line);border-radius:8px}
+  .pill{display:inline-block;padding:1px 8px;border-radius:20px;font-size:10px;font-weight:600}
+  .pill.ok{background:#E7F5EC;color:#1B7A44}
+  .pill.no{background:#FBEDEC;color:#9A2E24}
+  .pill.mid{background:#FFF3E0;color:#8A5A12}
+  .none{padding:26px;text-align:center;color:var(--muted);font-size:12.5px}
+</style>
+</head>
+<body>
+
+<div class="layout">
+  <aside class="rail"></aside>
+
+  <div class="main">
+    <div class="topline">
+      <div>
+        <h1>Shopify</h1>
+        <div class="sub">Read the shop&rsquo;s own orders and write them into QuickBooks.</div>
+      </div>
+    </div>
+
+    <div class="shell">
+
+      <!-- ============ 01 the shops ============ -->
+      <div class="step">
+        <h2><i>01</i>The shops</h2>
+        <div class="hint">
+          One row per shop, so a client with two storefronts keeps them apart. In
+          Shopify open <b>Settings &rarr; Apps and sales channels &rarr; Develop apps</b>,
+          make an app, give it <b>read_orders</b> (and <b>read_all_orders</b> if you
+          want anything older than sixty days), then install it and copy the
+          <b>Admin API access token</b>. The token is checked here before it is kept,
+          and it is stored encrypted.
+        </div>
+
+        <div class="shops" id="shops"></div>
+
+        <form class="fields" id="addForm" autocomplete="off">
+          <div>
+            <label for="dom">Shop address</label>
+            <input id="dom" type="text" placeholder="your-shop.myshopify.com" required>
+          </div>
+          <div>
+            <label for="nick">Name it</label>
+            <input id="nick" type="text" placeholder="reClans">
+          </div>
+          <div>
+            <label for="tok">Admin API access token</label>
+            <input id="tok" type="password" placeholder="shpat_&hellip;" required>
+          </div>
+        </form>
+        <div class="acts">
+          <button class="go" id="btnAdd" type="button">Check and save</button>
+          <span class="said" id="addSaid"></span>
+        </div>
+      </div>
+
+      <!-- ============ 02 the days ============ -->
+      <div class="step">
+        <h2><i>02</i>The days to bring in</h2>
+        <div class="hint">
+          Orders are read from Shopify and kept here as small rows &mdash; what was
+          bought, for how much, and where it went. Reading the same days again
+          updates what is already here rather than making a second copy.
+        </div>
+        <div class="fields">
+          <div><label for="from">From</label><input id="from" type="date"></div>
+          <div><label for="to">To</label><input id="to" type="date"></div>
+          <div>
+            <label for="whichShop">Shop</label>
+            <select id="whichShop"><option value="">Every shop</option></select>
+          </div>
+        </div>
+        <div class="acts">
+          <button class="go" id="btnPull" type="button">Read orders from Shopify</button>
+          <button class="ghost" id="btnShow" type="button">Show what is here</button>
+          <span class="said" id="pullSaid"></span>
+        </div>
+
+        <div class="tot" id="tot" style="display:none">
+          <div class="c"><b id="nOrders">0</b><span>Orders</span></div>
+          <div class="c"><b id="nValue">0</b><span>Worth</span></div>
+          <div class="c"><b id="nDone">0</b><span>In QuickBooks</span></div>
+          <div class="c"><b id="nWait">0</b><span>Waiting</span></div>
+        </div>
+      </div>
+
+      <!-- ============ 03 the products ============ -->
+      <div class="step">
+        <h2><i>03</i>What each product is in QuickBooks</h2>
+        <div class="hint">
+          Matched on your saved choice first, then the SKU on the item in
+          QuickBooks, then its name. Anything still unmatched is set here, and the
+          choice is remembered for next time. An order with an unmatched product is
+          left out rather than written half-finished.
+        </div>
+        <div id="prodBox"><div class="none">Read some orders first.</div></div>
+        <div class="acts" style="margin-top:12px">
+          <button class="ghost" id="btnMapSave" type="button">Save these matches</button>
+          <span class="said" id="mapSaid"></span>
+        </div>
+      </div>
+
+      <!-- ============ 04 the orders ============ -->
+      <div class="step">
+        <h2><i>04</i>The orders</h2>
+        <div id="orderBox"><div class="none">Nothing read yet.</div></div>
+      </div>
+
+      <!-- ============ 05 into the books ============ -->
+      <div class="step">
+        <h2><i>05</i>Into QuickBooks</h2>
+        <div class="hint">
+          The invoices are built here and handed to the upload page, which is where
+          they are actually written &mdash; so Stop, Resume, the log and the retry of
+          whatever failed are the same ones the rest of the app uses. An order whose
+          number is already an invoice in QuickBooks is left alone.
+        </div>
+        <div class="fields">
+          <div>
+            <label for="cust">Customer on the invoices</label>
+            <input id="cust" type="text" value="Shopify Sale - {mon}{yy}">
+          </div>
+          <div>
+            <label for="prefix">Put before the number</label>
+            <input id="prefix" type="text" placeholder="none">
+          </div>
+          <div>
+            <label for="shipItem">Delivery charged to the buyer goes to</label>
+            <select id="shipItem"><option value="">leave it off</option></select>
+          </div>
+        </div>
+        <div class="acts">
+          <button class="go" id="btnBuild" type="button">Make the invoices</button>
+          <button class="ghost" id="btnUpload" type="button" style="display:none">
+            Open the upload page</button>
+          <span class="said" id="buildSaid"></span>
+        </div>
+        <div id="buildOut"></div>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<script src="/nav.js"></script>
+<script src="/update.js"></script>
+<script>
+"use strict";
+(function(){
+  var $ = function(id){ return document.getElementById(id); };
+  var orders = [], products = [], qbItems = [], mappings = {}, lastPairs = [];
+
+  function esc(s){
+    return String(s == null ? '' : s)
+      .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  }
+  function money(n){
+    return (Number(n)||0).toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2});
+  }
+  function n0(n){ return (Number(n)||0).toLocaleString(); }
+  function day(s){ return s ? String(s).slice(0,10) : ''; }
+  function say(el, cls, text){ el.className = 'said ' + (cls||''); el.textContent = text || ''; }
+
+  function ask(url, body){
+    return fetch(url, {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify(body || {})
+    }).then(function(r){
+      return r.json().catch(function(){ return {}; })
+        .then(function(d){ if(!r.ok) throw new Error(d.error || ('Server said ' + r.status)); return d; });
+    });
+  }
+
+  /* ---------- 01 the shops ---------- */
+
+  function drawShops(d){
+    var list = d.shops || [];
+    $('shops').innerHTML = list.length ? list.map(function(s){
+      return '<div class="shop' + (s.lastError ? ' bad' : '') + '">' +
+        '<div><b>' + esc(s.label) + '</b>' +
+        '<small>' + esc(s.domain) +
+          (s.lastSync ? ' · last read ' + esc(new Date(s.lastSync).toLocaleString()) : ' · never read') +
+          (s.lastError ? '<br>' + esc(s.lastError) : '') +
+        '</small></div>' +
+        '<button type="button" data-off="' + s.id + '">Remove</button></div>';
+    }).join('') : '<div class="none">No shop connected yet. Add one below.</div>';
+
+    $('whichShop').innerHTML = '<option value="">Every shop</option>' +
+      list.map(function(s){
+        return '<option value="' + s.id + '">' + esc(s.label) + '</option>';
+      }).join('');
+
+    $('shops').querySelectorAll('[data-off]').forEach(function(b){
+      b.addEventListener('click', function(){
+        if(!confirm('Remove this shop? Its orders held here go with it. Nothing in Shopify or QuickBooks is touched.')) return;
+        b.textContent = 'Removing…';
+        ask('/api/shopify/shops/remove', { id: b.getAttribute('data-off') })
+          .then(loadShops)
+          .catch(function(e){ alert(e.message); });
+      });
+    });
+  }
+
+  function loadShops(){
+    return fetch('/api/shopify/shops', { cache:'no-store' })
+      .then(function(r){ return r.json(); })
+      .then(drawShops)
+      .catch(function(){});
+  }
+
+  $('btnAdd').addEventListener('click', function(){
+    var dom = $('dom').value.trim(), tok = $('tok').value.trim();
+    if(!dom || !tok){ say($('addSaid'),'bad','Both the address and the token are needed.'); return; }
+    $('btnAdd').disabled = true;
+    say($('addSaid'), '', 'Asking Shopify…');
+    ask('/api/shopify/shops', { domain: dom, token: tok, label: $('nick').value.trim() })
+      .then(function(d){
+        var c = d.checked || {};
+        say($('addSaid'),'good', 'Connected to ' + (c.name || dom) +
+          (c.currency ? ' (' + c.currency + ')' : '') + '.');
+        $('dom').value = ''; $('tok').value = ''; $('nick').value = '';
+        return loadShops();
+      })
+      .catch(function(e){ say($('addSaid'),'bad', e.message); })
+      .then(function(){ $('btnAdd').disabled = false; });
+  });
+
+  /* ---------- 02 the days ---------- */
+
+  function setRange(days){
+    var to = new Date(), from = new Date(Date.now() - days*86400000);
+    $('to').value = to.toISOString().slice(0,10);
+    $('from').value = from.toISOString().slice(0,10);
+  }
+
+  $('btnPull').addEventListener('click', function(){
+    if(!$('from').value || !$('to').value){ say($('pullSaid'),'bad','Pick both dates.'); return; }
+    $('btnPull').disabled = true;
+    say($('pullSaid'),'','Reading from Shopify… a busy month takes a minute.');
+    ask('/api/shopify/pull', {
+      from: $('from').value, to: $('to').value, shop: $('whichShop').value || null
+    })
+      .then(function(d){
+        var good = (d.shops||[]).filter(function(s){ return !s.error; });
+        var bad  = (d.shops||[]).filter(function(s){ return s.error; });
+        var seen = good.reduce(function(a,s){ return a + (s.seen||0); }, 0);
+        say($('pullSaid'), bad.length ? 'bad' : 'good',
+          seen + ' orders read' +
+          (bad.length ? ' · ' + bad.map(function(s){ return s.shop + ': ' + s.error; }).join(' · ') : ''));
+        return showOrders();
+      })
+      .catch(function(e){ say($('pullSaid'),'bad', e.message); })
+      .then(function(){ $('btnPull').disabled = false; loadShops(); });
+  });
+
+  $('btnShow').addEventListener('click', function(){ showOrders(); });
+
+  function showOrders(){
+    var p = new URLSearchParams({ from: $('from').value, to: $('to').value });
+    if($('whichShop').value) p.set('shop', $('whichShop').value);
+
+    return fetch('/api/shopify/orders?' + p.toString(), { cache:'no-store' })
+      .then(function(r){ return r.json(); })
+      .then(function(d){
+        orders = d.orders || [];
+        drawOrders();
+        return loadProducts();
+      })
+      .catch(function(){});
+  }
+
+  function drawOrders(){
+    $('tot').style.display = '';
+    var worth = orders.reduce(function(a,o){ return a + (Number(o.total)||0); }, 0);
+    var done = orders.filter(function(o){ return o.syncedAt; }).length;
+    $('nOrders').textContent = n0(orders.length);
+    $('nValue').textContent = money(worth);
+    $('nDone').textContent = n0(done);
+    $('nWait').textContent = n0(orders.length - done);
+
+    if(!orders.length){
+      $('orderBox').innerHTML = '<div class="none">No orders in those days.</div>';
+      return;
+    }
+
+    $('orderBox').innerHTML = '<div class="scroll"><table class="t">' +
+      '<tr><th>Order</th><th>Date</th><th>Shop</th><th>Customer</th><th>City</th>' +
+      '<th class="num">Lines</th><th class="num">Total</th><th>Paid</th><th>In QB</th></tr>' +
+      orders.slice(0, 500).map(function(o){
+        return '<tr>' +
+          '<td>' + esc(o.name) + (o.cancelled ? ' <span class="pill no">cancelled</span>' : '') + '</td>' +
+          '<td>' + esc(day(o.placedAt)) + '</td>' +
+          '<td>' + esc(o.shop) + '</td>' +
+          '<td>' + esc(o.customer) + '</td>' +
+          '<td>' + esc(o.city) + '</td>' +
+          '<td class="num">' + n0((o.lines||[]).length) + '</td>' +
+          '<td class="num">' + money(o.total) + '</td>' +
+          '<td>' + esc(o.financial || '') + '</td>' +
+          '<td>' + (o.syncedAt
+            ? '<span class="pill ok">' + esc(o.docNumber || 'yes') + '</span>'
+            : '<span class="pill mid">waiting</span>') + '</td></tr>';
+      }).join('') + '</table></div>' +
+      (orders.length > 500 ? '<div class="hint" style="margin:10px 0 0">Showing the first 500 of ' + n0(orders.length) + '.</div>' : '');
+  }
+
+  /* ---------- 03 the products ---------- */
+
+  function loadProducts(){
+    var p = new URLSearchParams({ from: $('from').value, to: $('to').value });
+    if($('whichShop').value) p.set('shop', $('whichShop').value);
+
+    return fetch('/api/shopify/products?' + p.toString(), { cache:'no-store' })
+      .then(function(r){ return r.json(); })
+      .then(function(d){
+        products = d.products || [];
+        drawProducts();
+      })
+      .catch(function(){});
+  }
+
+  function itemOptions(chosen){
+    return '<option value="">not matched yet</option>' +
+      '<option value="__skip__"' + (chosen === '__skip__' ? ' selected' : '') + '>leave this product out</option>' +
+      qbItems.map(function(it){
+        return '<option value="' + esc(it.name) + '"' +
+          (chosen === it.name ? ' selected' : '') + '>' + esc(it.name) +
+          (it.sku ? '  · ' + esc(it.sku) : '') + '</option>';
+      }).join('');
+  }
+
+  function drawProducts(){
+    if(!products.length){
+      $('prodBox').innerHTML = '<div class="none">Read some orders first.</div>';
+      return;
+    }
+    var short = products.filter(function(p){ return !p.item; }).length;
+
+    $('prodBox').innerHTML =
+      '<div class="hint" style="margin:0 0 10px">' +
+        n0(products.length) + ' products in these days · ' +
+        (short ? '<b>' + n0(short) + ' still unmatched</b>' : 'all matched') + '</div>' +
+      '<div class="scroll"><table class="t">' +
+      '<tr><th>SKU</th><th>Shopify product</th><th class="num">Lines</th>' +
+      '<th>Becomes in QuickBooks</th><th>How</th></tr>' +
+      products.map(function(p, i){
+        var chosen = p.item === 'skip' ? '__skip__' : (p.item || '');
+        return '<tr>' +
+          '<td>' + esc(p.sku) + '</td>' +
+          '<td>' + esc(p.title) + '</td>' +
+          '<td class="num">' + n0(p.lines) + '</td>' +
+          '<td><select data-row="' + i + '">' + itemOptions(chosen) + '</select></td>' +
+          '<td>' + (p.item ? '<span class="pill ok">' + esc(p.how) + '</span>'
+                           : '<span class="pill no">nothing yet</span>') + '</td></tr>';
+      }).join('') + '</table></div>';
+
+    $('prodBox').querySelectorAll('[data-row]').forEach(function(sel){
+      sel.addEventListener('change', function(){
+        var p = products[Number(sel.getAttribute('data-row'))];
+        p.choice = sel.value;
+      });
+    });
+  }
+
+  $('btnMapSave').addEventListener('click', function(){
+    var list = products.filter(function(p){ return p.choice !== undefined; }).map(function(p){
+      return {
+        key: String(p.sku || p.title || '').toLowerCase().trim(),
+        sku: p.sku, name: p.title,
+        qbItem: p.choice === '__skip__' ? null : (p.choice || null),
+        skip: p.choice === '__skip__'
+      };
+    }).filter(function(m){ return m.key; });
+
+    if(!list.length){ say($('mapSaid'),'','Nothing chosen yet.'); return; }
+
+    ask('/api/mappings', { mappings: list })
+      .then(function(){
+        say($('mapSaid'),'good','Saved ' + list.length + '. Remembered for next time.');
+        return loadProducts();
+      })
+      .catch(function(e){ say($('mapSaid'),'bad', e.message); });
+  });
+
+  /* ---------- 05 into the books ---------- */
+
+  $('btnBuild').addEventListener('click', function(){
+    if(!$('from').value || !$('to').value){ say($('buildSaid'),'bad','Pick the dates first.'); return; }
+    $('btnBuild').disabled = true;
+    $('btnUpload').style.display = 'none';
+    say($('buildSaid'),'','Building, and asking QuickBooks what it already has…');
+
+    ask('/api/shopify/build', {
+      from: $('from').value, to: $('to').value, shop: $('whichShop').value || null,
+      customer: $('cust').value, prefix: $('prefix').value.trim(),
+      shippingItem: $('shipItem').value
+    })
+      .then(function(d){
+        lastPairs = d.pairs || [];
+        say($('buildSaid'), d.ready ? 'good' : 'bad',
+          d.ready + ' invoice' + (d.ready === 1 ? '' : 's') + ' ready out of ' + d.read + ' orders.');
+        if(d.ready) $('btnUpload').style.display = '';
+
+        var why = {};
+        (d.skipped||[]).forEach(function(s){ why[s.why] = (why[s.why]||0) + 1; });
+        var lines = Object.keys(why).map(function(k){
+          return '<li>' + n0(why[k]) + ' · ' + esc(k) + '</li>';
+        }).join('');
+
+        $('buildOut').innerHTML =
+          (d.customers && d.customers.length
+            ? '<div class="hint" style="margin:12px 0 0">Made out to: ' +
+              d.customers.map(esc).join(', ') + '</div>' : '') +
+          (lines ? '<div class="hint" style="margin:10px 0 0">Left out:<ul style="margin:6px 0 0 18px">' +
+            lines + '</ul></div>' : '') +
+          ((d.unmatched||[]).length
+            ? '<div class="said bad" style="margin-top:10px">Still unmatched in step 03: ' +
+              d.unmatched.slice(0,25).map(esc).join(', ') +
+              (d.unmatched.length > 25 ? ' and ' + (d.unmatched.length-25) + ' more' : '') + '</div>'
+            : '');
+      })
+      .catch(function(e){ say($('buildSaid'),'bad', e.message); })
+      .then(function(){ $('btnBuild').disabled = false; });
+  });
+
+  $('btnUpload').addEventListener('click', function(){ location.href = '/upload'; });
+
+  /* ---------- what the server knows ---------- */
+
+  window.APP.ready.then(function(s){
+    setRange(30);
+    loadShops();
+
+    // The item list is wanted twice: to match products against, and to say where
+    // delivery charged to the buyer should land.
+    fetch('/api/qb-products', { cache:'no-store' })
+      .then(function(r){ return r.json(); })
+      .then(function(d){
+        qbItems = (d.products || []).filter(function(p){ return p.active !== false; });
+        $('shipItem').innerHTML = '<option value="">leave it off</option>' +
+          qbItems.map(function(it){
+            return '<option value="' + esc(it.name) + '">' + esc(it.name) + '</option>';
+          }).join('');
+        drawProducts();
+      })
+      .catch(function(){});
+
+    fetch('/api/mappings', { cache:'no-store' })
+      .then(function(r){ return r.json(); })
+      .then(function(d){ mappings = d.mappings || {}; })
+      .catch(function(){});
+  });
+})();
+</script>
+</body>
+</html>
