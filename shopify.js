@@ -251,15 +251,34 @@ export async function tally(realmId) {
 
 /* ==================== the shops ==================== */
 
-// A shop domain is typed by a person, so it arrives in every shape there is -
-// with https, with a trailing slash, with the admin path still on it.
+// A shop domain is typed by a person, so it arrives in every shape there is.
+//
+// The one that matters most: what somebody copies out of the address bar is the
+// admin address, https://admin.shopify.com/store/pureclans - and the shop's own
+// name, pureclans.myshopify.com, is nowhere on their screen. Refusing that and
+// telling them to go and find the right one is making them do work we can do
+// ourselves: the name is sitting right there in the path.
 export function cleanDomain(raw) {
   let s = String(raw || '').trim().toLowerCase();
-  s = s.replace(/^https?:\/\//, '').replace(/\/.*$/, '').replace(/\s+/g, '');
   if (!s) throw new Error('Type your shop address, like your-shop.myshopify.com');
+
+  s = s.replace(/^https?:\/\//, '').replace(/\s+/g, '');
+
+  // admin.shopify.com/store/<name>  ->  <name>.myshopify.com
+  const admin = s.match(/^admin\.shopify\.com\/store\/([a-z0-9][a-z0-9-]*)/);
+  if (admin) return admin[1] + '.myshopify.com';
+
+  // anything else: the host, without whatever path came with it
+  s = s.replace(/\/.*$/, '');
+
+  // a bare name is the usual way somebody types it
   if (s.indexOf('.') < 0) s += '.myshopify.com';
+
   if (!/^[a-z0-9][a-z0-9-]*\.myshopify\.com$/.test(s)) {
-    throw new Error('That is not a myshopify.com address. Use the one in Shopify > Settings > Domains, ending .myshopify.com');
+    throw new Error(
+      'That is not the shop’s own address. Use the one ending .myshopify.com - ' +
+      'it is in Shopify under Settings > Domains, and it is also the name in your ' +
+      'admin address: admin.shopify.com/store/THIS-BIT');
   }
   return s;
 }
