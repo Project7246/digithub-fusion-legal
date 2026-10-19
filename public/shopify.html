@@ -217,6 +217,8 @@
           <span class="said" id="pullSaid"></span>
         </div>
 
+        <div class="hint" id="prodLine" style="display:none;margin-top:14px"></div>
+
         <div class="tot" id="tot" style="display:none">
           <div class="c"><b id="nOrders">0</b><span>Orders</span></div>
           <div class="c"><b id="nValue">0</b><span>Worth</span></div>
@@ -225,33 +227,15 @@
         </div>
       </div>
 
-      <!-- ============ 03 the products ============ -->
-      <div class="step">
-        <h2><i>03</i>What each product is in QuickBooks</h2>
-        <div class="hint">
-          Matched on the <b>SKU</b>, and nothing else &mdash; the same SKU is used on
-          both sides, so there is nothing to set up and nothing to get wrong. A
-          product QuickBooks has never heard of is <b>made</b> when the invoice needs
-          it, as the same kind of thing it is in Shopify: stock-tracked there,
-          inventory here. This list is only to show you what will happen; the
-          dropdown is there for the odd product you want to overrule.
-        </div>
-        <div id="prodBox"><div class="none">Read some orders first.</div></div>
-        <div class="acts" style="margin-top:12px">
-          <button class="ghost" id="btnMapSave" type="button">Save the overrules</button>
-          <span class="said" id="mapSaid"></span>
-        </div>
-      </div>
-
       <!-- ============ 04 the orders ============ -->
       <div class="step">
-        <h2><i>04</i>The orders</h2>
+        <h2><i>03</i>The orders</h2>
         <div id="orderBox"><div class="none">Nothing read yet.</div></div>
       </div>
 
       <!-- ============ 05 into the books ============ -->
       <div class="step">
-        <h2><i>05</i>Into QuickBooks</h2>
+        <h2><i>04</i>Into QuickBooks</h2>
         <div class="hint">
           The invoices are built here and handed to the upload page, which is where
           they are actually written &mdash; so Stop, Resume, the log and the retry of
@@ -296,7 +280,7 @@
 "use strict";
 (function(){
   var $ = function(id){ return document.getElementById(id); };
-  var orders = [], products = [], qbItems = [], mappings = {}, lastPairs = [];
+  var orders = [], products = [], qbItems = [], lastPairs = [];
   // what this company has settled on, so none of it is typed twice
   var SET = {};
 
@@ -574,8 +558,14 @@
       (orders.length > 500 ? '<div class="hint" style="margin:10px 0 0">Showing the first 500 of ' + n0(orders.length) + '.</div>' : '');
   }
 
-  /* ---------- 03 the products ---------- */
-
+  /* ---------- what the products will do ---------- */
+  //
+  // This was a whole card with a row per product and a dropdown on each, from
+  // when a person had to match every SKU by hand. Nobody matches anything now -
+  // the SKU is the match, and what the books have never heard of is made - so
+  // all that is left worth saying is how many, and the one case that is worth
+  // a person's attention: a product with no SKU at all, which can only be
+  // matched on its name.
   function loadProducts(){
     var p = new URLSearchParams({ from: $('from').value, to: $('to').value });
     if($('whichShop').value) p.set('shop', $('whichShop').value);
@@ -584,85 +574,33 @@
       .then(function(r){ return r.json(); })
       .then(function(d){
         products = d.products || [];
-        drawProducts();
+        var make  = products.filter(function(p){ return p.willMake; }).length;
+        var stuck = products.filter(function(p){ return !p.item && !p.willMake; }).length;
+        var noSku = products.filter(function(p){ return !p.sku; });
+
+        var bits = [n0(products.length) + ' products · ' +
+                    n0(products.length - make - stuck) + ' already in QuickBooks'];
+        if(make)  bits.push(n0(make) + ' will be made');
+        if(stuck) bits.push('<b style="color:var(--bad)">' + n0(stuck) +
+                            ' cannot be made: ' + esc(products.filter(function(p){
+                              return !p.item && !p.willMake; })[0].why || '') + '</b>');
+
+        var line = bits.join(' · ');
+        if(noSku.length){
+          line += '<br><b>' + n0(noSku.length) + ' with no SKU</b> — ' +
+            noSku.slice(0,4).map(function(p){ return esc(p.title); }).join(', ') +
+            (noSku.length > 4 ? ' and ' + (noSku.length - 4) + ' more' : '') +
+            '. These can only be matched on their name; giving them a SKU in ' +
+            'Shopify is what keeps them right.';
+        }
+
+        $('prodLine').innerHTML = line;
+        $('prodLine').style.display = '';
       })
       .catch(function(){});
   }
 
-  function itemOptions(chosen){
-    return '<option value="">not matched yet</option>' +
-      '<option value="__skip__"' + (chosen === '__skip__' ? ' selected' : '') + '>leave this product out</option>' +
-      qbItems.map(function(it){
-        return '<option value="' + esc(it.name) + '"' +
-          (chosen === it.name ? ' selected' : '') + '>' + esc(it.name) +
-          (it.sku ? '  · ' + esc(it.sku) : '') + '</option>';
-      }).join('');
-  }
-
-  function drawProducts(){
-    if(!products.length){
-      $('prodBox').innerHTML = '<div class="none">Read some orders first.</div>';
-      return;
-    }
-    var make = products.filter(function(p){ return p.willMake; }).length;
-    var stuck = products.filter(function(p){ return !p.item && !p.willMake; }).length;
-
-    $('prodBox').innerHTML =
-      '<div class="hint" style="margin:0 0 10px">' +
-        n0(products.length) + ' products in these days · ' +
-        n0(products.length - make - stuck) + ' already in QuickBooks' +
-        (make ? ' · <b>' + n0(make) + ' will be made</b>' : '') +
-        (stuck ? ' · <b style="color:var(--bad)">' + n0(stuck) + ' cannot be</b>' : '') +
-      '</div>' +
-      '<div class="scroll"><table class="t">' +
-      '<tr><th>SKU</th><th>Shopify product</th><th class="num">Lines</th>' +
-      '<th>In QuickBooks</th><th>Overrule it</th></tr>' +
-      products.map(function(p, i){
-        var chosen = p.item === 'skip' ? '__skip__' : (p.item || '');
-        var state = p.willMake
-          ? '<span class="pill mid">' + esc(p.how) + '</span>'
-          : (p.item
-              ? '<span class="pill ok">' + esc(p.item) + '</span>' +
-                '<br><small>' + esc(p.how) + '</small>'
-              : '<span class="pill no">' + esc(p.why || 'cannot be made') + '</span>');
-        return '<tr>' +
-          '<td>' + esc(p.sku || '—') + '</td>' +
-          '<td>' + esc(p.title) +
-            (p.tracked ? ' <span class="pill ok">stock</span>' : '') + '</td>' +
-          '<td class="num">' + n0(p.lines) + '</td>' +
-          '<td>' + state + '</td>' +
-          '<td><select data-row="' + i + '">' + itemOptions(chosen) + '</select></td></tr>';
-      }).join('') + '</table></div>';
-
-    $('prodBox').querySelectorAll('[data-row]').forEach(function(sel){
-      sel.addEventListener('change', function(){
-        var p = products[Number(sel.getAttribute('data-row'))];
-        p.choice = sel.value;
-      });
-    });
-  }
-
-  $('btnMapSave').addEventListener('click', function(){
-    var list = products.filter(function(p){ return p.choice !== undefined; }).map(function(p){
-      return {
-        key: String(p.sku || p.title || '').toLowerCase().trim(),
-        sku: p.sku, name: p.title,
-        qbItem: p.choice === '__skip__' ? null : (p.choice || null),
-        skip: p.choice === '__skip__'
-      };
-    }).filter(function(m){ return m.key; });
-
-    if(!list.length){ say($('mapSaid'),'','Nothing overruled - which is usually right.'); return; }
-
-    ask('/api/mappings', { mappings: list })
-      .then(function(){
-        say($('mapSaid'),'good','Saved ' + list.length + '. Remembered for next time.');
-        return loadProducts();
-      })
-      .catch(function(e){ say($('mapSaid'),'bad', e.message); });
-  });
-
-  /* ---------- 05 into the books ---------- */
+  /* ---------- 04 into the books ---------- */
 
   $('btnBuild').addEventListener('click', function(){
     if(!$('from').value || !$('to').value){ say($('buildSaid'),'bad','Pick the dates first.'); return; }
@@ -698,7 +636,7 @@
           (lines ? '<div class="hint" style="margin:10px 0 0">Left out:<ul style="margin:6px 0 0 18px">' +
             lines + '</ul></div>' : '') +
           ((d.unmatched||[]).length
-            ? '<div class="said bad" style="margin-top:10px">Still unmatched in step 03: ' +
+            ? '<div class="said bad" style="margin-top:10px">Could not be put in the books: ' +
               d.unmatched.slice(0,25).map(esc).join(', ') +
               (d.unmatched.length > 25 ? ' and ' + (d.unmatched.length-25) + ' more' : '') + '</div>'
             : '');
@@ -733,14 +671,9 @@
             return '<option value="' + esc(it.name) + '">' + esc(it.name) + '</option>';
           }).join('');
         $('shipItem').value = SET.shippingItem || '';
-        drawProducts();
       })
       .catch(function(){});
 
-    fetch('/api/mappings', { cache:'no-store' })
-      .then(function(r){ return r.json(); })
-      .then(function(d){ mappings = d.mappings || {}; })
-      .catch(function(){});
   });
 })();
 </script>
