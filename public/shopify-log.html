@@ -92,6 +92,7 @@
     <div class="shell">
 
       <div class="tot" id="tot"></div>
+      <div class="step" id="offNote" style="border-color:#C9872B;display:none"></div>
 
       <div class="step">
         <div class="tabs" id="tabs">
@@ -289,11 +290,15 @@
       var chg = (k.paid||0) + (k.refund||0) + (k.cancelled||0) + (k.edited||0);
       $('cChg').textContent   = chg ? '(' + n0(chg) + ')' : '';
 
+      // one notice, replaced each time - not another one added each time
+      var off = $('offNote');
       if(d.settings && d.settings.on === false){
-        $('tot').insertAdjacentHTML('afterend',
-          '<div class="step" style="border-color:#C9872B"><b>Writing by itself is switched off.</b> ' +
+        off.style.display = '';
+        off.innerHTML = '<b>Writing by itself is switched off.</b> ' +
           'Orders are being kept here but nothing is going into QuickBooks on its own. ' +
-          'Turn it on under <b>How it runs</b>.</div>');
+          'Tick <b>Write invoices by themselves</b> under <b>How it runs</b> and press Save.';
+      } else {
+        off.style.display = 'none';
       }
     }).catch(function(){});
   }
@@ -471,8 +476,11 @@
         say($('setSaid'), d.canMakeItems === false && d.settings.makeItems ? 'bad' : 'good',
           d.canMakeItems === false && d.settings.makeItems
             ? 'Saved, but items still cannot be made: ' + d.why
-            : 'Saved.');
+            : ($('sOn').checked
+                ? 'Saved. Orders will go into QuickBooks by themselves from now on.'
+                : 'Saved.'));
         loadTally();
+        loadSetup();
       })
       .catch(function(e){ say($('setSaid'),'bad', e.message); })
       .then(function(){ $('btnSave').disabled = false; });
