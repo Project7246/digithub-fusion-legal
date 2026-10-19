@@ -77,6 +77,14 @@
   table.t select{width:100%;max-width:300px;border:1px solid var(--line);border-radius:6px;
     padding:5px 7px;font:inherit;font-size:12px;background:#fff}
   .scroll{max-height:460px;overflow:auto;border:1px solid var(--line);border-radius:8px}
+  /* The two companies, as themselves. Shopify green and QuickBooks green stand
+     for those two firms, not for this app, so they are left exactly as they are. */
+  .mk{display:inline-flex;align-items:center;gap:5px;padding:2px 9px 2px 6px;
+    border-radius:20px;font-size:10.5px;font-weight:600;white-space:nowrap}
+  .mk svg{width:12px;height:12px;display:block}
+  .mks{background:#EEF6E3;color:#4A6B22}
+  .mkq{background:#E4F3E1;color:#1D6E14;margin-left:5px}
+  .mkwait{color:var(--faint);font-size:11px;margin-left:5px}
   .pill{display:inline-block;padding:1px 8px;border-radius:20px;font-size:10px;font-weight:600}
   .pill.ok{background:#E7F5EC;color:#1B7A44}
   .pill.no{background:#FBEDEC;color:#9A2E24}
@@ -216,6 +224,7 @@
         <div class="acts">
           <button class="go" id="btnPull" type="button">Read orders from Shopify</button>
           <button class="ghost" id="btnShow" type="button">Show what is here</button>
+          <button class="ghost" id="btnCheck" type="button">Check against QuickBooks</button>
           <span class="said" id="pullSaid"></span>
         </div>
 
@@ -526,6 +535,29 @@
       .catch(function(){});
   }
 
+  // A bag for the shop it came from, and QuickBooks' own tick once it is in the
+  // books. No QuickBooks mark means it is not in QuickBooks - which is the whole
+  // question somebody is asking when they look down this column.
+  var BAG = '<svg viewBox="0 0 24 24" fill="currentColor">' +
+    '<path d="M6 7h12l1.3 13.1a1 1 0 01-1 1.1H5.7a1 1 0 01-1-1.1L6 7z"/>' +
+    '<path d="M9 9V6.5a3 3 0 016 0V9" fill="none" stroke="currentColor" ' +
+    'stroke-width="2" stroke-linecap="round"/></svg>';
+  var TICK = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" ' +
+    'stroke-width="3" stroke-linecap="round" stroke-linejoin="round">' +
+    '<path d="M4 12.5l5.5 5.5L20 6.5"/></svg>';
+
+  function marks(o){
+    var out = '<span class="mk mks" title="In Shopify">' + BAG + 'Shopify</span>';
+    if (o.syncedAt || o.inQb) {
+      out += '<span class="mk mkq" title="In QuickBooks as ' +
+        esc(o.docNumber || o.number) + '">' + TICK +
+        esc(o.docNumber || o.number) + '</span>';
+    } else {
+      out += '<span class="mkwait">not in QuickBooks yet</span>';
+    }
+    return out;
+  }
+
   function drawOrders(){
     $('tot').style.display = '';
     var worth = orders.reduce(function(a,o){ return a + (Number(o.total)||0); }, 0);
@@ -542,7 +574,7 @@
 
     $('orderBox').innerHTML = '<div class="scroll"><table class="t">' +
       '<tr><th>Order</th><th>Date</th><th>Shop</th><th>Customer</th><th>City</th>' +
-      '<th class="num">Lines</th><th class="num">Total</th><th>Paid</th><th>In QB</th></tr>' +
+      '<th class="num">Lines</th><th class="num">Total</th><th>Paid</th><th>Where it is</th></tr>' +
       orders.slice(0, 500).map(function(o){
         return '<tr>' +
           '<td>' + esc(o.name) + (o.cancelled ? ' <span class="pill no">cancelled</span>' : '') + '</td>' +
@@ -553,12 +585,50 @@
           '<td class="num">' + n0((o.lines||[]).length) + '</td>' +
           '<td class="num">' + money(o.total) + '</td>' +
           '<td>' + esc(o.financial || '') + '</td>' +
-          '<td>' + (o.syncedAt
-            ? '<span class="pill ok">' + esc(o.docNumber || 'yes') + '</span>'
-            : '<span class="pill mid">waiting</span>') + '</td></tr>';
+          '<td>' + marks(o) + '</td></tr>';
       }).join('') + '</table></div>' +
       (orders.length > 500 ? '<div class="hint" style="margin:10px 0 0">Showing the first 500 of ' + n0(orders.length) + '.</div>' : '');
   }
+
+  /* ---------- asking QuickBooks itself ---------- */
+  //
+  // Everything else on this page is what Fusion believes. This is the books'
+  // own answer: every invoice number QuickBooks holds for these days, set
+  // against the orders on screen. If the two ever disagree, this is the one
+  // that is right, and what it says is written down.
+  $('btnCheck').addEventListener('click', function(){
+    if(!orders.length){ say($('pullSaid'),'bad','Read some orders first.'); return; }
+    $('btnCheck').disabled = true;
+    say($('pullSaid'),'','Asking QuickBooks what it holds…');
+
+    fetch('/api/qb-invoices?from=' + $('from').value + '&to=' + $('to').value,
+          { cache:'no-store' })
+      .then(function(r){ return r.json(); })
+      .then(function(d){
+        if(d.error) throw new Error(d.error);
+        var have = {};
+        (d.numbers || d.docNumbers || []).forEach(function(n){
+          have[String(n).trim()] = 1;
+        });
+
+        var found = [], pairs = [];
+        orders.forEach(function(o){
+          var num = String((SET.prefix || '') + (o.number || '')).trim();
+          o.inQb = !!have[num];
+          if(o.inQb){ found.push(o); pairs.push({ gid: o.gid, docNumber: num }); }
+        });
+
+        drawOrders();
+        say($('pullSaid'), 'good',
+          n0(found.length) + ' of ' + n0(orders.length) +
+          ' are in QuickBooks · ' + n0(orders.length - found.length) + ' are not.');
+
+        // and the books' answer becomes what we believe too
+        if(pairs.length) ask('/api/shopify/mark', { pairs: pairs }).catch(function(){});
+      })
+      .catch(function(e){ say($('pullSaid'),'bad', e.message); })
+      .then(function(){ $('btnCheck').disabled = false; });
+  });
 
   /* ---------- what the products will do ---------- */
   //
