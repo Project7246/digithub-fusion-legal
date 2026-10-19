@@ -39,7 +39,8 @@
   .shop small{font-size:11.5px;color:var(--muted);display:block;margin-top:3px}
   .shop button{font-size:11.5px;padding:5px 12px;border-radius:6px;border:1px solid var(--line);
     background:#fff;cursor:pointer;font-family:inherit}
-  .shop button:hover{border-color:var(--bad);color:var(--bad)}
+  .shop button:hover{border-color:var(--qbo);color:var(--qbo)}
+  .shop button[data-off]:hover{border-color:var(--bad);color:var(--bad)}
 
   .go{background:var(--qbo);border:1px solid var(--qbo);color:#fff;border-radius:8px;
     padding:10px 20px;font:inherit;font-size:13px;font-weight:600;cursor:pointer}
@@ -259,13 +260,32 @@
           (s.lastSync ? ' · last read ' + esc(new Date(s.lastSync).toLocaleString()) : ' · never read') +
           (s.lastError ? '<br>' + esc(s.lastError) : '') +
         '</small></div>' +
-        '<button type="button" data-off="' + s.id + '">Remove</button></div>';
+        '<div style="display:flex;gap:7px">' +
+          '<button type="button" data-wire="' + s.id + '">Live updates</button>' +
+          '<button type="button" data-off="' + s.id + '">Remove</button></div></div>';
     }).join('') : '<div class="none">No shop connected yet. Add one below.</div>';
 
     $('whichShop').innerHTML = '<option value="">Every shop</option>' +
       list.map(function(s){
         return '<option value="' + s.id + '">' + esc(s.label) + '</option>';
       }).join('');
+
+    // A shop added before this existed has no webhooks on it yet, and one whose
+    // wiring failed the first time should not need removing and adding again.
+    $('shops').querySelectorAll('[data-wire]').forEach(function(b){
+      b.addEventListener('click', function(){
+        b.disabled = true; b.textContent = 'Asking Shopify…';
+        ask('/api/shopify/wire', { shop: b.getAttribute('data-wire') })
+          .then(function(d){
+            var bad = (d.failed || []).length;
+            say($('addSaid'), bad ? 'bad' : 'good',
+              bad ? 'Some could not be set up: ' + d.failed.join('; ')
+                  : 'Live updates on · ' + (d.done || []).length + ' kinds of change.');
+          })
+          .catch(function(e){ say($('addSaid'),'bad', e.message); })
+          .then(function(){ b.disabled = false; b.textContent = 'Live updates'; });
+      });
+    });
 
     $('shops').querySelectorAll('[data-off]').forEach(function(b){
       b.addEventListener('click', function(){
