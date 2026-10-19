@@ -156,23 +156,10 @@
 
           <h3 style="font:600 13px var(--head);margin:22px 0 6px">What the invoice says</h3>
           <div class="hint">
-            Every invoice is made out to the one customer below &mdash; the way the
-            books have always taken Shopify sales &mdash; and the buyer&rsquo;s own name
-            and address go in the billing block on the invoice itself.
-          </div>
-          <div class="fields">
-            <div>
-              <label for="sCust">Customer on the invoices</label>
-              <input id="sCust" type="text" placeholder="Shopify Sale - {mon}{yy}">
-            </div>
-            <div>
-              <label for="sPrefix">Put before the number</label>
-              <input id="sPrefix" type="text" placeholder="none">
-            </div>
-            <div>
-              <label for="sShip">Delivery charged to the buyer goes to</label>
-              <select id="sShip"><option value="">work it out</option></select>
-            </div>
+            Who the invoices are made out to, what goes before the number and where
+            delivery lands are set on the <a href="/shopify">orders page</a>, beside
+            the button that makes them &mdash; one place, and the automatic writing
+            uses the same answers.
           </div>
 
           <h3 style="font:600 13px var(--head);margin:22px 0 6px">A product that is not in the books yet</h3>
@@ -230,7 +217,7 @@
 "use strict";
 (function(){
   var $ = function(id){ return document.getElementById(id); };
-  var tab = 'held', accounts = null, items = [];
+  var tab = 'held', accounts = null;
 
   function esc(s){
     return String(s == null ? '' : s)
@@ -419,8 +406,6 @@
       $('sOn').checked = s.on !== false;
       $('sFrom').value = s.startFrom || '';
       $('sMake').checked = s.makeItems !== false;
-      $('sCust').value = s.customer || '';
-      $('sPrefix').value = s.prefix || '';
       if(!accounts){
         get('/api/shopify/accounts').then(function(a){
           accounts = a;
@@ -435,17 +420,6 @@
         fill('sIncome', accounts.income || [], s.incomeAccount);
         fill('sCogs', accounts.cogs || [], s.cogsAccount);
         fill('sAsset', accounts.asset || [], s.assetAccount);
-      }
-
-      if(!items.length){
-        get('/api/qb-products').then(function(p){
-          items = (p.products||[]).filter(function(x){ return x.active !== false; });
-          $('sShip').innerHTML = '<option value="">work it out</option>' +
-            items.map(function(it){
-              return '<option value="' + esc(it.name) + '"' +
-                (s.shippingItem === it.name ? ' selected' : '') + '>' + esc(it.name) + '</option>';
-            }).join('');
-        }).catch(function(){});
       }
 
       // what will actually be used, said in the names of the accounts rather
@@ -489,9 +463,6 @@
       on: $('sOn').checked,
       startFrom: $('sFrom').value || '',
       makeItems: $('sMake').checked,
-      customer: $('sCust').value.trim(),
-      prefix: $('sPrefix').value.trim(),
-      shippingItem: $('sShip').value,
       incomeAccount: $('sIncome').value,
       cogsAccount: $('sCogs').value,
       assetAccount: $('sAsset').value

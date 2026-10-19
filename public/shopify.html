@@ -257,11 +257,16 @@
           they are actually written &mdash; so Stop, Resume, the log and the retry of
           whatever failed are the same ones the rest of the app uses. An order whose
           number is already an invoice in QuickBooks is left alone.
+          <br><br>
+          These three are remembered the moment you change them, here and for the
+          automatic writing both &mdash; set them once.
+          <code>{mon}</code> and <code>{yy}</code> become the month and the year of
+          each order, so one line covers every month.
         </div>
         <div class="fields">
           <div>
             <label for="cust">Customer on the invoices</label>
-            <input id="cust" type="text" value="Shopify Sale - {mon}{yy}">
+            <input id="cust" type="text" placeholder="Shopify Sale - {mon}{yy}">
           </div>
           <div>
             <label for="prefix">Put before the number</label>
@@ -292,6 +297,8 @@
 (function(){
   var $ = function(id){ return document.getElementById(id); };
   var orders = [], products = [], qbItems = [], mappings = {}, lastPairs = [];
+  // what this company has settled on, so none of it is typed twice
+  var SET = {};
 
   function esc(s){
     return String(s == null ? '' : s)
@@ -441,29 +448,53 @@
       .then(function(){ $('btnKeys').disabled = false; });
   });
 
-  /* ---------- what to leave out ---------- */
-  // Kept on the server, not in this page, because the automatic writing reads
-  // the same two - a tick here is a tick there.
+  /* ---------- what this company has settled on ---------- */
+  //
+  // Everything here is a decision made once: what to leave out, who the
+  // invoices are made out to, what goes before the number, where delivery
+  // lands. It is kept on the server, so it is the same on every computer and
+  // the automatic writing reads exactly what is on this screen - and so that
+  // nobody types the customer's name again every time they open the page.
+  //
+  // Saved the moment a box is changed, because a Save button somebody forgets
+  // to press is a setting that silently did not apply.
   function loadSkips(){
     return fetch('/api/shopify/settings', { cache:'no-store' })
       .then(function(r){ return r.json(); })
       .then(function(d){
-        var s = d.settings || {};
-        $('skVoid').checked = s.skipRefunded !== false;
-        $('skUnf').checked = !!s.onlyFulfilled;
+        SET = d.settings || {};
+        $('skVoid').checked = SET.skipRefunded !== false;
+        $('skUnf').checked = !!SET.onlyFulfilled;
+        if (SET.customer) $('cust').value = SET.customer;
+        $('prefix').value = SET.prefix || '';
+        if (qbItems.length) $('shipItem').value = SET.shippingItem || '';
       })
       .catch(function(){});
   }
 
   function saveSkips(){
+    SET.skipRefunded = $('skVoid').checked;
+    SET.onlyFulfilled = $('skUnf').checked;
+    SET.customer = $('cust').value.trim();
+    SET.prefix = $('prefix').value.trim();
+    SET.shippingItem = $('shipItem').value;
     return ask('/api/shopify/settings', {
-      skipRefunded: $('skVoid').checked,
-      onlyFulfilled: $('skUnf').checked
+      skipRefunded: SET.skipRefunded,
+      onlyFulfilled: SET.onlyFulfilled,
+      customer: SET.customer,
+      prefix: SET.prefix,
+      shippingItem: SET.shippingItem
+    }).then(function(){
+      say($('buildSaid'), 'good', 'Saved.');
+      setTimeout(function(){
+        if ($('buildSaid').textContent === 'Saved.') say($('buildSaid'), '', '');
+      }, 1800);
     }).catch(function(){});
   }
 
-  $('skVoid').addEventListener('change', saveSkips);
-  $('skUnf').addEventListener('change', saveSkips);
+  ['skVoid','skUnf','cust','prefix','shipItem'].forEach(function(id){
+    $(id).addEventListener('change', saveSkips);
+  });
 
   /* ---------- 02 the days ---------- */
 
@@ -701,6 +732,7 @@
           qbItems.map(function(it){
             return '<option value="' + esc(it.name) + '">' + esc(it.name) + '</option>';
           }).join('');
+        $('shipItem').value = SET.shippingItem || '';
         drawProducts();
       })
       .catch(function(){});
