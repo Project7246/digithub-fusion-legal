@@ -38,6 +38,9 @@
   .pulse .beat.on{animation:beat 1.1s ease-in-out infinite}
   @keyframes beat{0%,100%{opacity:1}50%{opacity:.25}}
   .pulse .beat.off{background:var(--faint)}
+  .pulse.bad{color:var(--bad,#9A2E24)}
+  .pulse.bad b{color:var(--bad,#9A2E24)}
+  .pulse.bad .beat{background:var(--bad,#9A2E24)}
   .tabs{display:flex;gap:4px;flex-wrap:wrap;margin-bottom:14px;border-bottom:1px solid var(--line)}
   .tabs button{border:0;background:none;font:inherit;font-size:13px;cursor:pointer;
     padding:10px 14px;color:var(--muted);border-bottom:2px solid transparent;margin-bottom:-1px}
@@ -62,6 +65,11 @@
   .pill.ok{background:#E7F5EC;color:#1B7A44}
   .pill.no{background:#FBEDEC;color:#9A2E24}
   .pill.mid{background:#FFF3E0;color:#8A5A12}
+  .mk{display:inline-flex;align-items:center;gap:5px;padding:2px 9px 2px 6px;
+    border-radius:20px;font-size:10.5px;font-weight:600;white-space:nowrap}
+  .mk svg{width:12px;height:12px;display:block}
+  .mks{background:#EEF6E3;color:#4A6B22}
+  .mkq{background:#E4F3E1;color:#1D6E14;margin-left:5px}
 
   .fields{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:14px;
     margin-bottom:14px}
@@ -308,9 +316,13 @@
         ? new Date(st.lastAt).toLocaleTimeString([], { hour:'2-digit', minute:'2-digit', second:'2-digit' })
         : null;
 
-      var words;
+      var words, stuck = false;
       if (d.settings && d.settings.on === false) {
         words = 'Not writing anything — switched off.';
+      } else if (st.note) {
+        stuck = true;
+        words = '<b>Nothing is going in.</b> ' + esc(st.note) +
+          (when ? ' · last tried ' + when : '');
       } else if (st.running) {
         words = 'Working through them now…';
       } else if (when) {
@@ -329,7 +341,9 @@
       } else {
         words = 'Waiting for the first look…';
       }
-      $('pulse').innerHTML = '<span class="beat ' + beat + '"></span><span>' + words + '</span>';
+      $('pulse').className = 'pulse' + (stuck ? ' bad' : '');
+      $('pulse').innerHTML = '<span class="beat ' + (stuck ? 'off' : beat) +
+        '"></span><span>' + words + '</span>';
 
       // one notice, replaced each time - not another one added each time
       var off = $('offNote');
@@ -395,6 +409,14 @@
 
   /* ---------- the event tabs ---------- */
 
+  var BAG = '<svg viewBox="0 0 24 24" fill="currentColor">' +
+    '<path d="M6 7h12l1.3 13.1a1 1 0 01-1 1.1H5.7a1 1 0 01-1-1.1L6 7z"/>' +
+    '<path d="M9 9V6.5a3 3 0 016 0V9" fill="none" stroke="currentColor" ' +
+    'stroke-width="2" stroke-linecap="round"/></svg>';
+  var TICK = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" ' +
+    'stroke-width="3" stroke-linecap="round" stroke-linejoin="round">' +
+    '<path d="M4 12.5l5.5 5.5L20 6.5"/></svg>';
+
   var COLS = {
     invoice: ['Order','Shop time','What happened'],
     error:   ['Order / product','When','What QuickBooks said'],
@@ -423,8 +445,16 @@
         '<tr><th>' + c[0] + '</th><th>' + c[1] + '</th><th>' + c[2] + '</th></tr>' +
         rows.map(function(e){
           var who = e.order_name || e.title || e.sku || '';
+          // on the invoice list, the two companies as themselves: it came from
+          // Shopify, and QuickBooks has it
+          var mark = '';
+          if (name === 'invoice' && e.order_name) {
+            var num = (e.detail && e.detail.docNumber) || '';
+            mark = '<br><span class="mk mks">' + BAG + 'Shopify</span>' +
+              '<span class="mk mkq">' + TICK + 'QuickBooks</span>';
+          }
           return '<tr class="' + (e.ok === false ? 'bad' : '') + '">' +
-            '<td class="mono">' + esc(who) +
+            '<td class="mono">' + esc(who) + mark +
               (e.sku && e.order_name ? '<br><small>' + esc(e.sku) + '</small>' : '') + '</td>' +
             '<td class="mono">' + esc(when(e.at)) + '</td>' +
             '<td>' + (name === 'changes'

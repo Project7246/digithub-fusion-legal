@@ -28,7 +28,7 @@ import { getSetting, setSetting } from './settings.js';
 import { getMappings } from './mappings.js';
 import {
   fetchOne, fetchProduct, saveOne, dueOrders,
-  setDone, setHeld, setFailed, setOff, releaseHeld, note, toInvoice, ask
+  setDone, setHeld, setFailed, setOff, failAll, releaseHeld, note, toInvoice, ask
 } from './shopify.js';
 import { decrypt } from './secrets.js';
 import {
@@ -549,10 +549,11 @@ export function syncState() { return Object.assign({}, state); }
 export async function sweep() {
   if (state.running) return;
   state.running = true;
-  const did = { done: 0, held: 0, failed: 0, off: 0, items: 0 };
+  const did = { done: 0, held: 0, failed: 0, off: 0, items: 0, looked: 0 };
 
   try {
     const rows = await dueOrders(BATCH);
+    did.looked = rows.length;
     const byRealm = new Map();
     rows.forEach(r => {
       if (!byRealm.has(r.realm_id)) byRealm.set(r.realm_id, []);
@@ -565,11 +566,25 @@ export async function sweep() {
 
       let books;
       try {
-        books = await openBooks(realmId);
+        books = await openBooks(realmId, s);
       } catch (e) {
-        // no QuickBooks on this company yet, or it is down. Every one of its
-        // orders is put back rather than marked wrong.
-        for (const r of list) await setFailed(realmId, r.order_gid, e.message);
+        // The books themselves would not open - signed out, not connected, or
+        // QuickBooks is down. Every one of this company's orders goes back in
+        // the queue rather than being marked wrong.
+        //
+        // This used to be the quietest failure in the app: the orders were put
+        // back and nothing was counted, so the page said "nothing waiting" over
+        // five hundred that were waiting, and no page anywhere said why. It is
+        // counted, said once in the log, and carried on the pulse now.
+        await failAll(realmId, list.map(r => r.order_gid), e.message);
+        did.failed += list.length;
+        state.note = e.message;
+        if (sayOnce('books:' + realmId + ':' + e.message.slice(0, 60))) {
+          await note(realmId, 'error', {
+            ok: false,
+            note: 'nothing can be written for this company at the moment: ' + e.message
+          });
+        }
         continue;
       }
 
@@ -588,6 +603,7 @@ export async function sweep() {
     state.note = e.message;
   }
 
+  if (!did.failed) state.note = '';
   state.running = false;
   state.lastAt = new Date().toISOString();
   state.lastDid = did;

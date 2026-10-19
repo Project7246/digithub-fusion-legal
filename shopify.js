@@ -1011,3 +1011,20 @@ export async function exchangeCode(domain, code, keys) {
   }
   return { token: body.access_token, scopes: body.scope || '' };
 }
+
+// A whole company's worth at once, when what failed was not the order but the
+// books themselves - one statement instead of five hundred.
+export async function failAll(realmId, gids, err) {
+  if (!gids.length) return 0;
+  const r = await pool.query(
+    `UPDATE shopify_orders
+        SET state      = 'waiting',
+            tries      = COALESCE(tries, 0) + 1,
+            sync_error = $3,
+            next_try   = NOW() + make_interval(
+                           mins => LEAST(60, POWER(2, GREATEST(0, COALESCE(tries, 0))))::int)
+      WHERE realm_id = $1 AND order_gid = ANY($2::text[])`,
+    [realmId, gids, String(err || '').slice(0, 500)]
+  );
+  return r.rowCount;
+}
