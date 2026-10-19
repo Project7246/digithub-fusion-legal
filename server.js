@@ -23,7 +23,8 @@ import {
   toInvoice, API_VERSION as SHOPIFY_VERSION,
   note as shopNote, events as shopifyEvents, tally as shopifyTally,
   heldList as shopifyHeld, releaseHeld, shopHookKey, shopByHookKey,
-  appKeys, installUrl, callbackIsReal, exchangeCode, SCOPES
+  appKeysFor, saveAppKeys, forgetAppKeys, installUrl, callbackIsReal,
+  exchangeCode, SCOPES
 } from './shopify.js';
 import {
   settingsOf as shopifySettings, saveSettings as saveShopifySettings,
@@ -1330,7 +1331,8 @@ const RIGHT_GROUPS = [
     what: 'Connect shops and bring their orders in',
     paths: ['/api/shopify/shops', '/api/shopify/shops/remove', '/api/shopify/pull',
             '/api/shopify/build', '/api/shopify/mark', '/api/shopify/unmark',
-            '/api/shopify/settings', '/api/shopify/retry', '/api/shopify/wire'] },
+            '/api/shopify/settings', '/api/shopify/retry', '/api/shopify/wire',
+            '/api/shopify/app'] },
 
   { key: 'settings', area: 'items', label: 'SKU mappings',
     what: 'Remembered SKU-to-item matches',
@@ -7792,11 +7794,11 @@ app.get('/auth/shopify', async (req, res) => {
   const realmId = await requireCompany(req, res);
   if (!realmId) return;
 
-  const keys = appKeys();
+  const keys = await appKeysFor(realmId);
   if (!keys.ready) {
     return res.status(503).send(
-      'Shopify is not set up on this server yet. SHOPIFY_CLIENT_ID and ' +
-      'SHOPIFY_CLIENT_SECRET have to be set in DigitalOcean first.');
+      'This company has no Shopify app keys yet. Put the Client ID and Client ' +
+      'secret from the Shopify Dev Dashboard on the Shopify page first.');
   }
 
   let domain;
@@ -7813,7 +7815,7 @@ app.get('/auth/shopify', async (req, res) => {
 
   const base = (process.env.BASE_URL || '').replace(/\/+$/, '') ||
                (req.protocol + '://' + req.get('host'));
-  res.redirect(installUrl(domain, base + '/auth/shopify/callback', state));
+  res.redirect(installUrl(domain, base + '/auth/shopify/callback', state, keys.id));
 });
 
 app.get('/auth/shopify/callback', async (req, res) => {
@@ -7825,9 +7827,6 @@ app.get('/auth/shopify/callback', async (req, res) => {
       '<p><a href="/shopify">Back to Shopify</a></p>');
 
   try {
-    const keys = appKeys();
-    if (!keys.ready) return say('Not set up', 'This server has no Shopify app keys.');
-
     let held = null;
     try { held = JSON.parse(req.cookies[SHOP_STATE] || 'null'); } catch (e) { held = null; }
     res.clearCookie(SHOP_STATE);
@@ -7836,6 +7835,9 @@ app.get('/auth/shopify/callback', async (req, res) => {
       return say('That did not match',
         'The connection could not be matched to one started here. Press Connect again.');
     }
+    const keys = await appKeysFor(held.realmId);
+    if (!keys.ready) return say('Not set up', 'This company has no Shopify app keys.');
+
     if (!callbackIsReal(req.query, keys.secret)) {
       return say('That did not match', 'Shopify’s signature did not check out.');
     }
@@ -7846,7 +7848,7 @@ app.get('/auth/shopify/callback', async (req, res) => {
       return say('That did not match', 'Shopify came back about a different shop.');
     }
 
-    const got = await exchangeCode(domain, req.query.code);
+    const got = await exchangeCode(domain, req.query.code, keys);
 
     const saved = await saveShop(held.realmId, {
       domain, token: got.token, label: domain.replace(/\.myshopify\.com$/, '')
@@ -7880,9 +7882,33 @@ app.get('/auth/shopify/callback', async (req, res) => {
 app.get('/api/shopify/app', async (req, res) => {
   const realmId = await requireCompany(req, res);
   if (!realmId) return;
-  const keys = appKeys();
+  const keys = await appKeysFor(realmId);
   res.setHeader('Cache-Control', 'no-store');
-  res.json({ ready: keys.ready, scopes: SCOPES.split(','), version: SHOPIFY_VERSION });
+  // the id is an identifier, not a secret, so it can be shown back; the secret
+  // is only ever said to be set or not
+  res.json({
+    ready: keys.ready, from: keys.from, clientId: keys.id || '',
+    scopes: SCOPES.split(','), version: SHOPIFY_VERSION,
+    redirect: ((process.env.BASE_URL || '').replace(/\/+$/, '') ||
+               (req.protocol + '://' + req.get('host'))) + '/auth/shopify/callback'
+  });
+});
+
+// Each client's Shopify app is made inside that client's own Shopify, so its
+// keys belong to that company here too.
+app.post('/api/shopify/app', async (req, res) => {
+  const realmId = await requireCompany(req, res);
+  if (!realmId) return;
+  try {
+    if (req.body.forget) {
+      await forgetAppKeys(realmId);
+      return res.json({ ok: true, ready: false });
+    }
+    await saveAppKeys(realmId, req.body.clientId, req.body.clientSecret);
+    res.json({ ok: true, ready: true });
+  } catch (e) {
+    res.status(400).json({ error: e.message });
+  }
 });
 
 /* ==================== Shopify calling us ==================== */

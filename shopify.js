@@ -17,6 +17,7 @@
 import crypto from 'crypto';
 import { pool } from './db.js';
 import { encrypt, decrypt } from './secrets.js';
+import { getSetting, setSetting } from './settings.js';
 
 // Shopify dates a version every quarter and supports each for a year. Pinned
 // rather than "latest" so a release cannot change what the app reads underneath
@@ -903,16 +904,45 @@ export const SCOPES = (process.env.SHOPIFY_SCOPES ||
   'read_orders,read_products,read_inventory,read_customers')
   .split(',').map(s => s.trim()).filter(Boolean).join(',');
 
-export function appKeys() {
+// The keys belong to a company, not to the server.
+//
+// Shopify will only let an app be installed on one named shop unless it has
+// been through the app store, so a consultancy running five clients runs five
+// Shopify apps - one made inside each client's own Shopify. One pair of keys on
+// the server would therefore have worked for exactly one client and then stuck.
+//
+// The server's own SHOPIFY_CLIENT_ID / SHOPIFY_CLIENT_SECRET stay as a fallback
+// for a single-client install, so nothing that already works stops working.
+export async function appKeysFor(realmId) {
+  let kept = null;
+  try { kept = await getSetting(realmId, 'shopify:app', null); } catch (e) { kept = null; }
+
+  if (kept && kept.id && kept.secret) {
+    let secret = '';
+    try { secret = decrypt(kept.secret); } catch (e) { secret = ''; }
+    if (secret) return { id: kept.id, secret, ready: true, from: 'company' };
+  }
+
   const id = process.env.SHOPIFY_CLIENT_ID || '';
   const secret = process.env.SHOPIFY_CLIENT_SECRET || '';
-  return { id, secret, ready: !!(id && secret) };
+  return { id, secret, ready: !!(id && secret), from: id ? 'server' : 'nowhere' };
 }
 
-export function installUrl(domain, redirectUri, state) {
-  const { id } = appKeys();
+export async function saveAppKeys(realmId, id, secret) {
+  const clean = String(id || '').trim();
+  const sec = String(secret || '').trim();
+  if (!clean || !sec) throw new Error('Both the Client ID and the Client secret are needed');
+  await setSetting(realmId, 'shopify:app', { id: clean, secret: encrypt(sec) });
+  return { id: clean, ready: true };
+}
+
+export async function forgetAppKeys(realmId) {
+  await setSetting(realmId, 'shopify:app', null);
+}
+
+export function installUrl(domain, redirectUri, state, clientId) {
   const u = new URL('https://' + domain + '/admin/oauth/authorize');
-  u.searchParams.set('client_id', id);
+  u.searchParams.set('client_id', clientId);
   u.searchParams.set('scope', SCOPES);
   u.searchParams.set('redirect_uri', redirectUri);
   u.searchParams.set('state', state);
@@ -940,8 +970,8 @@ export function callbackIsReal(query, secret) {
 }
 
 // The code Shopify handed back, turned into the token that lasts.
-export async function exchangeCode(domain, code) {
-  const { id, secret } = appKeys();
+export async function exchangeCode(domain, code, keys) {
+  const { id, secret } = keys;
   const r = await fetch('https://' + domain + '/admin/oauth/access_token', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
