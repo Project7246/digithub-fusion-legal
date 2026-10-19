@@ -139,6 +139,33 @@
             <input type="checkbox" id="sOn"> <span>Write invoices by themselves</span>
           </label>
 
+          <h3 style="font:600 13px var(--head);margin:4px 0 6px">Which orders</h3>
+          <div class="hint">
+            An order called off in Shopify is never written &mdash; an invoice for an
+            order that did not happen is simply wrong. The rest is yours to say.
+          </div>
+          <div class="fields">
+            <div>
+              <label for="sFrom">Write nothing placed before</label>
+              <input id="sFrom" type="date">
+            </div>
+          </div>
+          <label class="onoff">
+            <input type="checkbox" id="sFulfil">
+            <span>Only once the order has shipped &mdash; an unshipped order waits
+              and goes in by itself the moment it is fulfilled</span>
+          </label>
+          <label class="onoff">
+            <input type="checkbox" id="sRefund">
+            <span>Leave out orders refunded in full, and ones voided in Shopify</span>
+          </label>
+
+          <h3 style="font:600 13px var(--head);margin:22px 0 6px">What the invoice says</h3>
+          <div class="hint">
+            Every invoice is made out to the one customer below &mdash; the way the
+            books have always taken Shopify sales &mdash; and the buyer&rsquo;s own name
+            and address go in the billing block on the invoice itself.
+          </div>
           <div class="fields">
             <div>
               <label for="sCust">Customer on the invoices</label>
@@ -396,6 +423,9 @@
     get('/api/shopify/settings').then(function(d){
       var s = d.settings || {};
       $('sOn').checked = s.on !== false;
+      $('sFrom').value = s.startFrom || '';
+      $('sFulfil').checked = !!s.onlyFulfilled;
+      $('sRefund').checked = s.skipRefunded !== false;
       $('sMake').checked = s.makeItems !== false;
       $('sCust').value = s.customer || '';
       $('sPrefix').value = s.prefix || '';
@@ -465,6 +495,9 @@
     say($('setSaid'),'','Saving…');
     post('/api/shopify/settings', {
       on: $('sOn').checked,
+      startFrom: $('sFrom').value || '',
+      onlyFulfilled: $('sFulfil').checked,
+      skipRefunded: $('sRefund').checked,
       makeItems: $('sMake').checked,
       customer: $('sCust').value.trim(),
       prefix: $('sPrefix').value.trim(),

@@ -66,7 +66,21 @@ export const DEFAULTS = {
   // so most books never need them touched.
   incomeAccount: '',
   cogsAccount: '',
-  assetAccount: ''
+  assetAccount: '',
+
+  // Which orders are the books' business at all.
+  //
+  // startFrom is the line in the sand: turning the writing on should not go
+  // back and write every order ever pulled. Nothing placed before this day is
+  // written, and it says so rather than going quiet.
+  startFrom: '',
+  // An order that has not shipped is money not yet earned, and in cash on
+  // delivery it may never be. Off by default, because it is a decision about
+  // how these books are kept, not a thing to assume.
+  onlyFulfilled: false,
+  // Refunded in full, or voided in Shopify. Cancelled is never written at all -
+  // an invoice for an order that was called off is simply wrong.
+  skipRefunded: true
 };
 
 export async function settingsOf(realmId) {
@@ -256,6 +270,43 @@ async function itemFor(books, line, s, ctx) {
 
 export { itemFor };
 
+/* ==================== is this order the books' business ==================== */
+
+// Pakistan is five hours ahead of the server's clock; an order placed at half
+// past nine at night belongs to that day.
+function dayOf(ts) {
+  if (!ts) return null;
+  return new Date(new Date(ts).getTime() + 5 * 3600 * 1000).toISOString().slice(0, 10);
+}
+
+// Null means write it. Otherwise: `how` is 'off' when nothing will change that -
+// a cancelled order stays cancelled - and 'held' when it might, so it is looked
+// at again when the order next moves.
+export function whyNot(row, s) {
+  if (row.cancelled) return { how: 'off', why: 'cancelled in Shopify' };
+
+  if (s.startFrom) {
+    const d = dayOf(row.placed_at);
+    if (d && d < s.startFrom) {
+      return { how: 'off', why: 'placed before ' + s.startFrom };
+    }
+  }
+
+  const money = String(row.financial || '').toUpperCase();
+  if (s.skipRefunded !== false && (money === 'REFUNDED' || money === 'VOIDED')) {
+    return { how: 'off', why: money === 'VOIDED' ? 'voided in Shopify' : 'refunded in full' };
+  }
+
+  if (s.onlyFulfilled) {
+    const sent = String(row.fulfillment || '').toUpperCase();
+    if (sent !== 'FULFILLED') {
+      return { how: 'held', why: 'not shipped yet (' + (sent.toLowerCase() || 'unfulfilled') + ')' };
+    }
+  }
+
+  return null;
+}
+
 /* ==================== one order ==================== */
 
 function payloadOf(inv, customerId, items, terms) {
@@ -304,13 +355,22 @@ export async function writeOne(books, row, s) {
   const realmId = books.realmId;
   const ctx = { shopId: row.shop_id };
 
-  if (row.cancelled) {
-    await setOff(realmId, row.order_gid, 'cancelled in Shopify');
-    await note(realmId, 'cancelled', {
-      shopId: row.shop_id, orderName: row.name, gid: row.order_gid,
-      note: 'called off in Shopify, so no invoice was written'
-    });
-    return 'off';
+  const no = whyNot(row, s);
+  if (no) {
+    if (no.how === 'off') {
+      await setOff(realmId, row.order_gid, no.why);
+      if (row.cancelled) {
+        await note(realmId, 'cancelled', {
+          shopId: row.shop_id, orderName: row.name, gid: row.order_gid,
+          note: 'called off in Shopify, so no invoice was written'
+        });
+      }
+    } else {
+      // held, not off: shipping it, or paying for it, will change the answer,
+      // and the next webhook about this order asks again
+      await setHeld(realmId, row.order_gid, no.why);
+    }
+    return no.how;
   }
 
   // what each line is in the books, making what is missing if that is allowed

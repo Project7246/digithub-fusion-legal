@@ -191,7 +191,7 @@
         <div class="fields">
           <div><label for="from">From</label><input id="from" type="date"></div>
           <div><label for="to">To</label><input id="to" type="date"></div>
-          <div>
+          <div id="shopPick" style="display:none">
             <label for="whichShop">Shop</label>
             <select id="whichShop"><option value="">Every shop</option></select>
           </div>
@@ -319,6 +319,9 @@
       list.map(function(s){
         return '<option value="' + s.id + '">' + esc(s.label) + '</option>';
       }).join('');
+    // With one shop there is nothing to choose between, and a box holding one
+    // name is only something else to read.
+    $('shopPick').style.display = list.length > 1 ? '' : 'none';
 
     // A shop added before this existed has no webhooks on it yet, and one whose
     // wiring failed the first time should not need removing and adding again.

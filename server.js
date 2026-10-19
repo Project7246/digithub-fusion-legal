@@ -28,7 +28,7 @@ import {
 } from './shopify.js';
 import {
   settingsOf as shopifySettings, saveSettings as saveShopifySettings,
-  itemsPossible, standingAccounts, openBooks, itemFor, previewItem,
+  itemsPossible, standingAccounts, openBooks, itemFor, previewItem, whyNot,
   sweep as shopifySweep, syncState, startShopifySync,
   nudgeOrder, nudgeProduct, wireHooks
 } from './shopifysync.js';
@@ -7592,7 +7592,8 @@ app.post('/api/shopify/build', async (req, res) => {
     let made = 0;
 
     for (const r of rows) {
-      if (r.cancelled) { skipped.push({ name: r.name, why: 'cancelled in Shopify' }); continue; }
+      const no = whyNot(r, s);
+      if (no) { skipped.push({ name: r.name, why: no.why }); continue; }
 
       const lines = [], missing = [];
       for (const L of (r.lines || [])) {
