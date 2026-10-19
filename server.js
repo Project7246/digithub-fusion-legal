@@ -22,7 +22,8 @@ import {
   pullOrders, listOrders as listShopOrders, productsSeen, markSynced, unmark,
   toInvoice, API_VERSION as SHOPIFY_VERSION,
   note as shopNote, events as shopifyEvents, tally as shopifyTally,
-  heldList as shopifyHeld, releaseHeld, shopHookKey, shopByHookKey
+  heldList as shopifyHeld, releaseHeld, shopHookKey, shopByHookKey,
+  appKeys, installUrl, callbackIsReal, exchangeCode, SCOPES
 } from './shopify.js';
 import {
   settingsOf as shopifySettings, saveSettings as saveShopifySettings,
@@ -7774,6 +7775,114 @@ app.post('/api/courier/hook-roll', async (req, res) => {
   } catch (e) {
     res.status(400).json({ error: e.message });
   }
+});
+
+/* ==================== connecting a Shopify shop ==================== */
+// Pressed from the Shopify page: the merchant is sent to their own shop's
+// approval screen and comes back with a token we never had to be told.
+//
+// Two things are carried across in a short-lived cookie rather than in the URL:
+// which company is connecting (the URL comes back from Shopify, and whatever is
+// in it is Shopify's word, not ours) and a random `state` that must come back
+// unchanged, so a callback nobody here started goes nowhere.
+
+const SHOP_STATE = 'shopify_connect';
+
+app.get('/auth/shopify', async (req, res) => {
+  const realmId = await requireCompany(req, res);
+  if (!realmId) return;
+
+  const keys = appKeys();
+  if (!keys.ready) {
+    return res.status(503).send(
+      'Shopify is not set up on this server yet. SHOPIFY_CLIENT_ID and ' +
+      'SHOPIFY_CLIENT_SECRET have to be set in DigitalOcean first.');
+  }
+
+  let domain;
+  try { domain = cleanDomain(req.query.shop); }
+  catch (e) { return res.status(400).send(e.message); }
+
+  const state = crypto.randomBytes(16).toString('hex');
+  res.cookie(SHOP_STATE, JSON.stringify({ state, domain, realmId }), {
+    httpOnly: true, sameSite: 'lax', maxAge: 10 * 60 * 1000,
+    // the app is served over https at its own name; on a bare http test server
+    // a secure cookie would simply never come back
+    secure: String(process.env.BASE_URL || '').indexOf('https') === 0
+  });
+
+  const base = (process.env.BASE_URL || '').replace(/\/+$/, '') ||
+               (req.protocol + '://' + req.get('host'));
+  res.redirect(installUrl(domain, base + '/auth/shopify/callback', state));
+});
+
+app.get('/auth/shopify/callback', async (req, res) => {
+  const say = (title, body) =>
+    res.send('<!doctype html><meta charset="utf-8">' +
+      '<title>' + title + '</title>' +
+      '<body style="font:15px/1.6 system-ui;margin:60px auto;max-width:560px;color:#18212A">' +
+      '<h2 style="font-size:19px">' + title + '</h2><p>' + body + '</p>' +
+      '<p><a href="/shopify">Back to Shopify</a></p>');
+
+  try {
+    const keys = appKeys();
+    if (!keys.ready) return say('Not set up', 'This server has no Shopify app keys.');
+
+    let held = null;
+    try { held = JSON.parse(req.cookies[SHOP_STATE] || 'null'); } catch (e) { held = null; }
+    res.clearCookie(SHOP_STATE);
+
+    if (!held || !held.state || held.state !== req.query.state) {
+      return say('That did not match',
+        'The connection could not be matched to one started here. Press Connect again.');
+    }
+    if (!callbackIsReal(req.query, keys.secret)) {
+      return say('That did not match', 'Shopify’s signature did not check out.');
+    }
+
+    // the shop Shopify names, checked against the one we were sent to
+    const domain = cleanDomain(req.query.shop);
+    if (domain !== held.domain) {
+      return say('That did not match', 'Shopify came back about a different shop.');
+    }
+
+    const got = await exchangeCode(domain, req.query.code);
+
+    const saved = await saveShop(held.realmId, {
+      domain, token: got.token, label: domain.replace(/\.myshopify\.com$/, '')
+    });
+
+    // and start the live updates while we are here
+    let wired = null;
+    try {
+      const full = await getShop(held.realmId, saved.id);
+      full.hook_key = await shopHookKey(held.realmId, saved.id);
+      const base = (process.env.BASE_URL || '').replace(/\/+$/, '') ||
+                   (req.protocol + '://' + req.get('host'));
+      wired = await wireHooks(held.realmId, full, base);
+    } catch (e) {
+      wired = { failed: [e.message] };
+    }
+
+    const bad = (wired && wired.failed && wired.failed.length) ? wired.failed.join('; ') : '';
+    return say('Connected',
+      domain + ' is connected.' +
+      (bad ? ' Live updates could not be set up: ' + bad
+           : ' Live updates are on.'));
+  } catch (e) {
+    return say('That did not work', String(e.message));
+  }
+});
+
+// Whether this server can offer the button at all, and what the shop will be
+// asked to allow - so the page says it rather than the merchant finding out on
+// Shopify's screen.
+app.get('/api/shopify/app', async (req, res) => {
+  const realmId = await requireCompany(req, res);
+  if (!realmId) return;
+  const keys = appKeys();
+  res.setHeader('Cache-Control', 'no-store');
+  res.json({ ready: keys.ready, scopes: SCOPES.split(','), version: SHOPIFY_VERSION });
 });
 
 /* ==================== Shopify calling us ==================== */

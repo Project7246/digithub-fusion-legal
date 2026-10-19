@@ -886,3 +886,75 @@ export async function shopByHookKey(key) {
   const r = await pool.query('SELECT * FROM shopify_shops WHERE hook_key = $1', [String(key)]);
   return r.rows[0] || null;
 }
+
+/* ==================== connecting a shop properly ==================== */
+
+// The Dev Dashboard hands out a client id and a client secret, not a token.
+// That is the app; a token belongs to one shop and is what the shop gives back
+// when it is asked to let this app in. So the token is never typed by anybody -
+// the merchant presses a button, approves on Shopify's own screen, and Shopify
+// sends us the token itself.
+//
+// Which is also the safer shape: a token pasted into a form has been in a
+// clipboard, probably in a chat, and lives as long as nobody remembers to
+// revoke it. One that arrives this way has been nowhere.
+
+export const SCOPES = (process.env.SHOPIFY_SCOPES ||
+  'read_orders,read_products,read_inventory,read_customers')
+  .split(',').map(s => s.trim()).filter(Boolean).join(',');
+
+export function appKeys() {
+  const id = process.env.SHOPIFY_CLIENT_ID || '';
+  const secret = process.env.SHOPIFY_CLIENT_SECRET || '';
+  return { id, secret, ready: !!(id && secret) };
+}
+
+export function installUrl(domain, redirectUri, state) {
+  const { id } = appKeys();
+  const u = new URL('https://' + domain + '/admin/oauth/authorize');
+  u.searchParams.set('client_id', id);
+  u.searchParams.set('scope', SCOPES);
+  u.searchParams.set('redirect_uri', redirectUri);
+  u.searchParams.set('state', state);
+  return u.toString();
+}
+
+// Shopify signs what it sends back. Checking it is what stops somebody simply
+// calling our callback with a shop of their choosing.
+export function callbackIsReal(query, secret) {
+  const given = String(query.hmac || '');
+  if (!given) return false;
+
+  const text = Object.keys(query)
+    .filter(k => k !== 'hmac' && k !== 'signature')
+    .sort()
+    .map(k => encodeURIComponent(k).replace(/%20/g, '+') + '=' +
+              encodeURIComponent(query[k]).replace(/%20/g, '+'))
+    .join('&');
+
+  const mine = crypto.createHmac('sha256', secret).update(text).digest('hex');
+  const a = Buffer.from(mine, 'utf8');
+  const b = Buffer.from(given, 'utf8');
+  if (a.length !== b.length) return false;
+  return crypto.timingSafeEqual(a, b);
+}
+
+// The code Shopify handed back, turned into the token that lasts.
+export async function exchangeCode(domain, code) {
+  const { id, secret } = appKeys();
+  const r = await fetch('https://' + domain + '/admin/oauth/access_token', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+    body: JSON.stringify({ client_id: id, client_secret: secret, code })
+  });
+
+  const text = await r.text();
+  let body;
+  try { body = JSON.parse(text); } catch (e) { body = null; }
+
+  if (!r.ok || !body || !body.access_token) {
+    const why = (body && (body.error_description || body.error)) || text.slice(0, 200);
+    throw new Error('Shopify would not give a token: ' + why);
+  }
+  return { token: body.access_token, scopes: body.scope || '' };
+}

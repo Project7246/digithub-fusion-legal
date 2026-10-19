@@ -96,12 +96,10 @@
       <div class="step">
         <h2><i>01</i>The shops</h2>
         <div class="hint">
-          One row per shop, so a client with two storefronts keeps them apart. In
-          Shopify open <b>Settings &rarr; Apps and sales channels &rarr; Develop apps</b>,
-          make an app, give it <b>read_orders</b> (and <b>read_all_orders</b> if you
-          want anything older than sixty days), then install it and copy the
-          <b>Admin API access token</b>. The token is checked here before it is kept,
-          and it is stored encrypted.
+          One row per shop, so a client with two storefronts keeps them apart.
+          Type the shop&rsquo;s address and press Connect: Shopify will ask you to
+          allow it, and hands the key straight to Fusion. Nothing is copied or
+          pasted, and what is kept here is encrypted.
         </div>
 
         <div class="shops" id="shops"></div>
@@ -111,19 +109,36 @@
             <label for="dom">Shop address</label>
             <input id="dom" type="text" placeholder="your-shop.myshopify.com" required>
           </div>
-          <div>
-            <label for="nick">Name it</label>
-            <input id="nick" type="text" placeholder="reClans">
-          </div>
-          <div>
-            <label for="tok">Admin API access token</label>
-            <input id="tok" type="password" placeholder="shpat_&hellip;" required>
-          </div>
         </form>
         <div class="acts">
-          <button class="go" id="btnAdd" type="button">Check and save</button>
+          <button class="go" id="btnConnect" type="button">Connect with Shopify</button>
           <span class="said" id="addSaid"></span>
         </div>
+
+        <!-- The old way in, for a shop that hands out a token directly rather
+             than through an approval screen. Folded away because nobody should
+             be carrying a token about by hand when they do not have to. -->
+        <details style="margin-top:16px">
+          <summary style="cursor:pointer;font-size:12.5px;color:var(--muted)">
+            I have an Admin API access token instead</summary>
+          <div class="fields" style="margin-top:12px">
+            <div>
+              <label for="dom2">Shop address</label>
+              <input id="dom2" type="text" placeholder="your-shop.myshopify.com">
+            </div>
+            <div>
+              <label for="nick">Name it</label>
+              <input id="nick" type="text" placeholder="reClans">
+            </div>
+            <div>
+              <label for="tok">Admin API access token</label>
+              <input id="tok" type="password" placeholder="shpat_&hellip;">
+            </div>
+          </div>
+          <div class="acts">
+            <button class="ghost" id="btnAdd" type="button">Check and save</button>
+          </div>
+        </details>
         <div class="hint" style="margin:12px 0 0">
           Saving a shop also asks Shopify to start telling us the moment an order is
           placed, paid, changed, cancelled or refunded, and when a product is added or
@@ -307,8 +322,19 @@
       .catch(function(){});
   }
 
+  // The way that needs nothing carried by hand: Shopify asks, Shopify answers.
+  $('btnConnect').addEventListener('click', function(){
+    var dom = $('dom').value.trim();
+    if(!dom){ say($('addSaid'),'bad','Type the shop address first.'); return; }
+    say($('addSaid'), '', 'Taking you to Shopify…');
+    location.href = '/auth/shopify?shop=' + encodeURIComponent(dom);
+  });
+  $('dom').addEventListener('keydown', function(e){
+    if(e.key === 'Enter'){ e.preventDefault(); $('btnConnect').click(); }
+  });
+
   $('btnAdd').addEventListener('click', function(){
-    var dom = $('dom').value.trim(), tok = $('tok').value.trim();
+    var dom = $('dom2').value.trim(), tok = $('tok').value.trim();
     if(!dom || !tok){ say($('addSaid'),'bad','Both the address and the token are needed.'); return; }
     $('btnAdd').disabled = true;
     say($('addSaid'), '', 'Asking Shopify…');
@@ -320,7 +346,7 @@
           'Connected to ' + (c.name || dom) + (c.currency ? ' (' + c.currency + ')' : '') +
           (bad ? ' · live updates: ' + w.failed.join('; ')
                : ' · live updates on (' + ((w.done||[]).length) + ')'));
-        $('dom').value = ''; $('tok').value = ''; $('nick').value = '';
+        $('dom2').value = ''; $('tok').value = ''; $('nick').value = '';
         return loadShops();
       })
       .catch(function(e){ say($('addSaid'),'bad', e.message); })
@@ -543,6 +569,17 @@
   window.APP.ready.then(function(s){
     setRange(30);
     loadShops();
+
+    fetch('/api/shopify/app', { cache:'no-store' })
+      .then(function(r){ return r.json(); })
+      .then(function(d){
+        if(d.ready) return;
+        $('btnConnect').disabled = true;
+        say($('addSaid'),'bad',
+          'Shopify is not set up on this server yet — SHOPIFY_CLIENT_ID and ' +
+          'SHOPIFY_CLIENT_SECRET have to be set in DigitalOcean first.');
+      })
+      .catch(function(){});
 
     // The item list is wanted twice: to match products against, and to say where
     // delivery charged to the buyer should land.
