@@ -394,6 +394,42 @@ query FusionOrders($q: String!, $cursor: String) {
   }
 }`;
 
+// Asking for what the variant tracks and what it cost needs read_inventory.
+// Shopify refuses the *whole* query when a field is out of scope, not just that
+// field - so a shop whose app was made without it would lose its orders along
+// with its costs. The rich question is asked once; if that is the answer, the
+// shop is remembered as a plain one and asked the plain question from then on.
+const plainOnly = new Set();
+const NL = String.fromCharCode(10);
+
+function withoutVariant(q) {
+  // the variant block is one line in both questions, so taking the line
+  // out is enough - and leaves nothing to get wrong in a regular
+  // expression spanning newlines
+  return q.split(NL).filter(l => l.indexOf('variant {') < 0).join(NL);
+}
+
+function outOfScope(msg) {
+  return /access denied|read_inventory|not approved to access|requires merchant approval/i
+    .test(String(msg || ''));
+}
+
+// Ask the rich question, and fall back to the plain one for this shop if the
+// app was never given the scope for it.
+async function askOrders(domain, token, query, vars) {
+  if (!plainOnly.has(domain)) {
+    try {
+      return await ask(domain, token, query, vars);
+    } catch (e) {
+      if (!outOfScope(e.message)) throw e;
+      plainOnly.add(domain);
+    }
+  }
+  return ask(domain, token, withoutVariant(query), vars);
+}
+
+export function shopIsPlain(domain) { return plainOnly.has(domain); }
+
 const money = v => {
   const n = Number(v);
   return isNaN(n) ? 0 : Math.round(n * 100) / 100;
@@ -430,7 +466,7 @@ export async function pullOrders(realmId, shop, { from, to, onPage }) {
   let cursor = null, pages = 0, saved = 0, seen = 0;
 
   while (true) {
-    const d = await ask(shop.domain, token, ORDERS_QUERY, { q, cursor });
+    const d = await askOrders(shop.domain, token, ORDERS_QUERY, { q, cursor });
     const page = (d && d.orders) || { nodes: [], pageInfo: {} };
     const rows = page.nodes || [];
     seen += rows.length;
@@ -695,7 +731,7 @@ query FusionOrder($id: ID!) {
 
 export async function fetchOne(shop, gid) {
   const token = decrypt(shop.token);
-  const d = await ask(shop.domain, token, ONE_ORDER, { id: gid });
+  const d = await askOrders(shop.domain, token, ONE_ORDER, { id: gid });
   return (d && d.order) || null;
 }
 
