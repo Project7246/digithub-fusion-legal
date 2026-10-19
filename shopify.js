@@ -21,7 +21,11 @@ import { encrypt, decrypt } from './secrets.js';
 // Shopify dates a version every quarter and supports each for a year. Pinned
 // rather than "latest" so a release cannot change what the app reads underneath
 // it; SHOPIFY_API_VERSION on the server moves it on.
-export const API_VERSION = process.env.SHOPIFY_API_VERSION || '2026-01';
+//
+// It matches the Webhooks API version shown when the app is made, on purpose:
+// the version we ask questions in and the version Shopify calls us back in
+// should be the same one, or a field can mean two things on the same day.
+export const API_VERSION = process.env.SHOPIFY_API_VERSION || '2026-10';
 
 export async function initShopify() {
   await pool.query(`
