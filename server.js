@@ -7649,6 +7649,19 @@ app.post('/api/shopify/build', async (req, res) => {
         continue;
       }
 
+      // It was written once already, under whatever number was in force then.
+      // Changing what goes before the number - adding a # - would otherwise make
+      // every one of those look unwritten and write a second invoice for it,
+      // which in real books is the worst thing on this page.
+      //
+      // Unless the number it was written under has since gone from QuickBooks:
+      // then it really was deleted, and building it again is the right answer.
+      if (r.state === 'done' && r.qb_doc_number &&
+          already.has(String(r.qb_doc_number).trim())) {
+        skipped.push({ name: r.name, why: 'already written as ' + r.qb_doc_number });
+        continue;
+      }
+
       // QuickBooks refuses a discount line while the discount box is switched
       // off, and says so in words about preferences that mean nothing here
       if (Number(inv.discount) > 0 && books.prefs && books.prefs.discount === false) {
