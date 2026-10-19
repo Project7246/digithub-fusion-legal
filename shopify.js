@@ -261,8 +261,17 @@ export async function tally(realmId) {
       WHERE realm_id = $1 AND state = 'waiting' AND sync_error IS NOT NULL
       GROUP BY sync_error ORDER BY COUNT(*) DESC LIMIT 1`, [realmId]);
 
+  // the whole of the queue, by the thing that is stopping each part of it
+  const stuck = await pool.query(
+    `SELECT COALESCE(held_why, sync_error, 'no reason recorded') AS why,
+            COUNT(*)::int AS n
+       FROM shopify_orders
+      WHERE realm_id = $1 AND state IN ('held','waiting')
+        AND (held_why IS NOT NULL OR sync_error IS NOT NULL)
+      GROUP BY 1 ORDER BY COUNT(*) DESC LIMIT 6`, [realmId]);
+
   const out = {
-    states: {}, kinds: {}, why: held.rows,
+    states: {}, kinds: {}, why: held.rows, stuck: stuck.rows,
     due: due.rows[0].n,
     nextTry: soon.rows[0].at || null,
     lastError: sore.rows[0] ? sore.rows[0].sync_error : null,
@@ -639,7 +648,7 @@ export async function listOrders(realmId, { from, to, shop, state, limit }) {
   const r = await pool.query(
     `SELECT o.*, s.label AS shop_label, s.domain AS shop_domain
        FROM shopify_orders o
-       JOIN shopify_shops s ON s.id = o.shop_id
+       LEFT JOIN shopify_shops s ON s.id = o.shop_id
       WHERE ${where.join(' AND ')}
       ORDER BY o.placed_at DESC NULLS LAST
       LIMIT $${args.length}`,
@@ -837,7 +846,7 @@ export async function dueOrders(limit) {
   const r = await pool.query(
     `SELECT o.*, s.label AS shop_label, s.domain AS shop_domain
        FROM shopify_orders o
-       JOIN shopify_shops s ON s.id = o.shop_id
+       LEFT JOIN shopify_shops s ON s.id = o.shop_id
       WHERE o.state = 'waiting'
         AND o.cancelled = FALSE
         AND (o.next_try IS NULL OR o.next_try <= NOW())
@@ -919,7 +928,7 @@ export async function heldList(realmId, limit) {
     `SELECT o.order_gid, o.name, o.placed_at, o.total, o.held_why, o.sync_error,
             o.tries, o.next_try, o.state, s.label AS shop_label
        FROM shopify_orders o
-       JOIN shopify_shops s ON s.id = o.shop_id
+       LEFT JOIN shopify_shops s ON s.id = o.shop_id
       WHERE o.realm_id = $1 AND o.state IN ('held','waiting')
         AND (o.held_why IS NOT NULL OR o.sync_error IS NOT NULL)
       ORDER BY o.placed_at DESC NULLS LAST

@@ -366,8 +366,17 @@
         var back = st.lastDid ? ('Last looked at ' + when +
           (parts.length ? ' · ' + parts.join(' · ') : '')) : '';
 
+        // the one line that answers "why is nothing moving" without anybody
+        // having to send a screenshot of it
+        var jam = (t.stuck || []).map(function(x){
+          return n0(x.n) + ' · ' + esc(x.why);
+        }).join('<br>');
+
         if (t.due) {
           words = back + ' · <b>' + n0(t.due) + '</b> ready to go.';
+        } else if (jam && !t.nextTry) {
+          stuck = true;
+          words = back + '<br><b>Nothing is moving. What is holding it:</b><br>' + jam;
         } else if (t.nextTry) {
           stuck = true;
           var at = new Date(t.nextTry);
@@ -375,6 +384,7 @@
             ' waiting, none of them due yet</b> — they are backing off after a ' +
             'failure and come round at ' +
             at.toLocaleTimeString([], { hour:'2-digit', minute:'2-digit' }) + '.' +
+            (jam ? '<br>' + jam : '') +
             (t.lastError ? '<br>Last failure: ' + esc(t.lastError) : '') +
             '<br>Press <b>Needs you → Try all of them again now</b> to go at once.';
         } else {
