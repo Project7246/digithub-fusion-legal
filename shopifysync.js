@@ -177,9 +177,13 @@ async function skuIndex(realmId, token) {
 // would ever see it happen. The same SKU is used on both sides, so the SKU is
 // the answer; anything it does not find is not in the books yet, and is made.
 //
-// A line with no SKU at all is the one case left - Shopify allows it - and
-// there the title is all there is to go on, so it is matched and made by name
-// and the log says so.
+// A product with no SKU at all does not go into the books.
+//
+// It could be matched on its name, and that was what it used to do. But a name
+// is not an identity: two products called the same thing become one item, one
+// product renamed becomes two, and nobody ever sees either happen. The cure
+// takes ten seconds - give it a SKU in Shopify - so the order waits and says
+// exactly that, by name, instead of guessing on real books.
 async function itemFor(books, line, s, ctx) {
   const sku = String(line.sku || '').toLowerCase().trim();
   const title = String(line.title || '').trim();
@@ -193,8 +197,14 @@ async function itemFor(books, line, s, ctx) {
     return { name: hand.qbItem };
   }
 
-  if (sku && books.skus.has(sku)) return { name: books.skus.get(sku) };
-  if (!sku && title && books.items[title.toLowerCase()]) return { name: title };
+  if (!sku) {
+    return {
+      missing: title || '(a line with no name)',
+      why: 'no SKU in Shopify'
+    };
+  }
+
+  if (books.skus.has(sku)) return { name: books.skus.get(sku) };
 
   const can = itemsPossible(s, books.accounts);
   if (!can.can) return { missing: line.sku || title, why: can.why };
@@ -210,7 +220,7 @@ async function itemFor(books, line, s, ctx) {
   }
 
   const name = title || line.sku;
-  if (!name) return { missing: '(a line with no name)', why: 'the line has neither a SKU nor a title' };
+  if (!name) return { missing: line.sku, why: 'the product has no name' };
 
   const made = await createItem(books.realmId, books.token, {
     name,
@@ -247,14 +257,19 @@ async function itemFor(books, line, s, ctx) {
       books.items[String(found.Name).toLowerCase()] = found.Id;
       if (sku && !found.Sku) {
         const put = await setItemSku(books.realmId, books.token, found, line.sku);
-        await note(books.realmId, put.ok ? 'item' : 'error', {
-          shopId: ctx.shopId, sku: line.sku, title: line.title, ok: put.ok,
-          note: put.ok
-            ? 'QuickBooks already had "' + found.Name + '" without a SKU - put ' +
-              line.sku + ' on it, so it matches by SKU from now on'
-            : 'QuickBooks already had "' + found.Name + '" but would not take the SKU: ' + put.error
-        });
         if (put.ok) books.skus.set(sku, found.Name);
+        if (sayOnce('sku:' + books.realmId + ':' + sku)) {
+          await note(books.realmId, put.ok ? 'item' : 'error', {
+            shopId: ctx.shopId, sku: line.sku, title: line.title, ok: put.ok,
+            note: put.ok
+              ? 'QuickBooks already had "' + found.Name + '" without a SKU - put ' +
+                line.sku + ' on it, so it matches by SKU from now on'
+              : 'QuickBooks already had "' + found.Name + '" but would not take the SKU: ' +
+                put.error
+          });
+        }
+      } else if (found.Sku) {
+        books.skus.set(String(found.Sku).toLowerCase(), found.Name);
       }
       return { name: found.Name };
     }
@@ -386,7 +401,9 @@ export async function writeOne(books, row, s) {
   }
 
   if (missing.length) {
-    const why = missing[0].why + ': ' + missing.map(m => m.what).slice(0, 5).join(', ');
+    const names = missing.map(m => m.what);
+    const why = missing[0].why + ': ' + names.slice(0, 5).join(', ') +
+      (names.length > 5 ? ' and ' + (names.length - 5) + ' more' : '');
     await setHeld(realmId, row.order_gid, why);
     await note(realmId, 'held', {
       shopId: row.shop_id, orderName: row.name, gid: row.order_gid, ok: false,
@@ -769,8 +786,8 @@ export function previewItem(books, line, s) {
   if (hand && hand.qbItem && books.items[hand.qbItem.toLowerCase()]) {
     return { how: 'matched by hand', item: hand.qbItem };
   }
-  if (sku && books.skus.has(sku)) return { how: 'SKU', item: books.skus.get(sku) };
-  if (!sku && title && books.items[title.toLowerCase()]) return { how: 'name (no SKU)', item: title };
+  if (!sku) return { how: '', item: null, why: 'no SKU in Shopify' };
+  if (books.skus.has(sku)) return { how: 'SKU', item: books.skus.get(sku) };
 
   const can = itemsPossible(s, books.accounts);
   if (!can.can) return { how: '', item: null, why: can.why };
@@ -788,6 +805,16 @@ export function previewItem(books, line, s) {
 // So it is worked out rather than asked for: whatever was chosen, else an item
 // the books already have under one of the names everybody uses, else a Service
 // item called Shipping, made once and used from then on.
+// What has already been said this time round, so the same sentence is not
+// written into the log on every single run.
+const said = new Set();
+function sayOnce(key) {
+  if (said.has(key)) return false;
+  if (said.size > 5000) said.clear();
+  said.add(key);
+  return true;
+}
+
 const SHIP_NAMES = [
   'Shipping', 'Delivery', 'Shipping Charges', 'Delivery Charges',
   'Shipping Fee', 'Delivery Fee', 'Freight'

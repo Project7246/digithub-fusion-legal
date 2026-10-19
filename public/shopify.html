@@ -51,6 +51,8 @@
   .acts{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
 
   .whose{font-weight:400;font-size:12px;color:var(--faint);margin-left:8px}
+  .nosku{margin-top:10px;padding:11px 13px;border-radius:8px;background:#FBEDEC;
+    border:1px solid #F0D6D3;color:#7A2C24;line-height:1.6}
   .skips{display:flex;gap:20px;align-items:center;flex-wrap:wrap;margin:0 0 14px}
   .skips label{display:flex;align-items:center;gap:7px;font-size:12.5px;cursor:pointer}
   .skipnote{font-size:11.5px;letter-spacing:.07em;text-transform:uppercase;
@@ -580,18 +582,27 @@
 
         var bits = [n0(products.length) + ' products · ' +
                     n0(products.length - make - stuck) + ' already in QuickBooks'];
-        if(make)  bits.push(n0(make) + ' will be made');
-        if(stuck) bits.push('<b style="color:var(--bad)">' + n0(stuck) +
-                            ' cannot be made: ' + esc(products.filter(function(p){
-                              return !p.item && !p.willMake; })[0].why || '') + '</b>');
+        if(make) bits.push(n0(make) + ' will be made');
 
         var line = bits.join(' · ');
+
+        // The one thing here that stops invoices, and the one thing somebody
+        // can fix in ten seconds. Named, so nobody has to go hunting.
         if(noSku.length){
-          line += '<br><b>' + n0(noSku.length) + ' with no SKU</b> — ' +
-            noSku.slice(0,4).map(function(p){ return esc(p.title); }).join(', ') +
-            (noSku.length > 4 ? ' and ' + (noSku.length - 4) + ' more' : '') +
-            '. These can only be matched on their name; giving them a SKU in ' +
-            'Shopify is what keeps them right.';
+          line += '<div class="nosku"><b>' + n0(noSku.length) + ' product' +
+            (noSku.length === 1 ? ' has' : 's have') + ' no SKU in Shopify</b> — ' +
+            noSku.map(function(p){ return esc(p.title); }).join(', ') +
+            '.<br>Any order carrying one of these is left out, because a name is ' +
+            'not an identity — two products called the same thing would become ' +
+            'one item in the books. Give each a SKU in Shopify, read the days ' +
+            'again, and they go straight through.</div>';
+        }
+
+        var other = products.filter(function(p){
+          return !p.item && !p.willMake && p.sku; });
+        if(other.length){
+          line += '<div class="nosku">' + n0(other.length) + ' cannot be made: ' +
+            esc(other[0].why || '') + '</div>';
         }
 
         $('prodLine').innerHTML = line;
@@ -645,7 +656,9 @@
       .then(function(){ $('btnBuild').disabled = false; });
   });
 
-  $('btnUpload').addEventListener('click', function(){ location.href = '/upload'; });
+  // the flag tells that page a list was just built for it, so it goes and gets
+  // it rather than using whatever this browser had from last time
+  $('btnUpload').addEventListener('click', function(){ location.href = '/upload?from=shopify'; });
 
   /* ---------- what the server knows ---------- */
 

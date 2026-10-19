@@ -7604,11 +7604,12 @@ app.post('/api/shopify/build', async (req, res) => {
       if (no) { skipped.push({ name: r.name, why: no.why }); continue; }
 
       const lines = [], missing = [];
+      let whyMissing = '';
       for (const L of (r.lines || [])) {
         if (!L.qty) continue;
         const got = await itemFor(books, L, s, { shopId: r.shop_id });
         if (got.skip) continue;
-        if (got.missing) { missing.push(got.missing); continue; }
+        if (got.missing) { missing.push(got.missing); whyMissing = got.why || whyMissing; continue; }
         lines.push({
           item: got.name, desc: s.keepTitles === false ? '' : (L.title || ''),
           qty: L.qty, rate: L.rate, amt: L.amt
@@ -7617,7 +7618,9 @@ app.post('/api/shopify/build', async (req, res) => {
 
       if (missing.length) {
         missing.forEach(m => unmatched.set(String(m).toLowerCase(), m));
-        skipped.push({ name: r.name, why: 'product not in QuickBooks and could not be made' });
+        // the real reason, not a general one: "no SKU in Shopify" is a thing
+        // somebody can go and fix in ten seconds, and should be told
+        skipped.push({ name: r.name, why: whyMissing || 'product not in QuickBooks' });
         continue;
       }
 
@@ -7651,7 +7654,7 @@ app.post('/api/shopify/build', async (req, res) => {
     }
 
     made = books.made;
-    if (invoices.length) handovers.set(req.desk, { invoices, at: Date.now() });
+    if (invoices.length) await keepHandover(realmId, req.desk, { invoices, at: Date.now() });
 
     res.json({
       ready: invoices.length,
@@ -9627,7 +9630,39 @@ app.post('/api/void/check-clear', async (req, res) => {
 // ==================== Upload ====================
 // Convert hands the list over here instead of squeezing it through the
 // browser, so a run of any size makes it across.
+// It lived only in this process, which was fine until the day a deploy landed
+// between pressing "Make the invoices" and opening this page - and then the
+// list was simply gone, the page quietly fell back to whatever the browser
+// still had from the run before, and four old invoices were sent instead of
+// fourteen new ones. A list built for real books must survive a restart.
 const handovers = new Map();      // desk -> { invoices, at }
+
+const HANDOVER_KEY = desk => 'handover:' + desk;
+
+async function keepHandover(realmId, desk, held) {
+  handovers.set(desk, held);
+  try {
+    // a list of any size crosses in one go, but there is a point past which
+    // keeping it is the database's problem rather than a convenience
+    if (held.invoices.length <= 5000) {
+      await setSetting(realmId, HANDOVER_KEY(desk), held);
+    }
+  } catch (e) { /* the one in memory still works for this process */ }
+}
+
+async function takeHandover(realmId, desk) {
+  const live = handovers.get(desk);
+  const kept = await getSetting(realmId, HANDOVER_KEY(desk), null).catch(() => null);
+
+  // whichever was put there last is the one somebody meant
+  if (live && kept) return (Number(live.at) >= Number(kept.at)) ? live : kept;
+  return live || kept || null;
+}
+
+async function dropHandover(realmId, desk) {
+  handovers.delete(desk);
+  try { await setSetting(realmId, HANDOVER_KEY(desk), null); } catch (e) {}
+}
 
 app.post('/api/upload/handover', async (req, res) => {
   const realmId = await requireCompany(req, res);
@@ -9638,7 +9673,7 @@ app.post('/api/upload/handover', async (req, res) => {
     return res.status(400).json({ error: 'No invoices were sent' });
   }
 
-  handovers.set(req.desk, { invoices: list, at: Date.now() });
+  await keepHandover(realmId, req.desk, { invoices: list, at: Date.now() });
 
   // anything left lying about for a day is not coming back for it
   const cutoff = Date.now() - 24 * 3600 * 1000;
@@ -9651,12 +9686,12 @@ app.get('/api/upload/handover', async (req, res) => {
   const realmId = await requireCompany(req, res);
   if (!realmId) return;
 
-  const held = handovers.get(req.desk);
+  const held = await takeHandover(realmId, req.desk);
   if (!held) return res.json({ invoices: [] });
 
-    // the page can be reloaded, or the server can restart mid-handover, so the
+  // the page can be reloaded, or the server can restart mid-handover, so the
   // list stays put until an upload has actually been started with it
-  if (req.query.drop === '1') handovers.delete(req.desk);
+  if (req.query.drop === '1') await dropHandover(realmId, req.desk);
   res.setHeader('Cache-Control', 'no-store');
   res.json({ invoices: held.invoices, at: held.at });
 });
@@ -9673,6 +9708,7 @@ app.post('/api/upload/start', async (req, res) => {
 
   try {
    const id = startJob(req.desk, { invoices, delay, negativeItems, batchSize });
+    dropHandover(realmId, req.desk).catch(() => {});
     res.json({ ok: true, jobId: id });
   } catch (e) {
     res.status(409).json({ error: e.message });

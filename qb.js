@@ -479,24 +479,35 @@ export async function findInvoiceByNumber(realmId, token, docNumber) {
   return arr.length ? arr[0] : null;
 }
 
-// Put a SKU on an item that has none. QuickBooks updates are whole-object and
-// need the SyncToken, so the item is read back first - sparse update keeps us
-// from blanking the fields we did not send.
+// Put a SKU on an item that has none.
+//
+// Not a sparse update. QuickBooks accepts a sparse Item update carrying only a
+// SKU and then does nothing with it - the field never lands, nothing complains,
+// and the next run finds the item unchanged and tries again, for ever. So the
+// whole item is read back and written whole, with the SKU added.
 export async function setItemSku(realmId, token, item, sku) {
+  const q = await qbQuery(realmId, token,
+    "SELECT * FROM Item WHERE Id = '" + String(item.Id).replace(/'/g, "''") + "'");
+  const full = (q.Item || [])[0];
+  if (!full) return { ok: false, error: 'that item is no longer in QuickBooks' };
+  if (full.Sku) return { ok: true, already: true };
+
+  const body = Object.assign({}, full, { Sku: String(sku).slice(0, 100) });
+  delete body.MetaData;
+
   const res = await qbFetch(
     `${API}/v3/company/${realmId}/item?minorversion=70`,
     token,
-    {
-      method: 'POST',
-      body: JSON.stringify({
-        Id: item.Id,
-        SyncToken: item.SyncToken,
-        sparse: true,
-        Sku: String(sku).slice(0, 100)
-      })
-    }
+    { method: 'POST', body: JSON.stringify(body) }
   );
-  if (res.ok) return { ok: true };
+
+  if (res.ok) {
+    const back = await res.json().catch(() => null);
+    // believed only if QuickBooks hands it back on the item
+    if (back && back.Item && back.Item.Sku) return { ok: true };
+    return { ok: false, error: 'QuickBooks took the update but did not keep the SKU' };
+  }
+
   const text = await res.text();
   let msg = text.slice(0, 300);
   try {
