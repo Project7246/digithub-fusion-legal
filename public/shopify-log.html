@@ -145,6 +145,8 @@
           <button data-tab="price">Price and cost <i id="cPrice"></i></button>
           <button data-tab="changes">Paid, refunded, cancelled <i id="cChg"></i></button>
           <button data-tab="setup">How it runs</button>
+          <span style="flex:1"></span>
+          <button class="ghost" id="btnCsv" style="margin:4px 0">Download this report</button>
         </div>
 
         <!-- ============ needs you ============ -->
@@ -615,6 +617,53 @@
       .then(function(){ $('btnSave').disabled = false; });
   });
 
+  /* ---------- a report to keep ---------- */
+  // The tab redraws itself every half minute, which is right for watching and
+  // wrong for reading. This takes what is on screen out as a file, so it can be
+  // read at leisure, kept, or sent to somebody.
+  function csvCell(v){
+    var t = String(v == null ? '' : v);
+    return /[",
+]/.test(t) ? '"' + t.replace(/"/g, '""') + '"' : t;
+  }
+
+  $('btnCsv').addEventListener('click', function(){
+    var kinds = tab === 'changes' ? ['paid','refund','cancelled','edited']
+              : (tab === 'held' || tab === 'setup') ? null : [tab];
+
+    var job = kinds
+      ? Promise.all(kinds.map(function(k){
+          return get('/api/shopify/events?kind=' + k + '&limit=1000')
+            .then(function(d){ return d.events || []; });
+        })).then(function(sets){
+          var rows = [].concat.apply([], sets);
+          rows.sort(function(a,b){ return new Date(b.at) - new Date(a.at); });
+          return [['When','Order','SKU','Product','What happened','Went in']]
+            .concat(rows.map(function(e){
+              return [new Date(e.at).toLocaleString(), e.order_name || '', e.sku || '',
+                      e.title || '', e.note || '', e.ok === false ? 'no' : 'yes'];
+            }));
+        })
+      : get('/api/shopify/held?limit=2000').then(function(d){
+          return [['Order','Placed','Shop','Total','What it is waiting on','Tries']]
+            .concat((d.held || []).map(function(r){
+              return [r.name, String(r.placedAt || '').slice(0,10), r.shop || '',
+                      r.total, r.why || '', r.tries || 0];
+            }));
+        });
+
+    job.then(function(rows){
+      var csv = rows.map(function(r){ return r.map(csvCell).join(','); })
+                    .join(String.fromCharCode(13) + String.fromCharCode(10));
+      var a = document.createElement('a');
+      a.href = URL.createObjectURL(new Blob(['﻿' + csv], { type:'text/csv' }));
+      a.download = 'shopify-' + tab + '-' +
+        new Date().toISOString().slice(0,10) + '.csv';
+      a.click();
+      setTimeout(function(){ URL.revokeObjectURL(a.href); }, 4000);
+    }).catch(function(e){ alert(e.message); });
+  });
+
   /* ---------- the live log ---------- */
   //
   // Colour by what the line means, newest at the bottom, and it only scrolls
@@ -683,11 +732,9 @@
     // on a desk should be telling the truth when somebody looks up at it
     // the log is the thing somebody watches, so it moves faster than the rest
     setInterval(loadLog, 10000);
-    setInterval(function(){
-      loadTally();
-      if(tab === 'held') loadHeld();
-      else if(tab !== 'setup') loadEvents(tab);
-    }, 30000);
+    // Only the totals and the log keep moving. A table somebody is reading
+    // should stay where it is - the log above already says it is alive.
+    setInterval(loadTally, 30000);
   });
 })();
 </script>

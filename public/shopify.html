@@ -253,7 +253,7 @@
           whatever failed are the same ones the rest of the app uses. An order whose
           number is already an invoice in QuickBooks is left alone.
           <br><br>
-          These three are remembered the moment you change them, here and for the
+          These are remembered the moment you change them, here and for the
           automatic writing both &mdash; set them once.
           <b>QuickBooks reads 9323517 and #9323517 as two different invoices</b>, so
           whatever your books already use, put it here and leave it.
@@ -268,6 +268,10 @@
           <div>
             <label for="prefix">Put before the number</label>
             <input id="prefix" type="text" placeholder="# &mdash; or leave empty">
+          </div>
+          <div>
+            <label for="terms">Terms</label>
+            <input id="terms" type="text" placeholder="Net 30">
           </div>
           <div>
             <label for="shipItem">Delivery charged to the buyer goes to</label>
@@ -464,6 +468,7 @@
         $('skUnf').checked = !!SET.onlyFulfilled;
         if (SET.customer) $('cust').value = SET.customer;
         $('prefix').value = SET.prefix || '';
+        $('terms').value = SET.terms || 'Net 30';
         if (qbItems.length) $('shipItem').value = SET.shippingItem || '';
       })
       .catch(function(){});
@@ -474,12 +479,14 @@
     SET.onlyFulfilled = $('skUnf').checked;
     SET.customer = $('cust').value.trim();
     SET.prefix = $('prefix').value.trim();
+    SET.terms = $('terms').value.trim();
     SET.shippingItem = $('shipItem').value;
     return ask('/api/shopify/settings', {
       skipRefunded: SET.skipRefunded,
       onlyFulfilled: SET.onlyFulfilled,
       customer: SET.customer,
       prefix: SET.prefix,
+      terms: SET.terms,
       shippingItem: SET.shippingItem
     }).then(function(){
       say($('buildSaid'), 'good', 'Saved.');
@@ -489,7 +496,7 @@
     }).catch(function(){});
   }
 
-  ['skVoid','skUnf','cust','prefix','shipItem'].forEach(function(id){
+  ['skVoid','skUnf','cust','prefix','terms','shipItem'].forEach(function(id){
     $(id).addEventListener('change', saveSkips);
   });
 

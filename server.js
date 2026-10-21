@@ -7587,7 +7587,7 @@ app.post('/api/shopify/build', async (req, res) => {
       match: () => 'placeholder',          // the lines are worked out below
       customer: req.body.customer || s.customer,
       prefix: req.body.prefix !== undefined ? req.body.prefix : s.prefix,
-      terms: s.terms,
+      terms: s.terms || 'Net 30',
       keepTitles: s.keepTitles
     };
     // whatever the page asked for, else whatever the company has set

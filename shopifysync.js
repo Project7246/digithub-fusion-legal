@@ -195,100 +195,36 @@ async function skuIndex(realmId, token) {
 async function itemFor(books, line, s, ctx) {
   const sku = String(line.sku || '').toLowerCase().trim();
   const title = String(line.title || '').trim();
-  const key = sku || title.toLowerCase();
 
-  // somebody overruled it by hand on the orders page - the escape hatch for an
-  // odd product, and it is only ever consulted, never required
-  const hand = books.saved[key];
+  // Somebody said by hand, on the orders page, that this one is something else.
+  // Only ever consulted, never required.
+  const hand = books.saved[sku || title.toLowerCase()];
   if (hand && hand.skip) return { skip: true };
   if (hand && hand.qbItem && books.items[hand.qbItem.toLowerCase()]) {
     return { name: hand.qbItem };
   }
 
   if (!sku) {
-    return {
-      missing: title || '(a line with no name)',
-      why: 'no SKU in Shopify'
-    };
+    return { missing: title || '(a line with no name)', why: 'no SKU in Shopify' };
   }
 
+  // The SKU, and nothing else, decides. Whatever QuickBooks calls that item is
+  // what goes on the invoice: the two sides are allowed to call a thing by
+  // different names, and the SKU is what says they are the same thing.
   if (books.skus.has(sku)) return { name: books.skus.get(sku) };
 
-  const can = itemsPossible(s, books.accounts);
-  if (!can.can) return { missing: line.sku || title, why: can.why };
-
-  // Shopify's own answer to what this is. Stock-tracked there, stock-tracked
-  // here; and if the books have nowhere to keep stock, it is made as the next
-  // best thing rather than refused, with that said in the log.
-  let kind = line.tracked ? 'Inventory' : 'NonInventory';
-  let downgraded = '';
-  if (kind === 'Inventory' && !can.inventory) {
-    kind = 'NonInventory';
-    downgraded = ' (as non-inventory: QuickBooks has no inventory asset or cost-of-sales account)';
-  }
-
-  const name = title || line.sku;
-  if (!name) return { missing: line.sku, why: 'the product has no name' };
-
-  const made = await createItem(books.realmId, books.token, {
-    name,
-    sku: line.sku || '',
-    type: kind,
-    price: line.rate,
-    cost: line.cost || 0,
-    incomeAccount: books.accounts.income,
-    cogsAccount: books.accounts.cogs,
-    assetAccount: books.accounts.asset
-  });
-
-  if (made.ok) {
-    books.items[String(made.name).toLowerCase()] = made.id;
-    if (made.sku) books.skus.set(String(made.sku).toLowerCase(), made.name);
-    books.made++;
-    await note(books.realmId, 'item', {
-      shopId: ctx.shopId, sku: line.sku, title: line.title,
-      note: 'made "' + made.name + '" in QuickBooks as ' + kind + downgraded,
-      detail: { id: made.id, price: line.rate, cost: line.cost || 0, tracked: !!line.tracked }
-    });
-    return { name: made.name };
-  }
-
-  // Already there under that name - the SKU missed but the name did not, which
-  // means the item in the books has no SKU on it or a different one. Found,
-  // and the SKU put on it so it is found by SKU from now on.
-  if (/duplicate name/i.test(made.error || '')) {
-    const safe = String(name).replace(/'/g, "''");
-    const q = await qbQuery(books.realmId, books.token,
-      `SELECT Id, Name, Sku, SyncToken FROM Item WHERE Name = '${safe}' MAXRESULTS 1`);
-    const found = (q.Item || [])[0];
-    if (found) {
-      books.items[String(found.Name).toLowerCase()] = found.Id;
-      if (sku && !found.Sku) {
-        const put = await setItemSku(books.realmId, books.token, found, line.sku);
-        if (put.ok) books.skus.set(sku, found.Name);
-        if (sayOnce('sku:' + books.realmId + ':' + sku)) {
-          await note(books.realmId, put.ok ? 'item' : 'error', {
-            shopId: ctx.shopId, sku: line.sku, title: line.title, ok: put.ok,
-            note: put.ok
-              ? 'QuickBooks already had "' + found.Name + '" without a SKU - put ' +
-                line.sku + ' on it, so it matches by SKU from now on'
-              : 'QuickBooks already had "' + found.Name + '" but would not take the SKU: ' +
-                put.error
-          });
-        }
-      } else if (found.Sku) {
-        books.skus.set(String(found.Sku).toLowerCase(), found.Name);
-      }
-      return { name: found.Name };
-    }
-  }
-
-  await note(books.realmId, 'error', {
-    shopId: ctx.shopId, ok: false, sku: line.sku, title: line.title,
-    note: 'QuickBooks would not make the item: ' + made.error,
-    detail: { status: made.status, tid: made.tid, kind }
-  });
-  return { missing: line.sku || title, why: 'QuickBooks refused to make the item' };
+  // And where the SKU is on nothing in QuickBooks, we stop.
+  //
+  // This used to make the item instead. That is how a shop which had renamed a
+  // product ended up with two items in the books carrying one SKU: the old one
+  // under its old name, and a new one made under the Shopify name - and then
+  // the sales went to the new one. Nothing is worth doing that to a real chart
+  // of accounts. The order waits, says which SKU it could not find, and goes
+  // through the moment that SKU is on the right item in QuickBooks.
+  return {
+    missing: line.sku + (title ? ' (' + title + ')' : ''),
+    why: 'SKU not on any item in QuickBooks'
+  };
 }
 
 export { itemFor };
@@ -856,21 +792,15 @@ export { releaseHeld };
 export function previewItem(books, line, s) {
   const sku = String(line.sku || '').toLowerCase().trim();
   const title = String(line.title || '').trim();
-  const key = sku || title.toLowerCase();
 
-  const hand = books.saved[key];
+  const hand = books.saved[sku || title.toLowerCase()];
   if (hand && hand.skip) return { how: 'set aside', item: null, skip: true };
   if (hand && hand.qbItem && books.items[hand.qbItem.toLowerCase()]) {
     return { how: 'matched by hand', item: hand.qbItem };
   }
   if (!sku) return { how: '', item: null, why: 'no SKU in Shopify' };
   if (books.skus.has(sku)) return { how: 'SKU', item: books.skus.get(sku) };
-
-  const can = itemsPossible(s, books.accounts);
-  if (!can.can) return { how: '', item: null, why: can.why };
-
-  const kind = (line.tracked && can.inventory) ? 'Inventory' : 'NonInventory';
-  return { how: 'will be made as ' + kind, item: null, willMake: true, kind };
+  return { how: '', item: null, why: 'SKU not on any item in QuickBooks' };
 }
 
 // Delivery charged to the buyer is money taken, so it belongs on the invoice.
@@ -904,38 +834,7 @@ export async function shippingItemFor(books, s, ctx) {
   for (const name of SHIP_NAMES) {
     if (books.items[name.toLowerCase()]) return name;
   }
-
-  if (!books.accounts.income) return null;
-
-  const made = await createItem(books.realmId, books.token, {
-    name: 'Shipping',
-    type: 'Service',
-    incomeAccount: books.accounts.income
-  });
-
-  if (made.ok) {
-    books.items[String(made.name).toLowerCase()] = made.id;
-    await note(books.realmId, 'item', {
-      shopId: ctx && ctx.shopId, title: 'Shipping',
-      note: 'made a Service item "' + made.name + '" so delivery charged to the ' +
-            'buyer goes on the invoice'
-    });
-    return made.name;
-  }
-
-  if (/duplicate name/i.test(made.error || '')) {
-    const q = await qbQuery(books.realmId, books.token,
-      "SELECT Id, Name FROM Item WHERE Name = 'Shipping' MAXRESULTS 1");
-    const found = (q.Item || [])[0];
-    if (found) {
-      books.items[String(found.Name).toLowerCase()] = found.Id;
-      return found.Name;
-    }
-  }
-
-  await note(books.realmId, 'error', {
-    shopId: ctx && ctx.shopId, ok: false, title: 'Shipping',
-    note: 'could not make an item for delivery charges: ' + made.error
-  });
+  // Nothing is invented in these books any more, delivery included. If there is
+  // no item for it, the order waits and the item is chosen on the orders page.
   return null;
 }
