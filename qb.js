@@ -616,3 +616,85 @@ export async function retireItem(realmId, token, id) {
   const text = await res.text();
   return { ok: false, error: text.slice(0, 300) };
 }
+
+// Why mergeItem above cannot be the answer, and what is.
+//
+// QuickBooks does merge by rename - but only for the entities it lists for it:
+// accounts, classes, customers, departments, employees, locations, terms and
+// vendors. Products and services are **not** on that list. Renaming an item to
+// another item's name is therefore not a merge; it is a duplicate name, and
+// QuickBooks answers exactly that:
+//
+//   "Duplicate Name Exists Error | The name supplied already exists."
+//
+// There is no call that moves an item's history onto another item. Only the
+// QuickBooks website can do that, by hand, one product at a time.
+//
+// So this does the thing that can be done, and is what was wanted anyway once
+// the invoices are deleted: the duplicate carries nothing any more, so it is
+// taken out of the way and the old product is left holding the SKU alone.
+//
+//   1. if the old product has no SKU, the SKU is moved onto it first - a SKU on
+//      no item is how this whole mess started
+//   2. the duplicate's SKU is cleared, so nothing can ever match it again
+//   3. its name is parked, so the name is free for the old product
+//   4. it is made inactive, so it is off every list and every dropdown
+//
+// Nothing of the old product is touched beyond possibly gaining the SKU.
+export async function foldItem(realmId, token, fromId, intoName) {
+  const dupQ = await qbQuery(realmId, token,
+    "SELECT * FROM Item WHERE Id = '" + String(fromId).replace(/'/g, "''") + "'");
+  const dup = (dupQ.Item || [])[0];
+  if (!dup) return { ok: true, gone: true };
+
+  const sku = String(dup.Sku || '').trim();
+  const steps = [];
+
+  // 1. the old product, and the SKU it may be missing
+  let keep = null;
+  if (intoName) {
+    const kQ = await qbQuery(realmId, token,
+      "SELECT * FROM Item WHERE Name = '" + String(intoName).replace(/'/g, "''") + "'");
+    keep = (kQ.Item || []).find(i => String(i.Id) !== String(dup.Id)) || null;
+    if (!keep) return { ok: false, error: 'no product called "' + intoName + '" in QuickBooks' };
+
+    if (sku && !String(keep.Sku || '').trim()) {
+      const moved = await setItemSku(realmId, token, keep, sku);
+      if (!moved.ok) return { ok: false, error: 'could not put the SKU on ' + intoName + ': ' + moved.error };
+      steps.push('SKU ' + sku + ' put on ' + intoName);
+    }
+  }
+
+  // 2-4. park the duplicate, in one write
+  const parked = (String(dup.Name || 'item') + ' (duplicate ' + dup.Id + ')').slice(0, 100);
+  const body = Object.assign({}, dup, { Name: parked, Active: false });
+  delete body.MetaData;
+  delete body.Sku;              // a full update clears what it does not carry
+
+  const res = await qbFetch(
+    `${API}/v3/company/${realmId}/item?minorversion=70`,
+    token,
+    { method: 'POST', body: JSON.stringify(body) }
+  );
+
+  if (!res.ok) {
+    const text = await res.text();
+    let msg = text.slice(0, 300);
+    try {
+      const f = JSON.parse(text).Fault;
+      if (f && f.Error && f.Error.length) msg = `${f.Error[0].Message} | ${f.Error[0].Detail || ''}`;
+    } catch (e) { /* keep raw */ }
+    return { ok: false, error: msg, steps };
+  }
+
+  const back = await res.json().catch(() => null);
+  const left = back && back.Item ? String(back.Item.Sku || '').trim() : '';
+  if (left) {
+    // it kept the SKU after all - say so, rather than leaving two items on one
+    // SKU and calling it done
+    return { ok: false, error: 'the duplicate was retired but QuickBooks kept its SKU (' + left + ')', steps };
+  }
+
+  steps.push('retired as "' + parked + '"');
+  return { ok: true, steps, keptBy: intoName || '' };
+}

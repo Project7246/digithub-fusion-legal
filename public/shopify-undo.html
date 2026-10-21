@@ -92,8 +92,8 @@
         it, with QuickBooks&rsquo; own id beside it. Anything you made by hand in
         QuickBooks is not on these lists and cannot be touched from this page.
         <br><br>
-        Do the invoices first and the products second. An item QuickBooks still has
-        transactions against will not merge.
+        Do the invoices first and the products second: a duplicate with invoices still
+        on it cannot be cleared away.
       </div>
 
       <div class="pick">
@@ -126,21 +126,25 @@
       <div class="step">
         <h2><i>02</i>Products Fusion made <span id="nItem"></span></h2>
         <div class="hint">
-          Each one goes into the product it should have been. QuickBooks has no merge
-          button in its API &mdash; giving an item the other one&rsquo;s name <i>is</i>
-          the merge, and is what QuickBooks does behind its own button: the two become
-          one and the history goes with it.
+          Each one is folded back into the product it should have been. <b>QuickBooks
+          cannot merge products and services through its API</b> &mdash; it merges
+          customers, vendors and accounts by rename, but an item renamed onto another
+          item is only a duplicate name, which is the error this page used to come back
+          with. So it does the thing that can be done, and with the invoices already
+          deleted the result is the same:
           <br><br>
-          Where the SKU already sits on another item, that one is picked for you. Check
-          every row before you press.
+          &bull; the old product is given the SKU, if it does not already have it<br>
+          &bull; the duplicate&rsquo;s SKU is cleared, so nothing can match it again<br>
+          &bull; its name is parked and it is made <b>inactive</b> &mdash; off every list,
+          every dropdown and every search
+          <br><br>
+          The old product keeps its own name, description, price and account. Nothing of
+          it changes except gaining the SKU. Where the SKU already sits on another item,
+          that one is picked for you &mdash; check every row before you press.
         </div>
         <div id="itemBox"><div class="none">Press &ldquo;Show me&rdquo;.</div></div>
-        <label class="hint" style="display:flex;gap:8px;align-items:center;margin-top:12px">
-          <input type="checkbox" id="retire" checked>
-          If QuickBooks refuses to merge one, make it inactive instead
-        </label>
         <div class="acts">
-          <button class="go red" id="btnMerge" type="button" disabled>Merge the ticked products</button>
+          <button class="go red" id="btnMerge" type="button" disabled>Fold the ticked products back</button>
           <span class="said" id="mergeSaid"></span>
         </div>
         <div class="bar" id="mergeBar"><i></i></div>
@@ -278,7 +282,7 @@
           '<td class="mono">' + esc(when(v.at)) + '</td>' +
           '<td><select data-into="' + i + '">' + options(v.suggest) + '</select>' +
           (v.suggest ? '' : '<br><small style="color:var(--bad)">nothing with this SKU ' +
-            'to merge into — choose one</small>') + '</td></tr>';
+            'to fold it into — choose one</small>') + '</td></tr>';
       }).join('') + '</table></div>';
 
     $('allItem').addEventListener('change', function(){
@@ -353,13 +357,17 @@
         'Choose one, or untick them.');
       return;
     }
-    if(!confirm('Merge ' + want.length + ' products into the ones chosen? ' +
-                'In QuickBooks the two become one and cannot be separated again.')) return;
+    if(!confirm('Fold ' + want.length + ' products back into the ones chosen?
+
+' +
+                'Each duplicate loses its SKU, its name is parked and it is made ' +
+                'inactive. The product it goes into keeps everything of its own and ' +
+                'gains the SKU if it had none.')) return;
 
     $('btnMerge').disabled = true;
     $('mergeLog').innerHTML = '';
     $('mergeBar').classList.add('on');
-    say($('mergeSaid'), '', 'Merging…');
+    say($('mergeSaid'), '', 'Folding them back…');
 
     var done = 0, failed = 0, i = 0;
     function round(){
@@ -371,7 +379,7 @@
         load();
         return;
       }
-      post('/api/shopify/undo/merge', { pairs: lot, retireIfRefused: $('retire').checked })
+      post('/api/shopify/undo/merge', { pairs: lot })
         .then(function(d){
           (d.done || []).forEach(function(x){
             done++; logTo($('mergeLog'), 'ok', (x.title || x.qbId) + '  ' + x.note);

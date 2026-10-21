@@ -55,7 +55,7 @@ import {
 import { initPush, publicKey, addSub, dropSub, hasSub, pushTo } from './push.js';
 import {
   getAccessToken, getCompanyInfo, loadItems, loadTerms,
-  getOrCreateCustomer, postInvoice, qbQuery, qbReport, listAccounts as qbAccountList, forgetToken, deleteInvoice, mergeItem, retireItem} from './qb.js';
+  getOrCreateCustomer, postInvoice, qbQuery, qbReport, listAccounts as qbAccountList, forgetToken, deleteInvoice, foldItem} from './qb.js';
 import {
   readItems, readItemSales, readValuation, readPurchases,
   buildRows as buildProductRows, summarise as summariseProducts,
@@ -8036,9 +8036,17 @@ app.post('/api/shopify/undo/invoices', async (req, res) => {
   }
 });
 
-// Merge each item this app made into the one it should have been. QuickBooks
-// has no merge call: giving an item the other one's name is the merge, and is
-// what QuickBooks itself does behind its own button.
+// Fold each item this app made back into the one it should have been.
+//
+// Not a merge, because QuickBooks has no merge for products and services - it
+// merges accounts, customers, vendors, classes and terms by rename, but an item
+// renamed onto another item is only a duplicate name, and that is the error the
+// first attempt at this came back with. See foldItem in qb.js.
+//
+// What happens instead: the old product is given the SKU if it has none, and the
+// duplicate has its SKU cleared, its name parked and is made inactive. With the
+// invoices already deleted the duplicate holds nothing, so this leaves the books
+// exactly where a merge would have left them.
 app.post('/api/shopify/undo/merge', async (req, res) => {
   const realmId = await requireCompany(req, res);
   if (!realmId) return;
@@ -8052,25 +8060,14 @@ app.post('/api/shopify/undo/merge', async (req, res) => {
 
     for (const p of want) {
       if (!p.into) { failed.push({ qbId: p.qbId, title: p.title,
-        error: 'nothing chosen to merge it into' }); continue; }
+        error: 'nothing chosen for it to go into' }); continue; }
 
-      const out = await mergeItem(realmId, token, p.qbId, p.into);
+      const out = await foldItem(realmId, token, p.qbId, p.into);
       if (out.ok) {
         done.push({ qbId: p.qbId, title: p.title,
-                    note: out.gone ? 'was already gone' : 'merged into ' + p.into });
+                    note: out.gone ? 'was already gone'
+                                   : (out.steps || []).join(', ') });
         continue;
-      }
-
-      // QuickBooks will not merge an item that stock has moved through. Putting
-      // it out of use is the next best thing: it stops turning up on invoices
-      // and in lists, and nothing it already carries is disturbed.
-      if (req.body.retireIfRefused) {
-        const off = await retireItem(realmId, token, p.qbId);
-        if (off.ok) {
-          done.push({ qbId: p.qbId, title: p.title,
-            note: 'could not be merged (' + out.error.slice(0, 80) + ') - made inactive instead' });
-          continue;
-        }
       }
       failed.push({ qbId: p.qbId, title: p.title, error: out.error });
     }
