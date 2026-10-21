@@ -132,12 +132,17 @@
     // the shop itself - where the orders and the products are born - and what
     // every other desk later works on comes out of it. So it stands beside the
     // five rather than inside one of them.
-    { key:'shopify', label:'Shopify', home:'/shopify', tile:'cart',
+    { key:'shopify', label:'Shopify', home:'/shopify-connect', tile:'shuffle',
       what:'The shop’s own orders and products, straight into the books.', qb:false,
       soon:[{ label:'Products', tile:'tag' }, { label:'Inventory', tile:'box' }],
       groups: [
       { group: null, items: [
-        { href:'/shopify', label:'Orders to QuickBooks', icon:'cart',
+        // The connector comes first and is where the section opens, because it is
+        // the agreement - what happens to an order, in sentences, with one button.
+        // The orders page below it is the same work done by hand, a date at a time.
+        { href:'/shopify-connect', label:'Connector', icon:'shuffle',
+          need:'shopify', tile:'shuffle' },
+        { href:'/shopify', label:'Orders by hand', icon:'cart',
           need:'shopify', tile:'cart', as:'Orders' },
         { href:'/shopify-log', label:'Reports', icon:'sheet',
           need:'shopify', tile:'sheet' },

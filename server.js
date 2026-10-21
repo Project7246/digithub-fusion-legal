@@ -55,7 +55,7 @@ import {
 import { initPush, publicKey, addSub, dropSub, hasSub, pushTo } from './push.js';
 import {
   getAccessToken, getCompanyInfo, loadItems, loadTerms,
-  getOrCreateCustomer, postInvoice, qbQuery, qbReport, listAccounts as qbAccountList, forgetToken, deleteInvoice, foldItem} from './qb.js';
+  getOrCreateCustomer, postInvoice, qbQuery, qbReport, listAccounts as qbAccountList, forgetToken, deleteInvoice, foldItem, salesPrefs} from './qb.js';
 import {
   readItems, readItemSales, readValuation, readPurchases,
   buildRows as buildProductRows, summarise as summariseProducts,
@@ -1336,7 +1336,7 @@ const RIGHT_GROUPS = [
             '/api/shopify/build', '/api/shopify/mark', '/api/shopify/unmark',
             '/api/shopify/settings', '/api/shopify/retry', '/api/shopify/wire',
             '/api/shopify/app', '/api/shopify/undo/invoices',
-            '/api/shopify/undo/merge'] },
+            '/api/shopify/undo/merge', '/api/shopify/sync'] },
 
   { key: 'settings', area: 'items', label: 'SKU mappings',
     what: 'Remembered SKU-to-item matches',
@@ -1384,7 +1384,8 @@ const PAGE_NEED = new Map(Object.entries({
   '/cprs.html': 'couriersync',
   '/shopify.html': 'shopify',
   '/shopify-log.html': 'shopify',
-  '/shopify-undo.html': 'shopify'
+  '/shopify-undo.html': 'shopify',
+  '/shopify-connect.html': 'shopify'
 }));
 
 // route -> the job it belongs to, worked out once
@@ -8200,7 +8201,11 @@ app.get('/api/shopify/accounts', async (req, res) => {
       found: standingAccounts(all, s),
       income: all.filter(a => a.type === 'Income' || a.type === 'Other Income'),
       cogs:   all.filter(a => a.type === 'Cost of Goods Sold' || a.type === 'Expense'),
-      asset:  all.filter(a => a.type === 'Other Current Asset' || a.type === 'Fixed Asset')
+      asset:  all.filter(a => a.type === 'Other Current Asset' || a.type === 'Fixed Asset'),
+      // the terms these books actually have, so the connector screen offers them
+      // rather than letting somebody type one QuickBooks has never heard of
+      terms: await qbTermList(realmId, token),
+      prefs: await salesPrefs(realmId, token)
     });
   } catch (e) {
     res.status(400).json({ error: e.message });
@@ -8239,6 +8244,59 @@ app.get('/api/shopify/events', async (req, res) => {
 });
 
 // Everything stuck, and why - the one list somebody actually has to act on.
+// The terms in these books, by name. loadTerms returns a lookup for writing an
+// invoice; this is the list for showing somebody.
+async function qbTermList(realmId, token) {
+  try {
+    const q = await qbQuery(realmId, token, 'SELECT Id, Name FROM Term MAXRESULTS 200');
+    return (q.Term || []).map(t => ({ id: t.Id, name: t.Name }));
+  } catch (e) { return []; }
+}
+
+// "Sync Now" - the one button on the connector screen.
+//
+// Reading and writing are two jobs on the orders page, because that page is for
+// working through a date range by hand. Here they are one thing, which is what
+// the word means: read the days this workflow covers out of Shopify, put back
+// anything sitting out a doubling wait, and run a pass now rather than waiting
+// for the loop to come round.
+app.post('/api/shopify/sync', async (req, res) => {
+  const realmId = await requireCompany(req, res);
+  if (!realmId) return;
+  try {
+    const s = await shopifySettings(realmId);
+    const today = new Date().toISOString().slice(0, 10);
+    const from = String(req.body.from || s.startFrom || today).slice(0, 10);
+    const to = String(req.body.to || today).slice(0, 10);
+
+    const shops = (await listShops(realmId)).filter(x => x.active);
+    if (!shops.length) return res.status(400).json({ error: 'No shop is connected yet' });
+
+    const read = [];
+    for (const row of shops) {
+      const shop = row.token ? row : await getShop(realmId, row.id);
+      try {
+        const r = await pullOrders(realmId, shop, { from, to });
+        read.push({ shop: shop.label, seen: r.seen, saved: r.saved });
+      } catch (e) {
+        await pool.query('UPDATE shopify_shops SET last_error = $2 WHERE id = $1',
+          [shop.id, e.message]);
+        read.push({ shop: shop.label, error: e.message });
+      }
+    }
+
+    const freed = req.body.wake === false ? 0 : await wakeAll(realmId);
+    const did = await shopifySweep();
+    // a batch bigger than one pass goes back to the fast cadence rather than
+    // waiting ten minutes for the rest
+    if (freed > (did && did.done ? did.done : 0)) wakeSoon();
+
+    res.json({ from, to, read, freed, did, tally: await shopifyTally(realmId) });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 app.get('/api/shopify/held', async (req, res) => {
   const realmId = await requireCompany(req, res);
   if (!realmId) return;

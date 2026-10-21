@@ -1,0 +1,634 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Connector</title>
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="manifest" href="/manifest.json">
+<meta name="theme-color" content="#222F34">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@600;700;800&family=Roboto:wght@400;500&family=Roboto+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/app.css">
+<style>
+  /* One screen that says, in sentences, what happens to an order - and has the
+     one button that makes it happen now. The four steps the orders page spreads
+     out are the thing being *done*; this is the thing being *agreed*, and it
+     reads top to bottom like a paragraph somebody signed off. */
+
+  /* ---- the two ends ---- */
+  .ends{display:flex;align-items:stretch;gap:0;margin-bottom:18px;flex-wrap:wrap}
+  .end{flex:1 1 240px;background:var(--panel);border:1px solid var(--line);
+    border-radius:12px;padding:18px 20px;display:flex;gap:14px;align-items:center;
+    min-width:0}
+  .end .mk{width:40px;height:40px;border-radius:10px;display:grid;place-items:center;
+    flex:0 0 40px}
+  .end .mk svg{width:23px;height:23px;display:block}
+  .end h3{margin:0;font-size:13px;font-weight:600;letter-spacing:.01em}
+  .end .who{font-size:12px;color:var(--muted);margin-top:2px;overflow:hidden;
+    text-overflow:ellipsis;white-space:nowrap}
+  .end .st{font-size:11px;margin-top:4px;font-weight:500;display:flex;gap:5px;
+    align-items:center}
+  .end .st.yes{color:var(--qbo)}
+  .end .st.no{color:var(--bad,#9A2E24)}
+  .end .st svg{width:12px;height:12px;flex:0 0 12px}
+  .tween{flex:0 0 58px;display:grid;place-items:center;color:var(--faint)}
+  .tween svg{width:26px;height:26px}
+  @media(max-width:700px){ .tween{flex:1 0 100%;height:34px;transform:rotate(90deg)} }
+
+  /* ---- the workflow ---- */
+  .flow{background:var(--panel);border:1px solid var(--line);border-radius:12px;
+    overflow:hidden;margin-bottom:16px}
+  .flow > header{display:flex;align-items:center;gap:12px;padding:16px 22px;
+    border-bottom:1px solid var(--line);flex-wrap:wrap}
+  .flow > header h2{margin:0;font-size:14.5px;font-weight:600;flex:1 1 auto}
+  .pill{font-size:10.5px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;
+    padding:5px 11px;border-radius:999px;border:1px solid}
+  .pill.on{color:var(--qbo);border-color:#BEE3B6;background:#F1F9EF}
+  .pill.off{color:var(--faint);border-color:var(--line);background:var(--panel-2)}
+
+  .rule{display:flex;gap:14px;padding:16px 22px;border-bottom:1px solid var(--line)}
+  .rule:last-of-type{border-bottom:0}
+  .rule > .tick{flex:0 0 20px;height:20px;border-radius:50%;display:grid;
+    place-items:center;margin-top:1px;background:#F1F9EF;color:var(--qbo)}
+  .rule > .tick svg{width:12px;height:12px}
+  .rule.mute > .tick{background:var(--panel-2);color:var(--faint)}
+  .rule .body{flex:1 1 auto;min-width:0}
+  .rule .line{font-size:13.5px;line-height:1.6}
+  .rule .line b{font-weight:600}
+  .rule .line em{font-style:normal;font-weight:600;color:var(--qbo)}
+  .rule .note{font-size:12px;color:var(--muted);margin-top:5px;line-height:1.6}
+  .rule .cfgbtn{background:none;border:0;padding:0;margin-top:7px;font:inherit;
+    font-size:11.5px;color:var(--teal,#11BAB5);cursor:pointer;font-weight:500}
+  .rule .cfgbtn:hover{text-decoration:underline}
+
+  .cfg{display:none;margin-top:12px;padding:14px 16px;background:var(--panel-2);
+    border:1px solid var(--line);border-radius:9px}
+  .cfg.open{display:block}
+  .cfg .row{display:flex;gap:16px;flex-wrap:wrap}
+  .cfg .fld{flex:1 1 190px;min-width:0}
+  .cfg label{display:block;font-size:10.5px;letter-spacing:.07em;text-transform:uppercase;
+    color:var(--faint);margin-bottom:4px}
+  .cfg input[type=text],.cfg input[type=date],.cfg select{width:100%;box-sizing:border-box;
+    border:1px solid var(--line);border-radius:7px;padding:8px 10px;font:inherit;
+    font-size:12.5px;background:#fff}
+  .cfg .tip{font-size:11.5px;color:var(--muted);margin-top:8px;line-height:1.6}
+  .cfg .box{display:flex;gap:8px;align-items:center;font-size:12.5px;margin-top:4px}
+  .cfg .box input{accent-color:var(--qbo);width:15px;height:15px;margin:0}
+
+  /* ---- the foot: date, next, buttons ---- */
+  .foot{display:flex;align-items:flex-end;gap:18px;padding:16px 22px;flex-wrap:wrap;
+    background:var(--panel-2);border-top:1px solid var(--line)}
+  .foot .fld label{display:block;font-size:10.5px;letter-spacing:.07em;
+    text-transform:uppercase;color:var(--faint);margin-bottom:4px}
+  .foot input[type=date]{border:1px solid var(--line);border-radius:7px;padding:8px 10px;
+    font:inherit;font-size:12.5px;background:#fff}
+  .foot .when{font-size:12px;color:var(--muted);flex:1 1 auto;padding-bottom:9px;
+    line-height:1.5}
+  .foot .acts{display:flex;gap:9px;align-items:center;flex-wrap:wrap}
+  .go{background:var(--qbo);border:1px solid var(--qbo);color:#fff;border-radius:8px;
+    padding:10px 20px;font:inherit;font-size:13px;font-weight:600;cursor:pointer}
+  .go[disabled]{opacity:.5;cursor:default}
+  .ghost{background:#fff;border:1px solid var(--line);color:var(--text);border-radius:8px;
+    padding:9px 16px;font:inherit;font-size:12.5px;cursor:pointer}
+  .ghost:hover{border-color:var(--qbo);color:var(--qbo)}
+  .ghost.warn:hover{border-color:var(--bad,#9A2E24);color:var(--bad,#9A2E24)}
+  .said{font-size:12.5px}
+  .said.bad{color:var(--bad,#9A2E24)}
+  .said.good{color:var(--qbo)}
+
+  /* ---- where the orders are ---- */
+  .counts{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:12px;
+    margin-bottom:16px}
+  .cnt{background:var(--panel);border:1px solid var(--line);border-radius:10px;
+    padding:14px 16px;display:block;text-decoration:none;color:inherit}
+  .cnt:hover{border-color:var(--qbo)}
+  .cnt b{display:block;font:600 21px/1.2 var(--mono);letter-spacing:-.01em}
+  .cnt span{display:block;font-size:10.5px;letter-spacing:.07em;text-transform:uppercase;
+    color:var(--faint);margin-top:4px}
+  .cnt.good b{color:var(--qbo)}
+  .cnt.bad b{color:var(--bad,#9A2E24)}
+
+  .tell{background:#FDF6F5;border:1px solid #F0D6D3;color:#7A2C24;border-radius:10px;
+    padding:13px 16px;margin-bottom:16px;font-size:12.5px;line-height:1.65;display:none}
+  .tell.on{display:block}
+  .tell b{font-weight:700}
+  .tell a{color:inherit;font-weight:600}
+
+  .runlog{margin:0;padding:13px 16px;background:#16222A;color:#CFE3E6;
+    font:12px/1.75 var(--mono);max-height:300px;overflow:auto;white-space:pre-wrap;
+    border-radius:11px;display:none;word-break:break-word}
+  .runlog.on{display:block}
+  .runlog .ok{color:#7FD88F}
+  .runlog .no{color:#F09A92}
+  .runlog .dim{color:#8CA3A8}
+</style>
+</head>
+<body>
+
+<div class="layout">
+  <aside class="rail"></aside>
+
+  <div class="main">
+    <div class="topline">
+      <div>
+        <h1>Connector</h1>
+        <div class="sub">What happens to a Shopify order, in five sentences &mdash; and the one button that runs it.</div>
+      </div>
+    </div>
+
+    <div class="shell">
+
+      <!-- ===================== the two ends ===================== -->
+      <div class="ends">
+        <div class="end">
+          <div class="mk" style="background:#F1F6E8">
+            <svg viewBox="0 0 24 24" fill="#95BF47"><path d="M15.3 4.6c-.1-.6-.6-.9-1-.9h-.2c-.3-.8-.9-1.6-2-1.6h-.2c-.2-.3-.5-.5-.9-.5-1.4 0-2.6 1.8-3 3.5l-1.6.5c-.5.2-.6.2-.7.7L4 20.3l8.4 1.6 4.4-1V6.4c0-.1 0-.2-.1-.2l-1.4-1.6zM11.2 2.9c.2 0 .3.1.4.2-.7.4-1.4 1.3-1.8 3l-1.3.4c.4-1.4 1.4-3.6 2.7-3.6zm1.1 4.6-.4 1.2s-.6-.3-1.3-.3c-1 0-1.1.6-1.1.8 0 .9 2.5 1.3 2.5 3.5 0 1.8-1.1 2.9-2.6 2.9-1.8 0-2.7-1.1-2.7-1.1l.5-1.6s.9.8 1.7.8c.5 0 .7-.4.7-.7 0-1.2-2.1-1.3-2.1-3.3 0-1.7 1.2-3.4 3.7-3.4 1 0 1.1.3 1.1.3z"/></svg>
+          </div>
+          <div style="min-width:0">
+            <h3>Shopify</h3>
+            <div class="who" id="shopWho">&hellip;</div>
+            <div class="st" id="shopSt"></div>
+          </div>
+        </div>
+
+        <div class="tween">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"
+               stroke-linecap="round" stroke-linejoin="round">
+            <path d="M3 9h15M15 6l3 3-3 3M21 15H6M9 12l-3 3 3 3"/>
+          </svg>
+        </div>
+
+        <div class="end">
+          <div class="mk" style="background:#EDF7EB">
+            <svg viewBox="0 0 24 24" fill="#2CA01C"><path d="M12 2a10 10 0 100 20 10 10 0 000-20zM7.8 15.6a3.6 3.6 0 010-7.2h.7v1.4h-.7a2.2 2.2 0 000 4.4c.9 0 1.5-.7 1.5-1.6V6.9h1.4v9.4c0 1.8-1.3 3.1-3 3.1h.1zm8.4-7.2a3.6 3.6 0 010 7.2h-.7v-1.4h.7a2.2 2.2 0 000-4.4c-.9 0-1.5.7-1.5 1.6v5.7h-1.4V7.7c0-1.8 1.3-3.1 3-3.1h-.1z"/></svg>
+          </div>
+          <div style="min-width:0">
+            <h3>QuickBooks Online</h3>
+            <div class="who" id="qbWho">&hellip;</div>
+            <div class="st" id="qbSt"></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="tell" id="tell"></div>
+
+      <!-- ===================== the workflow ===================== -->
+      <div class="flow">
+        <header>
+          <h2>Orders &rarr; Invoices</h2>
+          <span class="pill off" id="pill">checking</span>
+          <a class="ghost" href="/shopify-log" style="text-decoration:none">Report</a>
+        </header>
+
+        <!-- 1 -->
+        <div class="rule">
+          <div class="tick"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"
+            stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M5 13l4 4 10-11"/></svg></div>
+          <div class="body">
+            <div class="line">
+              When an <b>order</b> is created in Shopify, create an
+              <b>invoice</b> in QuickBooks Online, numbered <em id="sNum">&hellip;</em>
+              on terms <em id="sTerms">&hellip;</em>
+            </div>
+            <div class="note">
+              Shopify tells us the moment it happens, so nothing is polled and nothing waits
+              for a person. A number keeps its <code>#</code> if you give it one &mdash;
+              QuickBooks counts <code>9323517</code> and <code>#9323517</code> as two
+              different invoices, so this must match what was uploaded before.
+            </div>
+            <button class="cfgbtn" data-open="c1" type="button">Configure</button>
+            <div class="cfg" id="c1">
+              <div class="row">
+                <div class="fld">
+                  <label for="prefix">In front of the number</label>
+                  <input id="prefix" type="text" placeholder="#" maxlength="6">
+                </div>
+                <div class="fld">
+                  <label for="terms">Terms</label>
+                  <input id="terms" type="text" placeholder="Net 30" list="termList">
+                  <datalist id="termList"></datalist>
+                </div>
+              </div>
+              <div class="tip">Left blank, the terms are whatever QuickBooks has on the customer.</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- 2 -->
+        <div class="rule">
+          <div class="tick"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"
+            stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M5 13l4 4 10-11"/></svg></div>
+          <div class="body">
+            <div class="line">
+              Associate the invoices with the customer <em id="sCust">&hellip;</em>,
+              and put the buyer&rsquo;s own name and address in the billing block
+            </div>
+            <div class="note">
+              One customer for the shop, not four thousand of them. The buyer is not lost:
+              their name and address are written on the invoice itself, and nothing goes
+              in the memo.
+            </div>
+            <button class="cfgbtn" data-open="c2" type="button">Configure</button>
+            <div class="cfg" id="c2">
+              <div class="row">
+                <div class="fld" style="flex:1 1 320px">
+                  <label for="customer">Customer in QuickBooks</label>
+                  <input id="customer" type="text" placeholder="Shopify Sale - {mon}{yy}">
+                </div>
+              </div>
+              <div class="tip">
+                <code>{mon}{yy}</code> becomes <code>Oct26</code>, so each month has its
+                own customer. Plain text is one customer for ever. Typed once and kept.
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- 3 -->
+        <div class="rule">
+          <div class="tick"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"
+            stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M5 13l4 4 10-11"/></svg></div>
+          <div class="body">
+            <div class="line">
+              Match all associated products on <em>the SKU, and nothing else</em> &mdash;
+              and <b>never</b> create a product in QuickBooks
+            </div>
+            <div class="note">
+              The item QuickBooks already has is used whole: its name, its description, its
+              price, its account. The Shopify title is not consulted, so a product renamed
+              on one side cannot become a second item on the other. A SKU that is on no
+              item stops that order and says so by name &mdash; nothing is guessed.
+            </div>
+            <button class="cfgbtn" data-open="c3" type="button">Why there is nothing to set</button>
+            <div class="cfg" id="c3">
+              <div class="tip" style="margin-top:0">
+                This was a setting once, and it is the one thing on this page that could put
+                the wrong product on real books. Matching on the name made a second item
+                carrying the same SKU, and the sales went to the new one. So it is not a
+                choice any more. If something needs fixing from that,
+                <a href="/shopify-undo">Put it back</a> lists exactly what Fusion made.
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- 4 -->
+        <div class="rule" id="r4">
+          <div class="tick"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"
+            stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M5 13l4 4 10-11"/></svg></div>
+          <div class="body">
+            <div class="line">
+              Put the order&rsquo;s shipping on the item <em id="sShip">&hellip;</em>,
+              and the discount in the discount box, in rupees
+            </div>
+            <div class="note">
+              The item&rsquo;s own description comes from QuickBooks, as with everything else.
+              Left blank, Fusion looks for Shipping, Delivery, Shipping Charges or Freight
+              and uses whichever it finds &mdash; it does not make one.
+            </div>
+            <button class="cfgbtn" data-open="c4" type="button">Configure</button>
+            <div class="cfg" id="c4">
+              <div class="row">
+                <div class="fld" style="flex:1 1 320px">
+                  <label for="shippingItem">Shipping item in QuickBooks</label>
+                  <input id="shippingItem" type="text" placeholder="Shipping Charges">
+                </div>
+              </div>
+              <div class="tip" id="prefTip"></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- 5 -->
+        <div class="rule" id="r5">
+          <div class="tick"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"
+            stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M5 13l4 4 10-11"/></svg></div>
+          <div class="body">
+            <div class="line">Leave out <em id="sSkip">cancelled orders</em></div>
+            <div class="note">
+              A cancelled order is never written at all &mdash; an invoice for an order that
+              was called off is simply wrong.
+            </div>
+            <button class="cfgbtn" data-open="c5" type="button">Configure</button>
+            <div class="cfg" id="c5">
+              <label class="box"><input type="checkbox" id="skipRefunded"> Void orders</label>
+              <label class="box"><input type="checkbox" id="onlyFulfilled"> Unfulfilled orders</label>
+              <div class="tip">
+                Void means refunded in full or voided in Shopify. Unfulfilled means not shipped
+                yet &mdash; worth leaving out where the money only lands on delivery.
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- the foot -->
+        <div class="foot">
+          <div class="fld">
+            <label for="startFrom">Synchronisation start date</label>
+            <input id="startFrom" type="date">
+          </div>
+          <div class="when" id="when"></div>
+          <div class="acts">
+            <button class="go" id="btnSync" type="button">Sync Now</button>
+            <button class="ghost" id="btnAuto" type="button">&hellip;</button>
+          </div>
+        </div>
+      </div>
+
+      <span class="said" id="said" style="display:block;margin:-6px 0 16px"></span>
+
+      <!-- ===================== where the orders are ===================== -->
+      <div class="counts" id="counts"></div>
+
+      <pre class="runlog" id="log"></pre>
+
+    </div>
+  </div>
+</div>
+
+<script src="/nav.js"></script>
+<script src="/update.js"></script>
+<script>
+"use strict";
+(function(){
+  var $ = function(id){ return document.getElementById(id); };
+  var NL = String.fromCharCode(10);
+  var S = {}, BUSY = false, TIMER = null;
+
+  function esc(s){
+    return String(s == null ? '' : s)
+      .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  }
+  function n0(n){ return (Number(n)||0).toLocaleString(); }
+  function say(cls, text){ $('said').className = 'said ' + (cls||''); $('said').textContent = text || ''; }
+  function clock(t){
+    var d = new Date(t);
+    return d.toLocaleTimeString([], { hour:'2-digit', minute:'2-digit' });
+  }
+  function get(url){
+    return fetch(url, { cache:'no-store' }).then(function(r){
+      return r.json().then(function(d){
+        if(!r.ok) throw new Error(d.error || ('Server said ' + r.status));
+        return d;
+      });
+    });
+  }
+  function post(url, body){
+    return fetch(url, { method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify(body||{}) }).then(function(r){
+      return r.json().then(function(d){
+        if(!r.ok) throw new Error(d.error || ('Server said ' + r.status));
+        return d;
+      });
+    });
+  }
+  function logTo(cls, line){
+    var box = $('log');
+    box.classList.add('on');
+    box.innerHTML += '<span class="' + cls + '">' + esc(line) + '</span>' + NL;
+    box.scrollTop = box.scrollHeight;
+  }
+
+  /* ---------- Configure, one open at a time ---------- */
+  Array.prototype.forEach.call(document.querySelectorAll('.cfgbtn'), function(b){
+    b.addEventListener('click', function(){
+      var box = $(b.getAttribute('data-open'));
+      var was = box.classList.contains('open');
+      Array.prototype.forEach.call(document.querySelectorAll('.cfg'), function(c){
+        c.classList.remove('open');
+      });
+      if(!was) box.classList.add('open');
+    });
+  });
+
+  /* ---------- the sentences, written from what is saved ---------- */
+
+  function monTag(){
+    var m = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+    var d = new Date();
+    return m[d.getMonth()] + String(d.getFullYear()).slice(2);
+  }
+
+  function paint(){
+    $('sNum').textContent = (S.prefix || '') + '9323517';
+    $('sTerms').textContent = S.terms || 'whatever the customer has';
+    $('sCust').textContent = String(S.customer || '')
+      .replace('{mon}{yy}', monTag()).replace('{mon}', monTag().slice(0,3)) || '(not set)';
+    $('sShip').textContent = S.shippingItem || 'it finds by itself';
+
+    var out = [];
+    if(S.skipRefunded) out.push('void');
+    if(S.onlyFulfilled) out.push('unfulfilled');
+    $('sSkip').textContent = out.length
+      ? 'cancelled, ' + out.join(' and ') + ' orders'
+      : 'cancelled orders';
+
+    $('r4').className = S.shippingItem ? 'rule' : 'rule mute';
+
+    var on = !!S.on;
+    $('pill').className = 'pill ' + (on ? 'on' : 'off');
+    $('pill').textContent = on ? 'Auto sync on' : 'Auto sync off';
+    $('btnAuto').textContent = on ? 'Turn Auto Sync off' : 'Turn Auto Sync on';
+    $('btnAuto').className = 'ghost' + (on ? ' warn' : '');
+  }
+
+  function fill(){
+    $('prefix').value = S.prefix || '';
+    $('terms').value = S.terms || '';
+    $('customer').value = S.customer || '';
+    $('shippingItem').value = S.shippingItem || '';
+    $('skipRefunded').checked = !!S.skipRefunded;
+    $('onlyFulfilled').checked = !!S.onlyFulfilled;
+    $('startFrom').value = S.startFrom || '';
+    paint();
+  }
+
+  /* ---------- saving, which happens by itself ---------- */
+
+  var PEND = null;
+  function keep(patch, now){
+    Object.keys(patch).forEach(function(k){ S[k] = patch[k]; });
+    paint();
+    if(PEND) clearTimeout(PEND);
+    var fire = function(){
+      post('/api/shopify/settings', patch)
+        .then(function(d){ S = d.settings || S; paint(); say('good','Saved.'); })
+        .catch(function(e){ say('bad', e.message); });
+    };
+    if(now) fire(); else PEND = setTimeout(fire, 700);
+  }
+
+  [['prefix','prefix'],['terms','terms'],['customer','customer'],
+   ['shippingItem','shippingItem']].forEach(function(p){
+    $(p[0]).addEventListener('input', function(){
+      var o = {}; o[p[1]] = $(p[0]).value.trim(); keep(o);
+    });
+  });
+  ['skipRefunded','onlyFulfilled'].forEach(function(k){
+    $(k).addEventListener('change', function(){
+      var o = {}; o[k] = $(k).checked; keep(o, true);
+    });
+  });
+  $('startFrom').addEventListener('change', function(){
+    keep({ startFrom: $('startFrom').value }, true);
+  });
+
+  /* ---------- the one switch ---------- */
+
+  $('btnAuto').addEventListener('click', function(){
+    var next = !S.on;
+    if(next && !S.startFrom &&
+       !confirm('No start date is set, so every order already read will be written.' + NL +
+                'Set a start date first?' + NL + NL + 'OK turns it on anyway.')) return;
+    if(!next && !confirm('Turn auto sync off?' + NL + NL +
+       'Nothing goes into QuickBooks by itself until it is turned back on here.')) return;
+    $('btnAuto').disabled = true;
+    post('/api/shopify/settings', { on: next })
+      .then(function(d){
+        S = d.settings || S; paint();
+        say('good', next
+          ? 'On. Orders go into QuickBooks by themselves from now on, and stay going until this button says otherwise.'
+          : 'Off. Nothing will be written until it is turned back on.');
+        look();
+      })
+      .catch(function(e){ say('bad', e.message); })
+      .then(function(){ $('btnAuto').disabled = false; });
+  });
+
+  /* ---------- Sync Now ---------- */
+
+  $('btnSync').addEventListener('click', function(){
+    if(BUSY) return;
+    BUSY = true;
+    $('btnSync').disabled = true;
+    say('', 'Reading Shopify, then writing what is ready…');
+    logTo('dim', '--- ' + clock(Date.now()) + '  sync now ---');
+
+    post('/api/shopify/sync', {})
+      .then(function(d){
+        logTo('dim', 'orders read for ' + d.from + ' to ' + d.to);
+        (d.read || []).forEach(function(r){
+          if(r.error) logTo('no', r.shop + ': ' + r.error);
+          else logTo('ok', r.shop + ': ' + n0(r.seen) + ' seen, ' + n0(r.saved) + ' new');
+        });
+        if(d.freed) logTo('dim', n0(d.freed) + ' put back in the queue');
+        var did = d.did || {};
+        logTo(did.done ? 'ok' : 'dim',
+          n0(did.done || 0) + ' written, ' + n0(did.held || 0) + ' need you, ' +
+          n0(did.failed || 0) + ' will be tried again');
+        say(did.done ? 'good' : '', n0(did.done || 0) + ' invoices written.');
+        if(d.tally) draw(d.tally);
+      })
+      .catch(function(e){ logTo('no', e.message); say('bad', e.message); })
+      .then(function(){ BUSY = false; $('btnSync').disabled = false; look(); });
+  });
+
+  /* ---------- where the orders are ---------- */
+
+  function draw(t){
+    var st = t.states || {};
+    var rows = [
+      { n: st.done || 0,                     w: 'in QuickBooks',  c: 'good' },
+      { n: t.due || 0,                       w: 'ready to go',    c: '' },
+      { n: (st.waiting || 0) - (t.due || 0), w: 'waiting a turn', c: '' },
+      { n: st.held || 0,                     w: 'need you',       c: 'bad' },
+      { n: st.off || 0,                      w: 'left out',       c: '' }
+    ];
+    $('counts').innerHTML = rows.map(function(r){
+      return '<a class="cnt ' + r.c + '" href="/shopify-log">' +
+        '<b>' + n0(Math.max(0, r.n)) + '</b><span>' + r.w + '</span></a>';
+    }).join('');
+
+    var bits = [];
+    if(t.nextTry) bits.push('next turn at ' + clock(t.nextTry));
+    if(t.lastError) bits.push('last thing that stopped one: ' + t.lastError);
+    $('when').textContent = S.on
+      ? (bits.length ? bits.join(' · ') : 'running; nothing is waiting')
+      : 'auto sync is off — only this button writes anything';
+
+    if((st.held || 0) > 0){
+      $('tell').className = 'tell on';
+      $('tell').innerHTML = '<b>' + n0(st.held) + ' orders are waiting on something.</b> ' +
+        'Mostly a SKU that is on no item in QuickBooks. ' +
+        '<a href="/shopify-log">The report names every one of them</a>, and they go by ' +
+        'themselves once the SKU is there.';
+    } else {
+      $('tell').className = 'tell';
+    }
+  }
+
+  /* ---------- reading the state ---------- */
+
+  function look(){
+    return Promise.all([
+      get('/api/shopify/report').catch(function(){ return null; }),
+      get('/api/shopify/shops').catch(function(){ return null; }),
+      get('/auth/status').catch(function(){ return null; })
+    ]).then(function(a){
+      var rep = a[0], shops = a[1], who = a[2];
+
+      if(rep && rep.settings){ S = rep.settings; fill(); }
+      if(rep && rep.tally) draw(rep.tally);
+
+      var list = ((shops && shops.shops) || []).filter(function(x){ return x.active; });
+      if(list.length){
+        $('shopWho').textContent = list.length === 1
+          ? list[0].domain : list.length + ' shops';
+        $('shopWho').title = list.map(function(x){ return x.domain; }).join(', ');
+        mark('shopSt', true, 'Connected');
+      } else {
+        $('shopWho').innerHTML = '<a href="/shopify">No shop connected</a>';
+        mark('shopSt', false, 'Connect a shop first');
+      }
+
+      if(who){
+        $('qbWho').textContent = who.company || who.companyName || '—';
+        mark('qbSt', !!who.qb, who.qb ? 'Connected' : 'Not connected');
+        if(!who.qb){
+          $('tell').className = 'tell on';
+          $('tell').innerHTML = '<b>QuickBooks is not connected for this company.</b> ' +
+            'Open <a href="/finance">Finance</a> and press Connect to QuickBooks.';
+        }
+      }
+    });
+  }
+
+  function mark(id, yes, text){
+    $(id).className = 'st ' + (yes ? 'yes' : 'no');
+    $(id).innerHTML = (yes
+      ? '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" ' +
+        'stroke-linecap="round" stroke-linejoin="round"><path d="M5 13l4 4 10-11"/></svg>'
+      : '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" ' +
+        'stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M12 8v5M12 16v.5"/></svg>'
+      ) + '<span>' + esc(text) + '</span>';
+  }
+
+  /* ---------- the terms QuickBooks itself has ---------- */
+  function terms(){
+    get('/api/shopify/accounts').then(function(d){
+      var t = d.terms || [];
+      if(t.length) $('termList').innerHTML = t.map(function(x){
+        return '<option value="' + esc(x.name || x) + '">';
+      }).join('');
+      if(d.prefs && d.prefs.discount === false){
+        $('prefTip').innerHTML = '<b>Discounts are switched off in these books.</b> ' +
+          'QuickBooks will refuse any invoice carrying one until Account and Settings &rarr; ' +
+          'Sales &rarr; Discount is turned on.';
+      }
+    }).catch(function(){ /* a help, not a requirement */ });
+  }
+
+  /* ---------- off we go ---------- */
+  window.APP.ready.then(function(){
+    look().then(terms);
+    // the numbers move on their own while this page is open, because the loop
+    // is running whether anybody is looking or not
+    TIMER = setInterval(function(){ if(!BUSY) look(); }, 20000);
+  });
+  window.addEventListener('beforeunload', function(){ if(TIMER) clearInterval(TIMER); });
+})();
+</script>
+</body>
+</html>
