@@ -99,6 +99,26 @@ export async function hookFor(realmId, accountId) {
   };
 }
 
+// Two locks, and one of them has to move for Trax.
+//
+// The second secret was a header, because a header is the one thing a guessed
+// address cannot carry. But Sonic's webhook screen takes **a URL and nothing
+// else** - there is no field to put a header in - so for a courier like that
+// the secret rides on the end of the address as `?k=`, and the route takes it
+// from either place. It is the same secret and the same two locks; what
+// changes is which part of the request carries the second one.
+export function hookUrl(base, h, headerless) {
+  const url = base.replace(/\/+$/, '') + '/hooks/courier/' + h.courier + '/' + h.key;
+  return headerless ? url + '?k=' + h.secret : url;
+}
+
+// Whichever way it arrived. A header is preferred where a courier can send
+// one; the query is what makes a headerless portal workable.
+export function secretFrom(req) {
+  return req.get('X-Fusion-Key') || req.get('x-fusion-key') ||
+         (req.query && (req.query.k || req.query.key)) || '';
+}
+
 // Turned over when somebody thinks the old one got out. The address changes
 // with it, which is the point: whatever was pasted anywhere stops working.
 export async function rollHook(realmId, accountId) {
@@ -260,6 +280,84 @@ export async function applyStatus(account, hook) {
   );
 
   return 'added';
+}
+
+// What a charges webhook said a parcel cost. Only ever written over a zero or
+// a missing figure for the amount - the sweep's own reading of what the order
+// is worth is the better one - but the fee and the tax are the courier's to
+// state, so those are taken as given.
+export async function applyCharges(account, hook) {
+  const tracking = hook && hook.tracking;
+  if (!tracking) return false;
+
+  const n = v => {
+    const x = Number(String(v === undefined || v === null ? '' : v).replace(/[^0-9.\-]/g, ''));
+    return isNaN(x) ? null : x;
+  };
+
+  const fee = n(hook.fee), tax = n(hook.tax), amount = n(hook.amount);
+  if (fee === null && tax === null && amount === null) return false;
+
+  const r = await pool.query(
+    `UPDATE courier_orders
+        SET fee     = COALESCE($4::numeric, fee),
+            tax     = COALESCE($5::numeric, tax),
+            amount  = CASE WHEN COALESCE(amount, 0) = 0 AND $6::numeric IS NOT NULL
+                           THEN $6::numeric ELSE amount END,
+            seen_at = NOW()
+      WHERE realm_id = $1 AND account_id = $2 AND tracking = $3`,
+    [account.realm_id, account.id, String(tracking), fee, tax, amount]
+  );
+
+  if (r.rowCount > 0) return 'updated';
+
+  // The charges hook can beat the status hook to it, so the parcel may be one
+  // we have not met. The row is made with what this hook knows and the next
+  // thing to arrive fills in the status.
+  await pool.query(
+    `INSERT INTO courier_orders
+       (realm_id, account_id, courier, tracking, status, status_group,
+        amount, fee, tax, city, booked_on, raw, seen_at)
+     VALUES ($1,$2,$3,$4,'','other',
+             COALESCE($5::numeric, 0), COALESCE($6::numeric, 0), COALESCE($7::numeric, 0),
+             $8, CURRENT_DATE, $9, NOW())
+     ON CONFLICT (realm_id, account_id, tracking) DO NOTHING`,
+    [account.realm_id, account.id, account.courier, String(tracking),
+     amount, fee, tax, hook.city || null,
+     JSON.stringify({ fromWebhook: 'charges', at: new Date().toISOString() })]
+  );
+  return 'added';
+}
+
+// A payment webhook is the courier saying it has paid for this parcel. The
+// courier's own id for that payment is the nearest thing to a receipt number,
+// so it goes where PostEx's CPR number goes and the receipts page finds it.
+export async function applyPayment(account, hook) {
+  const tracking = hook && hook.tracking;
+  if (!tracking) return false;
+
+  const when = (() => {
+    if (!hook.when) return null;
+    const m = String(hook.when).match(/(\d{4})-(\d{2})-(\d{2})/);
+    if (m) return `${m[1]}-${m[2]}-${m[3]}`;
+    const d = new Date(hook.when);
+    return isNaN(d.getTime())
+      ? null
+      : `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  })();
+
+  const r = await pool.query(
+    `UPDATE courier_orders
+        SET settled    = CASE WHEN $4::boolean THEN TRUE ELSE settled END,
+            settled_on = COALESCE($5::date, settled_on),
+            cpr_number = COALESCE(NULLIF($6, ''), cpr_number),
+            seen_at    = NOW()
+      WHERE realm_id = $1 AND account_id = $2 AND tracking = $3`,
+    [account.realm_id, account.id, String(tracking),
+     hook.settled !== false, when, String(hook.paymentId || '')]
+  );
+
+  return r.rowCount > 0 ? 'updated' : false;
 }
 
 export async function logHook(account, { tracking, status, matched, note, body }) {

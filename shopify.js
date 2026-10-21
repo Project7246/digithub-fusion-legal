@@ -171,10 +171,12 @@ export async function initShopify() {
 
 /* ==================== what happened, in words ==================== */
 
-// How many of each kind are kept. A log that grows for ever becomes the
-// database's problem; a log that is swept too hard stops answering "what
-// happened last Tuesday". A few thousand is both.
-const KEEP_EVENTS = 4000;
+// How many are kept. A log that grows for ever becomes the database's problem;
+// one swept too hard stops answering "what happened last Tuesday". Eight
+// hundred lines and three weeks (housekeeping.js sweeps by age as well) is
+// both - four thousand was a tenth of the free plan's whole allowance of room
+// for one shop's log.
+const KEEP_EVENTS = Math.max(100, Number(process.env.SHOPIFY_KEEP_EVENTS) || 800);
 
 export const EVENT_KINDS = [
   'invoice',      // an invoice written into QuickBooks
@@ -189,13 +191,21 @@ export const EVENT_KINDS = [
 ];
 
 export async function note(realmId, kind, row) {
+  // The detail is kept for something that went wrong and thrown away for
+  // something that went right. A failure needs its whole answer to be worked
+  // out from; an invoice that was written needs the line that says so, and the
+  // invoice itself is in QuickBooks. That one rule is most of this table's
+  // weight, because the happy lines are the many.
+  const keepDetail = row.ok === false || kind === 'error' || kind === 'held';
+  const detail = keepDetail ? JSON.stringify(row.detail || {}) : '{}';
+
   await pool.query(
     `INSERT INTO shopify_events
        (realm_id, shop_id, kind, ok, order_name, order_gid, sku, title, note, detail)
      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
     [realmId, row.shopId || null, kind, row.ok !== false,
      row.orderName || null, row.gid || null, row.sku || null, row.title || null,
-     row.note || null, JSON.stringify(row.detail || {})]
+     row.note || null, detail]
   );
 
   // swept now and then rather than on every row - a delete per event would

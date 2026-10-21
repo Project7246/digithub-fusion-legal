@@ -325,25 +325,121 @@ a single parcel simply has no `trackOne`.
 - **The webhook reads by courier too** (`groupFor`, `readFor`, in the
   `/hooks/courier/:courier/:key` route). It used to run every courier through
   PostEx's reader, which would have filed every Trax status under "other".
-- **Trax and M&P have no published guide.** Theirs is handed out account by
-  account, and the endpoint that answers on one merchant's key is a 404 on
-  another's. So each call is a short list of the shapes it could take - `hunt()` in
-  `wire.js`. The first shape the courier actually answers is remembered in memory
-  for that key; a 401 or 403 everywhere means the key rather than the address; and
-  the error names what each attempt was told. The add screen shows which shape
-  answered. **When the real guide arrives, those two files' lists are the only
-  thing to change.** `TRAX_BASE` and `MNP_BASE` move the base URL without a deploy.
+- **All three are written against their own documents now.** Nothing in
+  `trax.js` or `mnp.js` is guessed at any more, and `wire.js`'s `hunt()` - which
+  tried a list of possible shapes until one answered - is no longer used by
+  either of them. `TRAX_BASE`, `MNP_BASE` and `MNP_TRACK_BASE` move a base URL
+  without a deploy.
+
+### Trax is told, M&P is asked
+
+The two couriers work in opposite ways, and both ways are theirs, not ours.
+
+**Trax** goes through Sonic, the platform behind it (*API Documentation-SONIC*,
+version 2.0). The key is at sonic.pk -> company name, top right -> Profile ->
+API key, and it is handed over as a plain `Authorization` header - not a Bearer
+token. Their `status: 0` in the body **means it worked**; it is their own code,
+not an HTTP one.
+
+- **Sonic has no call that lists a day's shipments.** Twenty-seven endpoints and
+  every one is about a tracking number you already hold, or about booking a new
+  one. So `trax.js` sets **`lists: false`**, and the keeper, `/api/courier/sync`,
+  `courierlive.js` and `backfill.js` all check it: instead of asking for days
+  they call `refreshKnown()` with the parcels still moving
+  (`movingTrackings()` in `couriers.js`). Nothing shows an empty week and
+  pretends that is the answer.
+- **Its four webhooks are where Trax orders come from**: Shipment Status,
+  Payment Status, Initial Charges and Final Charges. Between them they carry the
+  status, the COD, the charges, the GST and the settlement - so `hooks.js` grew
+  `applyCharges()` and `applyPayment()` beside `applyStatus()`, and the route
+  reads `kind` off the courier's own reader to know which it is holding.
+- **Sonic's webhook screen takes a URL and nothing else** - there is no field
+  for a header. So for an adapter with `hook.headerless`, the second secret
+  rides in the address (`hookUrl()` puts `?k=` on the end) and `secretFrom()`
+  takes it from the header or the query. Two locks still, in one pasteable line.
+- **Their rules**: 5 attempts, **3 seconds** each, and after 5 failures the
+  subscription switches off and has to be turned on again by hand. Three seconds
+  is less than a sleeping Neon compute takes to answer its first query, so
+  `/hooks/courier/:courier/:key` now **answers 200 before it does anything** and
+  applies the call afterwards (`applyCourierHook()`). A wrong key gets the same
+  200 and a line in the server log - a 401 was tidier and also told whoever was
+  guessing that they had found a live address.
+
+**M&P** is the COD API at `https://mnpcourier.com/mycodapi/api` (*M&P COD API
+Manual*, 2025022404). The sign-in is a username and a password **in the call
+itself** - query on a GET, JSON body on a POST - and their own document spells
+the pair three ways across the endpoints (`username`, `UserName`, `Username`),
+so every call sends all three.
+
+- **M&P have no webhooks.** None in the manual, none in the portal. So M&P is
+  the one courier that must be polled, and it is kept cheap: one
+  `Reports/QSR_Report` call **per month** (their report is monthly - a span of
+  days is fetched a month at a time and cut to the span here), plus
+  `Tracking/Bulk_Consignment_Tracking_New`, which takes **200 consignments a
+  call** and carries PaymentID, PaymentDate and AmountPaid, so settlement needs
+  no second ask.
+- **The account number and location id are looked up, not typed.**
+  `UserManagement/GetAccounts` needs only the sign-in, so it is the test call;
+  `GetSubAccounts` gives the location id the reports want. Whatever `testToken`
+  learns is merged into the account's `creds` when it is saved.
+- One consignment can also be read from their public tracking screen
+  (`tracking.mulphilog.com.pk/api/CNTracking`, `id` always 4), which needs no
+  sign-in at all.
+
+**A date is not a moment.** `day()` in `statuses.js` reads a courier's date by
+hand and never through `toISOString()`: M&P send `02 Nov 2024`, and parsing that
+as local midnight and converting to UTC moved it back into the 1st. And the two
+couriers disagree about slashes - Sonic writes 5 April as `05/04/2022`, M&P's
+tracking writes 14 June as `06/14/2025` - so `day(v, 'mdy')` exists and `mnp.js`
+uses it for `TransactionTime` alone. Where either number is past 12 the numbers
+decide and the hint is ignored.
 - **An account is added from the rail**: every courier in the courier tree carries
   `+ add an account`, which opens `/couriers?add=<key>` with that courier already
   picked.
+
+## What the database is allowed to keep
+
+47 MB in a fortnight, on a plan with about 1 GB, with three different reasons
+behind it. `housekeeping.js` is the answer to all three: it runs on every start
+and once a day after, and `POST /api/storage/clean` (ADMIN_EMAILS) is the same
+thing on demand, from Settings > Database.
+
+- **Rows nobody can reach.** `removeAccount()` deleted the courier account row
+  and left every order it had pulled behind it, `account_id` pointing at
+  nothing - invisible on every screen and deletable from none. That is what
+  happened when a PostEx account was attached to the wrong company and taken
+  off again. `removeAccount()` now takes the orders, receipts and hook log with
+  it in one transaction and says how many went; `orphans()` finds whatever the
+  old behaviour left.
+- **The courier's own JSON.** `courier_orders.raw` kept the whole answer - a
+  couple of kilobytes an order for a field read once. Three days now
+  (`COURIER_RAW_DAYS`).
+- **Shopify.** The only thing worth keeping for ever is the small row that says
+  an order became an invoice, because that is what stops it being invoiced
+  twice. The line items are what the invoice is built from, so they stay while
+  an order is `waiting` or `held` - however old - and for ten days after it is
+  written, for undo (`SHOPIFY_LINES_DAYS`); then `lines` and `bill_to` go. The
+  log keeps three weeks (`SHOPIFY_EVENT_DAYS`) and 800 lines, and an event's
+  `detail` JSONB is now kept **only for something that went wrong** - the happy
+  lines are the many, and the invoice itself is in QuickBooks.
+
+Deleting rows in Postgres frees the room for re-use but does not give it back to
+the disk, so a database that was 47 MB stays 47 MB and simply stops growing. The
+nightly sweep does a plain `VACUUM (ANALYZE)`; **Clean up now** does `VACUUM
+FULL`, which does give it back and locks each table for a moment - which is why
+it is only ever done when somebody asks for it.
 
 ## Open items
 - Replace the copied old files with the new design once the user describes it.
 - Decide DigitalOcean settings: turn **Edge caching** and **Email obfuscation** Off (app shows
   live data).
 - Check the Neon dashboard for the real storage limit.
-- Trax and M&P: get their real API guides, and cut the endpoint lists in `trax.js`
-  and `mnp.js` down to the one shape each instead of hunting for it.
+- Trax: book shipments through Sonic's `/shipment/book` and print air waybills
+  (`/shipment/air_waybill`), now the rest of its API is in.
+- M&P: their `Reports/Payment_Report` is read (`fetchPayouts()`) but nothing is
+  built on it yet - it is the makings of an M&P settlement screen.
+- Courier receipts (CPR) are still PostEx-only: `cprlive.js` says so plainly for
+  the other two.
 
 ## One Fusion, many client companies
 

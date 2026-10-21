@@ -130,9 +130,16 @@ export function forgetShapes(courier, token) {
   });
 }
 
-// The hunt itself. `shapes` is the list of ways this call could be made, each
-// one a plain object the adapter knows how to turn into a request; `send` makes
-// the call; `good` says whether the answer is the one we wanted.
+// The hunt itself.
+//
+// **Nothing uses this any more.** It was written when Trax's and M&P's guides
+// could not be had, and both of them are now written against their own
+// documents - so it is kept for the next courier that turns up without one,
+// and `qs`, `call`, `rows` and `why` above are what the adapters actually use.
+//
+// `shapes` is the list of ways a call could be made, each one a plain object
+// the adapter knows how to turn into a request; `send` makes the call; `good`
+// says whether the answer is the one we wanted.
 //
 // A 401 or 403 is the key being refused, not the address being wrong, so it is
 // remembered separately: if every shape is refused, the account's key is the

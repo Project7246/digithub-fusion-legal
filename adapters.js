@@ -55,6 +55,9 @@ export function courierKinds() {
         hint: f.hint || ''
       })),
     hook: a.hook || null,
+    // false for a courier whose API cannot be asked for a span of days - Trax
+    // is one, and the page says so rather than showing an empty week
+    lists: a.lists !== false,
     tracks: typeof a.trackOne === 'function',
     settles: typeof a.fetchPayment === 'function',
     receipts: typeof a.fetchCprs === 'function'

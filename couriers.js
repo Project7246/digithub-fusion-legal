@@ -367,12 +367,44 @@ export async function clearPortalLogin(realmId, id) {
   );
 }
 
+// Taking an account off takes its work with it.
+//
+// It used to delete the one row and leave every order it had ever pulled
+// behind, with an account_id pointing at nothing - which is what happened when
+// a PostEx account was attached to the wrong company and taken off again: the
+// orders stayed in that company's database, reachable from no screen and
+// deletable from none either. Removing an account means the account and what
+// it brought in, in one transaction, and the count is handed back so the page
+// can say what went.
 export async function removeAccount(realmId, id) {
-  await pool.query(
-    `DELETE FROM courier_accounts WHERE realm_id = $1 AND id = $2`,
-    [realmId, id]
-  );
-  return true;
+  const n = Number(id);
+  const client = await pool.connect();
+
+  try {
+    await client.query('BEGIN');
+
+    const orders = await client.query(
+      `DELETE FROM courier_orders WHERE realm_id = $1 AND account_id = $2`, [realmId, n]);
+    const cprs = await client.query(
+      `DELETE FROM courier_cprs WHERE realm_id = $1 AND account_id = $2`, [realmId, n]);
+
+    let hooks = { rowCount: 0 };
+    try {
+      hooks = await client.query(
+        `DELETE FROM courier_hook_log WHERE realm_id = $1 AND account_id = $2`, [realmId, n]);
+    } catch (e) { /* the log table arrives with initHooks */ }
+
+    await client.query(
+      `DELETE FROM courier_accounts WHERE realm_id = $1 AND id = $2`, [realmId, n]);
+
+    await client.query('COMMIT');
+    return { ok: true, orders: orders.rowCount, cprs: cprs.rowCount, hooks: hooks.rowCount };
+  } catch (e) {
+    await client.query('ROLLBACK').catch(() => {});
+    throw e;
+  } finally {
+    client.release();
+  }
 }
 
 export async function markSync(realmId, id, error) {
@@ -454,6 +486,24 @@ export async function trimRaw(days) {
     [String(Number(days) || 7)]
   );
   return r.rowCount;
+}
+
+// The parcels still on their way, for a courier that cannot be asked for a
+// span of days and has to be asked parcel by parcel - Trax is one. A parcel
+// that has arrived, gone back or been cancelled is finished with, so it is not
+// asked about again; everything else, newest first, is.
+export async function movingTrackings(realmId, accountId, limit) {
+  const r = await pool.query(
+    `SELECT tracking FROM courier_orders
+      WHERE realm_id = $1 AND account_id = $2
+        AND (status_group IS NULL
+             OR status_group NOT IN ('delivered','returned','cancelled','expired','lost','damaged')
+             OR (status_group = 'delivered' AND settled IS NOT TRUE))
+      ORDER BY COALESCE(booked_on, CURRENT_DATE) DESC, id DESC
+      LIMIT $3`,
+    [realmId, Number(accountId), Math.max(1, Number(limit) || 60)]
+  );
+  return r.rows.map(x => x.tracking);
 }
 
 // which delivered orders we have not asked about yet

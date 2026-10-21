@@ -15,7 +15,9 @@
 // how often, not whether.
 
 import { pool } from './db.js';
-import { listAccounts, getAccount, saveOrders, trimRaw, credsOf } from './couriers.js';
+import {
+  listAccounts, getAccount, saveOrders, trimRaw, credsOf, movingTrackings
+} from './couriers.js';
 import { adapterFor } from './adapters.js';
 import {
   beginBackground, endBackground, nextGapMinutes, mayRun, computeState
@@ -130,6 +132,35 @@ async function catchUpOne(realmId, acc) {
   };
 
   const extra = credsOf(acc);
+
+  // Not every courier can be asked for a span of days. Sonic - Trax's
+  // platform - has twenty-seven endpoints and not one of them lists a day's
+  // shipments: everything there is about a tracking number you already have.
+  // So for a courier like that the sweep tops up the parcels still moving,
+  // by name, and the orders themselves arrive through its webhooks.
+  if (a.lists === false || typeof a.fetchOrders !== 'function') {
+    mine.from = 'the parcels still moving';
+    mine.to = '';
+
+    try {
+      const moving = await movingTrackings(realmId, acc.id, Number(process.env.REFRESH_CAP) || 60);
+      mine.asked = moving.length;
+
+      if (moving.length && typeof a.refreshKnown === 'function') {
+        const orders = await a.refreshKnown(acc.token, moving, extra);
+        mine.saved += await saveOrders(realmId, acc.id, acc.courier, orders);
+      } else if (!moving.length) {
+        mine.note = 'nothing in flight - its webhooks bring the new ones in';
+      }
+    } catch (e) {
+      mine.error = e.message;
+    }
+
+    state.sweptAt[acc.id] = Date.now();
+    mine.at = new Date().toISOString();
+    return;
+  }
+
   const spans = monthsBetween(from, to);
 
   for (const s of spans) {

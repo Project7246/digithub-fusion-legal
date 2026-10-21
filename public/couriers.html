@@ -302,6 +302,19 @@
 
     var says = (k.fields || []).filter(function(f){ return f.hint; })
       .map(function(f){ return '<b>' + esc(f.label || f.name) + '</b>: ' + esc(f.hint); });
+
+    // worth saying before an account is added, not after: these two couriers
+    // work in opposite ways and both ways are the courier's doing, not ours
+    if(k.lists === false){
+      says.push('<b>How ' + esc(k.name) + ' works</b>: its API answers about one ' +
+        'parcel at a time, never a span of days, so new parcels arrive through ' +
+        'its webhooks and Fusion refreshes the ones still moving.');
+    } else if(k.hook && k.hook.none){
+      says.push('<b>How ' + esc(k.name) + ' works</b>: no webhooks at all, so ' +
+        'Fusion asks — one monthly report per account, plus bulk tracking ' +
+        'for parcels still moving.');
+    }
+
     $('kindNote').innerHTML = says.join(' &middot; ');
 
     $('label').placeholder = k.name + ' - main';
@@ -467,6 +480,13 @@
         if(!confirm('Remove ' + (a ? a.label : 'this account') + '?\n\n' +
                     'Orders already pulled in stay where they are.')) return;
         post('/api/courier/accounts/remove', { id: id })
+          .then(function(d){
+            if(d.orders || d.cprs){
+              say('', '<b>' + esc(a ? a.label : 'That account') + ' is off.</b> ' +
+                nf(d.orders || 0) + ' orders and ' + nf(d.cprs || 0) +
+                ' receipts it had pulled in went with it.');
+            }
+          })
           .then(loadAccounts)
           .catch(function(e){ say('bad', '<b>' + esc(e.message) + '</b>'); });
       });
@@ -504,8 +524,13 @@
             : '') +
           // which shape of the call answered: worth saying for the couriers
           // whose guide had to be found by trying
-          (d.check && d.check.shape
-            ? ' <span class="aside">answered on ' + esc(d.check.shape) + '</span>'
+          (d.check && d.check.accounts && d.check.accounts.length
+            ? ' It holds ' + d.check.accounts.length + ' account number' +
+              (d.check.accounts.length === 1 ? '' : 's') + ': ' +
+              esc(d.check.accounts.join(', ')) + '.'
+            : '') +
+          (d.check && d.check.learned && d.check.learned.location
+            ? ' Location id ' + esc(d.check.learned.location) + ' was looked up and kept.'
             : '') + '</div>';
         $('label').value = '';
         $('addFields').querySelectorAll('[data-field]').forEach(function(el){ el.value = ''; });
@@ -577,17 +602,27 @@
         // every courier hides this screen somewhere else, and M&P have none at
         // all - they switch it on at their end
         $('hookWhere').innerHTML = d.hook
-          ? 'For ' + esc(d.courierName || d.courier) + ': <b>' + esc(d.hook.where) + '</b>' +
-            (d.hook.note ? ' &mdash; ' + esc(d.hook.note) : '')
+          ? (d.hook.where
+              ? 'For ' + esc(d.courierName || d.courier) + ': <b>' + esc(d.hook.where) + '</b>'
+              : 'For ' + esc(d.courierName || d.courier) + ':') +
+            (d.hook.note ? ' ' + esc(d.hook.note) : '')
           : '';
 
         $('hookBox').innerHTML =
           '<div class="hookrow"><label>Webhook URL</label>' +
             '<code>' + esc(d.url) + '</code>' + copyBtn('cpUrl', d.url) + '</div>' +
-          '<div class="hookrow"><label>Header key</label>' +
-            '<code>' + esc(d.header) + '</code>' + copyBtn('cpKey', d.header) + '</div>' +
-          '<div class="hookrow"><label>Header value</label>' +
-            '<code>' + esc(d.secret) + '</code>' + copyBtn('cpVal', d.secret) + '</div>' +
+          // Some portals - Trax's among them - have a box for the address and
+          // nothing else. For those the second secret is already on the end of
+          // the address, so asking anybody to paste a header would be asking
+          // for something their screen cannot do.
+          (d.headerless
+            ? '<div class="hint">This courier\u2019s portal takes an address and ' +
+              'nothing else, so the key is already in it. Paste the whole line, ' +
+              'the <code>?k=</code> part included.</div>'
+            : '<div class="hookrow"><label>Header key</label>' +
+                '<code>' + esc(d.header) + '</code>' + copyBtn('cpKey', d.header) + '</div>' +
+              '<div class="hookrow"><label>Header value</label>' +
+                '<code>' + esc(d.secret) + '</code>' + copyBtn('cpVal', d.secret) + '</div>') +
           '<div class="hint" style="margin:12px 0 0">' +
             (d.hits
               ? nf(d.hits) + ' call' + (d.hits === 1 ? '' : 's') + ' so far · last ' + esc(when(d.lastAt))

@@ -356,6 +356,32 @@
 
           <h3 class="fxsub">Courier orders by company</h3>
           <table class="fxtbl" id="sCos"><tbody></tbody></table>
+
+          <h3 class="fxsub">Housekeeping</h3>
+          <div class="hint">
+            What is kept, and for how long. A courier's own answer is kept
+            <b>3 days</b>; a Shopify order that is already in QuickBooks keeps its
+            line items <b>10 days</b> in case it has to be undone, then only the
+            small row that says it was invoiced; the Shopify log keeps
+            <b>3 weeks</b>. An order still waiting or held keeps everything,
+            however old. This runs by itself once a day.
+            <br><br>
+            <b>Clean up now</b> also takes away rows no screen can reach &mdash;
+            the orders of a courier account that was added to the wrong company
+            and removed again &mdash; and gives the room back to the disk, which
+            the nightly run does not: it locks each table for a moment, so it is
+            only ever done when somebody asks.
+          </div>
+          <dl class="fxpost" id="hkBox" style="display:none">
+            <dt>Last run</dt><dd id="hkAt">&mdash;</dd>
+            <dt>Room given back</dt><dd id="hkFreed">&mdash;</dd>
+            <dt>Unreachable rows</dt><dd id="hkOrph">&mdash;</dd>
+            <dt>Trimmed</dt><dd id="hkTrim">&mdash;</dd>
+          </dl>
+          <div class="acts">
+            <button class="mini" id="btnClean">Clean up now</button>
+          </div>
+          <div class="fxsaid" id="hkSaid"></div>
         </div>
 
         <!-- Room and hours are two different bills. Neon charges for the time
@@ -760,7 +786,53 @@
       }).join('') || '<tr><td>No courier orders pulled yet.</td></tr>';
 
     paintCompute(d.compute, d.computeMonths);
+    paintClean(d.housekeeping);
   }).catch(function(){});
+
+  /* ---------- housekeeping ---------- */
+  function paintClean(h){
+    if (!h) return;
+    $('hkBox').style.display = '';
+    $('hkAt').textContent = new Date(h.at).toLocaleString();
+    $('hkFreed').textContent = h.freed ? sizeOf(h.freed) + ' given back' :
+      (h.vacuumed ? 'nothing to give back' : 'freed for re-use, not given back');
+    $('hkOrph').textContent = (h.orphanOrders || h.orphanCprs)
+      ? comma(h.orphanOrders) + ' orders and ' + comma(h.orphanCprs) +
+        ' receipts of a removed account'
+      : 'none';
+    $('hkTrim').textContent =
+      comma(h.rawCleared || 0) + " courier answers \u00b7 " +
+      comma(h.shopifyLinesCleared || 0) + ' invoiced Shopify orders \u00b7 ' +
+      comma(h.shopifyEventsDeleted || 0) + ' log lines';
+  }
+
+  $('btnClean').addEventListener('click', function(){
+    var said = $('hkSaid');
+    said.className = 'fxsaid';
+    said.textContent = 'Cleaning up\u2026 the database is locked for a moment.';
+
+    press($('btnClean'), 'Cleaning\u2026', function(){
+      return fetch('/api/storage/clean', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ vacuum: true })
+      }).then(function(r){ return r.json(); }).then(function(h){
+        if (h.error) {
+          said.className = 'fxsaid fxbad';
+          said.textContent = h.error;
+          return;
+        }
+        paintClean(h);
+        said.className = 'fxsaid fxgood';
+        said.textContent = 'Done. ' + sizeOf(h.before) + ' before, ' +
+          sizeOf(h.after) + ' after' +
+          (h.freed ? ' \u2014 ' + sizeOf(h.freed) + ' given back.' : '.');
+      }).catch(function(){
+        said.className = 'fxsaid fxbad';
+        said.textContent = 'Could not reach the server.';
+      });
+    });
+  });
 
   /* ---------- what the month has cost ---------- */
   function hours(h){

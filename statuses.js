@@ -25,9 +25,14 @@ export function byWords(status) {
 
   // "RTO Delivered" is a return that finished, not a delivery - the return
   // words win over the word "delivered" whenever both are in the same status.
+  // Everything a courier says about a delivery that did not happen still has
+  // the word "delivery" in it - "Delivery Unsuccessful", "Delivery In Process",
+  // "Undelivered", "RTO Delivered" - so the exceptions are listed, and they
+  // are listed from what the three couriers' own documents say.
   if (s.includes('deliver') && !s.includes('under review') && !s.includes('out for') &&
       !s.includes('attempt') && !s.includes('in process') && !s.includes('failed') &&
-      !s.includes('undeliver') && !s.includes('return') && !s.includes('rto')) {
+      !s.includes('undeliver') && !s.includes('return') && !s.includes('rto') &&
+      !s.includes('unsuccess') && !s.includes('not deliver') && !s.includes('pending')) {
     return 'delivered';
   }
   if (s.includes('return') || s.includes('rto') || s.includes('refused') ||
@@ -43,6 +48,13 @@ export function byWords(status) {
   if (s.includes('unbook') || s.includes('un-book') || s.includes('draft') ||
       s.includes('not booked')) {
     return 'unbooked';
+  }
+  // A delivery that was tried and did not come off is a parcel still with the
+  // courier, not a parcel in limbo - "other" is where orders go to be
+  // forgotten, and an attempted delivery is the opposite of forgotten.
+  if (s.includes('unsuccess') || s.includes('undeliver') ||
+      s.includes('not deliver') || s.includes('failed')) {
+    return 'transit';
   }
   if (s.includes('expire'))                                    return 'expired';
   if (s.includes('cancel') || s.includes('un-assign') ||
@@ -89,21 +101,65 @@ export function num(v) {
   return isNaN(n) ? 0 : n;
 }
 
+const MONTHS = {
+  jan: 1, feb: 2, mar: 3, apr: 4, may: 5, jun: 6,
+  jul: 7, aug: 8, sep: 9, oct: 10, nov: 11, dec: 12
+};
+
+const iso = (y, m, d) =>
+  `${y}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+
 // Only the day, because that is all any report here is cut by - and a courier's
 // own idea of a timestamp is not something to trust past the date.
-export function day(v) {
+//
+// Read by hand, in the order the three couriers actually write it, and never
+// through toISOString(). That was the bug worth remembering: M&P send
+// "02 Nov 2024", `new Date` reads it as midnight **here**, and toISOString
+// then moves it back five hours into the 1st. A courier's date is the date it
+// printed - it is not a moment to be converted into another timezone.
+// `order` is for the one thing a date like 06/12/2025 cannot tell you: Sonic
+// writes 5 April as 05/04/2022 and M&P write 14 June as 06/14/2025, so the two
+// couriers disagree and only the caller knows which it is holding. Day-first
+// is the default because that is how Pakistan writes a date; 'mdy' is M&P's
+// tracking screen. Where the numbers settle it - either of them past 12 - the
+// numbers win and `order` is ignored.
+export function day(v, order) {
   if (!v) return null;
   const s = String(v).trim();
 
-  let m = s.match(/^(\d{4})-(\d{2})-(\d{2})/);
-  if (m) return `${m[1]}-${m[2]}-${m[3]}`;
+  // 2024-11-02, and 2024-11-02T10:22:41.861Z
+  let m = s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);
+  if (m) return iso(m[1], m[2], m[3]);
 
-  // 21/10/2026 and 21-10-2026, which is how the Pakistani portals write it
+  // 02/11/2024 and 02-11-2024
   m = s.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})/);
   if (m) {
-    return `${m[3]}-${String(m[2]).padStart(2, '0')}-${String(m[1]).padStart(2, '0')}`;
+    const a = Number(m[1]), b = Number(m[2]);
+    if (a > 12) return iso(m[3], b, a);          // the first must be the day
+    if (b > 12) return iso(m[3], a, b);          // the second must be the day
+    return order === 'mdy' ? iso(m[3], a, b) : iso(m[3], b, a);
+  }
+
+  // 02 Nov 2024, which is how M&P's reports write it
+  m = s.match(/^(\d{1,2})[\s\-]([A-Za-z]{3,})[\s\-](\d{4})/);
+  if (m && MONTHS[m[2].slice(0, 3).toLowerCase()]) {
+    return iso(m[3], MONTHS[m[2].slice(0, 3).toLowerCase()], m[1]);
+  }
+
+  // Nov 02, 2024
+  m = s.match(/^([A-Za-z]{3,})\s+(\d{1,2}),?\s+(\d{4})/);
+  if (m && MONTHS[m[1].slice(0, 3).toLowerCase()]) {
+    return iso(m[3], MONTHS[m[1].slice(0, 3).toLowerCase()], m[2]);
+  }
+
+  // a number of seconds since 1970, as Sonic's tracking history carries
+  if (/^\d{10}$/.test(s)) {
+    const d = new Date(Number(s) * 1000);
+    return iso(d.getFullYear(), d.getMonth() + 1, d.getDate());
   }
 
   const d = new Date(s);
-  return isNaN(d.getTime()) ? null : d.toISOString().slice(0, 10);
+  if (isNaN(d.getTime())) return null;
+  // local parts, not UTC - see above
+  return iso(d.getFullYear(), d.getMonth() + 1, d.getDate());
 }

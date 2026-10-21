@@ -15,7 +15,8 @@ import {
 import { initMappings, getMappings, saveMapping } from './mappings.js';
 import {
   initHooks, hookFor, rollHook, accountByHookKey, sameSecret,
-  applyStatus, logHook, recentHooks
+  applyStatus, applyCharges, applyPayment, logHook, recentHooks,
+  hookUrl, secretFrom
 } from './hooks.js';
 import {
   initShopify, listShops, getShop, saveShop, removeShop, checkShop, cleanDomain,
@@ -106,7 +107,7 @@ import { startAdvJob, stopAdvJob, clearAdvJob, resumeAdvJob, advSnapshot } from 
 import {
   initCouriers, listAccounts as listCourierAccounts, getAccount as getCourierAccount,
   addAccount as addCourierAccount, removeAccount as removeCourierAccount,
-  markSync, saveOrders, credsOf,
+  markSync, saveOrders, credsOf, movingTrackings,
   listCprs, cprOrders, cprProgress
 } from './couriers.js';
 // One list of couriers, in adapters.js, read by this file, by the keeper and by
@@ -160,6 +161,7 @@ import { startKeeper, keeperState, sweepNow } from './keeper.js';
 import {
   initCompute, computeState, computeHistory, saveComputeOnExit
 } from './compute.js';
+import { startHousekeeping, cleanUp, lastClean } from './housekeeping.js';
 import {
   dashboard as dashData, recentCprs, pickups, pickupOrders, ordersBy, eachOrder
 } from './dashdata.js';
@@ -2411,11 +2413,27 @@ app.get('/api/storage', async (req, res) => {
       limitMb: DB_LIMIT_MB,
       compute: computeState(),
       computeMonths: months,
+      housekeeping: lastClean(),
       tables: tables.rows.map(t => ({
         name: t.name, bytes: Number(t.bytes), rows: Number(t.est_rows)
       })),
       companies: byCompany.map(c => ({ name: c.name, orders: Number(c.orders) }))
     });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// Everything housekeeping does by itself, on demand - and with the lock-taking
+// VACUUM FULL that the nightly one will not do, because this one was asked for
+// by somebody who is watching. It is the button for "that data should not be
+// there any more": the orders of an account added to the wrong company and
+// removed again have no screen of their own, and this is what takes them away.
+app.post('/api/storage/clean', async (req, res) => {
+  if (!await requireBoss(req, res)) return;
+  try {
+    const out = await cleanUp({ vacuum: req.body && req.body.vacuum !== false });
+    res.json(out);
   } catch (e) {
     res.status(500).json({ error: e.message });
   }
@@ -7750,60 +7768,95 @@ app.post('/api/shopify/unmark', async (req, res) => {
 // one of those two, so the other is read here, for this route alone.
 app.post('/hooks/courier/:courier/:key',
          express.urlencoded({ extended: true, limit: '1mb' }),
-         async (req, res) => {
-  let account = null;
+         (req, res) => {
+  // **Answered before anything is done.** Sonic waits three seconds, tries
+  // five times, and then switches the subscription off until somebody turns it
+  // back on by hand - and the first query against a sleeping Neon compute can
+  // take longer than three seconds on its own. So the courier is told yes
+  // immediately and the work happens after; the log on the courier page is
+  // where the result shows up, and it is a moment behind on purpose.
+  //
+  // A wrong key gets the same yes. It used to get a 401, which was tidier and
+  // also told whoever was guessing that they had found a live address - no
+  // courier reads our answer anyway, and the refusal is in the server log.
+  res.json({ ok: true });
+
+  const body = req.body && typeof req.body === 'object' ? req.body : {};
+  const courier = String(req.params.courier || '');
+  const key = String(req.params.key || '');
+  const given = secretFrom(req);
+
+  applyCourierHook(courier, key, given, body)
+    .catch(e => console.error('webhook:', e.message));
+});
+
+// Everything the route used to do between taking the call and answering it.
+async function applyCourierHook(courier, key, given, body) {
+  const account = await accountByHookKey(key);
+  if (!account) return;
+
+  // the wrong courier's hook on the right account's address is a mix-up worth
+  // refusing, and the key in the address is only the first of the two locks
+  if (courier.toLowerCase() !== String(account.courier).toLowerCase()) {
+    console.error('webhook: ' + courier + ' called ' + account.courier + "'s address");
+    return;
+  }
+  if (!sameSecret(given, account.hook_secret)) {
+    console.error('webhook: wrong key on ' + account.courier + ' account ' + account.id);
+    return;
+  }
+
   try {
-    account = await accountByHookKey(req.params.key);
-    if (!account) return res.status(404).json({ ok: false });
-
-    // the address alone is not enough, and the wrong courier's hook on the
-    // right account's address is a mix-up worth refusing
-    if (String(req.params.courier).toLowerCase() !== String(account.courier).toLowerCase()) {
-      return res.status(404).json({ ok: false });
-    }
-    if (!sameSecret(req.get('X-Fusion-Key') || req.get('x-fusion-key'), account.hook_secret)) {
-      return res.status(401).json({ ok: false, error: 'Wrong key' });
-    }
-
-    const body = req.body && typeof req.body === 'object' ? req.body : {};
     // read by the courier's own file where it has something to say about its
     // shape, and by the forgiving reader in hooks.js otherwise
     const read = readFor(account.courier, body);
 
     if (!read.tracking) {
       await logHook(account, { note: 'no tracking number in it', body });
-      return res.json({ ok: true, note: 'kept, but no tracking number was found' });
+      return;
     }
 
-    // PostEx's words are not Trax's and neither are M&P's, so the bucket comes
-    // from the courier that called - this used to be PostEx's reader for all
-    // of them, which filed every Trax status under "other".
-    const group = groupFor(account.courier, read.status);
-    const what = await applyStatus(account, {
-      tracking: read.tracking, status: read.status, group,
-      when: read.when, ref: read.ref, amount: read.amount, city: read.city
-    });
+    // One address, four kinds of call. Sonic has a webhook each for status,
+    // payment, initial charges and final charges, and its screens take a URL
+    // with nothing to tell them apart - so the courier's own reader says which
+    // of them this is and each goes where it belongs. A courier that sends only
+    // statuses never sets `kind` and lands on the last branch, as before.
+    const kind = read.kind || 'status';
+    let what = false;
+
+    if (kind === 'payment') {
+      what = await applyPayment(account, read);
+    } else if (kind === 'charges') {
+      what = await applyCharges(account, read);
+    } else {
+      // PostEx's words are not Trax's and neither are M&P's, so the bucket
+      // comes from the courier that called.
+      const group = groupFor(account.courier, read.status);
+      what = await applyStatus(account, {
+        tracking: read.tracking, status: read.status, group,
+        when: read.when, ref: read.ref, amount: read.amount, city: read.city
+      });
+      // the charges a status hook happened to carry are still charges
+      if (read.fee || read.tax) await applyCharges(account, read).catch(() => {});
+    }
 
     await logHook(account, {
       tracking: read.tracking,
-      status: read.status,
+      status: read.status || (kind === 'charges' ? 'charges' : kind),
       matched: !!what,
       note: what === 'added'
         ? 'new to us - written down from the webhook itself'
-        : (what ? null : 'nothing in it to apply'),
+        : (what ? (kind === 'status' ? null : kind) : 'that parcel is not here yet'),
       body
     });
-
-    res.json({ ok: true });
   } catch (e) {
-    // Said plainly in our own log, and still 200 to the courier: their retry
-    // would not fix whatever broke in here.
+    // said plainly in our own log; the courier was told yes long ago and its
+    // retry would not fix whatever broke in here
     console.error('webhook:', e.message);
-    try { if (account) await logHook(account, { note: 'failed: ' + e.message, body: req.body }); }
+    try { await logHook(account, { note: 'failed: ' + e.message, body }); }
     catch (e2) { /* nothing more to do about it */ }
-    res.json({ ok: true });
   }
-});
+}
 
 // What to paste into the courier's portal, and what has arrived since.
 app.get('/api/courier/hook', async (req, res) => {
@@ -7813,10 +7866,14 @@ app.get('/api/courier/hook', async (req, res) => {
     res.setHeader('Cache-Control', 'no-store');
     const h = await hookFor(realmId, req.query.account);
     const a = adapterFor(h.courier);
+    const headerless = !!(a && a.hook && a.hook.headerless);
     const base = (process.env.BASE_URL || '').replace(/\/+$/, '') ||
                  (req.protocol + '://' + req.get('host'));
     res.json({
-      url: base + '/hooks/courier/' + h.courier + '/' + h.key,
+      url: hookUrl(base, h, headerless),
+      // a portal with nowhere to put a header gets the secret in the address
+      // instead, so the page must not ask anybody to paste one
+      headerless,
       header: h.header,
       secret: h.secret,
       label: h.label,
@@ -7842,11 +7899,13 @@ app.post('/api/courier/hook-roll', async (req, res) => {
   if (!realmId) return;
   try {
     const h = await rollHook(realmId, req.body.account);
+    const a = adapterFor(h.courier);
+    const headerless = !!(a && a.hook && a.hook.headerless);
     const base = (process.env.BASE_URL || '').replace(/\/+$/, '') ||
                  (req.protocol + '://' + req.get('host'));
     res.json({
-      url: base + '/hooks/courier/' + h.courier + '/' + h.key,
-      header: h.header, secret: h.secret
+      url: hookUrl(base, h, headerless),
+      headerless, header: h.header, secret: h.secret
     });
   } catch (e) {
     res.status(400).json({ error: e.message });
@@ -8788,6 +8847,17 @@ app.post('/api/courier/accounts', async (req, res) => {
   try {
     // asked before it is kept, so a key that does not work never gets saved
     const check = await a.testToken(token, extra);
+
+    // What the courier told us about itself while it was answering. M&P hand
+    // out an account number and a location id and their reports need both, and
+    // their own sign-in call lists them - so they are looked up here rather
+    // than being something to find in an old email and type in.
+    if (check && check.learned && typeof check.learned === 'object') {
+      Object.keys(check.learned).forEach(k => {
+        if (!extra[k] && check.learned[k]) extra[k] = String(check.learned[k]);
+      });
+    }
+
     const id = await addCourierAccount(realmId, { courier, label, token, extra });
     res.json({ ok: true, id, check });
   } catch (e) {
@@ -8818,8 +8888,10 @@ app.post('/api/courier/accounts/remove', async (req, res) => {
   const realmId = await requireCompany(req, res);
   if (!realmId) return;
   try {
-    await removeCourierAccount(realmId, req.body.id);
-    res.json({ ok: true });
+    // takes the orders and receipts it pulled with it, and says how many -
+    // leaving them behind is what left one company holding another's data
+    const gone = await removeCourierAccount(realmId, req.body.id);
+    res.json(Object.assign({ ok: true }, gone));
   } catch (e) {
     res.status(500).json({ error: e.message });
   }
@@ -8840,7 +8912,23 @@ app.post('/api/courier/sync', async (req, res) => {
     const a = adapterFor(acc.courier);
     if (!a) return res.status(400).json({ error: 'No adapter for ' + acc.courier });
 
-    const orders = await a.fetchOrders(acc.token, from, to, 0, credsOf(acc));
+    const extra = credsOf(acc);
+
+    // A courier that cannot be asked for a span of days is refreshed parcel by
+    // parcel instead, and the page is told that is what happened - rather than
+    // being shown an empty week and left to wonder.
+    let orders, how = 'days';
+    if (a.lists === false || typeof a.fetchOrders !== 'function') {
+      const moving = await movingTrackings(realmId, acc.id,
+                                           Number(process.env.REFRESH_CAP) || 60);
+      orders = moving.length && typeof a.refreshKnown === 'function'
+        ? await a.refreshKnown(acc.token, moving, extra)
+        : [];
+      how = 'moving';
+    } else {
+      orders = await a.fetchOrders(acc.token, from, to, 0, extra);
+    }
+
     const saved = await saveOrders(realmId, acc.id, acc.courier, orders);
     await markSync(realmId, acc.id, null);
 
@@ -8860,6 +8948,12 @@ app.post('/api/courier/sync', async (req, res) => {
       account: acc.label,
       pulled: orders.length,
       saved,
+      how,
+      note: how === 'moving'
+        ? (a.name + ' does not hand over a day\u2019s orders - its API answers ' +
+           'about one parcel at a time, so its webhooks bring new parcels in and ' +
+           'this refreshed the ' + orders.length + ' still moving.')
+        : '',
       tally,
       unknown
     });
@@ -12313,6 +12407,8 @@ initDb()
     console.log(`Server running on port ${PORT}`);
     // a deploy must not lose the month's tally - DigitalOcean sends SIGTERM
     saveComputeOnExit();
+    // the orphans of whatever happened yesterday go first, then once a day
+    startHousekeeping();
     startKeeper();
     startShopifySync();
         resumeUnfinished().catch(e => console.error('resume failed:', e.message));

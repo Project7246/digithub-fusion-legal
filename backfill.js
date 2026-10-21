@@ -175,6 +175,11 @@ async function run(realmId, job, carrying) {
 
   const a = adapterFor(acc.courier);
   if (!a) throw new Error('No adapter for ' + acc.courier);
+  if (a.lists === false || typeof a.fetchOrders !== 'function') {
+    throw new Error(a.name + ' cannot be asked for past months - its API only ' +
+      'answers about one parcel at a time, so its orders arrive through its ' +
+      'webhooks from the day they are switched on');
+  }
 
   // whatever this courier wants beside its token - a login, an account number
   const extra = credsOf(acc);

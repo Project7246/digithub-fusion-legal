@@ -23,6 +23,11 @@ async function ordersFor(acc, from, to) {
   const a = adapterFor(acc.courier);
   if (!a) return [];
 
+  // Trax's platform has no call that lists a span of days, so there is nothing
+  // to ask it here. The dashboard falls back to our own table, which its
+  // webhooks keep current - that is the whole arrangement for that courier.
+  if (a.lists === false || typeof a.fetchOrders !== 'function') return [];
+
   const orders = await a.fetchOrders(acc.token, from, to, 0, credsOf(acc));
   recent.set(k, { at: Date.now(), orders });
 

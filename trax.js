@@ -1,316 +1,329 @@
-// Trax speaks through Sonic, the platform behind it: the API is at sonic.pk and
-// the key is on the portal's own profile screen. Like postex.js, this file is
-// the whole of that dialect - nothing above it ever sees a Trax field name.
+// Trax books and tracks through Sonic, the platform behind it. This file is
+// written against their own document - API Documentation-SONIC, version 2.0,
+// 18 April 2022 - so there is nothing left to guess at:
 //
-// One thing is different, and it is the reason wire.js exists. PostEx published
-// its guide; Trax hands one out account by account, and the endpoint that
-// answers on one merchant's key is a 404 on another's. So every call here is a
-// short list of the shapes it could take, the first one Trax actually answers
-// is remembered for that key, and when none of them answer the error says what
-// each attempt was told. Locking in an address we only half know would have
-// been the same work and a worse error.
+//   live     https://sonic.pk          testing  http://app.sonic.pk
+//   the key  portal -> company name (top right) -> Profile -> API key
+//   handed   over as a plain `Authorization` header, not a Bearer token
 //
-// If Trax send their guide, the lists below are where it goes, and nothing
-// else in the app changes.
+// Two things about Sonic decide the shape of everything below.
+//
+// **`status: 0` means it worked.** It is their own code, not an HTTP one, and
+// it sits in the body of a 200. So nothing here reads `status` as a failure.
+//
+// **Sonic has no "give me a day's shipments" call.** Twenty-seven endpoints and
+// every one of them is about a tracking number you already have, or about
+// booking a new one. So Trax cannot be swept the way PostEx is, and pretending
+// otherwise would be a page of empty days. Instead:
+//
+//   - the **webhooks** are where Trax orders come from. There are four of them,
+//     and between them they carry the status, the money, the weight and the
+//     settlement - everything a sweep would have gone looking for.
+//   - `refreshKnown()` tops up the parcels we already hold, by name.
+//
+// So `lists: false` on the adapter, and the keeper asks for the one it can.
 
 import { makeGrouper, num, day } from './statuses.js';
 import { flatten, pick } from './hooks.js';
-import { qs, call, rows, hunt, knownAuth } from './wire.js';
+import { qs, call, rows } from './wire.js';
 
 const BASE = (process.env.TRAX_BASE || 'https://sonic.pk/api').replace(/\/+$/, '');
 
-// Trax's own words, as they appear on the portal. Anything not here is read by
-// the word rules in statuses.js, which is what carries a status added later.
+// Sonic writes a status as "<what> - <where it got to>": "Shipment - Out for
+// Delivery", "Shipment-Arrived at Origin", "Payment - Processed". The whole
+// string is what gets stored, because that is what the courier said; these are
+// the ones whose bucket is not obvious from the words alone.
 const GROUPS = {
-  'draft':                         'unbooked',
-  'unbooked':                      'unbooked',
-  'booked':                        'booked',
-  'shipment booked':               'booked',
-  'order created':                 'booked',
-  'pickup requested':              'booked',
-  'pickup scheduled':              'transit',
-  'picked':                        'transit',
-  'picked up':                     'transit',
-  'arrived at origin station':     'transit',
-  'departed from origin station':  'transit',
-  'in transit':                    'transit',
-  'arrived at destination station':'transit',
-  'out for delivery':              'transit',
-  'delivery attempted':            'transit',
-  'on hold':                       'review',
-  'delivered':                     'delivered',
-  'out for return':                'returning',
-  'return in transit':             'returning',
-  'returned to shipper':           'returned',
-  'return received':               'returned',
-  'rto delivered':                 'returned',
-  'cancelled':                     'cancelled',
-  'canceled':                      'cancelled',
-  'lost':                          'lost',
-  'damaged':                       'damaged'
+  'shipment - booked':                 'booked',
+  'shipment-booked':                   'booked',
+  'shipment - arrival service center': 'transit',
+  'shipment - arrived at origin':      'transit',
+  'shipment-arrived at origin':        'transit',
+  'shipment - arrived at destination': 'transit',
+  'shipment - out for delivery':       'transit',
+  'shipment - delivery unsuccessful':  'transit',
+  'shipment - delivered':              'delivered',
+  'shipment - return to shipper':      'returning',
+  'shipment - returned to shipper':    'returned',
+  'shipment - return received':        'returned',
+  'shipment - lost':                   'lost',
+  'shipment - damaged':                'damaged',
+  'shipment - cancelled':              'cancelled',
+  // A replacement is a parcel swapped at the door: the new one was handed over,
+  // so as far as the books are concerned it was delivered.
+  'replacement-exchanged':             'delivered',
+  'replacement - exchanged':           'delivered'
 };
 
 export const groupOf = makeGrouper(GROUPS);
 
-/* ---------- the key, and how Trax wants to be handed it ---------- */
-// Three ways have been seen in the wild and the key itself does not say which
-// one it is, so each is tried once and the one that works is kept.
-const AUTHS = [
-  { name: 'Authorization',        head: k => ({ Authorization: k }) },
-  { name: 'Authorization Bearer', head: k => ({ Authorization: 'Bearer ' + k }) },
-  { name: 'x-api-key',            head: k => ({ 'x-api-key': k }) },
-  { name: 'api_key in the query', head: () => ({}), query: k => ({ api_key: k }) }
-];
-
-// Once one call has been accepted, the way this key is handed over is settled,
-// so the rest of them stop trying the other three.
-function shapesFor(paths, token) {
-  const known = knownAuth('trax', token);
-  const auths = known ? [known] : AUTHS;
-
-  const out = [];
-  paths.forEach(p => auths.forEach(a => out.push({
-    name: p.name + ' / ' + a.name,
-    path: p.path,
-    params: p.params || {},
-    method: p.method || 'GET',
-    body: p.body || null,
-    auth: a
-  })));
-  return out;
+// Sonic's own code for "it worked" is 0, and some calls answer with no code at
+// all. Only a code that is there and is not 0 is a refusal.
+function sonicOk(json) {
+  if (!json || typeof json !== 'object') return false;
+  if (json.status === undefined || json.status === null) return true;
+  return Number(json.status) === 0;
 }
 
-function sender(token) {
-  return shape => call({
-    url: qs(BASE, shape.path,
-            Object.assign({}, shape.params,
-                          shape.auth.query ? shape.auth.query(token) : {})),
-    method: shape.method,
-    headers: shape.auth.head(token),
-    body: shape.body
-  });
+function headers(token) {
+  return { Authorization: String(token || '') };
 }
 
-/* ---------- one order, in the app's own shape ---------- */
+async function ask(token, path, params) {
+  const r = await call({ url: qs(BASE, path, params), headers: headers(token) });
 
-export function mapOrder(row) {
-  const f = flatten(row, 0);
-  const status = pick(f, [
-    'status', 'shipmentstatus', 'currentstatus', 'statusname', 'trackingstatus',
-    'orderstatus', 'statusmessage', 'laststatus'
-  ]);
+  if (r.status === 401 || r.status === 403) {
+    throw new Error('Trax refused the API key');
+  }
+  if (!r.ok) {
+    throw new Error(`Trax said ${r.status || 'nothing'}: ` +
+                    String((r.json && (r.json.message || r.json.error)) || r.text).slice(0, 200));
+  }
+  if (!sonicOk(r.json)) {
+    throw new Error('Trax said: ' +
+                    String((r.json && r.json.message) || 'it would not do that').slice(0, 200));
+  }
+  return r.json || {};
+}
 
-  const cod = num(pick(f, ['codamount', 'cod', 'collectableamount', 'amount',
-                           'invoicevalue', 'orderamount', 'productvalue']));
-  const fee = num(pick(f, ['deliverycharges', 'servicecharges', 'totalcharges',
-                           'charges', 'shippingcharges', 'fee']));
-  const tax = num(pick(f, ['gst', 'salestax', 'tax', 'taxamount']));
+/* ---------- a shipment, in the app's own shape ---------- */
+
+// `/shipment/track` answers with one nested object: shipper, pickup,
+// consignee, order_information and the whole tracking_history, newest first.
+export function mapTracked(details) {
+  const d = details || {};
+  const consignee = d.consignee || {};
+  const info = d.order_information || {};
+  const history = Array.isArray(d.tracking_history) ? d.tracking_history : [];
+
+  // newest first in their example, but a timestamp is there on every line, so
+  // the latest is picked rather than assumed
+  const latest = history.slice().sort(
+    (a, b) => Number(b.timestamp || 0) - Number(a.timestamp || 0))[0] || {};
+
+  const status = String(latest.status || '').trim();
+  const group = groupOf(status);
+
+  const lineOf = want => {
+    const hit = history.find(h => groupOf(h.status) === want);
+    return hit ? day(hit.date_time) : null;
+  };
+
+  const items = Array.isArray(info.items) ? info.items : [];
 
   return {
-    tracking:    pick(f, ['trackingnumber', 'tracking', 'cn', 'cnnumber', 'cnno',
-                          'awb', 'awbnumber', 'consignmentnumber', 'trackingid']),
-    orderRef:    pick(f, ['orderid', 'orderrefnumber', 'orderref', 'referencenumber',
-                          'reference', 'referenceno', 'consigneeorderid']),
-    customer:    pick(f, ['consigneename', 'customername', 'receivername', 'name']),
-    phone:       pick(f, ['consigneephone', 'customerphone', 'phone', 'mobile',
-                          'consigneemobile', 'contactnumber']),
-    address:     pick(f, ['consigneeaddress', 'deliveryaddress', 'address',
-                          'customeraddress']),
-    detail:      pick(f, ['itemdescription', 'productdescription', 'orderdetail',
-                          'description', 'remarks']),
-    notes:       pick(f, ['comments', 'note', 'notes', 'statusremarks']),
-    items:       num(pick(f, ['pieces', 'quantity', 'items', 'noofpieces'])),
-    weight:      num(pick(f, ['weight', 'actualweight', 'bookingweight'])),
+    tracking:    String(d.tracking_number || '').trim(),
+    orderRef:    String(d.order_id || '').trim(),
+    customer:    consignee.name || '',
+    phone:       consignee.phone_number_1 || consignee.phone_number_2 || '',
+    address:     consignee.address || '',
+    detail:      items.map(i => i.description || i.product_type || '').filter(Boolean).join(', '),
+    notes:       latest.status_reason || info.instructions || '',
+    items:       items.reduce((n, i) => n + (num(i.quantity) || 0), 0) || items.length,
+    weight:      num(info.weight),
     status,
-    statusGroup: groupOf(status),
-    amount:      cod,
+    statusGroup: group,
+    amount:      num(info.amount),
     payout:      0,
     upfront:     0,
     reserve:     0,
     balance:     0,
-    fee,
-    tax,
-    city:        pick(f, ['destinationcity', 'consigneecity', 'city', 'cityname',
-                          'deliverycity']),
-    bookedOn:    day(pick(f, ['bookingdate', 'shipmentdate', 'orderdate',
-                              'createdat', 'createddate', 'bookingdatetime'])),
-    pickedOn:    day(pick(f, ['pickupdate', 'pickeddate', 'pickupdatetime'])),
-    deliveredOn: day(pick(f, ['deliverydate', 'delivereddate', 'deliveredon',
-                              'deliverydatetime'])),
-    raw:         row
+    fee:         0,
+    tax:         0,
+    city:        consignee.destination || (d.pickup && d.pickup.origin) || '',
+    bookedOn:    lineOf('booked') || day(history.length
+                   ? history[history.length - 1].date_time : null),
+    pickedOn:    lineOf('transit'),
+    deliveredOn: group === 'delivered' ? day(latest.date_time) : lineOf('delivered'),
+    // the history is the useful part of what they sent and it is small; the
+    // rest of the nesting is not kept
+    raw:         { tracking_history: history.slice(0, 12) }
   };
 }
 
-/* ---------- the calls the app makes of any courier ---------- */
+/* ---------- the calls ---------- */
 
-// Proves the key, and nothing else. A city list is the cheapest thing a courier
-// will hand over, so that is what is asked for.
+// The cheapest thing Sonic will hand over, and it proves the key.
 export async function testToken(token) {
-  const paths = [
-    { name: '/cities',            path: '/cities' },
-    { name: '/city/list',         path: '/city/list' },
-    { name: '/cities/list',       path: '/cities/list' },
-    { name: '/pickup_address',    path: '/pickup_address' },
-    { name: '/shipment/payments', path: '/shipment/payments' }
-  ];
-
-  const got = await hunt({
-    courier: 'trax', job: 'test', token,
-    shapes: shapesFor(paths, token),
-    send: sender(token),
-    good: a => {
-      const list = rows(a.json);
-      if (list) return { n: list.length };
-      return a.json && typeof a.json === 'object' ? { n: 0 } : null;
-    }
-  });
-
+  const j = await ask(token, '/cities', {});
+  const list = rows(j) || [];
   return {
     ok: true,
     statuses: [],
-    shape: got.shape.name,
-    message: 'Trax answered on ' + got.shape.name +
-             (got.found.n ? ', ' + got.found.n + ' rows' : '')
+    shape: 'Authorization header',
+    message: 'Trax answered' + (list.length ? ' with ' + list.length + ' cities' : '')
   };
 }
 
-// Every order in a span of days.
-export async function fetchOrders(token, from, to, statusId, extra) {
-  const dates = [
-    { start_date: from, end_date: to },
-    { from_date: from,  to_date: to },
-    { fromDate: from,   toDate: to },
-    { startDate: from,  endDate: to },
-    { date_from: from,  date_to: to }
-  ];
-
-  const paths = [];
-  ['/shipment/list', '/shipments', '/shipment/all', '/shipment/report',
-   '/shipment/payments', '/orders'].forEach(p => {
-    dates.forEach(d => paths.push({
-      name: p + ' (' + Object.keys(d)[0] + ')',
-      path: p,
-      params: Object.assign({}, d,
-                            extra && extra.account ? { account: extra.account } : {})
-    }));
-  });
-
-  const got = await hunt({
-    courier: 'trax', job: 'orders', token,
-    shapes: shapesFor(paths, token),
-    send: sender(token),
-    good: a => {
-      const list = rows(a.json);
-      if (!list) return null;
-      const mapped = list.map(mapOrder).filter(x => x.tracking);
-      // an address that answers with rows carrying no tracking number is the
-      // wrong address, not an empty day
-      if (list.length && !mapped.length) return null;
-      return mapped;
-    }
-  });
-
-  const seen = new Map();
-  got.found.forEach(o => seen.set(o.tracking, o));
-  return [...seen.values()];
-}
-
-// One parcel, asked about by name.
+// type=0 is the shipper's own tracking - it is the one that carries weight and
+// payment lines. type=1 is what a consignee sees.
 export async function trackOne(token, tracking) {
-  const cn = String(tracking || '').trim();
-  const paths = [];
-
-  [{ p: '/shipment/track',  k: 'tracking_number' },
-   { p: '/shipment/track',  k: 'cn_number' },
-   { p: '/shipment/track',  k: 'tracking_no' },
-   { p: '/track',           k: 'tracking_number' },
-   { p: '/shipment/status', k: 'tracking_number' }].forEach(x => {
-    const params = {};
-    params[x.k] = cn;
-    paths.push({ name: x.p + '?' + x.k, path: x.p, params });
-  });
-  ['/shipment/track/', '/track/'].forEach(p => {
-    paths.push({ name: p + '<cn>', path: p + encodeURIComponent(cn) });
+  const j = await ask(token, '/shipment/track', {
+    tracking_number: String(tracking || '').trim(),
+    type: 0
   });
 
-  const got = await hunt({
-    courier: 'trax', job: 'track', token,
-    shapes: shapesFor(paths, token),
-    send: sender(token),
-    good: a => {
-      const list = rows(a.json);
-      const one = list && list.length ? mapOrder(list[0])
-                                      : (a.json ? mapOrder(a.json) : null);
-      return one && one.status ? one : null;
-    }
-  });
-
-  return got.found;
+  const d = j.details || (j.data && j.data.details) || null;
+  if (!d) throw new Error('Trax knows nothing about ' + tracking);
+  return mapTracked(d);
 }
 
-// What Trax has paid out for a parcel. Trax settles by receipt the way PostEx
-// does, so the same few fields come back and the receipts page needs no new
-// reading.
+// Just the words, for when the whole history is not wanted.
+export async function statusOne(token, tracking) {
+  const j = await ask(token, '/shipment/status', {
+    tracking_number: String(tracking || '').trim(),
+    type: 0
+  });
+  const s = String(j.current_status || j['current_status'] || '').trim();
+  return { tracking: String(tracking), status: s, statusGroup: groupOf(s) };
+}
+
+// What Trax charged for a parcel. Their `net_payable` is what the merchant is
+// owed, so it is not a fee - the fee is total_charges, and gst is the tax.
+export async function fetchCharges(token, tracking) {
+  const j = await ask(token, '/shipment/charges',
+                      { tracking_number: String(tracking || '').trim() });
+  const c = j.charges || {};
+  return {
+    tracking:  String(tracking),
+    fee:       num(c.total_charges) || (num(c.weight_charges) + num(c.fuel_surcharge) +
+                                        num(c.cash_handling_charges)),
+    tax:       num(c.gst),
+    netPayable: num(c.net_payable),
+    raw: c
+  };
+}
+
+// Settlement. `/shipment/payments` carries the payment status and every
+// payment made against the parcel; the payment's own id is the nearest thing
+// Trax has to PostEx's CPR number, so that is where it is kept.
 export async function fetchPayment(token, tracking) {
   const cn = String(tracking || '').trim();
-  const paths = [
-    { name: '/shipment/payments?tracking_number', path: '/shipment/payments',
-      params: { tracking_number: cn } },
-    { name: '/payment/status?tracking_number',    path: '/payment/status',
-      params: { tracking_number: cn } },
-    { name: '/shipment/payment/<cn>',
-      path: '/shipment/payment/' + encodeURIComponent(cn) }
-  ];
+  const j = await ask(token, '/shipment/payments', { tracking_number: cn });
 
-  const got = await hunt({
-    courier: 'trax', job: 'payment', token,
-    shapes: shapesFor(paths, token),
-    send: sender(token),
-    good: a => {
-      const list = rows(a.json);
-      const r = list && list.length ? list[0] : a.json;
-      return r && typeof r === 'object' ? r : null;
-    }
-  });
-
-  const f = flatten(got.found, 0);
-  const paid = pick(f, ['settlementdate', 'paymentdate', 'paiddate', 'settledon']);
-  const flag = pick(f, ['settled', 'ispaid', 'paid', 'paymentstatus', 'status']);
+  const said = String(j.current_payment_status || '').trim();
+  const paid = Array.isArray(j.payments) ? j.payments : [];
+  const first = paid[0] || {};
 
   return {
-    tracking:  cn,
-    orderRef:  pick(f, ['orderid', 'orderrefnumber', 'reference']),
-    settled:   !!day(paid) || /^(1|true|yes|paid|settled|completed)$/i.test(String(flag)),
-    settledOn: day(paid),
-    cprNumber: pick(f, ['cprnumber', 'cpr', 'paymentreference',
-                        'settlementreference', 'invoicenumber', 'paymentid']),
-    upfrontOn: null,
-    reserveOn: null
+    tracking:   cn,
+    orderRef:   '',
+    settled:    /processed|paid|cleared|transferred/i.test(said) || paid.length > 0,
+    settledOn:  day(first.datetime),
+    cprNumber:  first.id === undefined || first.id === null ? '' : String(first.id),
+    upfrontOn:  null,
+    reserveOn:  null,
+    status:     said,
+    amount:     num(first.payable) || num(first.amount),
+    fee:        num(first.charges),
+    tax:        num(first.gst)
   };
 }
 
-// Trax's webhooks carry the same field names its order rows do, so the reader
-// in hooks.js finds them without help. It is named here all the same: the day
-// Trax sends a shape of its own, this is the one place that has to change.
+// Sonic cannot be asked for a span of days, so this is the sweep's shape for
+// Trax: the parcels we already hold, asked about by name, newest first and
+// capped - a courier that only answers one at a time is a courier it is easy
+// to spend an afternoon and a month's compute on.
+export async function refreshKnown(token, trackings, extra) {
+  const want = (trackings || []).map(t => String(t).trim()).filter(Boolean);
+  const cap = Math.max(1, Number((extra && extra.cap) || process.env.TRAX_REFRESH_CAP) || 60);
+  const list = want.slice(0, cap);
+
+  const out = [];
+  // three at a time: polite to them, and quick enough that the database is not
+  // being held awake while we wait
+  for (let i = 0; i < list.length; i += 3) {
+    const answers = await Promise.all(
+      list.slice(i, i + 3).map(cn => trackOne(token, cn).catch(() => null))
+    );
+    answers.forEach(o => { if (o && o.tracking) out.push(o); });
+  }
+  return out;
+}
+
+/* ---------- the four webhooks ---------- */
+//
+// Sonic has one toggle per kind in the portal (Shipment Status, Payment Status,
+// Initial Charges, Final Charges) and each takes **a URL and nothing else** -
+// there is no field for a header. So the address itself has to carry both
+// secrets, which is why the hook URL for Trax is handed over with `?k=` on the
+// end and why `headerless` is set below.
+//
+// Their rules, which the route has to live up to: five attempts, **three
+// seconds** each, and after five failures the subscription is switched off and
+// has to be turned on again by hand. So the route answers before it does
+// anything slow, and never with a 500.
+//
+// What each one sends (their document, sections 24 to 27):
+//
+//   status    tracking_number, status, date_time
+//   payment   tracking_number, status, date_time, payment_id
+//   charges   tracking_number, origin, destination, cod_amount, actual_weight,
+//             chargeable_weight, weight_charges, cash_handling_charges,
+//             insurance_charges, fuel_surcharges, gst, total_charges,
+//             net_payable  (+ packaging/return/replacement/try_buy/intercept/
+//             nsa charges on the final one)
+export function readHook(body) {
+  const f = flatten(body, 0);
+
+  const tracking = pick(f, ['trackingnumber', 'tracking', 'cn', 'cnnumber']);
+  const status = pick(f, ['status', 'currentstatus', 'shipmentstatus']);
+  const when = pick(f, ['datetime', 'date', 'time']);
+  const paymentId = pick(f, ['paymentid']);
+  const totals = pick(f, ['totalcharges', 'weightcharges', 'netpayable']);
+
+  // which of the four this is. The payment hook is the one carrying a payment
+  // id or a status that begins with "Payment"; a charges hook carries charges
+  // and usually no status at all.
+  let kind = 'status';
+  if (paymentId || /^payment/i.test(status)) kind = 'payment';
+  else if (!status && totals) kind = 'charges';
+
+  return {
+    kind,
+    tracking,
+    status,
+    ref: '',
+    when,
+    amount: pick(f, ['codamount']),
+    city: pick(f, ['destination']),
+    // the money side, for the two charges hooks - this is the whole reason
+    // Trax needs so little polling
+    fee: pick(f, ['totalcharges']),
+    tax: pick(f, ['gst']),
+    weight: pick(f, ['chargeableweight', 'actualweight']),
+    paymentId,
+    settled: kind === 'payment' && /processed|paid|cleared/i.test(status)
+  };
+}
+
 export const adapter = {
   key: 'trax',
   name: 'Trax',
-  // One key, and the account number only where a sign-in holds several. The
-  // first field is always the one kept as the account's token.
+  // Sonic hands out one API key per account, and that is the whole sign-in.
   fields: [
     { name: 'token', label: 'API key', secret: true,
-      hint: 'sonic.pk → Settings → Profile → API key' },
-    { name: 'account', label: 'Account number', optional: true,
-      hint: 'only if this sign-in holds more than one Trax account' }
+      hint: 'sonic.pk → click your company name (top right) → Profile → API key' }
   ],
   hook: {
     where: 'sonic.pk → Settings → Webhooks',
-    note: 'Trax offers a webhook per event. Paste this one address into each of ' +
-          'them — status, delivery and return all read the same here.'
+    note: 'Four toggles - Shipment Status, Payment Status, Initial Charges, ' +
+          'Final Charges. Paste this same address into all four; Fusion can ' +
+          'tell them apart. Trax waits only 3 seconds and switches a webhook ' +
+          'off after 5 failures, so turn each one on while Fusion is up.',
+    // Sonic's webhook screen takes a URL and nothing else - no header field -
+    // so the second secret rides in the address as ?k=
+    headerless: true
   },
+  // No endpoint anywhere in their API lists a day's shipments, so the keeper
+  // tops up what we hold instead of asking for days.
+  lists: false,
   groupOf,
+  readHook,
   testToken,
-  fetchOrders,
+  trackOne,
+  statusOne,
+  fetchCharges,
   fetchPayment,
-  trackOne
+  refreshKnown
 };
