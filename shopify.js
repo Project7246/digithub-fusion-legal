@@ -1076,3 +1076,79 @@ export async function failAll(realmId, gids, err) {
   );
   return r.rowCount;
 }
+
+/* ==================== what Fusion itself did ==================== */
+
+// Not "everything made since Tuesday" - exactly what this app made, because
+// this app wrote down every one of them at the moment it did it. Anything
+// somebody made by hand in QuickBooks is no business of an undo button.
+
+export async function madeItems(realmId, since) {
+  const args = [realmId];
+  let when = '';
+  if (since) { args.push(since); when = ' AND at >= $2'; }
+  const r = await pool.query(
+    `SELECT at, sku, title, note, detail
+       FROM shopify_events
+      WHERE realm_id = $1 AND kind = 'item'${when}
+      ORDER BY id DESC LIMIT 500`, args);
+
+  // one row per item, newest first, and only the ones that were actually made
+  const seen = new Set(), out = [];
+  r.rows.forEach(e => {
+    const id = e.detail && e.detail.id;
+    if (!id || seen.has(id)) return;
+    if (!/^made "/.test(String(e.note || ''))) return;   // not "already had"
+    seen.add(id);
+    out.push({
+      qbId: String(id), at: e.at, sku: e.sku || '', title: e.title || '',
+      note: e.note || ''
+    });
+  });
+  return out;
+}
+
+export async function madeInvoices(realmId, since) {
+  const args = [realmId];
+  let when = '';
+  if (since) { args.push(since); when = ' AND at >= $2'; }
+  const r = await pool.query(
+    `SELECT at, order_name, order_gid, note, detail
+       FROM shopify_events
+      WHERE realm_id = $1 AND kind = 'invoice'${when}
+      ORDER BY id DESC LIMIT 2000`, args);
+
+  const seen = new Set(), out = [];
+  r.rows.forEach(e => {
+    const d = e.detail || {};
+    if (d.existing) return;                 // it was already there; not ours
+    if (!d.id || seen.has(d.id)) return;
+    seen.add(d.id);
+    out.push({
+      qbId: String(d.id), at: e.at, name: e.order_name || '', gid: e.order_gid || '',
+      total: d.total || 0, lines: d.lines || 0, note: e.note || ''
+    });
+  });
+  return out;
+}
+
+// An order whose invoice has been deleted is not written any more, so it goes
+// back in the queue as if it never had been - which is what makes "delete them
+// and I will upload again" actually work.
+export async function unsync(realmId, gids) {
+  if (!gids.length) return 0;
+  const r = await pool.query(
+    `UPDATE shopify_orders
+        SET state = 'waiting', synced_at = NULL, qb_doc_number = NULL, qb_id = NULL,
+            next_try = NULL, tries = 0, sync_error = NULL, held_why = NULL
+      WHERE realm_id = $1 AND order_gid = ANY($2::text[])`,
+    [realmId, gids]
+  );
+  return r.rowCount;
+}
+
+// Every item in the books, for choosing what to merge into.
+export async function forgetEvents(realmId, kind) {
+  await pool.query('DELETE FROM shopify_events WHERE realm_id = $1 AND kind = $2',
+    [realmId, kind]);
+}

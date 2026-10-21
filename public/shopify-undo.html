@@ -1,0 +1,403 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Put it back</title>
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="manifest" href="/manifest.json">
+<meta name="theme-color" content="#222F34">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@600;700;800&family=Roboto:wght@400;500&family=Roboto+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/app.css">
+<style>
+  /* Undoing is not the same job as doing, and it reads differently: you need to
+     see exactly what is about to be touched, one row at a time, before anything
+     happens - and a running log while it does. Same shape as Void invoices,
+     because that is the page this one is standing next to in somebody's head. */
+  .step{background:var(--panel);border:1px solid var(--line);border-radius:10px;
+    padding:20px 24px;margin-bottom:16px}
+  .step h2{margin:0 0 4px;font-size:14.5px;font-weight:600}
+  .step h2 i{font-family:var(--mono);font-style:normal;font-size:11px;color:var(--faint);
+    margin-right:9px}
+  .step .hint{font-size:12.5px;color:var(--muted);margin-bottom:14px;line-height:1.6}
+
+  .warn{background:#FDF6F5;border:1px solid #F0D6D3;color:#7A2C24;border-radius:10px;
+    padding:14px 16px;margin-bottom:16px;font-size:12.5px;line-height:1.65}
+  .warn b{font-weight:700}
+
+  table.t{width:100%;border-collapse:collapse;font-size:12.5px}
+  table.t th{text-align:left;font-weight:600;font-size:10.5px;letter-spacing:.07em;
+    text-transform:uppercase;color:var(--faint);padding:8px;border-bottom:1px solid var(--line)}
+  table.t td{padding:7px 8px;border-bottom:1px solid var(--line);vertical-align:middle}
+  table.t td.mono{font-family:var(--mono);font-size:11.5px;white-space:nowrap}
+  table.t td.num{text-align:right;font-family:var(--mono);white-space:nowrap}
+  table.t select{width:100%;max-width:340px;border:1px solid var(--line);border-radius:6px;
+    padding:5px 7px;font:inherit;font-size:12px;background:#fff}
+  table.t tr.off{opacity:.45}
+  .scroll{max-height:420px;overflow:auto;border:1px solid var(--line);border-radius:8px}
+  .none{padding:28px;text-align:center;color:var(--muted);font-size:12.5px}
+
+  .acts{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-top:14px}
+  .go{background:var(--qbo);border:1px solid var(--qbo);color:#fff;border-radius:8px;
+    padding:10px 20px;font:inherit;font-size:13px;font-weight:600;cursor:pointer}
+  .red{background:var(--bad,#9A2E24);border-color:var(--bad,#9A2E24)}
+  .go[disabled]{opacity:.5;cursor:default}
+  .ghost{background:#fff;border:1px solid var(--line);color:var(--text);border-radius:8px;
+    padding:9px 16px;font:inherit;font-size:12.5px;cursor:pointer}
+  .ghost:hover{border-color:var(--qbo);color:var(--qbo)}
+  .said{font-size:12.5px}
+  .said.bad{color:var(--bad,#9A2E24)}
+  .said.good{color:var(--qbo)}
+
+  .runlog{margin:14px 0 0;padding:13px 15px;background:#16222A;color:#CFE3E6;
+    font:12px/1.75 var(--mono);max-height:280px;overflow:auto;white-space:pre-wrap;
+    border-radius:9px;display:none;word-break:break-word}
+  .runlog.on{display:block}
+  .runlog .ok{color:#7FD88F}
+  .runlog .no{color:#F09A92}
+  .runlog .dim{color:#8CA3A8}
+
+  .bar{height:9px;border-radius:6px;background:var(--panel-2);overflow:hidden;
+    margin-top:12px;display:none}
+  .bar.on{display:block}
+  .bar i{display:block;height:100%;width:0;background:var(--qbo);transition:width .3s}
+
+  .pick{display:flex;gap:14px;align-items:flex-end;flex-wrap:wrap;margin-bottom:16px}
+  .pick label{display:block;font-size:11px;letter-spacing:.07em;text-transform:uppercase;
+    color:var(--faint);margin-bottom:4px}
+  .pick input{border:1px solid var(--line);border-radius:7px;padding:9px 11px;
+    font:inherit;font-size:13px;background:#fff}
+</style>
+</head>
+<body>
+
+<div class="layout">
+  <aside class="rail"></aside>
+
+  <div class="main">
+    <div class="topline">
+      <div>
+        <h1>Put it back</h1>
+        <div class="sub">Undo exactly what Fusion wrote into QuickBooks &mdash; and nothing else.</div>
+      </div>
+    </div>
+
+    <div class="shell">
+
+      <div class="warn">
+        <b>This changes real books.</b> Nothing here is guessed from a date: every
+        invoice and every item below is one Fusion wrote down at the moment it made
+        it, with QuickBooks&rsquo; own id beside it. Anything you made by hand in
+        QuickBooks is not on these lists and cannot be touched from this page.
+        <br><br>
+        Do the invoices first and the products second. An item QuickBooks still has
+        transactions against will not merge.
+      </div>
+
+      <div class="pick">
+        <div>
+          <label for="since">Only what was made on or after</label>
+          <input id="since" type="date">
+        </div>
+        <button class="ghost" id="btnLoad" type="button">Show me</button>
+        <span class="said" id="loadSaid"></span>
+      </div>
+
+      <!-- ============ 01 the invoices ============ -->
+      <div class="step">
+        <h2><i>01</i>Invoices Fusion wrote <span id="nInv"></span></h2>
+        <div class="hint">
+          Deleted outright, as asked. Each order then goes back in the queue as if it
+          had never been written, so reading those days again and sending them will
+          write them properly.
+        </div>
+        <div id="invBox"><div class="none">Press &ldquo;Show me&rdquo;.</div></div>
+        <div class="acts">
+          <button class="go red" id="btnDel" type="button" disabled>Delete the ticked invoices</button>
+          <span class="said" id="delSaid"></span>
+        </div>
+        <div class="bar" id="delBar"><i></i></div>
+        <pre class="runlog" id="delLog"></pre>
+      </div>
+
+      <!-- ============ 02 the products ============ -->
+      <div class="step">
+        <h2><i>02</i>Products Fusion made <span id="nItem"></span></h2>
+        <div class="hint">
+          Each one goes into the product it should have been. QuickBooks has no merge
+          button in its API &mdash; giving an item the other one&rsquo;s name <i>is</i>
+          the merge, and is what QuickBooks does behind its own button: the two become
+          one and the history goes with it.
+          <br><br>
+          Where the SKU already sits on another item, that one is picked for you. Check
+          every row before you press.
+        </div>
+        <div id="itemBox"><div class="none">Press &ldquo;Show me&rdquo;.</div></div>
+        <label class="hint" style="display:flex;gap:8px;align-items:center;margin-top:12px">
+          <input type="checkbox" id="retire" checked>
+          If QuickBooks refuses to merge one, make it inactive instead
+        </label>
+        <div class="acts">
+          <button class="go red" id="btnMerge" type="button" disabled>Merge the ticked products</button>
+          <span class="said" id="mergeSaid"></span>
+        </div>
+        <div class="bar" id="mergeBar"><i></i></div>
+        <pre class="runlog" id="mergeLog"></pre>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<script src="/nav.js"></script>
+<script src="/update.js"></script>
+<script>
+"use strict";
+(function(){
+  var $ = function(id){ return document.getElementById(id); };
+  var INV = [], ITEMS = [], QBITEMS = [];
+
+  function esc(s){
+    return String(s == null ? '' : s)
+      .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  }
+  function n0(n){ return (Number(n)||0).toLocaleString(); }
+  function money(n){
+    return (Number(n)||0).toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2});
+  }
+  function when(t){
+    if(!t) return '';
+    var d = new Date(t);
+    return d.toLocaleDateString() + ' ' +
+      d.toLocaleTimeString([], { hour:'2-digit', minute:'2-digit' });
+  }
+  function say(el, cls, text){ el.className = 'said ' + (cls||''); el.textContent = text || ''; }
+  var NL = String.fromCharCode(10);
+
+  function get(url){
+    return fetch(url, { cache:'no-store' }).then(function(r){
+      return r.json().then(function(d){
+        if(!r.ok) throw new Error(d.error || ('Server said ' + r.status));
+        return d;
+      });
+    });
+  }
+  function post(url, body){
+    return fetch(url, {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify(body||{})
+    }).then(function(r){
+      return r.json().then(function(d){
+        if(!r.ok) throw new Error(d.error || ('Server said ' + r.status));
+        return d;
+      });
+    });
+  }
+
+  function logTo(box, cls, line){
+    box.classList.add('on');
+    box.innerHTML += '<span class="' + cls + '">' + esc(line) + '</span>' + NL;
+    box.scrollTop = box.scrollHeight;
+  }
+
+  /* ---------- what is there ---------- */
+
+  $('btnLoad').addEventListener('click', load);
+
+  function load(){
+    $('btnLoad').disabled = true;
+    say($('loadSaid'), '', 'Reading what Fusion did, and your item list…');
+
+    var q = $('since').value ? '?since=' + $('since').value : '';
+    get('/api/shopify/undo' + q)
+      .then(function(d){
+        INV = d.invoices || [];
+        ITEMS = d.items || [];
+        QBITEMS = (d.qbItems || []).filter(function(i){ return i.active !== false; });
+        drawInvoices();
+        drawItems();
+        say($('loadSaid'), 'good',
+          n0(INV.length) + ' invoices and ' + n0(ITEMS.length) + ' products were made by Fusion.');
+      })
+      .catch(function(e){ say($('loadSaid'), 'bad', e.message); })
+      .then(function(){ $('btnLoad').disabled = false; });
+  }
+
+  function drawInvoices(){
+    $('nInv').textContent = INV.length ? '· ' + n0(INV.length) : '';
+    $('btnDel').disabled = !INV.length;
+    if(!INV.length){
+      $('invBox').innerHTML = '<div class="none">Fusion has written no invoices in that time.</div>';
+      return;
+    }
+    $('invBox').innerHTML = '<div class="scroll"><table class="t">' +
+      '<tr><th style="width:34px"><input type="checkbox" id="allInv" checked></th>' +
+      '<th>Order</th><th>Written</th><th class="num">Lines</th><th class="num">Total</th>' +
+      '<th>What it says</th></tr>' +
+      INV.map(function(v, i){
+        return '<tr><td><input type="checkbox" data-inv="' + i + '" checked></td>' +
+          '<td class="mono">' + esc(v.name) + '</td>' +
+          '<td class="mono">' + esc(when(v.at)) + '</td>' +
+          '<td class="num">' + n0(v.lines) + '</td>' +
+          '<td class="num">' + money(v.total) + '</td>' +
+          '<td>' + esc(v.note) + '</td></tr>';
+      }).join('') + '</table></div>';
+
+    $('allInv').addEventListener('change', function(){
+      var on = $('allInv').checked;
+      $('invBox').querySelectorAll('[data-inv]').forEach(function(c){ c.checked = on; });
+    });
+  }
+
+  function options(chosen){
+    return '<option value="">leave it alone</option>' +
+      QBITEMS.map(function(i){
+        return '<option value="' + esc(i.name) + '"' +
+          (chosen === i.name ? ' selected' : '') + '>' + esc(i.name) +
+          (i.sku ? '  · ' + esc(i.sku) : '') + '</option>';
+      }).join('');
+  }
+
+  function drawItems(){
+    $('nItem').textContent = ITEMS.length ? '· ' + n0(ITEMS.length) : '';
+    $('btnMerge').disabled = !ITEMS.length;
+    if(!ITEMS.length){
+      $('itemBox').innerHTML = '<div class="none">Fusion has made no products in that time.</div>';
+      return;
+    }
+    $('itemBox').innerHTML = '<div class="scroll"><table class="t">' +
+      '<tr><th style="width:34px"><input type="checkbox" id="allItem" checked></th>' +
+      '<th>Made as</th><th>SKU</th><th>When</th><th>Goes into</th></tr>' +
+      ITEMS.map(function(v, i){
+        return '<tr><td><input type="checkbox" data-item="' + i + '"' +
+            (v.suggest ? ' checked' : '') + '></td>' +
+          '<td>' + esc(v.title || '—') + '</td>' +
+          '<td class="mono">' + esc(v.sku || '—') + '</td>' +
+          '<td class="mono">' + esc(when(v.at)) + '</td>' +
+          '<td><select data-into="' + i + '">' + options(v.suggest) + '</select>' +
+          (v.suggest ? '' : '<br><small style="color:var(--bad)">nothing with this SKU ' +
+            'to merge into — choose one</small>') + '</td></tr>';
+      }).join('') + '</table></div>';
+
+    $('allItem').addEventListener('change', function(){
+      var on = $('allItem').checked;
+      $('itemBox').querySelectorAll('[data-item]').forEach(function(c){ c.checked = on; });
+    });
+  }
+
+  /* ---------- deleting ---------- */
+
+  $('btnDel').addEventListener('click', function(){
+    var want = [];
+    $('invBox').querySelectorAll('[data-inv]').forEach(function(c){
+      if(c.checked) want.push(INV[Number(c.getAttribute('data-inv'))]);
+    });
+    if(!want.length){ say($('delSaid'),'bad','Nothing ticked.'); return; }
+    if(!confirm('Delete ' + want.length + ' invoices from QuickBooks? This cannot be undone ' +
+                'from here — the orders go back in the queue so they can be written again.')) return;
+
+    $('btnDel').disabled = true;
+    $('delLog').innerHTML = '';
+    $('delBar').classList.add('on');
+    say($('delSaid'), '', 'Deleting…');
+
+    // in tens, so the log moves and a long run can be watched
+    var done = 0, failed = 0, i = 0;
+    function round(){
+      var lot = want.slice(i, i + 10);
+      if(!lot.length){
+        say($('delSaid'), failed ? 'bad' : 'good',
+          n0(done) + ' deleted, ' + n0(failed) + ' refused.');
+        $('btnDel').disabled = false;
+        load();
+        return;
+      }
+      post('/api/shopify/undo/invoices', { ids: lot })
+        .then(function(d){
+          (d.done || []).forEach(function(x){
+            done++; logTo($('delLog'), 'ok', x.name + '  ' + x.note);
+          });
+          (d.failed || []).forEach(function(x){
+            failed++; logTo($('delLog'), 'no', x.name + '  ' + x.error);
+          });
+          if(d.putBack) logTo($('delLog'), 'dim',
+            d.putBack + ' orders put back in the queue');
+          i += 10;
+          $('delBar').firstChild.style.width = Math.round(i * 100 / want.length) + '%';
+          round();
+        })
+        .catch(function(e){
+          say($('delSaid'), 'bad', e.message);
+          $('btnDel').disabled = false;
+        });
+    }
+    round();
+  });
+
+  /* ---------- merging ---------- */
+
+  $('btnMerge').addEventListener('click', function(){
+    var want = [];
+    $('itemBox').querySelectorAll('[data-item]').forEach(function(c){
+      if(!c.checked) return;
+      var i = Number(c.getAttribute('data-item'));
+      var sel = $('itemBox').querySelector('[data-into="' + i + '"]');
+      want.push({ qbId: ITEMS[i].qbId, title: ITEMS[i].title, into: sel ? sel.value : '' });
+    });
+    var blank = want.filter(function(p){ return !p.into; }).length;
+    if(!want.length){ say($('mergeSaid'),'bad','Nothing ticked.'); return; }
+    if(blank){
+      say($('mergeSaid'),'bad', blank + ' of them have nothing chosen to go into. ' +
+        'Choose one, or untick them.');
+      return;
+    }
+    if(!confirm('Merge ' + want.length + ' products into the ones chosen? ' +
+                'In QuickBooks the two become one and cannot be separated again.')) return;
+
+    $('btnMerge').disabled = true;
+    $('mergeLog').innerHTML = '';
+    $('mergeBar').classList.add('on');
+    say($('mergeSaid'), '', 'Merging…');
+
+    var done = 0, failed = 0, i = 0;
+    function round(){
+      var lot = want.slice(i, i + 10);
+      if(!lot.length){
+        say($('mergeSaid'), failed ? 'bad' : 'good',
+          n0(done) + ' done, ' + n0(failed) + ' refused.');
+        $('btnMerge').disabled = false;
+        load();
+        return;
+      }
+      post('/api/shopify/undo/merge', { pairs: lot, retireIfRefused: $('retire').checked })
+        .then(function(d){
+          (d.done || []).forEach(function(x){
+            done++; logTo($('mergeLog'), 'ok', (x.title || x.qbId) + '  ' + x.note);
+          });
+          (d.failed || []).forEach(function(x){
+            failed++; logTo($('mergeLog'), 'no', (x.title || x.qbId) + '  ' + x.error);
+          });
+          i += 10;
+          $('mergeBar').firstChild.style.width = Math.round(i * 100 / want.length) + '%';
+          round();
+        })
+        .catch(function(e){
+          say($('mergeSaid'), 'bad', e.message);
+          $('btnMerge').disabled = false;
+        });
+    }
+    round();
+  });
+
+  /* ---------- off we go ---------- */
+  window.APP.ready.then(function(){
+    // the day it started going wrong, as a sensible place to begin
+    $('since').value = '2026-10-19';
+    load();
+  });
+})();
+</script>
+</body>
+</html>

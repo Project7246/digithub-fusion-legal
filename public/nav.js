@@ -140,7 +140,9 @@
         { href:'/shopify', label:'Orders to QuickBooks', icon:'cart',
           need:'shopify', tile:'cart', as:'Orders' },
         { href:'/shopify-log', label:'Reports', icon:'sheet',
-          need:'shopify', tile:'sheet' }
+          need:'shopify', tile:'sheet' },
+        { href:'/shopify-undo', label:'Put it back', icon:'ban',
+          need:'shopify', tile:'back', as:'Undo' }
       ]}
     ]}
   ];

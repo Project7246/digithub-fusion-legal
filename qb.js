@@ -538,3 +538,81 @@ export async function salesPrefs(realmId, token) {
     return { discount: true, shipping: true, deposit: true, unknown: true };
   }
 }
+
+/* ==================== putting things back ==================== */
+
+// Delete an invoice outright. QuickBooks wants the SyncToken with it, so the
+// invoice is read first - and if it is already gone, that is not a failure,
+// it is the thing we were trying to achieve.
+export async function deleteInvoice(realmId, token, id) {
+  const q = await qbQuery(realmId, token,
+    "SELECT Id, SyncToken, DocNumber FROM Invoice WHERE Id = '" +
+    String(id).replace(/'/g, "''") + "'");
+  const inv = (q.Invoice || [])[0];
+  if (!inv) return { ok: true, gone: true };
+
+  const res = await qbFetch(
+    `${API}/v3/company/${realmId}/invoice?operation=delete&minorversion=70`,
+    token,
+    { method: 'POST', body: JSON.stringify({ Id: inv.Id, SyncToken: inv.SyncToken }) }
+  );
+  if (res.ok) return { ok: true, docNumber: inv.DocNumber };
+
+  const text = await res.text();
+  let msg = text.slice(0, 300);
+  try {
+    const f = JSON.parse(text).Fault;
+    if (f && f.Error && f.Error.length) msg = `${f.Error[0].Message} | ${f.Error[0].Detail || ''}`;
+  } catch (e) { /* keep raw */ }
+  return { ok: false, error: msg };
+}
+
+// Merge one item into another, which in QuickBooks is done by giving it the
+// other one's name: the two become one and the transactions go with it. There
+// is no "merge" call - this is the mechanism QuickBooks itself uses.
+export async function mergeItem(realmId, token, fromId, intoName) {
+  const q = await qbQuery(realmId, token,
+    "SELECT * FROM Item WHERE Id = '" + String(fromId).replace(/'/g, "''") + "'");
+  const item = (q.Item || [])[0];
+  if (!item) return { ok: true, gone: true };
+
+  const body = Object.assign({}, item, { Name: String(intoName).slice(0, 100) });
+  delete body.MetaData;
+
+  const res = await qbFetch(
+    `${API}/v3/company/${realmId}/item?minorversion=70`,
+    token,
+    { method: 'POST', body: JSON.stringify(body) }
+  );
+  if (res.ok) return { ok: true };
+
+  const text = await res.text();
+  let msg = text.slice(0, 300);
+  try {
+    const f = JSON.parse(text).Fault;
+    if (f && f.Error && f.Error.length) msg = `${f.Error[0].Message} | ${f.Error[0].Detail || ''}`;
+  } catch (e) { /* keep raw */ }
+  return { ok: false, error: msg };
+}
+
+// When merging is refused - QuickBooks will not merge an item that stock has
+// moved through - putting it out of use is the next best thing, so it stops
+// turning up on invoices and in lists.
+export async function retireItem(realmId, token, id) {
+  const q = await qbQuery(realmId, token,
+    "SELECT * FROM Item WHERE Id = '" + String(id).replace(/'/g, "''") + "'");
+  const item = (q.Item || [])[0];
+  if (!item) return { ok: true, gone: true };
+
+  const body = Object.assign({}, item, { Active: false });
+  delete body.MetaData;
+
+  const res = await qbFetch(
+    `${API}/v3/company/${realmId}/item?minorversion=70`,
+    token,
+    { method: 'POST', body: JSON.stringify(body) }
+  );
+  if (res.ok) return { ok: true };
+  const text = await res.text();
+  return { ok: false, error: text.slice(0, 300) };
+}

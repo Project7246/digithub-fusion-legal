@@ -23,6 +23,7 @@ import {
   toInvoice, API_VERSION as SHOPIFY_VERSION,
   note as shopNote, events as shopifyEvents, tally as shopifyTally,
   heldList as shopifyHeld, releaseHeld, wakeAll, shopHookKey, shopByHookKey,
+  madeItems, madeInvoices, unsync,
   appKeysFor, saveAppKeys, forgetAppKeys, installUrl, callbackIsReal,
   exchangeCode, SCOPES
 } from './shopify.js';
@@ -54,7 +55,7 @@ import {
 import { initPush, publicKey, addSub, dropSub, hasSub, pushTo } from './push.js';
 import {
   getAccessToken, getCompanyInfo, loadItems, loadTerms,
-  getOrCreateCustomer, postInvoice, qbQuery, qbReport, listAccounts as qbAccountList, forgetToken} from './qb.js';
+  getOrCreateCustomer, postInvoice, qbQuery, qbReport, listAccounts as qbAccountList, forgetToken, deleteInvoice, mergeItem, retireItem} from './qb.js';
 import {
   readItems, readItemSales, readValuation, readPurchases,
   buildRows as buildProductRows, summarise as summariseProducts,
@@ -1333,7 +1334,8 @@ const RIGHT_GROUPS = [
     paths: ['/api/shopify/shops', '/api/shopify/shops/remove', '/api/shopify/pull',
             '/api/shopify/build', '/api/shopify/mark', '/api/shopify/unmark',
             '/api/shopify/settings', '/api/shopify/retry', '/api/shopify/wire',
-            '/api/shopify/app'] },
+            '/api/shopify/app', '/api/shopify/undo/invoices',
+            '/api/shopify/undo/merge'] },
 
   { key: 'settings', area: 'items', label: 'SKU mappings',
     what: 'Remembered SKU-to-item matches',
@@ -1380,7 +1382,8 @@ const PAGE_NEED = new Map(Object.entries({
   '/receipts.html': 'couriersync',
   '/cprs.html': 'couriersync',
   '/shopify.html': 'shopify',
-  '/shopify-log.html': 'shopify'
+  '/shopify-log.html': 'shopify',
+  '/shopify-undo.html': 'shopify'
 }));
 
 // route -> the job it belongs to, worked out once
@@ -7949,6 +7952,132 @@ app.post('/api/shopify/app', async (req, res) => {
     res.json({ ok: true, ready: true });
   } catch (e) {
     res.status(400).json({ error: e.message });
+  }
+});
+
+/* ==================== putting back what Fusion did ==================== */
+// Not "everything in QuickBooks since Tuesday" - exactly what this app made,
+// because it wrote every one of them down at the moment it did it. Anything
+// somebody made by hand in QuickBooks is no business of an undo button.
+
+app.get('/api/shopify/undo', async (req, res) => {
+  const realmId = await requireCompany(req, res);
+  if (!realmId) return;
+  try {
+    res.setHeader('Cache-Control', 'no-store');
+    const since = req.query.since || null;
+    const items = await madeItems(realmId, since);
+    const invoices = await madeInvoices(realmId, since);
+
+    // every item in the books, so each one made can be pointed at the one it
+    // should have been - and a first guess at which that is
+    let all = [];
+    try {
+      const token = await getAccessToken(realmId);
+      let start = 1;
+      while (true) {
+        const q = await qbQuery(realmId, token,
+          'SELECT Id, Name, Sku, Active FROM Item STARTPOSITION ' + start + ' MAXRESULTS 1000');
+        const arr = q.Item || [];
+        arr.forEach(i => all.push({
+          id: i.Id, name: i.Name, sku: i.Sku || '', active: i.Active !== false
+        }));
+        if (arr.length < 1000) break;
+        start += 1000;
+        if (start > 9000) break;
+      }
+    } catch (e) { /* the list is a help, not a requirement */ }
+
+    const madeIds = new Set(items.map(i => i.qbId));
+    items.forEach(it => {
+      // the one it should have been: same SKU, not itself. Failing that, the
+      // nearest name that is not one of ours.
+      const bySku = all.filter(a => a.sku && it.sku &&
+        a.sku.toLowerCase().trim() === it.sku.toLowerCase().trim() &&
+        a.id !== it.qbId && !madeIds.has(a.id));
+      it.suggest = bySku.length ? bySku[0].name : '';
+      it.alsoSku = bySku.length;
+    });
+
+    res.json({ items, invoices, qbItems: all.filter(a => !madeIds.has(a.id)) });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// Delete the invoices this app wrote, and put their orders back in the queue
+// so "delete them and I will upload again" actually works.
+app.post('/api/shopify/undo/invoices', async (req, res) => {
+  const realmId = await requireCompany(req, res);
+  if (!realmId) return;
+
+  const want = Array.isArray(req.body.ids) ? req.body.ids.slice(0, 200) : [];
+  if (!want.length) return res.json({ done: [], failed: [] });
+
+  try {
+    const token = await getAccessToken(realmId);
+    const done = [], failed = [], gids = [];
+
+    for (const row of want) {
+      const out = await deleteInvoice(realmId, token, row.qbId);
+      if (out.ok) {
+        done.push({ qbId: row.qbId, name: row.name,
+                    note: out.gone ? 'was already gone' : 'deleted' });
+        if (row.gid) gids.push(row.gid);
+      } else {
+        failed.push({ qbId: row.qbId, name: row.name, error: out.error });
+      }
+    }
+
+    const back = await unsync(realmId, gids);
+    res.json({ done, failed, putBack: back });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// Merge each item this app made into the one it should have been. QuickBooks
+// has no merge call: giving an item the other one's name is the merge, and is
+// what QuickBooks itself does behind its own button.
+app.post('/api/shopify/undo/merge', async (req, res) => {
+  const realmId = await requireCompany(req, res);
+  if (!realmId) return;
+
+  const want = Array.isArray(req.body.pairs) ? req.body.pairs.slice(0, 200) : [];
+  if (!want.length) return res.json({ done: [], failed: [] });
+
+  try {
+    const token = await getAccessToken(realmId);
+    const done = [], failed = [];
+
+    for (const p of want) {
+      if (!p.into) { failed.push({ qbId: p.qbId, title: p.title,
+        error: 'nothing chosen to merge it into' }); continue; }
+
+      const out = await mergeItem(realmId, token, p.qbId, p.into);
+      if (out.ok) {
+        done.push({ qbId: p.qbId, title: p.title,
+                    note: out.gone ? 'was already gone' : 'merged into ' + p.into });
+        continue;
+      }
+
+      // QuickBooks will not merge an item that stock has moved through. Putting
+      // it out of use is the next best thing: it stops turning up on invoices
+      // and in lists, and nothing it already carries is disturbed.
+      if (req.body.retireIfRefused) {
+        const off = await retireItem(realmId, token, p.qbId);
+        if (off.ok) {
+          done.push({ qbId: p.qbId, title: p.title,
+            note: 'could not be merged (' + out.error.slice(0, 80) + ') - made inactive instead' });
+          continue;
+        }
+      }
+      failed.push({ qbId: p.qbId, title: p.title, error: out.error });
+    }
+
+    res.json({ done, failed });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
   }
 });
 
