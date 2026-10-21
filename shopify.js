@@ -735,9 +735,13 @@ export function toInvoice(order, opts) {
     const item = o.match ? o.match(L.sku, L.title) : null;
     if (item === 'skip') return;
     if (!item) { missing.push(L.sku || L.title); return; }
+    // Not the Shopify title. The words on an invoice line are the ones
+    // QuickBooks holds against that item, and only the caller has the item
+    // list to read them from - so it hands a descOf in, or the line goes
+    // without, the way QuickBooks leaves it when the item says nothing.
     lines.push({
       item,
-      desc: o.keepTitles === false ? '' : (L.title || ''),
+      desc: o.descOf ? o.descOf(item) : '',
       qty: L.qty,
       rate: L.rate,
       amt: L.amt
@@ -749,7 +753,8 @@ export function toInvoice(order, opts) {
   // is dropped rather than guessed at.
   const ship = money(order.shipping);
   if (ship > 0 && o.shippingItem) {
-    lines.push({ item: o.shippingItem, desc: 'Delivery', qty: 1, rate: ship, amt: ship });
+    lines.push({ item: o.shippingItem, qty: 1, rate: ship, amt: ship,
+                 desc: o.descOf ? o.descOf(o.shippingItem) : '' });
   }
 
   if (missing.length) return { skip: 'unmatched', missing, order };

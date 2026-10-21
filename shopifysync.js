@@ -32,7 +32,7 @@ import {
 } from './shopify.js';
 import { decrypt } from './secrets.js';
 import {
-  getAccessToken, qbQuery, loadItems, loadTerms, getOrCreateCustomer,
+  getAccessToken, qbQuery, loadTerms, getOrCreateCustomer,
   postInvoice, createItem, setItemSku, listAccounts, salesPrefs, isRetryable
 } from './qb.js';
 
@@ -61,7 +61,6 @@ export const DEFAULTS = {
   prefix: '',
   terms: '',
   shippingItem: '',
-  keepTitles: true,
   makeItems: true,                         // make the item if the books lack it
   // Which kind of item to make is NOT a setting. Shopify already knows whether
   // it tracks stock for a product; an item made here is made as the same kind
@@ -142,13 +141,15 @@ export function itemsPossible(s, found) {
 export async function openBooks(realmId, s) {
   const token = await getAccessToken(realmId);
   const settings = s || await settingsOf(realmId);
+  const shelf = await itemShelf(realmId, token);
   return {
     realmId,
     token,
-    items: await loadItems(realmId, token),      // name -> id
+    items: shelf.ids,                            // name -> id
+    desc: shelf.desc,                            // name -> QuickBooks' own words
     terms: await loadTerms(realmId, token),
     customers: {},
-    skus: await skuIndex(realmId, token),        // sku -> name
+    skus: shelf.skus,                            // sku -> name
     saved: await getMappings(realmId),
     accounts: standingAccounts(await listAccounts(realmId, token), settings),
     prefs: await salesPrefs(realmId, token),
@@ -156,23 +157,45 @@ export async function openBooks(realmId, s) {
   };
 }
 
-async function skuIndex(realmId, token) {
-  const out = new Map();
+// The item list, read once, three ways round.
+//
+// It used to be two scans - one for name-to-id, one for sku-to-name - and now
+// it is one, because a third thing is wanted from the same rows: the item's own
+// sales description. QuickBooks holds the words that belong on an invoice line;
+// Shopify's product title is a shop-front name and is not those words. So the
+// description comes from here, and the Shopify title is not consulted at all.
+//
+// PurchaseDesc and PurchaseCost are deliberately not read. They belong on bills
+// and purchase orders, and the cost lands in QuickBooks when a PO is entered -
+// nothing on an invoice has any business touching either.
+async function itemShelf(realmId, token) {
+  const ids = {}, desc = {}, skus = new Map();
   let start = 1;
   while (true) {
     const q = await qbQuery(realmId, token,
-      'SELECT Id, Name, Sku, Active FROM Item STARTPOSITION ' + start + ' MAXRESULTS 1000');
+      'SELECT Id, Name, Sku, Description, Active FROM Item STARTPOSITION ' +
+      start + ' MAXRESULTS 1000');
     const arr = q.Item || [];
     arr.forEach(i => {
+      const key = String(i.Name || '').toLowerCase();
+      if (!key) return;
+      ids[key] = i.Id;
+      desc[key] = String(i.Description || '');
       if (!i.Sku) return;
       const k = String(i.Sku).toLowerCase().trim();
-      if (!out.has(k) || i.Active !== false) out.set(k, i.Name);
+      if (!skus.has(k) || i.Active !== false) skus.set(k, i.Name);
     });
     if (arr.length < 1000) break;
     start += 1000;
     if (start > 9000) break;
   }
-  return out;
+  return { ids, desc, skus };
+}
+
+// What QuickBooks itself says this item is. Blank where it says nothing, which
+// is exactly what QuickBooks does when somebody picks that item by hand.
+export function descOf(books, name) {
+  return (books.desc && books.desc[String(name || '').toLowerCase()]) || '';
 }
 
 // What a product is in the books, and if it is nothing yet, making it.
@@ -340,7 +363,9 @@ export async function writeOne(books, row, s) {
     const got = await itemFor(books, L, s, ctx);
     if (got.skip) continue;
     if (got.missing) { missing.push({ what: got.missing, why: got.why }); continue; }
-    lines.push({ item: got.name, desc: s.keepTitles === false ? '' : (L.title || ''),
+    // the name and the words are QuickBooks'; only the price is Shopify's,
+    // because what the buyer was charged is a fact of the sale
+    lines.push({ item: got.name, desc: descOf(books, got.name),
                  qty: L.qty, rate: L.rate, amt: L.amt });
   }
 
@@ -363,8 +388,7 @@ export async function writeOne(books, row, s) {
   // here or it would go on twice.
   const built = toInvoice(Object.assign({}, row, { lines: row.lines }), {
     match: () => 'placeholder',
-    customer: s.customer, prefix: s.prefix, terms: s.terms,
-    keepTitles: s.keepTitles
+    customer: s.customer, prefix: s.prefix, terms: s.terms
   });
   if (built.skip === 'empty') {
     await setOff(realmId, row.order_gid, 'nothing to bill on it');
@@ -399,7 +423,7 @@ export async function writeOne(books, row, s) {
       });
       return 'held';
     }
-    inv.lines.push({ item, desc: '', qty: 1, rate: ship, amt: ship });
+    inv.lines.push({ item, desc: descOf(books, item), qty: 1, rate: ship, amt: ship });
   }
   if (!inv.lines.length) {
     await setOff(realmId, row.order_gid, 'every line was set aside');

@@ -30,7 +30,7 @@ import {
 import {
   settingsOf as shopifySettings, saveSettings as saveShopifySettings,
   itemsPossible, standingAccounts, openBooks, itemFor, previewItem, whyNot,
-  shippingItemFor,
+  shippingItemFor, descOf,
   sweep as shopifySweep, syncState, startShopifySync, wakeSoon,
   nudgeOrder, nudgeProduct, wireHooks
 } from './shopifysync.js';
@@ -7593,7 +7593,7 @@ app.post('/api/shopify/build', async (req, res) => {
       customer: req.body.customer || s.customer,
       prefix: req.body.prefix !== undefined ? req.body.prefix : s.prefix,
       terms: s.terms || 'Net 30',
-      keepTitles: s.keepTitles
+      descOf: name => descOf(books, name)
     };
     // whatever the page asked for, else whatever the company has set
     const shipSetting = Object.assign({}, s, {
@@ -7615,8 +7615,9 @@ app.post('/api/shopify/build', async (req, res) => {
         const got = await itemFor(books, L, s, { shopId: r.shop_id });
         if (got.skip) continue;
         if (got.missing) { missing.push(got.missing); whyMissing = got.why || whyMissing; continue; }
+        // QuickBooks' own words for the item, and Shopify's price for the sale
         lines.push({
-          item: got.name, desc: s.keepTitles === false ? '' : (L.title || ''),
+          item: got.name, desc: descOf(books, got.name),
           qty: L.qty, rate: L.rate, amt: L.amt
         });
       }
@@ -7645,7 +7646,7 @@ app.post('/api/shopify/build', async (req, res) => {
           skipped.push({ name: r.name, why: 'nothing in QuickBooks to put delivery on' });
           continue;
         }
-        inv.lines.push({ item, desc: '', qty: 1, rate: ship, amt: ship });
+        inv.lines.push({ item, desc: descOf(books, item), qty: 1, rate: ship, amt: ship });
       }
       if (!inv.lines.length) { skipped.push({ name: r.name, why: 'every line was set aside' }); continue; }
 

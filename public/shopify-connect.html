@@ -256,10 +256,21 @@
               and <b>never</b> create a product in QuickBooks
             </div>
             <div class="note">
-              The item QuickBooks already has is used whole: its name, its description, its
-              price, its account. The Shopify title is not consulted, so a product renamed
-              on one side cannot become a second item on the other. A SKU that is on no
-              item stops that order and says so by name &mdash; nothing is guessed.
+              Where the SKU on the Shopify line is the SKU on a QuickBooks item, that item is
+              used, and <b>what it says is what goes on the invoice</b>: its name, its sales
+              description, its account. The Shopify title is not consulted at all, so a
+              product renamed on one side cannot become a second item on the other. Its
+              purchase description is left exactly as it is &mdash; that belongs on bills,
+              not here.
+              <br><br>
+              <b>The price is the one exception, and it comes from Shopify</b>: what the
+              buyer was actually charged is a fact of that sale, not a setting in the books.
+              <b>Cost is never touched.</b> Cost reaches QuickBooks when the purchase order
+              is entered, and nothing on an invoice has any business writing it.
+              <br><br>
+              A SKU that is on no item in QuickBooks, and a Shopify line with no SKU at all,
+              stop that order and name it in the report. Nothing is guessed and nothing is
+              part-written.
             </div>
             <button class="cfgbtn" data-open="c3" type="button">Why there is nothing to set</button>
             <div class="cfg" id="c3">
@@ -284,9 +295,9 @@
               and the discount in the discount box, in rupees
             </div>
             <div class="note">
-              The item&rsquo;s own description comes from QuickBooks, as with everything else.
-              Left blank, Fusion looks for Shipping, Delivery, Shipping Charges or Freight
-              and uses whichever it finds &mdash; it does not make one.
+              The delivery line reads its description out of QuickBooks too, by the same rule
+              as every other line. Left blank, Fusion looks for Shipping, Delivery, Shipping
+              Charges or Freight and uses whichever it finds &mdash; it does not make one.
             </div>
             <button class="cfgbtn" data-open="c4" type="button">Configure</button>
             <div class="cfg" id="c4">
