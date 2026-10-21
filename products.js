@@ -576,3 +576,65 @@ export async function adjustStock(realmId, token, opts) {
   const made = data.InventoryAdjustment || {};
   return { id: String(made.Id || ''), doc: made.DocNumber || '', diff };
 }
+
+/* ==================== carrying the other name over ==================== */
+
+// QuickBooks has no merge for products, so the invoices already written stay on
+// the item they were written against. A year of them cannot be rewritten - the
+// cost has been charged and the months are closed - so the two names go on
+// living, and whoever looks for "the old product" next year types a name that
+// now belongs to a switched-off item with nothing on it.
+//
+// What fixes that is the name itself: the item kept is given the other one's
+// name as well, so one search finds the one item that holds the trade. Nothing
+// else about the item is touched.
+
+// QuickBooks refuses a name over a hundred characters, and reads a colon as the
+// line between a parent item and its child, so a colon in the piece being added
+// would make a sub-item out of it.
+export const NAME_MAX = 100;
+const nameSafe = s => String(s == null ? '' : s).replace(/:/g, '-').replace(/\s+/g, ' ').trim();
+
+// The name the kept item should read, or why it is being left as it is. The full
+// name is tried first and the SKU after it, because a SKU is short and a name
+// that is already ninety characters long has room for little else.
+export function carriedName(keepName, goneName, goneSku) {
+  const keep = nameSafe(keepName);
+  if (!keep) return { skip: 'the item kept has no name' };
+
+  // Already carried over on an earlier run, so there is nothing to do. A piece
+  // of three letters or fewer has to be the whole name to count as already
+  // there: "Lip" sits inside "Lipstick 653" without being it, and skipping on
+  // that would quietly leave the name uncarried.
+  const has = s => {
+    const k = looseName(s), whole = looseName(keep);
+    if (!k) return false;
+    return k.length > 3 ? whole.indexOf(k) > -1 : whole === k;
+  };
+
+  const tries = [nameSafe(goneName), nameSafe(goneSku)].filter(Boolean);
+  if (!tries.length) return { skip: 'the item going has no name to carry' };
+  if (tries.some(has)) return { skip: 'the name is already on the item kept' };
+
+  for (const piece of tries) {
+    const joined = keep + ' / ' + piece;
+    if (joined.length <= NAME_MAX) return { name: joined, added: piece };
+  }
+  return { skip: 'no room left in ' + NAME_MAX + ' characters' };
+}
+
+// The kept item read fresh - its own Name, not the fully qualified one, because
+// writing "Parent:Child" back into Name would make a second level out of it -
+// and the joined name written on it.
+export async function carryNameOnto(realmId, token, keepId, goneName, goneSku) {
+  const q = await qbQuery(realmId, token,
+    `SELECT * FROM Item WHERE Id = '${String(keepId).replace(/'/g, "\'")}'`);
+  const item = (q.Item || [])[0];
+  if (!item) throw new Error('Item ' + keepId + ' is not in QuickBooks any more');
+
+  const built = carriedName(item.Name, goneName, goneSku);
+  if (built.skip) return built;
+
+  await updateItem(realmId, token, keepId, { Name: built.name });
+  return { was: item.Name || '', now: built.name, added: built.added };
+}

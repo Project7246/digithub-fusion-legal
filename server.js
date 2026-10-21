@@ -60,7 +60,8 @@ import {
   readItems, readItemSales, readValuation, readPurchases,
   buildRows as buildProductRows, summarise as summariseProducts,
   updateItem as updateProductItem,
-  listAdjustAccounts, adjustStock, looseName as productKey
+  listAdjustAccounts, adjustStock, looseName as productKey,
+  carryNameOnto, carriedName
 } from './products.js';
 import {
   initProdStore, logProductChange, listProductChanges, clearProductChanges
@@ -10755,6 +10756,115 @@ app.get('/api/products/rows', async (req, res) => {
   });
 });
 
+// Any two items, looked up by hand.
+//
+// The Duplicates tab only ever offers the pairs this app worked out for itself -
+// matched on name, description or SKU, and the same shade - which is most of
+// them and not all of them. "Lip Gloss Nude" and "7301-006/MB-3" are one product
+// to the person who buys them and nothing in either name says so, so no matcher
+// will ever put them together. That is what this is for: the two are named, and
+// whoever names them is the one saying they are one product.
+//
+// It is a read. Nothing is decided here - the two rows come back whole, with
+// what each has sold, holds and was bought on, so the choice of which to keep is
+// made looking at the trade rather than at the names.
+app.get('/api/products/find', async (req, res) => {
+  const realmId = await requireCompany(req, res);
+  if (!realmId) return;
+
+  res.setHeader('Cache-Control', 'no-store');
+  const st = prodStore.get(req.desk);
+  if (!st || !st.rows.length) return res.json({ rows: [], total: 0, read: false });
+
+  const q = String(req.query.q || '').trim().toLowerCase();
+  if (q.length < 2) return res.json({ rows: [], total: 0, read: true });
+
+  const limit = Math.min(Number(req.query.limit) || 25, 100);
+
+  // how well it matched, so what was typed in full comes first and a name that
+  // merely holds those letters somewhere comes last
+  const rank = r => {
+    const name = String(r.name || '').toLowerCase();
+    const sku = String(r.sku || '').toLowerCase();
+    if (sku === q || name === q) return 0;
+    if (sku.indexOf(q) === 0 || name.indexOf(q) === 0) return 1;
+    if (sku.indexOf(q) > -1) return 2;
+    if (name.indexOf(q) > -1) return 3;
+    return 9;
+  };
+
+  const hits = st.rows.map(r => ({ r, at: rank(r) })).filter(h => h.at < 9);
+  hits.sort((a, b) =>
+    a.at - b.at ||
+    (b.r.soldAmount || 0) - (a.r.soldAmount || 0) ||
+    String(a.r.name || '').localeCompare(String(b.r.name || '')));
+
+  res.json({
+    read: true,
+    total: hits.length,
+    rows: hits.slice(0, limit).map(h => h.r)
+  });
+});
+
+// The two chosen, and what merging them would do - read before anything is
+// written, the way every other run in this app is planned first. It answers
+// which way round the pair should go, how many documents have to move, what
+// stock is left to carry, and what the kept item would end up being called.
+app.get('/api/products/merge-plan', async (req, res) => {
+  const realmId = await requireCompany(req, res);
+  if (!realmId) return;
+
+  res.setHeader('Cache-Control', 'no-store');
+  try {
+    const st = prodStore.get(req.desk);
+    if (!st || !st.rows.length) throw new Error('Read the books first');
+
+    const find = id => st.rows.filter(r => r.id === String(id || ''))[0] || null;
+    const keep = find(req.query.keep);
+    const going = find(req.query.going);
+    if (!keep || !going) throw new Error('Name both items');
+    if (keep.id === going.id) throw new Error('That is the same item on both sides');
+
+    // a sub-item's row carries "Parent:Child"; only the last part is its own name
+    const own = r => String(r.name || '').split(':').pop();
+
+    // what would refuse the merge outright, and what is only worth knowing
+    const stops = [], notes = [];
+    if (going.type === 'Inventory' && keep.type !== 'Inventory') {
+      stops.push('The item kept does not hold stock and the one going does. Merging into it would ' +
+        'end cost of sales for this product altogether - swap the two round, or keep the inventory item.');
+    }
+    if (!going.active) {
+      notes.push('The item going is already switched off. Its bills and its stock can still be ' +
+        'moved across, and it stays off.');
+    }
+    if (!keep.active) {
+      notes.push('The item kept is switched off in QuickBooks. It is not switched back on here - ' +
+        'turn it on in QuickBooks, or keep the other one instead.');
+    }
+    if (!sameVariant(going, keep)) {
+      notes.push('These two read as different shades or numbers of the same product, so the ' +
+        'Duplicates list would never have put them together. Named here, they are merged on your word.');
+    }
+
+    res.json({
+      keep, going,
+      sameShade: sameVariant(going, keep),
+      docsToMove: (going.docs || []).length,
+      docsBeyond: Math.max(0, (going.docCount || 0) - (going.docs || []).length),
+      stockToMove: Number(going.qty || 0),
+      // a stock move is an inventory adjustment, which needs somewhere to put
+      // the difference - so the page knows to ask for the account before it can
+      needsAccount: going.type === 'Inventory' && Number(going.qty || 0) !== 0,
+      costWouldCopy: !keep.cost && !!going.cost,
+      carry: carriedName(own(keep), own(going), going.sku),
+      stops, notes
+    });
+  } catch (e) {
+    res.status(400).json({ error: e.message });
+  }
+});
+
 // A pasted column of SKUs or product names, found in the read. Ticking three
 // thousand boxes by hand is not a way to work; a column copied out of a sheet is.
 //
@@ -10888,18 +10998,25 @@ async function runProductJob(realmId, st, job) {
         //      bills brought in, so QuickBooks works cost of sales out of them
         //   2. what stock the item going still reads is carried across
         //   3. the cost goes with it where the one kept has none
+        //  3b. the name of the item going is written onto the one kept
         //   4. the item going is put away - but only once nothing is left on it,
         //      so a half-done merge is never hidden behind a switched-off item
         //
         // The invoices already written stay where they are. What they cost has
         // been charged; moving a year of them belongs on the Product tab of
-        // Changes, where it is chosen on purpose.
+        // Changes, where it is chosen on purpose. Which is why 3b is here: the
+        // name is the one thread left back to them, so the item kept carries
+        // both names and one search finds the one item holding the trade.
         const keepId = String(one.value || '');
         const keep = st.rows.filter(r => r.id === keepId)[0];
         if (!keep) throw new Error('The item to keep is not in this read');
         if (keepId === one.id) throw new Error('That is the same item');
-        if (!sameVariant(row, keep)) {
-          throw new Error('These read as different shades - ' + row.name + ' and ' + keep.name + ' - so they are not merged');
+        // The shade guard is what stops a guessed pair merging shade 3 into
+        // shade 4. A pair named by hand is not a guess - somebody read both
+        // names and said they are one product - so it is theirs to make.
+        if (!job.byHand && !sameVariant(row, keep)) {
+          throw new Error('These read as different shades - ' + row.name + ' and ' + keep.name +
+            ' - so they are not merged. Name the two by hand under Duplicates → Merge any two if they really are one product');
         }
         if (row.type === 'Inventory' && keep.type !== 'Inventory') {
           throw new Error('The item kept does not hold stock and this one does - keep the inventory item instead');
@@ -10908,6 +11025,7 @@ async function runProductJob(realmId, st, job) {
         const report = row.merge = {
           into: keep.name, docsTotal: (row.docs || []).length, docsMoved: 0, docsFailed: [],
           stockMoved: 0, costCopied: false, putAway: false, complete: false,
+          nameCarried: '', nameSkipped: '',
           moreDocs: Math.max(0, (row.docCount || 0) - (row.docs || []).length)
         };
         const pause = ms => new Promise(r => setTimeout(r, ms));
@@ -10961,6 +11079,32 @@ async function runProductJob(realmId, st, job) {
           report.costCopied = true;
         }
 
+        // 3b - the other name, carried onto the one kept.
+        //
+        // The invoices stay where they are, so the name of the item going is the
+        // only thread left back to them. Written onto the item kept, one search
+        // finds the one item that holds the trade - which is the whole point of
+        // merging, and the part QuickBooks cannot do.
+        if (job.carryName) {
+          try {
+            const named = await carryNameOnto(realmId, token, keepId, row.name, row.sku);
+            if (named.now) {
+              // the row on screen carries the fully qualified name, and only the
+              // last part of that is what was rewritten
+              keep.name = keep.name && keep.name.indexOf(':') > -1
+                ? keep.name.slice(0, keep.name.lastIndexOf(':') + 1) + named.now
+                : named.now;
+              report.nameCarried = named.now;
+            } else {
+              report.nameSkipped = named.skip || '';
+            }
+          } catch (e) {
+            // a name that would not take is not a reason to leave the stock and
+            // the bills half moved - it is said, and the merge carries on
+            report.nameSkipped = e.message;
+          }
+        }
+
         // 4 - put away only when nothing is left behind on it
         if (!report.docsFailed.length && !report.moreDocs) {
           await updateProductItem(realmId, token, one.id, { Active: false });
@@ -10975,16 +11119,19 @@ async function runProductJob(realmId, st, job) {
           ok: report.complete, name: row.name || one.id,
           was: report.docsMoved + ' of ' + report.docsTotal + ' documents moved' +
                (report.stockMoved ? ', ' + report.stockMoved + ' stock moved' : ''),
-          now: report.complete ? 'merged into ' + keep.name + ', put away'
+          now: (report.complete ? 'merged into ' + keep.name + ', put away'
                                : 'not finished - ' + (report.docsFailed.length
                                    ? report.docsFailed.length + ' document(s) refused'
-                                   : report.moreDocs + ' more documents than were read'),
-          msg: report.complete ? '' : report.docsFailed.map(f => f.kind + ' ' + f.doc + ': ' + f.why).join('; ')
+                                   : report.moreDocs + ' more documents than were read')) +
+               (report.nameCarried ? ' · the kept item now reads "' + report.nameCarried + '"' : ''),
+          msg: (report.complete ? '' : report.docsFailed.map(f => f.kind + ' ' + f.doc + ': ' + f.why).join('; ')) +
+               (report.nameSkipped ? (report.complete ? '' : ' · ') + 'the name was left alone: ' + report.nameSkipped : '')
         });
         await logProductChange(realmId, {
           id: one.id, name: row.name || '', sku: row.sku || '', field: 'merge',
           was: report.docsMoved + '/' + report.docsTotal + ' documents, ' + (report.stockMoved || 0) + ' stock',
-          now: keep.name + (report.complete ? '' : ' (not finished)'), ok: report.complete,
+          now: keep.name + (report.nameCarried ? ' (renamed)' : '') +
+               (report.complete ? '' : ' (not finished)'), ok: report.complete,
           message: report.complete ? '' : report.docsFailed.map(f => f.kind + ' ' + f.doc + ': ' + f.why).join('; ')
         }).catch(e => console.error('product log:', e.message));
         continue;
@@ -11060,6 +11207,8 @@ app.post('/api/products/apply', async (req, res) => {
       body.accountId = before.accountId;
       body.date = before.date;
       body.memo = before.memo;
+      body.byHand = before.byHand;
+      body.carryName = before.carryName;
     }
     const field = String(body.field || '');
     if (['cost', 'active', 'stock', 'merge'].indexOf(field) < 0) throw new Error('Unknown change');
@@ -11076,7 +11225,10 @@ app.post('/api/products/apply', async (req, res) => {
       running: true, stop: false, field, done: 0, failed: 0,
       total: items.length, items, log: [], started: Date.now(),
       okIds: new Set(before ? before.okIds : []),
-      accountId: body.accountId || '', date: body.date || '', memo: body.memo || ''
+      accountId: body.accountId || '', date: body.date || '', memo: body.memo || '',
+      // a pair named by hand is trusted over the shade guard, and the name of
+      // the item going is written onto the one kept unless that is turned off
+      byHand: !!body.byHand, carryName: !!body.carryName
     };
     job.done = job.okIds.size;
     st.job = job;

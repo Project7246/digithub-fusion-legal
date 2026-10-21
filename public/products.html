@@ -95,6 +95,51 @@
   th.keeph{min-width:260px}
   .costbox{width:96px;font-size:13px;padding:6px 8px;border:1px solid var(--line-2);
     border-radius:6px;background:#fff;color:var(--text);text-align:right}
+
+  /* naming the two by hand: one box each, side by side, the way the merge reads */
+  .pair{display:flex;gap:14px;flex-wrap:wrap;align-items:stretch}
+  .pair .side{flex:1;min-width:290px;border:1px solid var(--line);border-radius:8px;
+    padding:14px;background:#fff;position:relative}
+  .pair .side.keep{border-color:var(--ok)}
+  .pair .side.gone{border-color:var(--line-2);background:#FAFBFA}
+  .pair .side h3{font:inherit;font-family:var(--head);font-size:11px;font-weight:700;
+    letter-spacing:.08em;text-transform:uppercase;color:var(--faint);margin:0 0 3px}
+  .pair .side.keep h3{color:var(--ok)}
+  .pair .side .why{font-size:11.5px;color:var(--muted);margin:0 0 10px;white-space:normal}
+  .pair .side .seek{width:100%;font-size:13px;padding:8px 10px;border:1px solid var(--line-2);
+    border-radius:6px;background:#fff;color:var(--text)}
+  .pair .hits{margin-top:6px;border:1px solid var(--line);border-radius:6px;
+    max-height:230px;overflow:auto;background:#fff}
+  .pair .hits button{display:block;width:100%;text-align:left;font:inherit;font-size:12.5px;
+    padding:8px 10px;border:0;border-bottom:1px solid var(--line);background:none;cursor:pointer;
+    white-space:normal}
+  .pair .hits button:last-child{border-bottom:0}
+  .pair .hits button:hover{background:#F1F7FB}
+  .pair .hits button b{display:block;font-weight:600}
+  .pair .hits button span{color:var(--muted);font-family:var(--mono);font-size:11px}
+  .pair .hits .none{padding:9px 10px;font-size:12px;color:var(--faint)}
+  .pair .chosen{margin-top:4px;font-size:13px}
+  .pair .chosen .nm{font-weight:600;white-space:normal}
+  .pair .chosen .sk{font-family:var(--mono);font-size:11.5px;color:var(--muted)}
+  .pair .chosen dl{display:grid;grid-template-columns:auto auto;gap:2px 12px;margin:9px 0 0;
+    font-size:12px}
+  .pair .chosen dt{color:var(--faint)}
+  .pair .chosen dd{margin:0;font-family:var(--mono);text-align:right}
+  .pair .chosen dd.neg{color:var(--neg)}
+  .swapwrap{display:flex;justify-content:center;margin:12px 0}
+  .plan{margin-top:16px;padding:14px;border:1px solid var(--line);border-radius:8px;
+    background:#FAFBFA;font-size:13px;line-height:1.6;white-space:normal}
+  .plan h4{font:inherit;font-family:var(--head);font-size:13px;font-weight:700;margin:0 0 8px}
+  .plan ol{margin:0;padding-left:20px}
+  .plan li{margin-bottom:4px}
+  .plan .newname{font-family:var(--mono);font-size:12.5px;background:#EFF8EC;color:var(--ok);
+    padding:2px 6px;border-radius:4px;display:inline-block;margin-top:2px}
+  .plan .stop{margin-top:10px;padding:9px 11px;border-radius:6px;background:#FFF6E6;
+    color:#8A5A00;font-size:12.5px}
+  .carry{display:flex;gap:8px;align-items:flex-start;margin:12px 0 0;font-size:13px;
+    white-space:normal}
+  .carry input{accent-color:var(--qbo);width:15px;height:15px;margin:3px 0 0;flex:none}
+  .carry small{display:block;color:var(--muted);font-size:11.5px;margin-top:2px}
 </style>
 </head>
 <body>
@@ -214,6 +259,14 @@
               </div>
               <p class="hint hide" id="applyHint" style="margin:8px 0 0"></p>
 
+              <label class="carry hide" id="listCarryBox">
+                <input type="checkbox" id="listCarry" checked>
+                <span>Add the other product's name onto the one kept
+                  <small>QuickBooks will not move an invoice, so the invoices already written
+                    stay on the item they were written against. Carrying the name over is what
+                    makes one search find the one item that holds the trade.</small></span>
+              </label>
+
               <div class="tbl" style="max-height:560px;margin-top:12px">
                 <table>
                   <thead><tr>
@@ -236,6 +289,72 @@
                   <tbody id="rows"></tbody>
                 </table>
               </div>
+            </div>
+          </div>
+
+          <!-- ============ any two, named by hand ============ -->
+          <div class="sheet tabpage hide" id="tabPair">
+            <div class="sec">
+              <h2><span class="no">02</span> Merge any two items
+                <span class="aside" id="pairAside"></span></h2>
+              <p class="hint" style="margin:0 0 14px">The list on the other two halves is only
+                the pairs this app could work out for itself &mdash; matched on name, description
+                or SKU, and the same shade. Two items that are one product with nothing in either
+                name to say so will never turn up there. Name them here instead: find each one,
+                say which to keep, read what the merge would do, and run it.</p>
+
+              <div class="pair">
+                <div class="side keep" id="sideKeep">
+                  <h3>The one to keep</h3>
+                  <p class="why">Everything moves onto this one, and it stays in use. The one
+                    carrying the invoices is usually the one to keep, because invoices cannot
+                    be moved.</p>
+                  <input type="text" class="seek" id="seekKeep"
+                    placeholder="Name or SKU of the item to keep" autocomplete="off">
+                  <div id="boxKeep"></div>
+                </div>
+                <div class="side gone" id="sideGone">
+                  <h3>The one to put away</h3>
+                  <p class="why">Its bills, expenses, orders and vendor credits are moved onto
+                    the one kept, its stock is carried across, and it is switched off.</p>
+                  <input type="text" class="seek" id="seekGone"
+                    placeholder="Name or SKU of the item going" autocomplete="off">
+                  <div id="boxGone"></div>
+                </div>
+              </div>
+
+              <div class="swapwrap">
+                <button class="mini" id="btnSwap">Swap the two round</button>
+              </div>
+
+              <div class="hide" id="pairStockBox" style="margin:0 0 4px;padding:14px;
+                   border:1px solid var(--line);border-radius:8px;background:#FAFBFA">
+                <div class="dates">
+                  <div style="min-width:260px">
+                    <label for="pairAcct">Write the stock difference off to</label>
+                    <select id="pairAcct" style="width:100%;font-size:13.5px;padding:8px 10px;
+                      border:1px solid var(--line-2);border-radius:6px;background:#fff">
+                      <option value="">&mdash; pick an account &mdash;</option>
+                    </select>
+                  </div>
+                  <div><label for="pairDate">On this date</label><input type="date" id="pairDate"></div>
+                </div>
+              </div>
+
+              <div id="pairPlan"></div>
+
+              <label class="carry">
+                <input type="checkbox" id="pairCarry" checked>
+                <span>Add the other product's name onto the one kept
+                  <small>QuickBooks will not move an invoice, so the invoices already written
+                    stay on the item they were written against. Carrying the name over is what
+                    makes one search find the one item that holds the trade.</small></span>
+              </label>
+
+              <div class="acts" style="margin-top:14px">
+                <button class="solid" id="btnPairMerge" data-need="products" disabled>Name both items</button>
+              </div>
+              <div class="stat" id="pairStat"></div>
             </div>
           </div>
 
@@ -307,7 +426,7 @@
       hint:'More was sold than was ever brought in, so QuickBooks charged nothing for the sales out of nothing. Say what each should read and the difference is written off to the account chosen below. A purchase is the better repair where there was a real purchase - this is for the stock that was never there.' },
     { key:'twin',     label:'Duplicates',
       title:'One product, two items',
-      hint:'The same product on more than one item, matched on name, description or SKU - usually one made by the connector against a SKU and one made by hand. Bills go to one and sales to the other, which is how stock goes negative on one while the other sits full. Pick which of the pair to keep, and this carries the stock across, takes the cost with it if the kept one has none, and puts the other away. The invoices already written stay on the item they were written against: what they cost has been charged already, and rewriting a year of them would move months that are closed.' },
+      hint:'The same product on more than one item, matched on name, description or SKU - usually one made by the connector against a SKU and one made by hand. Bills go to one and sales to the other, which is how stock goes negative on one while the other sits full. Pick which of the pair to keep, and this carries the stock across, takes the cost with it if the kept one has none, writes the other one’s name onto it, and puts the other away. The invoices already written stay on the item they were written against: what they cost has been charged already, and rewriting a year of them would move months that are closed - which is why the name goes over, so one search still finds them. Two items that are one product with nothing in either name to say so are not in this list at all: name those yourself under Merge any two.' },
     { key:'reports',  label:'Reports' }
   ];
 
@@ -318,10 +437,16 @@
   var TWINS = [
     { key:'twin-ready', label:'One of them has something',
       title:'Duplicates where one side carries the trade',
-      hint:'One of the pair has the sales, or the bills, or the cost, and the other is the empty copy. These are the ones to merge: pick the item to keep - the list says what each has sold, what it has in stock and whether it has a cost - and the other hands its stock over, gives up its cost if the kept one has none, and is switched off.' },
+      hint:'One of the pair has the sales, or the bills, or the cost, and the other is the empty copy. These are the ones to merge: pick the item to keep - the list says what each has sold, what it has in stock and whether it has a cost - and the other hands its stock over, gives up its cost if the kept one has none, lends it its name, and is switched off.' },
     { key:'twin-bare',  label:'Neither has anything yet',
       title:'Duplicates with nothing on either side',
-      hint:'Neither of these has a cost, a bill or a sale between them, so merging settles nothing - the answer would still be no cost. Put the cost on them first, or enter the purchase behind them on the Purchases page, and they move into the other half on the next read.' }
+      hint:'Neither of these has a cost, a bill or a sale between them, so merging settles nothing - the answer would still be no cost. Put the cost on them first, or enter the purchase behind them on the Purchases page, and they move into the other half on the next read.' },
+    // The two halves above are only the pairs this app matched for itself. Two
+    // items that are one product with nothing in either name to say so are
+    // never in that list, and were until now unmergeable from here.
+    { key:'twin-pick',  label:'Merge any two',
+      title:'Merge any two items',
+      hint:'Name the two yourself - whether or not this app matched them.' }
   ];
 
   var REPORTS = [
@@ -346,7 +471,9 @@
   // box, which starts at what the read suggests and is the operator's after that
   var S = { tab:'overview', report:'zero-cogs', twinSub:'twin-ready', rows:[], total:0,
             summary:null, filter:'', poller:null, from:'', to:'',
-            picked:{}, costs:{}, stock:{}, keep:{}, adjust:[], record:[], logged:0 };
+            picked:{}, costs:{}, stock:{}, keep:{}, adjust:[], record:[], logged:0,
+            // the two named by hand, and what the server says merging them would do
+            pick:{ keep:null, going:null }, hits:{ keep:[], going:[] }, plan:null };
 
   // the two tabs that write. Everything else only reads
   function acts(){
@@ -449,26 +576,41 @@
         var k = b.getAttribute('data-rep');
         if(S.tab === 'reports') S.report = k; else S.twinSub = k;
         S.picked = {};
+        S.pasted = false;
         drawTabs();
-        loadRows();
+        drawPanel();
       });
     });
+  }
+
+  // naming the two by hand is its own panel, not a filter on the table
+  function pickMode(){ return S.tab === 'twin' && S.twinSub === 'twin-pick'; }
+
+  function showPanel(){
+    var overview = S.tab === 'overview', pick = pickMode();
+    $('tabOverview').classList.toggle('hide', !overview);
+    $('tabPair').classList.toggle('hide', !pick);
+    $('tabList').classList.toggle('hide', overview || pick);
+    $('subways').classList.toggle('hide', !subsOf(S.tab));
+  }
+
+  // whichever panel is open, drawn from what is already known
+  function drawPanel(){
+    showPanel();
+    if(S.tab === 'overview'){ drawOverview(); return; }
+    if(pickMode()){ drawPair(); return; }
+    if(S.pasted){ drawRows(); return; }
+    loadRows();
   }
 
   function goTab(key){
     S.tab = key;
     S.filter = '';
     S.picked = {};
+    S.pasted = false;
     $('rowFind').value = '';
     drawTabs();
-
-    var overview = key === 'overview';
-    $('tabOverview').classList.toggle('hide', !overview);
-    $('tabList').classList.toggle('hide', overview);
-    $('subways').classList.toggle('hide', !subsOf(key));
-
-    if(overview){ drawOverview(); return; }
-    loadRows();
+    drawPanel();
   }
 
   // which flag the table is filtered on, whichever tab is open
@@ -678,6 +820,7 @@
     $('applyBar').classList.toggle('hide', !act);
     $('pasteBox').classList.toggle('hide', !act);
     $('applyHint').classList.toggle('hide', !act);
+    $('listCarryBox').classList.toggle('hide', act !== 'merge');
     Array.prototype.forEach.call(document.querySelectorAll('.tickh'), function(th){
       th.classList.toggle('hide', !act);
     });
@@ -827,7 +970,10 @@
           'which takes its stock and its cost with it. Whatever stock is still left is then moved across' +
           (mAcct ? ' on the date above' : ' (pick the account above if any is left - the merge stops and says so if it is needed)') +
           ', the cost goes with it where the kept one has none, and only once nothing is left on it is the item going switched off. ' +
-          'Invoices already written stay where they are.';
+          'Invoices already written stay where they are' +
+          ($('listCarry').checked
+            ? ', which is why the name of the item going is written onto the one kept - so one search still finds them.'
+            : '.');
     } else if(act === 'stock'){
       var moving = picked.filter(function(r){
         var to = parseFloat(S.stock[r.id] !== undefined ? S.stock[r.id] : 0);
@@ -918,7 +1064,8 @@
       field: act, items: items,
       accountId: (act === 'stock' || act === 'merge') ? $('adjAcct').value : undefined,
       date: (act === 'stock' || act === 'merge') ? $('adjDate').value : undefined,
-      memo: act === 'stock' ? $('adjMemo').value.trim() : undefined
+      memo: act === 'stock' ? $('adjMemo').value.trim() : undefined,
+      carryName: act === 'merge' ? $('listCarry').checked : undefined
     })
       .then(function(){
         $('runSheet').classList.remove('hide');
@@ -955,6 +1102,8 @@
       nf(m.docsMoved) + ' of ' + nf(m.docsTotal) + ' documents moved',
       m.stockMoved ? nf(m.stockMoved) + ' stock moved' : 'no stock left to move',
       m.costCopied ? 'cost copied' : '',
+      m.nameCarried ? 'the kept item now reads "' + esc(m.nameCarried) + '"'
+                    : m.nameSkipped ? 'name left alone (' + esc(m.nameSkipped) + ')' : '',
       m.putAway ? 'put away' : 'not put away'
     ].filter(Boolean);
     return '<div class="merged ' + (m.complete ? 'ok' : 'bad') + '">' +
@@ -966,6 +1115,262 @@
           }).join('; ') : '') +
       (m.moreDocs ? '<br>' + nf(m.moreDocs) + ' more documents than were read &mdash; merge again to take them.' : '') +
       '</div>';
+  }
+
+  /* ---------- naming the two by hand ---------- */
+
+  // The pair panel keeps nothing the table keeps. It is two searches, the two
+  // rows they settled on, and one read of what merging them would do - asked of
+  // the server, so the page never promises something the merge would refuse.
+  var seeking = { keep:false, going:false }, seekTimer = {};
+
+  function sideIds(side){
+    return side === 'keep'
+      ? { seek:'seekKeep', box:'boxKeep' }
+      : { seek:'seekGone', box:'boxGone' };
+  }
+
+  function seek(side){
+    var el = $(sideIds(side).seek);
+    var q = el.value.trim();
+    clearTimeout(seekTimer[side]);
+    if(q.length < 2){ S.hits[side] = []; seeking[side] = false; drawPair(); return; }
+    seeking[side] = true;
+    drawPair();
+    seekTimer[side] = setTimeout(function(){
+      get('/api/products/find?q=' + encodeURIComponent(q))
+        .then(function(d){
+          seeking[side] = false;
+          // what came back belongs to what is in the box now, not to a letter
+          // typed three keystrokes ago
+          if($(sideIds(side).seek).value.trim() !== q) return;
+          S.hits[side] = d.rows || [];
+          drawPair();
+        })
+        .catch(function(){ seeking[side] = false; S.hits[side] = []; drawPair(); });
+    }, 250);
+  }
+
+  function hitLine(side, r){
+    return '<button type="button" data-side="' + esc(side) + '" data-hit="' + esc(r.id) + '">' +
+      '<b>' + esc(r.name) + '</b>' +
+      '<span>' + (r.sku ? esc(r.sku) + ' \u00b7 ' : '') + esc(r.type || 'no type') +
+      ' \u00b7 ' + nf(r.qty) + ' in stock' +
+      ' \u00b7 ' + (r.soldQty ? nf(r.soldQty) + ' sold' : 'nothing sold') +
+      ' \u00b7 ' + (r.bills ? nf(r.bills) + ' bought' : 'never bought') +
+      (r.active ? '' : ' \u00b7 off') + '</span></button>';
+  }
+
+  function chosenCard(side, r){
+    return '<div class="chosen">' +
+      '<div class="nm">' + esc(r.name) + '</div>' +
+      (r.sku ? '<div class="sk">' + esc(r.sku) + '</div>' : '') +
+      tags(r) +
+      '<dl>' +
+        '<dt>Type</dt><dd>' + esc(r.type || '\u2014') + '</dd>' +
+        '<dt>Stock</dt><dd' + (r.qty < 0 ? ' class="neg"' : '') + '>' + nf(r.qty) + '</dd>' +
+        '<dt>Cost on item</dt><dd>' + (r.cost ? money(r.cost) : '\u2014') + '</dd>' +
+        '<dt>Average cost</dt><dd>' + (r.avg ? money(r.avg) : '\u2014') + '</dd>' +
+        '<dt>Sold</dt><dd>' + nf(r.soldQty) + ' \u00b7 ' + money(r.soldAmount) + '</dd>' +
+        '<dt>Cost of sales</dt><dd' + (r.soldQty && !r.cogs ? ' class="neg"' : '') + '>' +
+          money(r.cogs) + '</dd>' +
+        '<dt>Bought on</dt><dd>' + nf(r.bills) + (r.bills === 1 ? ' bill' : ' bills') + '</dd>' +
+      '</dl>' +
+      docList(r.docs, r.docCount) +
+      mergeReport(r) +
+      '<div class="acts" style="margin-top:10px">' +
+        '<button class="mini" data-drop="' + esc(side) + '">Choose another</button></div>' +
+      '</div>';
+  }
+
+  function drawPair(){
+    $('pairAside').textContent = S.summary
+      ? nf(S.summary.items) + ' items read \u2014 any two of them'
+      : '';
+
+    ['keep','going'].forEach(function(side){
+      var id = sideIds(side), box = $(id.box), el = $(id.seek), r = S.pick[side];
+      if(r){
+        el.classList.add('hide');
+        box.innerHTML = chosenCard(side, r);
+        return;
+      }
+      el.classList.remove('hide');
+      var hits = S.hits[side] || [];
+      box.innerHTML = hits.length
+        ? '<div class="hits">' + hits.map(function(h){ return hitLine(side, h); }).join('') + '</div>'
+        : seeking[side]
+          ? '<div class="hits"><div class="none">Looking\u2026</div></div>'
+          : el.value.trim().length >= 2
+            ? '<div class="hits"><div class="none">Nothing in the read matches that. ' +
+              'The read only holds what was in QuickBooks when it ran.</div></div>'
+            : '';
+    });
+
+    Array.prototype.forEach.call($('tabPair').querySelectorAll('button[data-hit]'), function(b){
+      b.addEventListener('click', function(){
+        var side = b.getAttribute('data-side'), id = b.getAttribute('data-hit');
+        var row = (S.hits[side] || []).filter(function(h){ return h.id === id; })[0];
+        if(!row) return;
+        // the same item on both sides is not a pair, so choosing it on one side
+        // lets the other one go
+        var other = side === 'keep' ? 'going' : 'keep';
+        if(S.pick[other] && S.pick[other].id === id) S.pick[other] = null;
+        S.pick[side] = row;
+        S.hits[side] = [];
+        $(sideIds(side).seek).value = '';
+        planPair();
+      });
+    });
+    Array.prototype.forEach.call($('tabPair').querySelectorAll('button[data-drop]'), function(b){
+      b.addEventListener('click', function(){
+        var side = b.getAttribute('data-drop');
+        S.pick[side] = null;
+        S.hits[side] = [];
+        S.plan = null;
+        $(sideIds(side).seek).value = '';
+        drawPair();
+      });
+    });
+
+    drawPlanBox();
+  }
+
+  // what the merge would do, read from the server rather than guessed here
+  function planPair(){
+    if(!S.pick.keep || !S.pick.going){ S.plan = null; drawPair(); return; }
+    S.plan = null;
+    drawPair();
+    get('/api/products/merge-plan?keep=' + encodeURIComponent(S.pick.keep.id) +
+        '&going=' + encodeURIComponent(S.pick.going.id))
+      .then(function(d){
+        // the rows come back as the read has them now, which is newer than what
+        // was clicked on if a merge has run since
+        S.plan = d;
+        S.pick.keep = d.keep;
+        S.pick.going = d.going;
+        drawPair();
+      })
+      .catch(function(e){ S.plan = { error: e.message }; drawPair(); });
+  }
+
+  function shortName(n){
+    n = String(n == null ? '' : n);
+    return n.length > 30 ? n.slice(0, 29) + '\u2026' : n;
+  }
+
+  function drawPlanBox(){
+    var d = S.plan, btn = $('btnPairMerge'), box = $('pairPlan');
+
+    if(!S.pick.keep || !S.pick.going){
+      box.innerHTML = '';
+      $('pairStockBox').classList.add('hide');
+      btn.disabled = true;
+      btn.textContent = (!S.pick.keep && !S.pick.going)
+        ? 'Name both items' : 'Name the other one too';
+      return;
+    }
+    if(!d){
+      box.innerHTML = '<div class="plan">Reading what this would do\u2026</div>';
+      btn.disabled = true;
+      btn.textContent = 'Reading\u2026';
+      return;
+    }
+    if(d.error){
+      box.innerHTML = '<div class="plan"><div class="stop">' + esc(d.error) + '</div></div>';
+      $('pairStockBox').classList.add('hide');
+      btn.disabled = true;
+      btn.textContent = 'Cannot be merged';
+      return;
+    }
+
+    $('pairStockBox').classList.toggle('hide', !d.needsAccount);
+    var acct = $('pairAcct').value;
+
+    var steps = [];
+    steps.push(d.docsToMove
+      ? '<b>' + nf(d.docsToMove) + '</b> ' + (d.docsToMove === 1 ? 'document' : 'documents') +
+        ' on <b>' + esc(d.going.name) + '</b> \u2014 bills, expenses, purchase orders and vendor ' +
+        'credits \u2014 are rewritten onto <b>' + esc(d.keep.name) + '</b>, which moves the stock ' +
+        'and the cost those purchases brought in.' +
+        (d.docsBeyond ? ' ' + nf(d.docsBeyond) + ' more were counted than were read in full \u2014 ' +
+          'merge again afterwards to take those.' : '')
+      : 'No bill, expense, order or vendor credit carries <b>' + esc(d.going.name) +
+        '</b> in these dates, so nothing is rewritten.');
+
+    steps.push(d.stockToMove
+      ? '<b>' + nf(d.stockToMove) + '</b> left in stock is carried across' +
+        (d.needsAccount
+          ? (acct ? ' by an inventory adjustment on each item, on the date above.'
+                  : ' \u2014 <b>pick the account above first</b>.')
+          : '.')
+      : 'There is no stock left on it to carry.');
+
+    steps.push(d.costWouldCopy
+      ? 'The cost ' + money(d.going.cost) + ' is copied onto <b>' + esc(d.keep.name) +
+        '</b>, which has none of its own.'
+      : d.keep.cost
+        ? 'The cost on <b>' + esc(d.keep.name) + '</b> stays as it is (' + money(d.keep.cost) + ').'
+        : 'Neither carries a cost, so there is none to copy.');
+
+    if($('pairCarry').checked){
+      steps.push(d.carry && d.carry.name
+        ? 'The item kept is renamed, so one search finds the one item holding the trade:' +
+          '<br><span class="newname">' + esc(d.carry.name) + '</span>'
+        : 'The name is left as it is \u2014 ' +
+          esc((d.carry && d.carry.skip) || 'there is nothing to carry') + '.');
+    }
+
+    steps.push('<b>' + esc(d.going.name) + '</b> is switched off, and only once nothing is ' +
+      'left behind on it. The invoices already written against it stay where they are \u2014 ' +
+      'what they cost has been charged, and rewriting a year of them would move months that ' +
+      'are closed.');
+
+    box.innerHTML = '<div class="plan"><h4>What this would do, in this order</h4>' +
+      '<ol>' + steps.map(function(x){ return '<li>' + x + '</li>'; }).join('') + '</ol>' +
+      (d.stops || []).map(function(x){ return '<div class="stop">' + esc(x) + '</div>'; }).join('') +
+      (d.notes || []).map(function(x){ return '<div class="stop">' + esc(x) + '</div>'; }).join('') +
+      '</div>';
+
+    var blocked = (d.stops && d.stops.length) || (d.needsAccount && !acct);
+    btn.disabled = !!blocked;
+    btn.textContent = (d.stops && d.stops.length) ? 'This pair cannot be merged'
+      : (d.needsAccount && !acct) ? 'Pick the account first'
+      : 'Merge ' + shortName(d.going.name) + ' into ' + shortName(d.keep.name);
+  }
+
+  function pairMerge(){
+    if(!S.plan || S.plan.error || !S.pick.keep || !S.pick.going) return;
+
+    $('btnPairMerge').disabled = true;
+    $('pairStat').className = 'stat busy';
+    $('pairStat').textContent = 'Merging\u2026';
+    $('log').innerHTML = '';
+    S.logged = 0;
+
+    post('/api/products/apply', {
+      field: 'merge',
+      items: [{ id: S.pick.going.id, value: S.pick.keep.id }],
+      // named by hand, so the shade guard that holds the matched list together
+      // is not what decides this one
+      byHand: true,
+      carryName: $('pairCarry').checked,
+      accountId: $('pairAcct').value || undefined,
+      date: $('pairDate').value || undefined
+    })
+      .then(function(){
+        $('pairStat').className = 'stat';
+        $('pairStat').innerHTML = '';
+        $('runSheet').classList.remove('hide');
+        $('btnStop').classList.remove('hide');
+        $('runSheet').scrollIntoView({ behavior:'smooth', block:'start' });
+        poll();
+      })
+      .catch(function(e){
+        $('pairStat').className = 'stat bad';
+        $('pairStat').innerHTML = '<b>' + esc(e.message) + '</b>';
+        drawPlanBox();
+      });
   }
 
   function drawJob(job){
@@ -1103,9 +1508,7 @@
     drawTabs();
     // a list chosen by paste is kept while a run goes through it, rather than
     // swapped back to the whole tab on every poll
-    if(S.tab === 'overview') drawOverview();
-    else if(S.pasted) drawRows();
-    else loadRows();
+    drawPanel();
   }
 
   function poll(){
@@ -1120,6 +1523,9 @@
           clearInterval(S.poller); S.poller = null;
           // what was just changed is in the record now
           if(d.job) loadRecord();
+          // and the two named by hand are read again, so the panel shows what
+          // the books say after the merge rather than what they said before it
+          if(d.job && pickMode() && S.pick.keep && S.pick.going) planPair();
         }
       }).catch(function(){ /* keep trying */ });
     };
@@ -1134,6 +1540,20 @@
   $('btnCsv').addEventListener('click', csv);
   $('btnApply').addEventListener('click', apply);
   $('adjAcct').addEventListener('change', drawApply);
+  $('listCarry').addEventListener('change', drawApply);
+  $('seekKeep').addEventListener('input', function(){ seek('keep'); });
+  $('seekGone').addEventListener('input', function(){ seek('going'); });
+  $('pairAcct').addEventListener('change', drawPlanBox);
+  $('pairCarry').addEventListener('change', drawPlanBox);
+  $('btnPairMerge').addEventListener('click', pairMerge);
+  $('btnSwap').addEventListener('click', function(){
+    // which way round a pair goes is the whole decision, and it is read off the
+    // trade rather than off the names - so it has to be one button
+    var was = S.pick.keep;
+    S.pick.keep = S.pick.going;
+    S.pick.going = was;
+    planPair();
+  });
   $('btnScanStop').addEventListener('click', function(){
     $('btnScanStop').disabled = true;
     say('busy', 'Stopping after the read in hand…');
@@ -1208,14 +1628,17 @@
     $('body').classList.remove('hide');
     loadRecord();
     $('adjDate').value = iso(new Date());
+    $('pairDate').value = iso(new Date());
     get('/api/products/adjust-accounts').then(function(d){
       S.adjust = d.accounts || [];
-      $('adjAcct').innerHTML = '<option value="">— pick an account —</option>' +
+      var opts = '<option value="">— pick an account —</option>' +
         S.adjust.map(function(a){
           return '<option value="' + esc(a.id) + '">' + esc(a.name) +
                  (a.shrinkage ? ' — what QuickBooks uses for stock written off' : '') +
                  '</option>';
         }).join('');
+      $('adjAcct').innerHTML = opts;
+      $('pairAcct').innerHTML = opts;
     }).catch(function(){ /* the tab says what is missing */ });
 
     // a read left going in another tab, or before a reload, is picked back up
