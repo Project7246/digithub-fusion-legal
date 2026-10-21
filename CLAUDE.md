@@ -331,6 +331,45 @@ a single parcel simply has no `trackOne`.
   either of them. `TRAX_BASE`, `MNP_BASE` and `MNP_TRACK_BASE` move a base URL
   without a deploy.
 
+### Where each courier answers from, and why that broke Trax
+
+The app is hosted in DigitalOcean's **Bangalore** region, and not every courier
+answers from a network Bangalore can see.
+
+| Host | Network | Reachable from the app |
+|---|---|---|
+| `api.postex.pk` | Cloudflare | yes |
+| `mnpcourier.com` | Cloudflare | yes |
+| `tracking.mulphilog.com.pk` | Azure | yes |
+| **`sonic.pk`** (Trax) | **PTCL, inside Pakistan** | **no - the call times out** |
+
+So the first Trax key gave `✗ That did not work: Trax said nothing: fetch
+failed`, which reads like a bug here and is not one: the same key, from a
+laptop in Karachi, answers in under a second. Nothing in the key, the endpoint
+or the adapter can fix a route.
+
+Two things came out of it:
+
+- **`reach.js` and `GET /api/courier/reach?courier=<key>`**, behind the
+  *Can this server reach it?* button on `/couriers`. It walks the four steps a
+  call takes - DNS, TCP, TLS, a plain GET - from the server, and names which one
+  broke. A `tcp` step that times out while DNS resolved is the route; an
+  `ECONNREFUSED` is their server saying no; a failure at `http` is ours to fix
+  in the adapter. **Ask this before touching a key.** Node says only "fetch
+  failed" and hides the code two levels down in `cause`, so `codeOf()` and
+  `plainly()` in `wire.js` dig it out - `ETIMEDOUT`,
+  `UND_ERR_CONNECT_TIMEOUT`, `ENOTFOUND` - and every courier error now carries
+  it.
+- **A relay, for a host that cannot be reached any other way.**
+  `tools/courier-relay.js` is a Cloudflare Worker (free, sees both networks,
+  forwards to `sonic.pk` and nothing else, and needs `RELAY_KEY`). Set
+  `COURIER_RELAY` and `COURIER_RELAY_KEY` in DigitalOcean and `wire.js` sends
+  **only** the hosts in `COURIER_RELAY_HOSTS` (default: the sonic.pk ones) that
+  way; everything else keeps going straight out. The adapters' own base URLs do
+  not change, so nothing above `wire.js` knows it is happening.
+  The other way out is to host the app in a region that can reach Pakistan -
+  App Platform cannot be moved after it is made, so that means a new app.
+
 ### Trax is told, M&P is asked
 
 The two couriers work in opposite ways, and both ways are theirs, not ours.

@@ -75,8 +75,16 @@ async function ask(token, path, params) {
   if (r.status === 401 || r.status === 403) {
     throw new Error('Trax refused the API key');
   }
+  // Nothing came back at all, which is a different thing from Trax saying no -
+  // and on this app it has a known cause, so it is worth naming rather than
+  // leaving as "fetch failed".
+  if (r.status === 0) {
+    throw new Error('Trax could not be reached from this server (' + r.text + '). ' +
+      'Press "Can this server reach Trax?" on the couriers page - sonic.pk ' +
+      'answers from inside Pakistan and this app is hosted in Bangalore.');
+  }
   if (!r.ok) {
-    throw new Error(`Trax said ${r.status || 'nothing'}: ` +
+    throw new Error(`Trax said ${r.status}: ` +
                     String((r.json && (r.json.message || r.json.error)) || r.text).slice(0, 200));
   }
   if (!sonicOk(r.json)) {
@@ -300,6 +308,8 @@ export function readHook(body) {
 export const adapter = {
   key: 'trax',
   name: 'Trax',
+  // where it lives, so the reach check can be run from the server itself
+  base: BASE,
   // Sonic hands out one API key per account, and that is the whole sign-in.
   fields: [
     { name: 'token', label: 'API key', secret: true,

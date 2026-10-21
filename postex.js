@@ -311,6 +311,8 @@ export async function fetchCprs(jwt, merchantId, from, to) {
 export const adapter = {
   key: 'postex',
   name: 'PostEx',
+  base: BASE,
+  extraBases: [{ base: PORTAL, label: 'PostEx merchant portal' }],
   // What has to be typed in to add an account. The first field is always the
   // one kept as the account's token; PostEx needs nothing else here, because
   // its portal sign-in (for cash receipts) is asked for on the receipts page,

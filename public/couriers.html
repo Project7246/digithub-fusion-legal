@@ -144,6 +144,7 @@
           <div class="fields" id="addFields"></div>
           <div class="hint" id="kindNote"></div>
           <button class="solid" id="btnAdd">Check and save</button>
+          <button id="btnReach" type="button">Can this server reach it?</button>
           <div id="addOut"></div>
         </div>
 
@@ -318,6 +319,7 @@
     $('kindNote').innerHTML = says.join(' &middot; ');
 
     $('label').placeholder = k.name + ' - main';
+    $('btnReach').textContent = 'Can this server reach ' + k.name + '?';
   }
 
   /* ---------- accounts ---------- */
@@ -538,6 +540,53 @@
       })
       .catch(function(e){
         $('btnAdd').disabled = false;
+        $('addOut').innerHTML = '<div class="result bad">\u2717 ' + esc(e.message) + '</div>';
+      });
+  });
+
+  /* ---------- can this server get there at all ---------- */
+  // A key that works from a laptop here and times out from the server is not a
+  // key problem, and the courier's own error cannot say so. This asks from
+  // where it matters: the server.
+
+  $('btnReach').addEventListener('click', function(){
+    var k = kindOf();
+    if(!k) return;
+
+    $('btnReach').disabled = true;
+    $('addOut').innerHTML = '<div class="result">Trying ' + esc(k.name) +
+      ' from the server\u2026</div>';
+
+    get('/api/courier/reach?courier=' + encodeURIComponent(k.key))
+      .then(function(d){
+        $('btnReach').disabled = false;
+
+        var html = (d.checks || []).map(function(c){
+          var v = c.verdict || {};
+          var good = v.where === 'ok';
+          var steps = ['dns', 'tcp', 'tls', 'http'].map(function(name){
+            var st = c[name];
+            if(!st) return '';
+            return '<span class="tag ' + (st.ok ? 'on' : 'off') + '">' + name +
+              ' ' + (st.ok ? st.ms + 'ms' : esc(st.code || 'no')) + '</span> ';
+          }).join('');
+
+          return '<div class="result ' + (good ? 'good' : 'bad') + '">' +
+            (good ? '\u2713 ' : '\u2717 ') + '<b>' + esc(c.label || '') + '</b> ' +
+            esc(c.host || '') + '<br>' + steps +
+            '<div style="margin-top:6px">' + esc(v.say || '') + '</div></div>';
+        }).join('');
+
+        if(d.relay && d.relay.on){
+          html += '<div class="hint">A relay is switched on for: ' +
+            esc((d.relay.hosts || []).join(', ')) + '.</div>';
+        }
+
+        $('addOut').innerHTML = html ||
+          '<div class="result">Nothing to check for this courier.</div>';
+      })
+      .catch(function(e){
+        $('btnReach').disabled = false;
         $('addOut').innerHTML = '<div class="result bad">\u2717 ' + esc(e.message) + '</div>';
       });
   });

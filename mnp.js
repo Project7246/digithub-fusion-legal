@@ -117,8 +117,12 @@ function unwrap(r, path) {
   if (r.status === 401 || r.status === 403) {
     throw new Error('M&P refused that login');
   }
+  if (r.status === 0) {
+    throw new Error('M&P could not be reached from this server (' + r.text + '). ' +
+      'Press "Can this server reach M&P?" on the couriers page.');
+  }
   if (!r.ok) {
-    throw new Error(`M&P said ${r.status || 'nothing'} on ${path}: ` +
+    throw new Error(`M&P said ${r.status} on ${path}: ` +
       String((r.json && (r.json.message || r.json.Message)) || r.text).slice(0, 200));
   }
 
@@ -415,6 +419,10 @@ export async function fetchPayouts(token, from, to, extra) {
 export const adapter = {
   key: 'mnp',
   name: 'M&P',
+  base: BASE,
+  // their public tracking screen is a different host on a different network,
+  // so one of the two being reachable says nothing about the other
+  extraBases: [{ base: TRACK_BASE, label: 'M&P tracking screen' }],
   // The login M&P hand out, plus the two numbers they hand out with it. Both
   // numbers are discovered by the test call, so they are optional here.
   fields: [

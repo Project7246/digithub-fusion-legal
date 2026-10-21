@@ -162,6 +162,8 @@ import {
   initCompute, computeState, computeHistory, saveComputeOnExit
 } from './compute.js';
 import { startHousekeeping, cleanUp, lastClean } from './housekeeping.js';
+import { reachCourier } from './reach.js';
+import { relayState } from './wire.js';
 import {
   dashboard as dashData, recentCprs, pickups, pickupOrders, ordersBy, eachOrder
 } from './dashdata.js';
@@ -8800,6 +8802,27 @@ app.get('/api/courier/tree', async (req, res) => {
     res.status(500).json({ error: e.message });
   }
 });
+// Can this server reach the courier at all? Asked from the server, because
+// that is the only place the answer lives - a key that works from a laptop in
+// Karachi and times out from a datacentre in Bangalore is not a key problem,
+// and until this existed the screen could only say "fetch failed".
+app.get('/api/courier/reach', async (req, res) => {
+  const realmId = await requireCompany(req, res);
+  if (!realmId) return;
+
+  const a = adapterFor(req.query.courier);
+  if (!a) return res.status(400).json({ error: 'Unknown courier' });
+
+  try {
+    res.setHeader('Cache-Control', 'no-store');
+    const out = await reachCourier(a);
+    out.relay = relayState();
+    res.json(out);
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 app.get('/api/courier/accounts', async (req, res) => {
   const realmId = await requireCompany(req, res);
   if (!realmId) return;

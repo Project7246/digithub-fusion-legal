@@ -26,7 +26,89 @@ export function qs(base, path, params) {
   return full.toString();
 }
 
+// Node says "fetch failed" and puts the only useful part in `cause`, two
+// levels down. That cost an afternoon once: a courier's API was unreachable
+// from the server's own datacentre and the screen said nothing but "Trax said
+// nothing: fetch failed", which reads like a bug in here.
+export function codeOf(e) {
+  let c = e;
+  for (let i = 0; i < 5 && c; i++) {
+    if (c.code) return String(c.code);
+    // a host with both an IPv6 and an IPv4 address fails twice, and Node hands
+    // back an AggregateError whose own code is empty - the codes are inside it
+    if (Array.isArray(c.errors) && c.errors.length) {
+      const found = c.errors.map(x => x && x.code).filter(Boolean)[0];
+      if (found) return String(found);
+    }
+    c = c.cause;
+  }
+  return e && e.name === 'AbortError' ? 'ETIMEDOUT' : '';
+}
+
+// What each of those codes means, in words somebody can act on.
+const MEANS = {
+  ENOTFOUND:    'that address does not resolve - the name is wrong, or this ' +
+                'server cannot look it up',
+  EAI_AGAIN:    'the name could not be looked up just now - a DNS wobble',
+  ECONNREFUSED: 'the door is shut - something is listening there and said no',
+  ETIMEDOUT:    'no answer at all. The courier is down, or this server cannot ' +
+                'reach their network - which is what it looks like when an app ' +
+                'hosted in one country calls a server that only answers inside ' +
+                'another',
+  EHOSTUNREACH: 'there is no route from this server to that one',
+  ENETUNREACH:  'there is no route from this server to that network',
+  ECONNRESET:   'the connection was cut while we were on it',
+  UND_ERR_CONNECT_TIMEOUT:
+                'no answer at all - see ETIMEDOUT above: this is usually a ' +
+                'server that cannot reach the courier’s network',
+  CERT_HAS_EXPIRED: 'their certificate has expired',
+  UNABLE_TO_VERIFY_LEAF_SIGNATURE: 'their certificate cannot be verified'
+};
+
+export function plainly(e) {
+  const code = codeOf(e);
+  if (code && MEANS[code]) return code + ' - ' + MEANS[code];
+  if (code) return code;
+  return (e && e.message) || 'the call failed';
+}
+
+/* ---------- going the long way round ---------- */
+//
+// sonic.pk answers from a PTCL address inside Pakistan, and this app is hosted
+// in Bangalore. Those two networks do not reliably see each other, so the call
+// times out from the server while the same call from a laptop in Karachi is
+// instant - nothing in the app can fix that, because it is the route.
+//
+// A relay is the way through: a small worker on a network that can see both,
+// which takes `<relay>/<the whole target URL>` and passes it on. Set
+// COURIER_RELAY and COURIER_RELAY_KEY and only the hosts in COURIER_RELAY_HOSTS
+// go that way - everything else, Cloudflare-hosted like PostEx and M&P, keeps
+// going straight out. tools/courier-relay.js is the worker.
+const RELAY = String(process.env.COURIER_RELAY || '').replace(/\/+$/, '');
+const RELAY_KEY = process.env.COURIER_RELAY_KEY || '';
+const RELAY_HOSTS = String(process.env.COURIER_RELAY_HOSTS ||
+  'sonic.pk,app.sonic.pk,www.sonic.pk')
+  .split(',').map(h => h.trim().toLowerCase()).filter(Boolean);
+
+export function relayed(url) {
+  if (!RELAY) return null;
+  let host;
+  try { host = new URL(url).hostname.toLowerCase(); } catch (e) { return null; }
+  return RELAY_HOSTS.includes(host) ? RELAY + '/' + url : null;
+}
+
+export function relayState() {
+  return { on: !!RELAY, hosts: RELAY_HOSTS, keyed: !!RELAY_KEY };
+}
+
 export async function call({ url, method, headers, body }) {
+  const through = relayed(url);
+  if (through) {
+    url = through;
+    headers = Object.assign({}, headers || {},
+                            RELAY_KEY ? { 'X-Relay-Key': RELAY_KEY } : {});
+  }
+
   const ctl = new AbortController();
   const bell = setTimeout(() => ctl.abort(), TIMEOUT);
 
@@ -45,9 +127,7 @@ export async function call({ url, method, headers, body }) {
 
     return { ok: r.ok, status: r.status, json, text: text.slice(0, 600) };
   } catch (e) {
-    const why = e && e.name === 'AbortError'
-      ? 'it did not answer in time' : (e.message || 'the call failed');
-    return { ok: false, status: 0, json: null, text: why };
+    return { ok: false, status: 0, json: null, text: plainly(e), cause: codeOf(e) };
   } finally {
     clearTimeout(bell);
   }
