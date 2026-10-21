@@ -15,7 +15,7 @@ import {
 import { initMappings, getMappings, saveMapping } from './mappings.js';
 import {
   initHooks, hookFor, rollHook, accountByHookKey, sameSecret,
-  readHook, applyStatus, logHook, recentHooks
+  applyStatus, logHook, recentHooks
 } from './hooks.js';
 import {
   initShopify, listShops, getShop, saveShop, removeShop, checkShop, cleanDomain,
@@ -106,10 +106,12 @@ import { startAdvJob, stopAdvJob, clearAdvJob, resumeAdvJob, advSnapshot } from 
 import {
   initCouriers, listAccounts as listCourierAccounts, getAccount as getCourierAccount,
   addAccount as addCourierAccount, removeAccount as removeCourierAccount,
-  markSync, saveOrders,
+  markSync, saveOrders, credsOf,
   listCprs, cprOrders, cprProgress
 } from './couriers.js';
-import { adapter as postexAdapter, groupOf } from './postex.js';
+// One list of couriers, in adapters.js, read by this file, by the keeper and by
+// the live dashboard. It used to be written out in all three.
+import { ADAPTERS, adapterFor, courierKinds, groupFor, readFor } from './adapters.js';
 import {
   liveStats, liveOrders, trackOne, peekRaw, chaseCpr, forget as forgetLive
 } from './courierlive.js';
@@ -155,6 +157,9 @@ import {
   WAYS as DESC_WAYS, wayOf as descWayOf
 } from './redesc.js';
 import { startKeeper, keeperState, sweepNow } from './keeper.js';
+import {
+  initCompute, computeState, computeHistory, saveComputeOnExit
+} from './compute.js';
 import {
   dashboard as dashData, recentCprs, pickups, pickupOrders, ordersBy, eachOrder
 } from './dashdata.js';
@@ -2395,9 +2400,17 @@ app.get('/api/storage', async (req, res) => {
       byCompany = r.rows;
     } catch (e) { byCompany = []; }
 
+    // What the month has cost as well as what it is holding. Neon bills the
+    // hours its compute was awake, not the rows kept, so "how full" and "how
+    // dear" are two different numbers and this screen is where both belong.
+    let months = [];
+    try { months = await computeHistory(); } catch (e) { months = []; }
+
     res.json({
       bytes: Number(size.rows[0].bytes),
       limitMb: DB_LIMIT_MB,
+      compute: computeState(),
+      computeMonths: months,
       tables: tables.rows.map(t => ({
         name: t.name, bytes: Number(t.bytes), rows: Number(t.est_rows)
       })),
@@ -7753,23 +7766,31 @@ app.post('/hooks/courier/:courier/:key',
     }
 
     const body = req.body && typeof req.body === 'object' ? req.body : {};
-    const read = readHook(body);
+    // read by the courier's own file where it has something to say about its
+    // shape, and by the forgiving reader in hooks.js otherwise
+    const read = readFor(account.courier, body);
 
     if (!read.tracking) {
       await logHook(account, { note: 'no tracking number in it', body });
       return res.json({ ok: true, note: 'kept, but no tracking number was found' });
     }
 
-    const group = groupOf(read.status);
-    const matched = await applyStatus(account, {
-      tracking: read.tracking, status: read.status, group, when: read.when
+    // PostEx's words are not Trax's and neither are M&P's, so the bucket comes
+    // from the courier that called - this used to be PostEx's reader for all
+    // of them, which filed every Trax status under "other".
+    const group = groupFor(account.courier, read.status);
+    const what = await applyStatus(account, {
+      tracking: read.tracking, status: read.status, group,
+      when: read.when, ref: read.ref, amount: read.amount, city: read.city
     });
 
     await logHook(account, {
       tracking: read.tracking,
       status: read.status,
-      matched,
-      note: matched ? null : 'that parcel is not here yet',
+      matched: !!what,
+      note: what === 'added'
+        ? 'new to us - written down from the webhook itself'
+        : (what ? null : 'nothing in it to apply'),
       body
     });
 
@@ -7791,6 +7812,7 @@ app.get('/api/courier/hook', async (req, res) => {
   try {
     res.setHeader('Cache-Control', 'no-store');
     const h = await hookFor(realmId, req.query.account);
+    const a = adapterFor(h.courier);
     const base = (process.env.BASE_URL || '').replace(/\/+$/, '') ||
                  (req.protocol + '://' + req.get('host'));
     res.json({
@@ -7798,6 +7820,11 @@ app.get('/api/courier/hook', async (req, res) => {
       header: h.header,
       secret: h.secret,
       label: h.label,
+      courier: h.courier,
+      courierName: a ? a.name : h.courier,
+      // where in that courier's own portal this address goes - it is different
+      // for each of them, and M&P do it for you at their end
+      hook: a && a.hook ? a.hook : null,
       lastAt: h.lastAt,
       hits: h.hits,
       recent: (await recentHooks(realmId, h.id, 20)).map(r => ({
@@ -8505,10 +8532,10 @@ app.get('/api/courier/status-list', async (req, res) => {
     const acc = await getCourierAccount(realmId, Number(req.query.account));
     if (!acc) return res.status(404).json({ error: 'No such account' });
 
-    const a = ADAPTERS[acc.courier];
+    const a = adapterFor(acc.courier);
     if (!a) return res.status(400).json({ error: 'No adapter for ' + acc.courier });
 
-    res.json(await a.testToken(acc.token));
+    res.json(await a.testToken(acc.token, credsOf(acc)));
   } catch (e) {
     res.status(400).json({ error: e.message });
   }
@@ -8636,7 +8663,7 @@ app.get('/api/courier/scope', async (req, res) => {
     if (account) {
       const acc = await getCourierAccount(realmId, Number(account));
       if (!acc) return res.status(404).json({ error: 'No such account' });
-      const a = ADAPTERS[acc.courier];
+      const a = adapterFor(acc.courier);
       return res.json({
         kind: 'account',
         id: acc.id,
@@ -8648,7 +8675,7 @@ app.get('/api/courier/scope', async (req, res) => {
     }
 
     if (courier) {
-      const a = ADAPTERS[courier];
+      const a = adapterFor(courier);
       return res.json({
         kind: 'courier',
         title: a ? a.name : courier,
@@ -8662,17 +8689,14 @@ app.get('/api/courier/scope', async (req, res) => {
   }
 });
 
-// One adapter per courier. Adding a courier means adding a file and a line here.
-const ADAPTERS = {
-  postex: postexAdapter
-};
-
+// Which couriers can be added, and what each one needs typed in. The fields
+// come from the adapter rather than from this page, so PostEx asking for one
+// token and M&P asking for four is one screen, not two.
 app.get('/api/courier/kinds', async (req, res) => {
   const realmId = await requireCompany(req, res);
   if (!realmId) return;
-  res.json({
-    kinds: Object.values(ADAPTERS).map(a => ({ key: a.key, name: a.name }))
-  });
+  res.setHeader('Cache-Control', 'no-store');
+  res.json({ kinds: courierKinds() });
 });
 // The sidebar shows every courier we can speak to, whether or not an account
 // has been added yet - so a first account can be added from there.
@@ -8684,6 +8708,10 @@ app.get('/api/courier/tree', async (req, res) => {
     res.setHeader('Cache-Control', 'no-store');
     const accounts = await listCourierAccounts(realmId);
 
+    // Every courier here can be spoken to, so none of them is greyed out any
+    // more. Daewoo was on this list as "soon" for months, which reads as
+    // something broken rather than something not started - it comes back as a
+    // file beside trax.js on the day it is wanted.
     const tree = Object.values(ADAPTERS).map(a => ({
       key: a.key,
       name: a.name,
@@ -8693,21 +8721,18 @@ app.get('/api/courier/tree', async (req, res) => {
         .map(x => ({ id: x.id, label: x.label, lastSync: x.last_sync }))
     }));
 
-    // couriers we know of but cannot talk to yet
-    const PLANNED = [
-      { key: 'trax',   name: 'Trax' },
-      { key: 'daewoo', name: 'Daewoo' }
-    ];
-
-    PLANNED.forEach(p => {
-      if (tree.some(t => t.key === p.key)) return;
+    // A row left behind by a courier that has since been taken out still has
+    // its orders in it, so it keeps its place in the rail rather than
+    // disappearing with the adapter.
+    accounts.forEach(x => {
+      if (tree.some(t => t.key === x.courier)) return;
       tree.push({
-        key: p.key,
-        name: p.name,
+        key: x.courier,
+        name: x.courier,
         ready: false,
         accounts: accounts
-          .filter(x => x.courier === p.key)
-          .map(x => ({ id: x.id, label: x.label, lastSync: x.last_sync }))
+          .filter(y => y.courier === x.courier)
+          .map(y => ({ id: y.id, label: y.label, lastSync: y.last_sync }))
       });
     });
 
@@ -8734,18 +8759,39 @@ app.post('/api/courier/accounts', async (req, res) => {
 
   const courier = String(req.body.courier || '').trim().toLowerCase();
   const label = String(req.body.label || '').trim();
-  const token = String(req.body.token || '').trim();
+  const a = adapterFor(courier);
 
-  if (!ADAPTERS[courier]) return res.status(400).json({ error: 'Unknown courier' });
+  if (!a) return res.status(400).json({ error: 'Unknown courier' });
   if (!label) return res.status(400).json({ error: 'Give this account a name' });
-  if (!token) return res.status(400).json({ error: 'Token required' });
+
+  // Each adapter names its own fields and the first of them is the token, so
+  // this route does not have to know that Trax wants a key and M&P a mailbox.
+  const fields = a.fields || [{ name: 'token', label: 'API token' }];
+  const given = {};
+  fields.forEach(f => {
+    const v = req.body[f.name];
+    const t = v === undefined || v === null ? '' : String(v).trim();
+    if (t) given[f.name] = t;
+  });
+
+  const missing = fields
+    .filter(f => !f.optional && !given[f.name])
+    .map(f => f.label || f.name);
+  if (missing.length) {
+    return res.status(400).json({ error: missing.join(' and ') + ' required' });
+  }
+
+  const token = given[fields[0].name];
+  const extra = {};
+  fields.slice(1).forEach(f => { if (given[f.name]) extra[f.name] = given[f.name]; });
 
   try {
-    const check = await ADAPTERS[courier].testToken(token);
-    const id = await addCourierAccount(realmId, { courier, label, token });
+    // asked before it is kept, so a key that does not work never gets saved
+    const check = await a.testToken(token, extra);
+    const id = await addCourierAccount(realmId, { courier, label, token, extra });
     res.json({ ok: true, id, check });
   } catch (e) {
-    res.status(400).json({ error: 'That token did not work: ' + e.message });
+    res.status(400).json({ error: 'That did not work: ' + e.message });
   }
 });
 
@@ -8757,10 +8803,10 @@ app.post('/api/courier/accounts/test', async (req, res) => {
     const acc = await getCourierAccount(realmId, req.body.id);
     if (!acc) return res.status(404).json({ error: 'No such account' });
 
-    const a = ADAPTERS[acc.courier];
+    const a = adapterFor(acc.courier);
     if (!a) return res.status(400).json({ error: 'No adapter for ' + acc.courier });
 
-    const check = await a.testToken(acc.token);
+    const check = await a.testToken(acc.token, credsOf(acc));
     await markSync(realmId, acc.id, null);
     res.json({ ok: true, check });
   } catch (e) {
@@ -8791,10 +8837,10 @@ app.post('/api/courier/sync', async (req, res) => {
     const acc = await getCourierAccount(realmId, id);
     if (!acc) return res.status(404).json({ error: 'No such account' });
 
-    const a = ADAPTERS[acc.courier];
+    const a = adapterFor(acc.courier);
     if (!a) return res.status(400).json({ error: 'No adapter for ' + acc.courier });
 
-    const orders = await a.fetchOrders(acc.token, from, to, 0);
+    const orders = await a.fetchOrders(acc.token, from, to, 0, credsOf(acc));
     const saved = await saveOrders(realmId, acc.id, acc.courier, orders);
     await markSync(realmId, acc.id, null);
 
@@ -12244,6 +12290,9 @@ app.post('/api/audit/clear', async (req, res) => {
 const PORT = process.env.PORT || 3000;
 
 initDb()
+  // Right after the database and before anything else: it wraps the pool, and
+  // a query made before it is in place is a query it never counted.
+  .then(() => initCompute())
   .then(() => initMappings())
   .then(() => initUsers())
   .then(() => initAccounts())
@@ -12262,6 +12311,8 @@ initDb()
   .then(() => initVoidStore())
   .then(() => app.listen(PORT, () => {
     console.log(`Server running on port ${PORT}`);
+    // a deploy must not lose the month's tally - DigitalOcean sends SIGTERM
+    saveComputeOnExit();
     startKeeper();
     startShopifySync();
         resumeUnfinished().catch(e => console.error('resume failed:', e.message));

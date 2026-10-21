@@ -889,7 +889,14 @@
     //
     // Coming back to the window is the moment somebody would look at the bell, so
     // that is when it is worth asking. A window nobody is looking at asks nothing.
-    var COUNT_EVERY = 5 * 60 * 1000;
+    // Every look is a query, and a query wakes the Neon compute for five
+    // minutes - so a bell looking every five minutes is a database that never
+    // sleeps for as long as one tab is open, which is most of the month's
+    // allowance spent on an empty bell. Ten minutes lets it sleep between
+    // looks, and a tab nobody has touched in half an hour stops looking at all.
+    var COUNT_EVERY = 10 * 60 * 1000;
+    var QUIET_AFTER = 30 * 60 * 1000;
+    var touched = Date.now();
     var beat = null;
     var lastLook = 0;
 
@@ -902,6 +909,9 @@
 
     function look(force){
       if(document.hidden) return;
+      // nobody has touched this tab in half an hour: whoever it belongs to has
+      // walked away, and the bell can wait until they are back
+      if(!force && Date.now() - touched > QUIET_AFTER) return;
       // coming back to a window twice in a moment is still one look
       if(!force && Date.now() - lastLook < 30000) return;
       lastLook = Date.now();
@@ -914,13 +924,20 @@
 
     function start(){
       if(beat) clearInterval(beat);
-      beat = setInterval(function(){ look(true); }, COUNT_EVERY);
+      // not look(true): the beat is what the quiet rule above is for, and a
+      // forced look would walk straight past it
+      beat = setInterval(function(){ look(false); }, COUNT_EVERY);
     }
+
+    ['pointerdown', 'keydown', 'wheel'].forEach(function(e){
+      window.addEventListener(e, function(){ touched = Date.now(); }, { passive: true });
+    });
 
     document.addEventListener('visibilitychange', function(){
       if(document.hidden){
         if(beat){ clearInterval(beat); beat = null; }
       } else {
+        touched = Date.now();        // coming back to the tab is touching it
         look(false);
         start();
       }

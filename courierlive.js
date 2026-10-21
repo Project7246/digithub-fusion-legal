@@ -5,11 +5,9 @@
 
 import {
   listAccounts, getAccount, saveOrders,
-  needCpr, savePayments
+  needCpr, savePayments, credsOf
 } from './couriers.js';
-import { adapter as postexAdapter } from './postex.js';
-
-const ADAPTERS = { postex: postexAdapter };
+import { adapterFor } from './adapters.js';
 
 // account id + span -> { at, orders }
 const recent = new Map();
@@ -22,10 +20,10 @@ async function ordersFor(acc, from, to) {
   const hit = recent.get(k);
   if (hit && Date.now() - hit.at < HOLD) return hit.orders;
 
-  const a = ADAPTERS[acc.courier];
+  const a = adapterFor(acc.courier);
   if (!a) return [];
 
-  const orders = await a.fetchOrders(acc.token, from, to, 0);
+  const orders = await a.fetchOrders(acc.token, from, to, 0, credsOf(acc));
   recent.set(k, { at: Date.now(), orders });
 
   // keep the memory small
@@ -51,7 +49,7 @@ async function askAboutMoney(acc) {
   asking.add(acc.id);
 
   try {
-    const a = ADAPTERS[acc.courier];
+    const a = adapterFor(acc.courier);
     if (!a || !a.fetchPayment) return;
 
     const list = await needCpr(acc.realm_id, acc.id, 120);
@@ -61,7 +59,7 @@ async function askAboutMoney(acc) {
     for (let i = 0; i < list.length; i += 8) {
       const chunk = list.slice(i, i + 8);
       const answers = await Promise.all(
-        chunk.map(t => a.fetchPayment(acc.token, t).catch(() => null))
+        chunk.map(t => a.fetchPayment(acc.token, t, credsOf(acc)).catch(() => null))
       );
       await savePayments(acc.realm_id, acc.id, answers.filter(Boolean));
     }
@@ -84,7 +82,7 @@ async function accountsFor(realmId, { account, courier }) {
   }
 
   const all = await listAccounts(realmId);
-  const live = all.filter(a => ADAPTERS[a.courier]);
+  const live = all.filter(a => adapterFor(a.courier));
   const wanted = courier ? live.filter(a => a.courier === courier) : live;
 
   const full = [];
@@ -259,11 +257,11 @@ export async function trackOne(realmId, tracking, accountId) {
   if (!wanted) throw new Error('Give a tracking number');
 
   for (const acc of list) {
-    const a = ADAPTERS[acc.courier];
+    const a = adapterFor(acc.courier);
     if (!a || !a.fetchPayment) continue;
 
     try {
-      const pay = await a.fetchPayment(acc.token, wanted);
+      const pay = await a.fetchPayment(acc.token, wanted, credsOf(acc));
       if (!pay || !pay.tracking) continue;
 
       // whatever the last pull knows about this parcel fills in the rest

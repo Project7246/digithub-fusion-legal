@@ -124,7 +124,10 @@
           <h2>Add an account</h2>
           <div class="hint">
             One row per account, not per courier. PostEx - RB and PostEx - AH are two
-            accounts sharing the same courier. The token is checked before it is kept.
+            accounts sharing the same courier, and Trax or M&amp;P are added here the
+            same way. What each one asks for is its own business &mdash; PostEx needs a
+            token, M&amp;P a login as well &mdash; so the boxes change with the courier
+            picked. Whatever is typed is checked with the courier before it is kept.
           </div>
           <div class="fields">
             <div>
@@ -135,11 +138,11 @@
               <label>Account name</label>
               <input id="label" placeholder="PostEx - RB">
             </div>
-            <div>
-              <label>API token</label>
-              <input id="token" type="password" placeholder="paste the token">
-            </div>
           </div>
+          <!-- drawn from what the adapter says it needs, so a new courier needs
+               no change on this page -->
+          <div class="fields" id="addFields"></div>
+          <div class="hint" id="kindNote"></div>
           <button class="solid" id="btnAdd">Check and save</button>
           <div id="addOut"></div>
         </div>
@@ -157,12 +160,12 @@
         <div class="step hide" id="stepHook">
           <h2>Live updates from the courier</h2>
           <div class="hint">
-            Without this, a parcel's status is at most half an hour old &mdash; that is
-            how often Fusion asks. Paste the address below into the courier&rsquo;s
-            own portal and it will tell Fusion the moment a status changes.
-            In PostEx that is <b>merchant.postex.pk &rarr; Integration guide &rarr;
-            Webhook Configuration</b>.
+            Without this, a parcel's status is only as new as the last sweep. Paste the
+            address below into the courier&rsquo;s own portal and it will tell Fusion
+            the moment a status changes &mdash; which is also what lets Fusion ask far
+            less often, and that is where the month&rsquo;s database hours go.
           </div>
+          <div class="hint" id="hookWhere"></div>
           <div class="range">
             <div>
               <label>Account</label>
@@ -257,10 +260,52 @@
         o.value = k.key; o.textContent = k.name;
         sel.appendChild(o);
       });
+
+      // "+ add an account" in the rail links here with the courier in the
+      // address, so the box it opens on is the one that was pressed
+      var wanted = new URLSearchParams(location.search).get('add');
+      if(wanted && S.kinds.some(function(k){ return k.key === wanted; })){
+        sel.value = wanted;
+      }
+
+      drawFields();
+      sel.addEventListener('change', drawFields);
     }).catch(function(){});
 
     loadAccounts();
   });
+
+  /* ---------- what this courier asks for ---------- */
+  // The page does not know that Trax wants a key and M&P a login as well: the
+  // adapter says so, and this draws what it says. A courier added next month
+  // turns up here with its own boxes and nothing on this page changes.
+
+  function kindOf(key){
+    var want = key || $('kind').value;
+    return S.kinds.filter(function(k){ return k.key === want; })[0] || null;
+  }
+
+  function drawFields(){
+    var k = kindOf();
+    var box = $('addFields');
+    if(!k){ box.innerHTML = ''; return; }
+
+    box.innerHTML = (k.fields || []).map(function(f){
+      return '<div>' +
+        '<label>' + esc(f.label || f.name) +
+          (f.optional ? ' <span class="aside">optional</span>' : '') + '</label>' +
+        '<input data-field="' + esc(f.name) + '"' +
+          (f.secret ? ' type="password"' : '') +
+          ' placeholder="' + esc(f.hint || '') + '">' +
+      '</div>';
+    }).join('');
+
+    var says = (k.fields || []).filter(function(f){ return f.hint; })
+      .map(function(f){ return '<b>' + esc(f.label || f.name) + '</b>: ' + esc(f.hint); });
+    $('kindNote').innerHTML = says.join(' &middot; ');
+
+    $('label').placeholder = k.name + ' - main';
+  }
 
   /* ---------- accounts ---------- */
 
@@ -431,25 +476,39 @@
   $('btnAdd').addEventListener('click', function(){
     var courier = $('kind').value;
     var label = $('label').value.trim();
-    var token = $('token').value.trim();
+    var k = kindOf();
+    var body = { courier: courier, label: label };
+    var missing = [];
+
+    (k ? (k.fields || []) : []).forEach(function(f){
+      var el = $('addFields').querySelector('[data-field="' + f.name + '"]');
+      var v = el ? el.value.trim() : '';
+      if(v) body[f.name] = v;
+      else if(!f.optional) missing.push(f.label || f.name);
+    });
 
     if(!label) return say('bad', '<b>Give this account a name.</b>');
-    if(!token) return say('bad', '<b>Paste the token.</b>');
+    if(missing.length) return say('bad', '<b>' + esc(missing.join(' and ')) + ' is needed.</b>');
 
     clearSay();
     $('btnAdd').disabled = true;
-    $('addOut').innerHTML = '<div class="result">Checking the token with the courier...</div>';
+    $('addOut').innerHTML = '<div class="result">Checking it with the courier...</div>';
 
-    post('/api/courier/accounts', { courier: courier, label: label, token: token })
+    post('/api/courier/accounts', body)
       .then(function(d){
         $('btnAdd').disabled = false;
         $('addOut').innerHTML =
           '<div class="result good">\u2713 ' + esc(label) + ' is connected.' +
           (d.check && d.check.statuses && d.check.statuses.length
             ? ' The courier knows ' + d.check.statuses.length + ' order statuses.'
+            : '') +
+          // which shape of the call answered: worth saying for the couriers
+          // whose guide had to be found by trying
+          (d.check && d.check.shape
+            ? ' <span class="aside">answered on ' + esc(d.check.shape) + '</span>'
             : '') + '</div>';
         $('label').value = '';
-        $('token').value = '';
+        $('addFields').querySelectorAll('[data-field]').forEach(function(el){ el.value = ''; });
         loadAccounts();
       })
       .catch(function(e){
@@ -514,6 +573,14 @@
     get('/api/courier/hook?account=' + id)
       .then(function(d){
         var rows = d.recent || [];
+
+        // every courier hides this screen somewhere else, and M&P have none at
+        // all - they switch it on at their end
+        $('hookWhere').innerHTML = d.hook
+          ? 'For ' + esc(d.courierName || d.courier) + ': <b>' + esc(d.hook.where) + '</b>' +
+            (d.hook.note ? ' &mdash; ' + esc(d.hook.note) : '')
+          : '';
+
         $('hookBox').innerHTML =
           '<div class="hookrow"><label>Webhook URL</label>' +
             '<code>' + esc(d.url) + '</code>' + copyBtn('cpUrl', d.url) + '</div>' +

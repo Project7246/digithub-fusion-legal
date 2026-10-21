@@ -2,11 +2,9 @@
 // runs, everything else - the receipts, the city figures, what is still owed -
 // is answered from here instead of asking the courier all over again.
 
-import { getAccount, saveOrders, needCpr, savePayments } from './couriers.js';
-import { adapter as postexAdapter } from './postex.js';
+import { getAccount, saveOrders, needCpr, savePayments, credsOf } from './couriers.js';
+import { adapterFor } from './adapters.js';
 import { realmOf } from './desk.js';
-
-const ADAPTERS = { postex: postexAdapter };
 
 const jobs = new Map();          // desk (company and person) -> job
 
@@ -175,8 +173,11 @@ async function run(realmId, job, carrying) {
   const acc = await getAccount(realmId, job.accountId);
   if (!acc) throw new Error('No such account');
 
-  const a = ADAPTERS[acc.courier];
+  const a = adapterFor(acc.courier);
   if (!a) throw new Error('No adapter for ' + acc.courier);
+
+  // whatever this courier wants beside its token - a login, an account number
+  const extra = credsOf(acc);
 
   job.label = acc.label;
   if (!carrying) say(job, `${acc.label}: ${job.from} to ${job.to}, ${job.months.length} month${job.months.length === 1 ? '' : 's'}`);
@@ -189,7 +190,8 @@ async function run(realmId, job, carrying) {
 
     let orders = [];
     try {
-      orders = await tryThrice(job, m.label, () => a.fetchOrders(acc.token, m.from, m.to, 0));
+      orders = await tryThrice(job, m.label,
+        () => a.fetchOrders(acc.token, m.from, m.to, 0, extra));
     } catch (e) {
       say(job, `${m.label}: gave up - ${e.message}`);
       job.monthsDone++;
@@ -248,7 +250,7 @@ async function run(realmId, job, carrying) {
         if (job.cancel) break;
         const chunk = list.slice(i, i + 8);
         const answers = await Promise.all(
-          chunk.map(t => a.fetchPayment(acc.token, t).catch(() => null))
+          chunk.map(t => a.fetchPayment(acc.token, t, extra).catch(() => null))
         );
         const good = answers.filter(Boolean);
         try { await savePayments(realmId, acc.id, good); } catch (e) {}

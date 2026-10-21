@@ -731,10 +731,20 @@
     // every half minute, and whichever tab is open goes with it - a page left
     // on a desk should be telling the truth when somebody looks up at it
     // the log is the thing somebody watches, so it moves faster than the rest
-    setInterval(loadLog, 10000);
+    // Left on a wall, this is meant to keep moving, and it costs what it
+    // costs: ten seconds apart is a database that never gets to sleep. What it
+    // must not do is go on costing that in a tab nobody can see, so a hidden
+    // tab stops asking and picks up where it left off when it is looked at.
+    function beat(fn, every){
+      setInterval(function(){ if(!document.hidden) fn(); }, every);
+    }
+    beat(loadLog, 10000);
     // Only the totals and the log keep moving. A table somebody is reading
     // should stay where it is - the log above already says it is alive.
-    setInterval(loadTally, 30000);
+    beat(loadTally, 30000);
+    document.addEventListener('visibilitychange', function(){
+      if(!document.hidden){ loadLog(); loadTally(); }
+    });
   });
 })();
 </script>

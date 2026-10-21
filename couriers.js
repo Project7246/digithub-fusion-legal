@@ -1,4 +1,5 @@
 import { pool } from './db.js';
+import { encrypt, decrypt } from './secrets.js';
 
 // Courier accounts, one row per account. PostEx-RB and PostEx-AH are two rows
 // sharing one adapter; a whole new courier is a new adapter, not new tables.
@@ -31,6 +32,16 @@ export async function initCouriers() {
       ADD COLUMN IF NOT EXISTS portal_email  TEXT,
       ADD COLUMN IF NOT EXISTS portal_secret TEXT,
       ADD COLUMN IF NOT EXISTS merchant_id   TEXT
+  `);
+
+  // PostEx signs in with one token. Trax wants a key and sometimes an account
+  // number; M&P want a mailbox, a password and a shipper code. Rather than a
+  // column per courier - which is how a table ends up with nine empty ones -
+  // each adapter names the fields it needs and whatever is not the token is
+  // kept here, encrypted, as one small object.
+  await pool.query(`
+    ALTER TABLE courier_accounts
+      ADD COLUMN IF NOT EXISTS creds TEXT
   `);
 
   // every order any courier hands back, flattened into one shape
@@ -283,7 +294,9 @@ export async function listAccounts(realmId) {
             LENGTH(token) AS token_len,
             portal_email,
             (portal_secret IS NOT NULL) AS portal_ready,
-            merchant_id
+            merchant_id,
+            (creds IS NOT NULL) AS creds_ready,
+            hook_at, hook_hits
        FROM courier_accounts
       WHERE realm_id = $1
       ORDER BY courier, label`,
@@ -300,16 +313,36 @@ export async function getAccount(realmId, id) {
   return r.rows[0] || null;
 }
 
-export async function addAccount(realmId, { courier, label, token }) {
+export async function addAccount(realmId, { courier, label, token, extra }) {
+  const kept = extra && Object.keys(extra).length ? encrypt(JSON.stringify(extra)) : null;
+
   const r = await pool.query(
-    `INSERT INTO courier_accounts (realm_id, courier, label, token)
-     VALUES ($1, $2, $3, $4)
+    `INSERT INTO courier_accounts (realm_id, courier, label, token, creds)
+     VALUES ($1, $2, $3, $4, $5)
      ON CONFLICT (realm_id, courier, label)
-       DO UPDATE SET token = EXCLUDED.token, active = TRUE, last_error = NULL
+       DO UPDATE SET token  = EXCLUDED.token,
+                     creds  = EXCLUDED.creds,
+                     active = TRUE,
+                     last_error = NULL
      RETURNING id`,
-    [realmId, courier, label, token]
+    [realmId, courier, label, token, kept]
   );
   return r.rows[0].id;
+}
+
+// The rest of an account's sign-in, back as the adapter asked for it. A row
+// written before this column existed, or one whose key has changed, reads as
+// nothing rather than throwing - the token alone is what most couriers need,
+// and an account must not become unusable because an extra field cannot be
+// read back.
+export function credsOf(account) {
+  if (!account || !account.creds) return {};
+  try {
+    const o = JSON.parse(decrypt(account.creds));
+    return o && typeof o === 'object' ? o : {};
+  } catch (e) {
+    return {};
+  }
 }
 
 // The portal sign-in for an account. The password arrives already encrypted -

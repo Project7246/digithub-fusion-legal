@@ -236,9 +236,11 @@ Needs: proper company switching, per-company settings isolation, and a check
 that nothing leaks across tenants. Do this before anything else is built on top.
 
 **2. All couriers in one place**
-PostEx has a live API adapter. Trax and Daewoo/MSA are still sheet-only.
-One `courier_orders` table already exists — bring the other two into it so
-bookings, delivered, returned and in-transit read the same for all three.
+PostEx, Trax and M&P all speak over their own APIs and webhooks now
+(`adapters.js`), writing into the one `courier_orders` table, so bookings,
+delivered, returned and in-transit read the same for all three. Daewoo/MSA is not
+being worked on. Trax's and M&P's endpoint lists still want their real guides —
+see CLAUDE.md.
 
 **3. Load sheets and airway bills**
 Printable, per courier account, generated from the data in step 2. The offline

@@ -357,6 +357,42 @@
           <h3 class="fxsub">Courier orders by company</h3>
           <table class="fxtbl" id="sCos"><tbody></tbody></table>
         </div>
+
+        <!-- Room and hours are two different bills. Neon charges for the time
+             its compute is awake, not for the rows kept, so a quiet month of
+             big tables costs nothing and a chatty month of small ones costs
+             everything. This is the second number. -->
+        <div class="step">
+          <h2>What this month has cost</h2>
+          <div class="hint">
+            Neon bills the hours the database was awake. It sleeps five minutes
+            after the last query, so what matters is how often anything wakes it
+            &mdash; not how much is stored. Fusion measures that itself and paces
+            its own background sweep from what is left, so the month cannot run
+            out before it ends.
+          </div>
+
+          <div class="fxbarline"><div class="fxbarfill" id="cBar"></div></div>
+          <div class="fxused" id="cUsed">&mdash;</div>
+
+          <dl class="fxpost">
+            <dt>This month so far</dt><dd id="cNow">&mdash;</dd>
+            <dt>On this pace</dt><dd id="cPace">&mdash;</dd>
+            <dt>Background sweep</dt><dd id="cSweep">&mdash;</dd>
+            <dt>Asking couriers every</dt><dd id="cGap">&mdash;</dd>
+            <dt>With a live webhook</dt><dd id="cHook">&mdash;</dd>
+            <dt>Right now</dt><dd id="cAwake">&mdash;</dd>
+          </dl>
+          <div class="fxsaid" id="cSaid"></div>
+
+          <h3 class="fxsub">Month by month</h3>
+          <table class="fxtbl" id="cMonths"><tbody></tbody></table>
+          <div class="hint">
+            <code>NEON_CU_HOURS</code> is the allowance this is measured against
+            (100 by default) and <code>COMPUTE_SHARE</code> is how much of it the
+            background sweep may take. Both are set in DigitalOcean.
+          </div>
+        </div>
       </div>
 
       <div class="pane" id="p-mail">
@@ -722,7 +758,61 @@
           String(c.name).replace(/[<>&]/g, '') + '</td>' +
           '<td class="num">' + comma(c.orders) + ' orders</td></tr>';
       }).join('') || '<tr><td>No courier orders pulled yet.</td></tr>';
+
+    paintCompute(d.compute, d.computeMonths);
   }).catch(function(){});
+
+  /* ---------- what the month has cost ---------- */
+  function hours(h){
+    return (Math.round(h * 10) / 10) + ' h';
+  }
+  function every(mins){
+    if (!mins) return '&mdash;';
+    if (mins < 90) return 'every ' + Math.round(mins) + ' minutes';
+    var h = mins / 60;
+    return 'every ' + (Math.round(h * 10) / 10) + ' hours';
+  }
+
+  function paintCompute(c, months){
+    if (!c) return;
+
+    var pct = Math.min(100, (c.usedHours / c.allowanceHours) * 100);
+    var bar = $('cBar');
+    bar.style.width = Math.max(pct, 0.6) + '%';
+    bar.classList.toggle('warn', pct >= 60 && pct < 85);
+    bar.classList.toggle('bad', pct >= 85);
+    $('cUsed').textContent =
+      hours(c.usedHours) + ' of ' + c.allowanceHours + ' h used this month · ' +
+      pct.toFixed(1) + '%';
+
+    $('cNow').textContent = hours(c.usedHours) + ' over ' + comma(c.spells) + ' wake-ups';
+    // the pace matters more than the total on the 3rd of the month
+    $('cPace').textContent = hours(c.projectedHours) + ' by month end' +
+      (c.projectedHours > c.allowanceHours ? ' — over the allowance' : '');
+    $('cSweep').textContent =
+      hours(c.backgroundUsedHours) + ' of its ' + hours(c.backgroundHours) + ' share · ' +
+      'one sweep costs about ' + c.sweepCostMinutes + ' minutes';
+    $('cGap').innerHTML = every(c.gapMinutes);
+    $('cHook').innerHTML = every(c.gapHookedMinutes) +
+      ' <span class="aside">the courier tells us the rest</span>';
+    $('cAwake').textContent = c.awake ? 'awake' : 'asleep';
+
+    var said = $('cSaid');
+    if (c.holding) {
+      said.className = 'fxsaid fxbad';
+      said.textContent = c.note;
+    } else {
+      said.className = 'fxsaid';
+      said.textContent = '';
+    }
+
+    $('cMonths').querySelector('tbody').innerHTML =
+      (months || []).map(function(m){
+        return '<tr><td>' + m.month + '</td>' +
+          '<td class="num">' + hours(m.hours) + '</td>' +
+          '<td class="num">' + hours(m.sweepHours) + ' sweeping</td></tr>';
+      }).join('') || '<tr><td>This is the first month.</td></tr>';
+  }
 
   fetch('/api/mail/status').then(function(r){
     return r.ok ? r.json() : null;

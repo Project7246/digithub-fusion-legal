@@ -145,13 +145,27 @@ const REF_KEYS = [
   'orderrefnumber', 'orderref', 'orderid', 'reference', 'referenceno', 'customerreference'
 ];
 const DATE_KEYS = [
-  'transactiondate', 'statusdate', 'updatedat', 'date', 'datetime', 'eventdate'
+  'transactiondate', 'statusdate', 'updatedat', 'date', 'datetime', 'eventdate',
+  'deliverydate', 'delivereddate', 'statusdatetime'
+];
+// Read as well as the status, because of what happens below when the parcel is
+// one we have never heard of: whatever the courier troubled itself to send is
+// better than an empty row waiting for the next sweep.
+const MONEY_KEYS = [
+  'invoicepayment', 'codamount', 'cod', 'amount', 'collectableamount',
+  'orderamount', 'invoicevalue'
+];
+const CITY_KEYS = [
+  'cityname', 'city', 'destinationcity', 'consigneecity', 'deliverycity', 'tocity'
 ];
 
 // A courier may wrap the thing we want in `data`, `payload`, `order` or
 // nothing at all, so the body is flattened a couple of levels and then read by
 // name. Deeper than that is a different message, not a wrapper.
-function flatten(obj, depth, out) {
+// Exported, because a courier's own answers are as loosely shaped as its
+// webhooks: trax.js and mnp.js read their order rows with these two as well,
+// so there is one way in this app of finding a field in somebody else's JSON.
+export function flatten(obj, depth, out) {
   out = out || {};
   if (!obj || typeof obj !== 'object' || depth > 3) return out;
   Object.keys(obj).forEach(k => {
@@ -168,7 +182,7 @@ function flatten(obj, depth, out) {
   return out;
 }
 
-function pick(flat, names) {
+export function pick(flat, names) {
   for (const n of names) {
     const v = flat[n];
     if (v !== undefined && v !== null && String(v).trim() !== '') return String(v).trim();
@@ -182,22 +196,37 @@ export function readHook(body) {
     tracking: pick(flat, TRACK_KEYS),
     status: pick(flat, STATUS_KEYS),
     ref: pick(flat, REF_KEYS),
-    when: pick(flat, DATE_KEYS)
+    when: pick(flat, DATE_KEYS),
+    amount: pick(flat, MONEY_KEYS),
+    city: pick(flat, CITY_KEYS)
   };
 }
 
 /* ==================== writing it down ==================== */
 
-// One parcel's status, moved on. Only ever the status: a webhook is a nudge
-// about one thing, and the money side of an order stays the sweep's business.
-export async function applyStatus(account, { tracking, status, group, when }) {
+// One parcel, moved on. For a parcel we hold, only the status is touched: the
+// money side of an order is what the sweep reads, and a webhook saying "0" is
+// not the courier saying the order is worth nothing.
+//
+// A parcel we have never heard of is written down instead of being dropped.
+// That matters more than it looks: the sweep is deliberately rare now on an
+// account whose webhook is live, so a parcel booked and delivered between two
+// sweeps used to be invisible for hours and the log only said "not here yet".
+// What the hook sent is kept, the next sweep fills in the rest, and the whole
+// point of the webhook - not having to ask - holds.
+//
+// Returns 'updated', 'added' or false, because the log says which happened.
+export async function applyStatus(account, hook) {
+  const { tracking, status, group, when, ref } = hook || {};
   if (!tracking || !status) return false;
 
   const delivered = group === 'delivered';
   const day = (() => {
     if (!when) return null;
     const m = String(when).match(/(\d{4})-(\d{2})-(\d{2})/);
-    return m ? `${m[1]}-${m[2]}-${m[3]}` : null;
+    if (m) return `${m[1]}-${m[2]}-${m[3]}`;
+    const d = new Date(when);
+    return isNaN(d.getTime()) ? null : d.toISOString().slice(0, 10);
   })();
 
   const r = await pool.query(
@@ -211,7 +240,26 @@ export async function applyStatus(account, { tracking, status, group, when }) {
       WHERE realm_id = $1 AND account_id = $2 AND tracking = $3`,
     [account.realm_id, account.id, String(tracking), status, group, delivered, day]
   );
-  return r.rowCount > 0;
+  if (r.rowCount > 0) return 'updated';
+
+  const amount = Number(String(hook.amount || '').replace(/[^0-9.\-]/g, ''));
+
+  await pool.query(
+    `INSERT INTO courier_orders
+       (realm_id, account_id, courier, tracking, order_ref, status, status_group,
+        amount, city, booked_on, delivered_on, raw, seen_at)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,
+             COALESCE($10::date, CURRENT_DATE),
+             CASE WHEN $11::boolean THEN COALESCE($10::date, CURRENT_DATE) END,
+             $12, NOW())
+     ON CONFLICT (realm_id, account_id, tracking) DO NOTHING`,
+    [account.realm_id, account.id, account.courier, String(tracking),
+     ref || null, status, group, isNaN(amount) ? 0 : amount,
+     hook.city || null, day, delivered,
+     JSON.stringify({ fromWebhook: true, at: new Date().toISOString() })]
+  );
+
+  return 'added';
 }
 
 export async function logHook(account, { tracking, status, matched, note, body }) {

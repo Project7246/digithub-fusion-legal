@@ -373,6 +373,11 @@
   /* ---------- the quiet catch-up, so you can see it is current ---------- */
 
   function watchKeeper(){
+    if(document.hidden){
+      if(keeperTimer) clearTimeout(keeperTimer);
+      keeperTimer = setTimeout(watchKeeper, 60000);
+      return;
+    }
     fetch('/api/courier/keeper', { cache:'no-store' })
       .then(function(r){ return r.json(); })
       .then(function(d){
@@ -387,8 +392,12 @@
           el.innerHTML = '<b>Up to date</b> \u00b7 last checked ' +
             new Date(d.finishedAt).toLocaleTimeString();
         }
+        // Nothing is running, so there is nothing to watch closely. A minute
+        // apart was close enough to Neon's five-minute sleep that one open
+        // dashboard kept the database awake all day; five minutes lets it
+        // sleep in between, and a tab in the background does not ask at all.
         if(keeperTimer) clearTimeout(keeperTimer);
-        keeperTimer = setTimeout(watchKeeper, 60000);
+        keeperTimer = setTimeout(watchKeeper, 5 * 60000);
       })
       .catch(function(){});
   }

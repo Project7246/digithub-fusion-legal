@@ -69,7 +69,63 @@ the app the background stays plain, because that is where the books are worked o
 - Store as little as possible: **never store the uploaded files themselves** (PDF/Excel) in
   the database - only small rows (name, date, status, result).
 - Put a retention limit on logs, caches and job history (delete old rows).
-- Add a small page that shows how full the database is.
+- How full the database is, and what the month has cost, are both on
+  Settings > Database (ADMIN_EMAILS only, `/api/storage`).
+
+### The month's compute hours, and who spends them
+
+Neon charges for the **time its compute is awake**, not for the queries run, and it
+sleeps about five minutes after the last one. So the bill is not how much is stored
+or how many rows are read - it is **how often anything wakes the database up**. Two
+queries four minutes apart cost one spell of nine minutes; the same two an hour
+apart cost two spells of five.
+
+`compute.js` is the meter and the budget. It wraps `pool.query` and `pool.connect`
+once, in `initCompute()` - first in the boot chain, right after `initDb`, because a
+query made before it is a query it never counted - notes the time of every query,
+and closes a spell when the gap passes the sleep window. The month's total lives in
+**`compute_meter`**, which, like `app_keys` and `once_done`, holds nobody's work and
+so carries **no `realm_id`**. `bg_seconds` on that row is the part the background
+sweep paid for: a query does not say who sent it, so the sweep is the only thing
+that can measure itself.
+
+What it changed:
+
+- **The keeper no longer sweeps on a fixed clock.** Every thirty minutes is 48
+  wake-ups a day at about six minutes each - some 180 hours a month against an
+  allowance of 100, so it would have run out around the 20th of every month. The
+  sweep now asks `nextGapMinutes()` what the month can still afford and schedules
+  itself with a `setTimeout`, because a `setInterval` cannot change as the month
+  goes on.
+- **A live webhook buys most of it back.** An account whose hook called within the
+  last 24 hours is skipped between the slow rounds (`KEEPER_HOOKED_MINUTES`, six
+  hours): the courier is already telling us the thing the sweep went looking for.
+  The sweep stays for the money side and for whatever no hook mentioned.
+- **A webhook about a parcel we have never seen now writes the row** -
+  `applyStatus()` in `hooks.js` returns `added` - instead of logging "not here yet"
+  and waiting for a sweep that is deliberately hours away. The next sweep fills in
+  the rest.
+- **At `COMPUTE_STOP_AT` (95%) the background sweep holds off until the 1st**, and
+  the page says so. Webhooks still arrive, one query each, and **Pull orders still
+  works when a person asks**: a person waiting is worth compute, a sweep nobody
+  asked for is not.
+- **Polling an open tab is the other big spender.** A look every five minutes is a
+  database that never sleeps. The bell in `nav.js` is now ten minutes and stops
+  entirely in a tab nobody has touched for half an hour; `/courier-dash` watches the
+  keeper every five minutes rather than every minute when nothing is running; the
+  wall-display poll on `/shopify-log` pauses while its tab is hidden. **A new
+  always-on poller is a standing charge on the month** - tie it to a running job, or
+  make it pause on `document.hidden`.
+
+| Setting | What it is |
+|---|---|
+| `NEON_CU_HOURS` | the month's allowance the budget is measured against (100) |
+| `COMPUTE_SHARE` | how much of it the background sweep may take (0.5) |
+| `COMPUTE_STOP_AT` | where the sweep holds off entirely (0.95) |
+| `KEEPER_MINUTES` | the floor on the gap between sweeps (30) |
+| `KEEPER_MAX_MINUTES` | the ceiling on it (360) |
+| `KEEPER_HOOKED_MINUTES` | how rarely an account with a live webhook is swept (360) |
+| `NEON_IDLE_MINUTES` | how long Neon stays awake after the last query (5) |
 
 ## Product rules carried over from the old app
 - It writes to real QuickBooks books, so build it to a product standard, not "it will do".
@@ -231,11 +287,63 @@ from a wrong port (never connects). `/api/mail/test` sends a real one, and only
 ever to the address of the person asking: an endpoint that mails wherever it is
 told is a way to send mail in this company's name.
 
+## Couriers: three of them, one shape
+
+PostEx, **Trax** and **M&P**. Daewoo is not being worked on and is off the list
+entirely - it sat in the rail as "soon" for months, which reads as something broken
+rather than something not started. It comes back as a file beside `trax.js` on the
+day it is wanted.
+
+One courier is one file, and that file is the whole of the courier's dialect -
+nothing above it ever sees a PostEx or a Trax field name. `adapters.js` is the only
+list of them. The list used to be written out in `server.js`, `keeper.js` and
+`courierlive.js`, so adding a courier meant remembering three lines, and forgetting
+one meant the page offered a courier the sweep then ignored.
+
+| File | What it is |
+|---|---|
+| `postex.js`, `trax.js`, `mnp.js` | one courier each |
+| `adapters.js` | the list, `adapterFor()`, `courierKinds()`, `groupFor()`, `readFor()` |
+| `statuses.js` | the thirteen buckets, the word rules, `num()` and `day()` |
+| `wire.js` | the call, the wrapper-finder, and the shape hunt below |
+
+An adapter hands over `key`, `name`, `fields`, `hook`, `groupOf` and `testToken`,
+and then whatever else it can do: `fetchOrders`, `fetchPayment`, `trackOne`,
+`fetchCprs`. Callers check before using one - a courier that cannot be asked about
+a single parcel simply has no `trackOne`.
+
+- **`fields` is what a courier needs typed in**, and the add screen draws itself
+  from it: PostEx asks for one token, M&P for a login, a password and a shipper
+  code. The **first field is always the account's token**; the rest are kept
+  encrypted (`secrets.js`) in `courier_accounts.creds` and handed back to the
+  adapter as `extra`. A column per courier is how a table ends up with nine empty
+  ones.
+- **`groupOf` is per courier.** PostEx's "Out For Return" is Trax's "Return in
+  Transit" is M&P's "RETURN IN PROCESS". A status nobody listed still lands
+  somewhere sensible through `byWords()` in `statuses.js`, where the return words
+  beat the word "delivered" - "RTO Delivered" is a return that finished.
+- **The webhook reads by courier too** (`groupFor`, `readFor`, in the
+  `/hooks/courier/:courier/:key` route). It used to run every courier through
+  PostEx's reader, which would have filed every Trax status under "other".
+- **Trax and M&P have no published guide.** Theirs is handed out account by
+  account, and the endpoint that answers on one merchant's key is a 404 on
+  another's. So each call is a short list of the shapes it could take - `hunt()` in
+  `wire.js`. The first shape the courier actually answers is remembered in memory
+  for that key; a 401 or 403 everywhere means the key rather than the address; and
+  the error names what each attempt was told. The add screen shows which shape
+  answered. **When the real guide arrives, those two files' lists are the only
+  thing to change.** `TRAX_BASE` and `MNP_BASE` move the base URL without a deploy.
+- **An account is added from the rail**: every courier in the courier tree carries
+  `+ add an account`, which opens `/couriers?add=<key>` with that courier already
+  picked.
+
 ## Open items
 - Replace the copied old files with the new design once the user describes it.
 - Decide DigitalOcean settings: turn **Edge caching** and **Email obfuscation** Off (app shows
   live data).
 - Check the Neon dashboard for the real storage limit.
+- Trax and M&P: get their real API guides, and cut the endpoint lists in `trax.js`
+  and `mnp.js` down to the one shape each instead of hunting for it.
 
 ## One Fusion, many client companies
 

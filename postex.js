@@ -1,6 +1,13 @@
 // PostEx speaks its own dialect. This file is the whole of it - the rest of
 // the app never sees a PostEx field name. A new courier means a new file
-// shaped like this one, and nothing else changes.
+// shaped like this one, and nothing else changes - trax.js and mnp.js are that
+// file, written against this one.
+//
+// The buckets, the word rules and the two little readings of a number and a
+// date are shared now (statuses.js), because three couriers disagreeing about
+// what "delivered" means would show up as three different dashboards.
+
+import { makeGrouper, num, day } from './statuses.js';
 
 const BASE = 'https://api.postex.pk';
 
@@ -27,47 +34,9 @@ const GROUPS = {
 };
 
 // PostEx keeps adding statuses, so an exact match is not enough. When a name
-// is not one we know, the words in it decide where the order belongs.
-export function groupOf(status) {
-  const s = String(status || '').trim().toLowerCase();
-  if (!s) return 'other';
-  if (GROUPS[s]) return GROUPS[s];
-
-  if (s.includes('deliver') && !s.includes('under review') && !s.includes('out for')) {
-    return 'delivered';
-  }
-  if (s.includes('return')) {
-    return s.includes('out for') || s.includes('route') || s.includes('transit')
-      ? 'returning' : 'returned';
-  }
-  if (s.includes('under review'))                      return 'review';
-  if (s.includes('unbook') || s.includes('un-book'))   return 'unbooked';
-  if (s.includes('expire'))                            return 'expired';
-  if (s.includes('cancel') || s.includes('un-assign')) return 'cancelled';
-  if (s.includes('transfer'))                          return 'transferred';
-  if (s.includes('stolen'))                            return 'lost';
-  if (s.includes('lost'))                              return 'lost';
-  if (s.includes('damage'))                            return 'damaged';
-  if (s.includes('warehouse') || s.includes('transit') || s.includes('route') ||
-      s.includes('out for') || s.includes('attempt')  || s.includes('picked')) {
-    return 'transit';
-  }
-  if (s.includes('book'))                              return 'booked';
-
-  return 'other';
-}
-
-function num(v) {
-  const n = Number(String(v == null ? 0 : v).replace(/[^0-9.\-]/g, ''));
-  return isNaN(n) ? 0 : n;
-}
-
-function day(v) {
-  if (!v) return null;
-  const s = String(v).trim();
-  const m = s.match(/^(\d{4})-(\d{2})-(\d{2})/);
-  return m ? `${m[1]}-${m[2]}-${m[3]}` : null;
-}
+// is not one we know, the words in it decide where the order belongs - the same
+// rules every other courier here falls back on.
+export const groupOf = makeGrouper(GROUPS);
 
 async function ask(token, path, params) {
   const url = new URL(BASE + path);
@@ -342,6 +311,19 @@ export async function fetchCprs(jwt, merchantId, from, to) {
 export const adapter = {
   key: 'postex',
   name: 'PostEx',
+  // What has to be typed in to add an account. The first field is always the
+  // one kept as the account's token; PostEx needs nothing else here, because
+  // its portal sign-in (for cash receipts) is asked for on the receipts page,
+  // where it is used.
+  fields: [
+    { name: 'token', label: 'API token', secret: true,
+      hint: 'merchant.postex.pk → Integration guide → API token' }
+  ],
+  hook: {
+    where: 'merchant.postex.pk → Integration guide → Webhook Configuration',
+    note: 'PostEx calls this a Status Updates Webhook.'
+  },
+  groupOf,
   testToken,
   fetchOrders,
   fetchPayment,
