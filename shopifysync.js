@@ -595,13 +595,30 @@ async function writeOneNow(books, row, s) {
     return 'held';
   }
 
-  // Delivery the buyer paid for goes on the invoice. If there is no item for it
-  // and none can be made, the order waits - an invoice that quietly leaves
-  // money off is worse than one that has not been written yet.
+  // Nothing left to bill. Asked before delivery is added, or an order whose
+  // every product was set aside would go in as an invoice carrying nothing
+  // but a free-delivery line at nought.
+  if (!inv.lines.length) {
+    await setOff(realmId, row.order_gid, 'every line was set aside');
+    return 'off';
+  }
+
+  // Delivery goes on the invoice whatever it came to, nought included.
+  //
+  // It used to be `if (ship > 0)`, so an order with free delivery had no
+  // delivery line at all and the invoice simply did not mention it. Free
+  // delivery is a thing that was promised and given; it belongs on the
+  // invoice at 0, the same as it does on the Shopify order, so the two read
+  // the same line for line and nobody has to work out which is which.
+  //
+  // The money case still stops the order: if there is delivery to charge and
+  // nothing in QuickBooks to put it on, an invoice that quietly leaves money
+  // off is worse than one not yet written. Nought has nothing to lose, so a
+  // missing item there is simply no line.
   const ship = Number(row.shipping) || 0;
-  if (ship > 0) {
+  {
     const item = await shippingItemFor(books, s, ctx);
-    if (!item) {
+    if (!item && ship > 0) {
       await setHeld(realmId, row.order_gid, 'no item in QuickBooks for delivery charges');
       await note(realmId, 'held', {
         shopId: row.shop_id, orderName: row.name, gid: row.order_gid, ok: false,
@@ -609,11 +626,9 @@ async function writeOneNow(books, row, s) {
       });
       return 'held';
     }
-    inv.lines.push({ item, desc: descOf(books, item), qty: 1, rate: ship, amt: ship });
-  }
-  if (!inv.lines.length) {
-    await setOff(realmId, row.order_gid, 'every line was set aside');
-    return 'off';
+    if (item) {
+      inv.lines.push({ item, desc: descOf(books, item), qty: 1, rate: ship, amt: ship });
+    }
   }
 
   // The books may already hold it - this app wrote it last week, or somebody

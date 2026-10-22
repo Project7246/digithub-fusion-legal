@@ -767,11 +767,13 @@ export function toInvoice(order, opts) {
     });
   });
 
-  // Delivery charged to the buyer is money taken, so it belongs on the invoice -
-  // but only once somebody has said which QuickBooks item it is. Left unsaid it
-  // is dropped rather than guessed at.
+  // Delivery belongs on the invoice whatever it came to, nought included -
+  // free delivery was promised and given, and an invoice that does not
+  // mention it does not match the order it was made from. Only once somebody
+  // has said which QuickBooks item it is; left unsaid it is dropped rather
+  // than guessed at.
   const ship = money(order.shipping);
-  if (ship > 0 && o.shippingItem) {
+  if (o.shippingItem) {
     lines.push({ item: o.shippingItem, qty: 1, rate: ship, amt: ship,
                  desc: o.descOf ? o.descOf(o.shippingItem) : '' });
   }
@@ -950,7 +952,8 @@ export async function releaseHeld(realmId, why) {
 export async function heldList(realmId, limit) {
   const r = await pool.query(
     `SELECT o.order_gid, o.name, o.placed_at, o.total, o.held_why, o.sync_error,
-            o.tries, o.next_try, o.state, s.label AS shop_label
+            o.tries, o.next_try, o.state, o.shop_id, o.lines,
+            s.label AS shop_label
        FROM shopify_orders o
        LEFT JOIN shopify_shops s ON s.id = o.shop_id
       WHERE o.realm_id = $1 AND o.state IN ('held','waiting')

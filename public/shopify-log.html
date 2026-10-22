@@ -171,6 +171,10 @@
             in QuickBooks: match it on the Shopify page and everything waiting on it
             goes through by itself. Anything QuickBooks merely refused for a moment
             retries on its own, on a doubling wait.
+            <br><br>
+            <b>Try all of them again now</b> reads each of these back from
+            Shopify first, so a SKU you added over there a minute ago is picked
+            up straight away &mdash; then it puts them in the queue and runs it.
           </div>
           <div class="acts" style="margin-bottom:12px">
             <button class="go" id="btnRetry">Try all of them again now</button>
@@ -539,14 +543,31 @@
 
   $('btnRetry').addEventListener('click', function(){
     $('btnRetry').disabled = true;
-    say($('retrySaid'), '', 'Trying…');
+    // It reads the stuck orders back from Shopify before trying them, which
+    // takes a moment and is the whole reason the button now works after a
+    // SKU is added over there.
+    say($('retrySaid'), '', 'Reading them back from Shopify, then trying…');
     post('/api/shopify/retry', {})
       .then(function(d){
         var did = d.did || {};
-        say($('retrySaid'), 'good',
-          n0(d.freed) + ' put back · ' + n0(did.done||0) + ' written, ' +
-          n0(did.held||0) + ' still waiting on you, ' + n0(did.failed||0) + ' will retry');
-        loadHeld(); loadTally();
+        var bits = [];
+
+        if(d.reread){
+          bits.push(n0(d.reread) + ' read again from Shopify' +
+            (d.changed ? ' (' + n0(d.changed) + ' had changed)' : ' (none had changed)'));
+        }
+        bits.push(n0(d.freed) + ' put back');
+        bits.push(n0(did.done||0) + ' written');
+        bits.push(n0(did.held||0) + ' still waiting on you');
+        bits.push(n0(did.failed||0) + ' will retry');
+
+        say($('retrySaid'), did.done ? 'good' : '', bits.join(' · '));
+
+        if(d.trouble && d.trouble.length){
+          say($('retrySaid'), 'bad', bits.join(' · ') +
+            ' · Shopify would not hand back: ' + d.trouble.join('; '));
+        }
+        loadHeld(); loadTally(); loadLog();
       })
       .catch(function(e){ say($('retrySaid'),'bad', e.message); })
       .then(function(){ $('btnRetry').disabled = false; });

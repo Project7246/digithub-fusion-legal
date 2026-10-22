@@ -707,6 +707,46 @@ a time, about 28 minutes to get through them"*. **Twenty an order a minute
 at once**, and nothing on the screen used to say that. Its count poll also
 stops while the tab is in the background, like every other poll here.
 
+## "Try all of them again now" reads them back from Shopify first
+
+The button is pressed straight after somebody has fixed the thing the orders
+were stuck on, and half the time that fix is **in Shopify** - a SKU put on a
+product a minute ago. The order sitting here still carried its lines as they
+arrived, SKU-less, so freeing it only put it through the same wall again and
+the button looked broken.
+
+It now reads each stuck order back from Shopify (`fetchOne` + `saveOne`, the
+same pair the webhooks use) before freeing anything, capped at
+`SHOPIFY_REREAD_CAP` (60) - a handful of orders, one read each, nothing
+written to Shopify. The answer says how many were read again and how many had
+actually changed, so "I added the SKU and it still says no SKU" can be told
+from "I added it to the wrong product".
+
+An order Shopify will not hand back does not stop the rest; the first few are
+named in the answer.
+
+## Delivery is a line even when it is free
+
+`if (ship > 0)` meant an order with free delivery had **no delivery line at
+all** and the invoice did not mention it. Free delivery was promised and
+given: it belongs on the invoice at 0, the same as it does on the Shopify
+order, so the two read the same line for line.
+
+- Delivery to charge and nothing in QuickBooks to put it on still **stops** the
+  order - an invoice that quietly leaves money off is worse than one not yet
+  written.
+- Nought has nothing to lose, so a missing item there is simply no line.
+- **"Nothing left to bill" is asked before delivery is added**, or an order
+  whose every product was set aside would go in as an invoice carrying nothing
+  but a free-delivery line at nought.
+
+The discount is a `DiscountLineDetail` on the invoice, in rupees, and has been
+all along; what stopped it was QuickBooks' own **Discount** box being off
+(`SalesFormsPrefs.AllowDiscount`), which `salesPrefs()` reads every pass. The
+order is held in words rather than letting QuickBooks refuse it. The memo
+stays empty on purpose: the order number is the invoice number and the address
+is in the billing block, so a memo only repeats what is already there.
+
 ## Two paths asked QuickBooks the same question two different ways
 
 The product pages have read items correctly for as long as they have existed -

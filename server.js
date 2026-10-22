@@ -23,6 +23,7 @@ import {
   pullOrders, listOrders as listShopOrders, productsSeen, markSynced, unmark,
   toInvoice, API_VERSION as SHOPIFY_VERSION,
   note as shopNote, events as shopifyEvents, tally as shopifyTally,
+  fetchOne as shopifyFetchOne, saveOne as shopifySaveOne,
   heldList as shopifyHeld, releaseHeld, wakeAll, shopHookKey, shopByHookKey,
   madeItems, madeInvoices, unsync,
   appKeysFor, saveAppKeys, forgetAppKeys, installUrl, callbackIsReal,
@@ -8498,7 +8499,8 @@ app.get('/api/shopify/held', async (req, res) => {
     res.json({
       held: rows.map(r => ({
         gid: r.order_gid, name: r.name, placedAt: r.placed_at,
-        total: Number(r.total), shop: r.shop_label, state: r.state,
+        total: Number(r.total), shop: r.shop_label, shopId: r.shop_id,
+        state: r.state,
         why: r.held_why || r.sync_error, tries: r.tries, nextTry: r.next_try
       }))
     });
@@ -8513,6 +8515,46 @@ app.post('/api/shopify/retry', async (req, res) => {
   const realmId = await requireCompany(req, res);
   if (!realmId) return;
   try {
+    // Read the stuck ones back from Shopify first.
+    //
+    // This is pressed straight after somebody has fixed the thing it was
+    // stuck on, and half the time that fix is in Shopify - a SKU put on a
+    // product a minute ago. The order sitting here still carries the lines
+    // as they were when it arrived, SKU-less, so freeing it only put it
+    // through the same wall again and the button looked broken.
+    //
+    // Only what is actually stuck, and capped: a handful of orders, one read
+    // each. Nothing is written to Shopify and nothing is decided here - the
+    // order is simply read again, which is what the person pressing the
+    // button believes they are asking for.
+    const stuck = await shopifyHeld(realmId, 100);
+    const shops = new Map();
+    let reread = 0, changed = 0;
+    const trouble = [];
+
+    for (const row of stuck.slice(0, Number(process.env.SHOPIFY_REREAD_CAP) || 60)) {
+      if (!row.shop_id) continue;
+      try {
+        if (!shops.has(row.shop_id)) {
+          shops.set(row.shop_id, await getShop(realmId, row.shop_id));
+        }
+        const shop = shops.get(row.shop_id);
+        if (!shop) continue;
+
+        const fresh = await shopifyFetchOne(shop, row.order_gid);
+        if (!fresh) continue;
+
+        const was = JSON.stringify(row.lines || []);
+        const now = await shopifySaveOne(realmId, row.shop_id, fresh);
+        reread++;
+        if (now && JSON.stringify(now.lines || []) !== was) changed++;
+      } catch (e) {
+        // one order Shopify would not hand back is not a reason to stop -
+        // the rest are still worth freeing
+        if (trouble.length < 3) trouble.push(row.name + ': ' + e.message);
+      }
+    }
+
     // "Try all of them again now" means now, including whatever is sitting out
     // a doubling wait - not only what is held
     const freed = req.body.why
@@ -8522,7 +8564,7 @@ app.post('/api/shopify/retry', async (req, res) => {
     // a batch bigger than one pass goes back to the fast cadence rather than
     // waiting ten minutes for the rest
     if (freed > (did && did.done ? did.done : 0)) wakeSoon();
-    res.json({ freed, did });
+    res.json({ freed, did, reread, changed, trouble });
   } catch (e) {
     res.status(500).json({ error: e.message });
   }
