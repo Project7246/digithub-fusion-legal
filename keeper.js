@@ -16,7 +16,8 @@
 
 import { pool } from './db.js';
 import {
-  listAccounts, getAccount, saveOrders, trimRaw, credsOf, movingTrackings
+  listAccounts, getAccount, saveOrders, trimRaw, credsOf, movingTrackings,
+  needCpr, savePayments
 } from './couriers.js';
 import { adapterFor } from './adapters.js';
 import {
@@ -172,6 +173,44 @@ async function catchUpOne(realmId, acc) {
       mine.error = e.message;
     }
     await sleep(400);
+  }
+
+  // Has the courier paid for them yet?
+  //
+  // The orders call does not always say. M&P's monthly report lists every
+  // consignment and its status and never mentions money that has moved - the
+  // PaymentID is only on their tracking call - so without this pass M&P
+  // deliveries sat here for ever as "still to receive" while the money was in
+  // the bank, and no receipt of theirs ever appeared on the receipts page.
+  //
+  // Only couriers that can be asked about parcels in bulk are chased here:
+  // M&P take 200 consignments in one call, which is cheap enough to do on
+  // every sweep. PostEx answers one parcel at a time, and that chase belongs
+  // on the receipts page where somebody asked for it.
+  if (a.lists !== false && typeof a.refreshKnown === 'function') {
+    try {
+      const want = await needCpr(realmId, acc.id, Number(process.env.SETTLE_CAP) || 200);
+      if (want.length) {
+        const fresh = await a.refreshKnown(acc.token, want, extra);
+
+        const paid = fresh
+          .filter(o => o.tracking && (o.settled || o.cprNumber))
+          .map(o => ({
+            tracking: o.tracking,
+            settled: !!o.settled,
+            settledOn: o.settledOn || null,
+            cprNumber: o.cprNumber || null
+          }));
+
+        // what came back is a fresher reading of the parcel as well
+        if (fresh.length) await saveOrders(realmId, acc.id, acc.courier, fresh);
+        if (paid.length) mine.settled = await savePayments(realmId, acc.id, paid);
+      }
+    } catch (e) {
+      // the orders themselves are in; a settlement that failed is worth saying
+      // and not worth failing the sweep over
+      mine.settleError = e.message;
+    }
   }
 
   state.sweptAt[acc.id] = Date.now();

@@ -730,7 +730,9 @@
         $('btnPull').disabled = false;
         $('pullOut').innerHTML =
           '<div class="result good">\u2713 ' + esc(d.account) + ' \u00b7 ' +
-          nf(d.pulled) + ' orders came back, ' + nf(d.saved) + ' kept.</div>';
+          nf(d.pulled) + ' orders came back, ' + nf(d.saved) + ' kept' +
+          (d.settled ? ', and ' + nf(d.settled) + ' of them the courier has paid for' : '') +
+          '.' + (d.note ? ' ' + esc(d.note) : '') + '</div>';
 
         var t = d.tally || {};
         var keys = Object.keys(t).sort(function(a, b){ return t[b] - t[a]; });

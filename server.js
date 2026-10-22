@@ -107,7 +107,7 @@ import { startAdvJob, stopAdvJob, clearAdvJob, resumeAdvJob, advSnapshot } from 
 import {
   initCouriers, listAccounts as listCourierAccounts, getAccount as getCourierAccount,
   addAccount as addCourierAccount, removeAccount as removeCourierAccount,
-  markSync, saveOrders, credsOf, movingTrackings,
+  markSync, saveOrders, credsOf, movingTrackings, needCpr, savePayments,
   listCprs, cprOrders, cprProgress
 } from './couriers.js';
 // One list of couriers, in adapters.js, read by this file, by the keeper and by
@@ -8966,6 +8966,31 @@ app.post('/api/courier/sync', async (req, res) => {
     }
 
     const saved = await saveOrders(realmId, acc.id, acc.courier, orders);
+
+    // and whether the courier has paid for any of them. M&P's report lists
+    // consignments and never mentions money that has moved - the PaymentID is
+    // only on their tracking call, 200 at a time - so a pull that stopped at
+    // the orders left every delivery looking unpaid for ever.
+    let settled = 0;
+    if (a.lists !== false && typeof a.refreshKnown === 'function') {
+      try {
+        const want = await needCpr(realmId, acc.id, Number(process.env.SETTLE_CAP) || 200);
+        if (want.length) {
+          const fresh = await a.refreshKnown(acc.token, want, extra);
+          const paid = fresh
+            .filter(o => o.tracking && (o.settled || o.cprNumber))
+            .map(o => ({
+              tracking: o.tracking,
+              settled: !!o.settled,
+              settledOn: o.settledOn || null,
+              cprNumber: o.cprNumber || null
+            }));
+          if (fresh.length) await saveOrders(realmId, acc.id, acc.courier, fresh);
+          if (paid.length) settled = await savePayments(realmId, acc.id, paid);
+        }
+      } catch (e) { /* the orders are in; the money can wait for the sweep */ }
+    }
+
     await markSync(realmId, acc.id, null);
 
     // a quick count by bucket, so the page can show something straight away
@@ -8984,6 +9009,7 @@ app.post('/api/courier/sync', async (req, res) => {
       account: acc.label,
       pulled: orders.length,
       saved,
+      settled,
       how,
       note: how === 'moving'
         ? (a.name + ' does not hand over a day\u2019s orders - its API answers ' +
