@@ -360,15 +360,26 @@ Two things came out of it:
   `plainly()` in `wire.js` dig it out - `ETIMEDOUT`,
   `UND_ERR_CONNECT_TIMEOUT`, `ENOTFOUND` - and every courier error now carries
   it.
-- **A relay, for a host that cannot be reached any other way.**
-  `tools/courier-relay.js` is a Cloudflare Worker (free, sees both networks,
-  forwards to `sonic.pk` and nothing else, and needs `RELAY_KEY`). Set
-  `COURIER_RELAY` and `COURIER_RELAY_KEY` in DigitalOcean and `wire.js` sends
-  **only** the hosts in `COURIER_RELAY_HOSTS` (default: the sonic.pk ones) that
-  way; everything else keeps going straight out. The adapters' own base URLs do
-  not change, so nothing above `wire.js` knows it is happening.
+- **A relay, for a host that cannot be reached any other way.** Two of them,
+  the same job: `tools/courier-relay.js` is a Cloudflare Worker and
+  `tools/courier-relay.php` is a file to drop on the Hostinger site, for when
+  a new account is not wanted. Both forward to the `sonic.pk` hosts and
+  nothing else, both need their key in `X-Relay-Key`, and both drop that key
+  before passing the call on. Set `COURIER_RELAY` and `COURIER_RELAY_KEY` in
+  DigitalOcean and `wire.js` sends **only** the hosts in `COURIER_RELAY_HOSTS`
+  (default: the sonic.pk ones) that way; PostEx and M&P keep going straight
+  out. An address containing `{url}` means the target goes in as an encoded
+  query parameter (the PHP one); without it, the target is appended as a path
+  (the worker). The adapters' own base URLs never change, so nothing above
+  `wire.js` knows it is happening.
   The other way out is to host the app in a region that can reach Pakistan -
   App Platform cannot be moved after it is made, so that means a new app.
+
+  **Confirmed on 22 Oct 2026**: the reach check from the live server said
+  `dns 3ms` then `tcp ETIMEDOUT` for sonic.pk (119.160.105.77), while M&P and
+  PostEx - both behind Cloudflare - connected and pulled normally. trax.pk is
+  on the same PTCL range (119.160.105.78), so there is no second address to
+  try.
 
 ### Trax is told, M&P is asked
 

@@ -84,7 +84,8 @@ export function plainly(e) {
 // COURIER_RELAY and COURIER_RELAY_KEY and only the hosts in COURIER_RELAY_HOSTS
 // go that way - everything else, Cloudflare-hosted like PostEx and M&P, keeps
 // going straight out. tools/courier-relay.js is the worker.
-const RELAY = String(process.env.COURIER_RELAY || '').replace(/\/+$/, '');
+const RELAY_RAW = String(process.env.COURIER_RELAY || '');
+const RELAY = RELAY_RAW.includes('{url}') ? RELAY_RAW : RELAY_RAW.replace(/\/+$/, '');
 const RELAY_KEY = process.env.COURIER_RELAY_KEY || '';
 const RELAY_HOSTS = String(process.env.COURIER_RELAY_HOSTS ||
   'sonic.pk,app.sonic.pk,www.sonic.pk')
@@ -94,7 +95,15 @@ export function relayed(url) {
   if (!RELAY) return null;
   let host;
   try { host = new URL(url).hostname.toLowerCase(); } catch (e) { return null; }
-  return RELAY_HOSTS.includes(host) ? RELAY + '/' + url : null;
+  if (!RELAY_HOSTS.includes(host)) return null;
+
+  // Two shapes, because the two relays want it differently. A worker takes the
+  // whole target as the path (`<relay>/https://sonic.pk/...`); a PHP file on
+  // ordinary hosting cannot, so its address carries `{url}` and the target
+  // goes in encoded. Whichever is set decides.
+  return RELAY.includes('{url}')
+    ? RELAY.replace('{url}', encodeURIComponent(url))
+    : RELAY + '/' + url;
 }
 
 export function relayState() {
