@@ -308,6 +308,31 @@ export async function fetchCprs(jwt, merchantId, from, to) {
   return Array.isArray(list) ? list.map(mapCpr).filter(x => x.cprNumber) : [];
 }
 
+// Where PostEx will deliver to.
+//
+// This one path is the exception to the rule the other two follow: Trax's
+// city list and M&P's two city lists are taken from documents in hand, and
+// this is taken from PostEx's integration guide as it is published rather
+// than from a PDF here. So it is written to fail quietly - the page that
+// calls it says "PostEx did not hand over a city list" and carries on -
+// rather than to be trusted. If PostEx move it, this is the line to change.
+export async function fetchAreas(token) {
+  const j = await ask(token, '/services/integration/api/order/v1/get-operational-city', {});
+  const list = j.dist || j.data || [];
+
+  return (Array.isArray(list) ? list : []).map(c => ({
+    id:       String(c.operationalCityId || c.cityId || c.id || '').trim(),
+    name:     String(c.operationalCityName || c.cityName || c.name || c).trim(),
+    hub:      String(c.hubName || c.hub || '').trim(),
+    zone:     String(c.provinceName || c.province || c.region || '').trim(),
+    // PostEx's list is where they deliver; it carries no pickup flag of its
+    // own, so nothing is claimed about pickup rather than a guess made.
+    pickup:   null,
+    delivery: true,
+    services: []
+  })).filter(c => c.name);
+}
+
 export const adapter = {
   key: 'postex',
   name: 'PostEx',
@@ -330,5 +355,6 @@ export const adapter = {
   fetchOrders,
   fetchPayment,
   fetchCprs,
+  fetchAreas,
   merchantFromJwt
 };

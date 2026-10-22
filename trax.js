@@ -163,6 +163,39 @@ export async function testToken(token) {
   };
 }
 
+// Where Trax will pick up from and where it will deliver to. Sonic's city
+// list is the richest of the three: every city carries its hub, its zone, a
+// pickup flag and the delivery services allowed into it, so "does Trax go
+// there" and "what can we send" are the same answer.
+export async function fetchAreas(token) {
+  const j = await ask(token, '/cities', {});
+  const list = (Array.isArray(j.cities) ? j.cities : rows(j)) || [];
+
+  return list.map(c => {
+    // delivery is an object of service families - { Regular: [...] } - and
+    // what matters above this line is which services, not how they nest.
+    const d = c.delivery && typeof c.delivery === 'object' ? c.delivery : null;
+    const services = [];
+    if (d) {
+      Object.keys(d).forEach(family => {
+        const kinds = Array.isArray(d[family]) ? d[family] : [];
+        if (!kinds.length) services.push(family);
+        kinds.forEach(k => services.push(family + ' ' + k));
+      });
+    }
+
+    return {
+      id:       c.id == null ? '' : String(c.id),
+      name:     String(c.name || '').trim(),
+      hub:      (c.hub && c.hub.name) || '',
+      zone:     (c.zone && c.zone.name) || '',
+      pickup:   c.pickup === true || c.pickup === 'true',
+      delivery: services.length > 0,
+      services
+    };
+  }).filter(c => c.name);
+}
+
 // type=0 is the shipper's own tracking - it is the one that carries weight and
 // payment lines. type=1 is what a consignee sees.
 export async function trackOne(token, tracking) {
@@ -335,5 +368,6 @@ export const adapter = {
   statusOne,
   fetchCharges,
   fetchPayment,
-  refreshKnown
+  refreshKnown,
+  fetchAreas
 };

@@ -503,6 +503,150 @@ The merged page has two halves, and the top one is new:
   now explains itself quietly instead of filling the page with "No PostEx
   account yet" - the list above is the answer for the other couriers.
 
+## Logistics has a day as well as a set of accounts
+
+The rail used to hold the courier accounts and nothing else - who we have
+keys for, where each parcel got to, what has been paid. That is the ledger
+side. Three lines under **The day** are the other side, and they are in the
+Logistics rail only: the same line in two rails is two places to look for one
+page.
+
+| Page | What it is |
+|---|---|
+| `/load-sheet` | the day's orders split between the couriers, before anything is booked |
+| `/delivery-reports` | what happened to them afterwards, per courier |
+| `/service-areas` | where each courier will go at all |
+
+### Service areas: the courier's own list, not ours
+
+`/courier-dash`'s Cities tab is the cities **we** have sent to. This is the
+list the courier publishes, which is a different question - "will Trax go to
+Chaman at all" is asked before a parcel exists, and the dashboard cannot
+answer it.
+
+Each adapter grew `fetchAreas(token, extra)` returning one shape -
+`{ id, name, hub, zone, pickup, delivery, services }`:
+
+- **Trax** `/cities`, the richest of the three: hub, zone, a pickup flag and
+  the delivery services allowed into each city, all from the Sonic document.
+- **M&P** keep **two** lists and they are not the same list -
+  `Branches/Get_Cities` is where they will collect from,
+  `Branches/Get_Cities_All` is where they will deliver to. Both are read and
+  merged into one row with two flags, because two lists side by side only get
+  compared by eye. If one refuses, the other is still shown.
+- **PostEx** `get-operational-city`. This is the one path in the three
+  adapters **not** taken from a document in hand, so it is written to fail
+  quietly - the page says PostEx handed over no list and the other couriers
+  still answer. If PostEx move it, that is the line to change.
+
+The page asks every courier at once and answers "who goes there" comparatively,
+which is the question: one goes, one does not, and that is which one the
+parcel is booked with. `GET /api/courier/areas?account=N` keeps each answer
+**in memory** for an hour - a city list changes a few times a year, and
+re-reading it on every page open would be a slow page and a charge on the
+month for nothing. It touches no table, which is the point.
+
+### Delivery reports: four queries, thirteen buckets, per courier
+
+`deliveryReport()` in `dashdata.js` is the whole of it and is deliberately
+**four queries in one `Promise.all`** - a report page that fires a dozen is a
+database that never sleeps, and the month's compute pays for that.
+
+1. every status, under its bucket, under its courier
+2. the three legs of the journey, as averages and as a spread
+3. the cities, per courier
+4. the days, where a parcel booked on Monday and delivered on Friday is
+   counted on both
+
+Seven tabs come out of it: where they got to, every status, how long it took,
+trouble, cities, day by day, and parcel by parcel. Every figure opens into its
+parcels through `/api/courier/rows`.
+
+- **Three legs, not one average.** Booked → picked up is ours to fix: how long
+  a parcel sits waiting for the courier to come. Picked up → delivered is
+  theirs. Booked → delivered is what the customer feels. One number hides
+  which of the two is slipping. Counted only where both ends are known,
+  because a parcel with no pickup date is a missing date, not a same-day
+  pickup.
+- **Cancelled, returned, missing, damaged, expired and held** have a tab of
+  their own, with the courier's own words for each underneath - that is what a
+  claim is argued with.
+- **"Every status" is the courier's wording, exactly as it arrived**, beside
+  the bucket Fusion filed it under. If a word is in the wrong bucket, that
+  table is what proves it, and `statuses.js` is where it is fixed.
+
+### Parcels yes, money no
+
+Asked for by name: a user id that sees where every parcel got to and nothing
+about what it is worth.
+
+- **The eye** on `/delivery-reports` hides the money for anybody, remembered
+  per browser. That is for showing a screen to somebody standing beside you.
+- **`users.hide_money`** is the real one: a tick beside the role on `/users`,
+  and `POST /api/admin/users/money` behind the same fence as `/access`. When
+  it is on, `/api/courier/report` **strips the figures before they leave the
+  server** and the eye is not drawn - a switch the browser could flick back is
+  not a switch.
+
+It is **not** in `RIGHT_GROUPS` on purpose. Those are things somebody may
+*do*, they only bite on the `custom` role, and a `full` role is given every
+right by name - so a "may see money" right would have been handed to everybody
+automatically and a "hide money" right would have been handed to everybody
+automatically too. A column of its own, off until somebody turns it on, is the
+only version that leaves yesterday's users seeing what they saw yesterday.
+
+### The load sheet is the dispatch router, in a frame
+
+`/load-sheet` is a Fusion page holding `/dispatch-app.html` in an iframe, and
+that is a decision rather than a shortcut. The router is a whole application -
+its own sidebar, its own views, its own rules for splitting a day between
+courier companies by city, by each company's share, by what went wrong there
+last time, with duplicate-customer merging, COD overrides, history and
+per-account sheet templates for PostEx, Trax and Daewoo's own column orders.
+Its stylesheet names `.main`, `.card`, `.btn` and `.head`, every one of which
+`app.css` also names. Dropping it into a Fusion page meant renaming a few
+hundred selectors and hoping. The frame is same-origin, so it signs in as
+whoever is signed in and reads their orders without being handed anything.
+
+What changed inside it: the palette is Fusion's (slate, teal, grey - declared
+once at `:root` in the names the tool already used), and there is a second
+source beside the file drop. **"Aaj ke Shopify orders laayein"** reads
+yesterday's and today's unbilled orders from `/api/shopify/orders` and writes
+them back out **in Shopify's own export shape** - one row per line item, the
+customer filled in on the first row of each order - and hands that to the same
+`handleFile()` the dropped file goes through. One parser, one set of rules, and
+the day's orders need no file at all. `/api/shopify/orders` grew `phone` and
+`shipTo` for it, built from the `bill_to` block the invoice already prints.
+
+### /pickups was never a page
+
+`public/pickups.html` held thirty-six lines of **server** code - an express
+route written to the wrong path. `express.static` served it to the browser as
+the text of a page, so the Pickups line in the rail showed a screenful of
+JavaScript, and the CSV download it defines did not exist anywhere. The route
+is now in `server.js` as `/api/courier/pickup-file` and `/pickups` is a real
+page: each handover day, what it was worth, how much of it has settled since,
+and the parcels underneath. It is the load sheet **after** the fact;
+`/load-sheet` is the one handed to the rider before the day starts.
+
+### A receipt belongs to one courier
+
+`/receipts` showed every courier's receipts in one table, so opening PostEx -
+RB listed an M&P receipt beside PostEx's. The page now picks a courier company
+first - a tab each, by name, and a matching shelf under **Receipts (CPR)** in
+the rail - and the list, the figures and the PostEx portal half all answer to
+it. Arriving with `?account=N` locks it to that one account. On an M&P or Trax
+tab the PostEx sign-in is not drawn at all: there is nothing there to sign in
+to. The shelf stops at the courier and does not go down to the account,
+because a courier pays per receipt, not per account.
+
+**`.bar` was two different things.** `app.css` keeps a 7px progress bar under
+that name, with `overflow:hidden`, and `receipts.html` used the same word for
+its row of controls - so every control on that page was clipped to seven
+pixels. That is the row of half boxes under the tabs. It is `.cbar` now, and
+renamed rather than overridden, because the next page to borrow `.bar` would
+have hit it again. The new pages all use `.cbar`.
+
 ## What the database is allowed to keep
 
 47 MB in a fortnight, on a plan with about 1 GB, with three different reasons
@@ -546,6 +690,12 @@ it is only ever done when somebody asks for it.
   built on it yet - it is the makings of an M&P settlement screen.
 - Courier receipts (CPR) are still PostEx-only: `cprlive.js` says so plainly for
   the other two.
+- The dispatch router is in a frame with its own localStorage, so its courier
+  companies, shares and city rules are **per browser, not per company**. The
+  day it matters, those move into a `realm_id` table like everything else.
+- Trax's and M&P's own booking calls are not wired to the load sheet yet: it
+  writes each account's sheet as a file, the way it always has, and somebody
+  uploads it to the courier.
 
 ## One Fusion, many client companies
 

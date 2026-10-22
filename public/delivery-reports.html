@@ -1,0 +1,1119 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Delivery reports</title>
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="manifest" href="/manifest.json">
+<meta name="theme-color" content="#222F34">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@600;700;800&family=Roboto:wght@400;500&family=Roboto+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/app.css">
+<style>
+  /* Not .bar: app.css keeps a 7px progress bar under that name, and borrowing
+     the word clips every control on the page to seven pixels. */
+  .cbar{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:14px}
+  .cbar input[type=date],.cbar input[type=text],.cbar select{border:1px solid var(--line);
+    border-radius:7px;padding:7px 9px;font:inherit;font-size:12.5px;background:#fff;
+    height:auto;width:auto}
+  .cbar button{border:1px solid var(--line);background:#fff;border-radius:7px;
+    padding:7px 12px;font:inherit;font-size:12.5px;cursor:pointer;width:auto;height:auto;
+    color:var(--ink)}
+  .cbar button:hover{border-color:var(--qbo)}
+  .cbar button.on{background:var(--qbo);border-color:var(--qbo);color:#fff;font-weight:600}
+  .cbar .right{margin-left:auto;display:flex;gap:6px;align-items:center}
+
+  /* the eye: money on screen, or not */
+  .eye{display:flex;align-items:center;gap:7px;border:1px solid var(--line);
+    border-radius:7px;padding:6px 11px;background:#fff;cursor:pointer;font-size:12.5px;
+    color:var(--ink);width:auto;height:auto}
+  .eye:hover{border-color:var(--qbo)}
+  .eye.off{background:#F3F5F7;color:var(--muted)}
+  .eye svg{width:15px;height:15px;flex:none}
+
+  .ctabs{display:flex;gap:7px;flex-wrap:wrap;margin:0 0 12px}
+  .ctabs button{padding:6px 13px;border:1px solid var(--line);border-radius:20px;
+    font:inherit;font-size:12.5px;color:var(--muted);background:#fff;cursor:pointer;
+    white-space:nowrap;width:auto;height:auto}
+  .ctabs button:hover{border-color:var(--qbo);color:var(--ink)}
+  .ctabs button.on{background:var(--qbo);border-color:var(--qbo);color:#fff;font-weight:600}
+  .ctabs button .ct{font-family:var(--mono);font-size:11px;opacity:.75;margin-left:5px}
+
+  .tabs{display:flex;gap:24px;border-bottom:1px solid var(--line);margin:0 0 18px;
+    overflow-x:auto}
+  .tabs button{padding:0 0 11px;font:inherit;font-size:13.5px;color:var(--muted);
+    background:none;border:0;border-bottom:2px solid transparent;cursor:pointer;
+    white-space:nowrap;width:auto;height:auto}
+  .tabs button:hover{color:var(--ink)}
+  .tabs button.on{color:var(--ink);border-bottom-color:var(--qbo);font-weight:600}
+
+  .box{background:var(--panel);border:1px solid var(--line);border-radius:10px;
+    padding:16px 18px;margin-bottom:14px}
+  .box h3{margin:0 0 14px;font-size:13.5px;font-weight:600;display:flex;
+    align-items:baseline;gap:9px}
+  .box h3 .aside{margin-left:auto;font-size:11.5px;color:var(--faint);font-weight:400}
+
+  .cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(165px,1fr));gap:12px;
+    margin-bottom:14px}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:15px 17px}
+  .card .k{font-size:10.5px;letter-spacing:.08em;text-transform:uppercase;color:var(--faint)}
+  .card .v{font-family:var(--mono);font-size:22px;font-weight:500;margin-top:6px;line-height:1.1}
+  .card .n{font-size:11.5px;color:var(--muted);margin-top:4px}
+  .card.bad .v{color:var(--neg)}
+  .card.good .v{color:#1B7A44}
+
+  table.t{width:100%;border-collapse:collapse;font-size:12.5px}
+  table.t th{text-align:left;font-size:10px;text-transform:uppercase;letter-spacing:.06em;
+    color:var(--faint);border-bottom:1px solid var(--line);padding:8px;font-weight:600}
+  table.t td{padding:8px;border-bottom:1px solid var(--line);vertical-align:top}
+  table.t td.r,table.t th.r{text-align:right;font-family:var(--mono)}
+  table.t td.mono{font-family:var(--mono);font-size:12px;white-space:nowrap}
+  table.t tr:last-child td{border-bottom:0}
+  table.t tr.click{cursor:pointer}
+  table.t tr.click:hover td{background:#F5FAFD}
+  table.t tr.tot td{font-weight:600;background:#FAFCFE}
+  .lst{max-height:560px;overflow:auto}
+  .scroll{overflow-x:auto}
+
+  .dot{display:inline-block;width:9px;height:9px;border-radius:3px;margin-right:7px;
+    vertical-align:-1px}
+  .meter{display:flex;height:9px;border-radius:5px;overflow:hidden;background:#EEF1F4;
+    margin:9px 0 4px}
+  .meter i{display:block;height:9px}
+  .legend{display:flex;gap:14px;flex-wrap:wrap;font-size:11.5px;color:var(--muted)}
+
+  .two{display:grid;grid-template-columns:1fr 1fr;gap:14px;align-items:start}
+  @media (max-width:980px){ .two{grid-template-columns:1fr} }
+
+  .chart{display:flex;align-items:flex-end;gap:2px;height:150px;padding-top:6px}
+  .chart .col{flex:1;min-width:3px;display:flex;flex-direction:column;justify-content:flex-end;
+    gap:1px}
+  .chart .col i{display:block;border-radius:2px 2px 0 0}
+  .chart .col .d{background:#4FB477}
+  .chart .col .r{background:#E48B85}
+  .chart .col .b{background:#CBD8E2}
+
+  .pill{display:inline-block;padding:2px 8px;border-radius:20px;font-size:10.5px;
+    font-weight:600;white-space:nowrap}
+  .pill.ok{background:#E7F5EC;color:#1B7A44}
+  .pill.wait{background:#E9F1FD;color:#14539A}
+  .pill.bad{background:#FDECEA;color:#A8362F}
+  .pill.warn{background:#FFF4E0;color:#8A5A00}
+  .pill.grey{background:#F0F3F5;color:#5A6672}
+
+  .note{font-size:11.5px;color:var(--faint);margin-top:11px}
+  .msg{padding:13px 15px;border-radius:8px;background:#FDF3F3;border:1px solid var(--neg);
+    color:var(--neg);font-size:12.5px;margin-bottom:12px}
+  .hint{padding:10px 13px;border-radius:8px;background:#F3F7FB;border:1px solid var(--line);
+    color:var(--muted);font-size:12px;margin-bottom:12px}
+  .loading{color:var(--muted);font-size:12.5px;padding:22px 0}
+  .empty{color:var(--muted);font-size:12.5px;padding:16px 0}
+</style>
+</head>
+<body>
+
+<div class="layout">
+  <aside class="rail"></aside>
+
+  <div class="main">
+    <div class="topline">
+      <div>
+        <h1>Delivery reports</h1>
+        <div class="sub" id="sub">Every courier, one at a time</div>
+      </div>
+    </div>
+
+    <div class="shell">
+
+      <div id="gate" class="gate hide">
+        <img src="/logo.svg" alt="">
+        <h2>Connect your QuickBooks company</h2>
+        <p>Courier accounts are kept per company.</p>
+        <button class="solid" id="btnConnect">Connect to QuickBooks</button>
+      </div>
+
+      <div id="body" class="hide">
+
+        <div class="cbar">
+          <button data-days="29">30 days</button>
+          <button data-days="89" class="on">3 months</button>
+          <button data-days="364">A year</button>
+          <input type="date" id="from">
+          <input type="date" id="to">
+          <button id="go" class="on">Show</button>
+          <div class="right">
+            <!-- The eye. Money off is for showing the screen to somebody who
+                 packs parcels; a user id an administrator has hidden it from
+                 never sees the button, because the figures never arrive. -->
+            <button class="eye" id="eye" title="Show or hide the money"></button>
+            <button id="csv">Download</button>
+          </div>
+        </div>
+
+        <!-- one courier company at a time: their words, their rates, their
+             cities. "All" adds them up, which is the only honest way to put
+             PostEx and M&P in one row. -->
+        <div class="ctabs" id="ctabs"></div>
+
+        <div class="tabs" id="tabs">
+          <button data-tab="where" class="on">Where they got to</button>
+          <button data-tab="status">Every status</button>
+          <button data-tab="speed">How long it took</button>
+          <button data-tab="trouble">Trouble</button>
+          <button data-tab="cities">Cities</button>
+          <button data-tab="days">Day by day</button>
+          <button data-tab="parcels">Parcel by parcel</button>
+        </div>
+
+        <div id="out"><div class="loading">Reading&hellip;</div></div>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<script src="/nav.js"></script>
+<script>
+(function(){
+  "use strict";
+  var $ = function(id){ return document.getElementById(id); };
+
+  function esc(s){
+    return String(s == null ? '' : s)
+      .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  }
+  function n0(v){ return Number(v||0).toLocaleString('en-US'); }
+  function full(v){
+    return Number(v||0).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2});
+  }
+  function iso(d){
+    return d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' +
+           String(d.getDate()).padStart(2,'0');
+  }
+  function pc(v){ return v == null ? '—' : (Math.round(v * 10) / 10) + '%'; }
+  function grade(r){ return r >= 90 ? '#1F9D5A' : (r >= 75 ? '#C98B1E' : '#C9453F'); }
+
+  var fromEl = $('from'), toEl = $('to');
+  function setRange(days){
+    var t = new Date(), f = new Date();
+    f.setDate(f.getDate() - days);
+    fromEl.value = iso(f); toEl.value = iso(t);
+  }
+
+  /* ---------- the thirteen buckets, in the order a parcel meets them ---------- */
+
+  var STAGES = [
+    { k:'unbooked',    l:'Not booked yet', c:'#C3CCD4', what:'made but never handed over' },
+    { k:'booked',      l:'Booked',         c:'#9FB6CB', what:'with us, waiting to be collected' },
+    { k:'transit',     l:'On the way',     c:'#7FA8D4', what:'picked up and moving' },
+    { k:'review',      l:'Held',           c:'#C9A227', what:'on hold or under review' },
+    { k:'delivered',   l:'Delivered',      c:'#4FB477', what:'handed to the customer' },
+    { k:'returning',   l:'Coming back',    c:'#E8B07F', what:'on its way back to us' },
+    { k:'returned',    l:'Returned',       c:'#E48B85', what:'back with us' },
+    { k:'cancelled',   l:'Cancelled',      c:'#A9A2B8', what:'called off' },
+    { k:'expired',     l:'Expired',        c:'#B9A24A', what:'ran out of time at the courier' },
+    { k:'transferred', l:'Transferred',    c:'#8FB8B5', what:'moved to another courier' },
+    { k:'lost',        l:'Missing',        c:'#B3453F', what:'the courier cannot find it' },
+    { k:'damaged',     l:'Damaged',        c:'#8C4A3C', what:'broken on the way' },
+    { k:'other',       l:'Something else', c:'#CBD1D6', what:'a word no rule knew' }
+  ];
+  var STAGE = {};
+  STAGES.forEach(function(s){ STAGE[s.k] = s; });
+
+  var TROUBLE = ['cancelled','lost','damaged','expired','returned','review'];
+
+  /* ---------- state ---------- */
+
+  var COURIER_NAME = {};
+  function cname(k){ return COURIER_NAME[k] || String(k || ''); }
+
+  var report = null;        // what the server last said
+  var courier = '';         // '' is every company added up
+  var tab = 'where';
+  var money = true;         // the eye
+  var mayMoney = true;      // false when an administrator hid it from this id
+  var parcels = null;       // the parcel tab, fetched on demand
+  var parcelGroup = '';
+  var parcelFind = '';
+
+  try { money = localStorage.getItem('drMoney') !== '0'; } catch(e){}
+
+  function paintEye(){
+    var b = $('eye');
+    if(!mayMoney){ b.style.display = 'none'; return; }
+    b.className = 'eye' + (money ? '' : ' off');
+    b.innerHTML = (money
+      ? '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">' +
+        '<path d="M1.5 12S5 5.5 12 5.5 22.5 12 22.5 12 19 18.5 12 18.5 1.5 12 1.5 12Z"/>' +
+        '<circle cx="12" cy="12" r="3.2"/></svg>'
+      : '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">' +
+        '<path d="M1.5 12S5 5.5 12 5.5c1.6 0 3 .35 4.2.9M22.5 12S19 18.5 12 18.5' +
+        'c-1.6 0-3-.35-4.2-.9"/><path d="M3 3l18 18"/></svg>') +
+      '<span>' + (money ? 'Money shown' : 'Money hidden') + '</span>';
+  }
+
+  function M(v){ return money ? full(v) : '••••'; }
+
+  /* ---------- the courier now being read ---------- */
+
+  function one(){
+    if(!report) return null;
+    var list = report.couriers || [];
+    if(courier) return list.filter(function(c){ return c.courier === courier; })[0] || null;
+    if(list.length === 1) return list[0];
+
+    // "All" is a real sum, not the first one. Two couriers added up is the
+    // only row a merchant can compare against last month.
+    var all = { courier:'', orders:0, amount:0, charges:0, paid:0, groups:{},
+                statuses:[], cities:[], days:[], speed:null };
+    var cityBy = {}, dayBy = {};
+    var sp = { toPickup:{d:0,n:0}, onTheRoad:{d:0,n:0}, doorToDoor:{d:0,n:0},
+               spread:{fast:0,ok:0,slow:0,bad:0}, stuck:0 };
+
+    list.forEach(function(c){
+      all.orders += c.orders; all.amount += c.amount || 0;
+      all.charges += c.charges || 0; all.paid += c.paid || 0;
+
+      Object.keys(c.groups).forEach(function(g){
+        var had = all.groups[g] || { n:0, amount:0, charges:0 };
+        all.groups[g] = { n: had.n + c.groups[g].n,
+                          amount: had.amount + (c.groups[g].amount || 0),
+                          charges: had.charges + (c.groups[g].charges || 0) };
+      });
+
+      c.statuses.forEach(function(s){
+        all.statuses.push({ status:s.status, group:s.group, n:s.n,
+                            amount:s.amount, charges:s.charges, from:c.courier });
+      });
+
+      (c.cities || []).forEach(function(x){
+        var k = x.city.toUpperCase();
+        var had = cityBy[k] || { city:x.city, orders:0, delivered:0, returned:0,
+                                 trouble:0, amount:0 };
+        had.orders += x.orders; had.delivered += x.delivered;
+        had.returned += x.returned; had.trouble += x.trouble;
+        had.amount += x.amount || 0;
+        cityBy[k] = had;
+      });
+
+      (c.days || []).forEach(function(x){
+        var had = dayBy[x.day] || { day:x.day, booked:0, delivered:0, returned:0, amount:0 };
+        had.booked += x.booked; had.delivered += x.delivered;
+        had.returned += x.returned; had.amount += x.amount || 0;
+        dayBy[x.day] = had;
+      });
+
+      if(c.speed){
+        ['toPickup','onTheRoad','doorToDoor'].forEach(function(leg){
+          var s = c.speed[leg];
+          if(s && s.days != null && s.of){ sp[leg].d += s.days * s.of; sp[leg].n += s.of; }
+        });
+        sp.spread.fast += c.speed.spread.fast; sp.spread.ok += c.speed.spread.ok;
+        sp.spread.slow += c.speed.spread.slow; sp.spread.bad += c.speed.spread.bad;
+        sp.stuck += c.speed.stuck;
+      }
+    });
+
+    all.cities = Object.keys(cityBy).map(function(k){
+      var x = cityBy[k];
+      x.rate = (x.delivered + x.returned)
+        ? Math.round(1000 * x.delivered / (x.delivered + x.returned)) / 10 : null;
+      return x;
+    }).sort(function(a,b){ return b.orders - a.orders; });
+
+    all.days = Object.keys(dayBy).sort().map(function(k){ return dayBy[k]; });
+    all.statuses.sort(function(a,b){ return b.n - a.n; });
+    all.speed = {
+      toPickup:   { days: sp.toPickup.n   ? Math.round(10*sp.toPickup.d/sp.toPickup.n)/10 : null,     of: sp.toPickup.n },
+      onTheRoad:  { days: sp.onTheRoad.n  ? Math.round(10*sp.onTheRoad.d/sp.onTheRoad.n)/10 : null,   of: sp.onTheRoad.n },
+      doorToDoor: { days: sp.doorToDoor.n ? Math.round(10*sp.doorToDoor.d/sp.doorToDoor.n)/10 : null, of: sp.doorToDoor.n },
+      spread: sp.spread, stuck: sp.stuck
+    };
+    return all;
+  }
+
+  function gc(c, k){ return (c.groups[k] && c.groups[k].n) || 0; }
+  function ga(c, k){ return (c.groups[k] && c.groups[k].amount) || 0; }
+
+  /* ---------- the tabs ---------- */
+
+  function paintCourierTabs(){
+    var list = (report && report.couriers) || [];
+    var total = list.reduce(function(a,c){ return a + c.orders; }, 0);
+
+    $('ctabs').innerHTML =
+      (list.length > 1
+        ? '<button data-k="" class="' + (courier ? '' : 'on') + '">All couriers' +
+          '<span class="ct">' + n0(total) + '</span></button>'
+        : '') +
+      list.map(function(c){
+        return '<button data-k="' + esc(c.courier) + '" class="' +
+          (courier === c.courier ? 'on' : '') + '">' + esc(cname(c.courier)) +
+          '<span class="ct">' + n0(c.orders) + '</span></button>';
+      }).join('');
+
+    $('ctabs').querySelectorAll('button').forEach(function(b){
+      b.addEventListener('click', function(){
+        courier = b.getAttribute('data-k');
+        parcels = null;
+        paintCourierTabs(); paint();
+      });
+    });
+  }
+
+  function paint(){
+    if(!report){ return; }
+    var c = one();
+
+    if(!c || !c.orders){
+      $('out').innerHTML = '<div class="box"><h3>Nothing in these dates</h3>' +
+        '<p style="font-size:12.5px;color:var(--muted);margin:0">No parcel was ' +
+        'booked between ' + esc(report.from) + ' and ' + esc(report.to) +
+        (courier ? ' with ' + esc(cname(courier)) : '') + '. Widen the dates, or ' +
+        'bring the courier’s orders in from the ' +
+        '<a href="/couriers">Couriers</a> page.</p></div>';
+      return;
+    }
+
+    var who = courier ? cname(courier) : 'every courier';
+    $('sub').textContent = who + ' · ' + report.from + ' to ' + report.to;
+
+    if(tab === 'where')   return paintWhere(c, who);
+    if(tab === 'status')  return paintStatus(c, who);
+    if(tab === 'speed')   return paintSpeed(c, who);
+    if(tab === 'trouble') return paintTrouble(c, who);
+    if(tab === 'cities')  return paintCities(c, who);
+    if(tab === 'days')    return paintDays(c, who);
+    if(tab === 'parcels') return paintParcels(c, who);
+  }
+
+  /* ---------- 1. where they got to ---------- */
+
+  function paintWhere(c, who){
+    var delivered = gc(c,'delivered'), returned = gc(c,'returned');
+    var settled = delivered + returned;
+    var rate = settled ? 100 * delivered / settled : 0;
+    var moving = gc(c,'booked') + gc(c,'transit') + gc(c,'returning') + gc(c,'review');
+    var gone = gc(c,'lost') + gc(c,'damaged');
+
+    var mix = STAGES.map(function(s){
+      return { l:s.l, c:s.c, n:gc(c, s.k), k:s.k };
+    }).filter(function(x){ return x.n; });
+    var total = mix.reduce(function(a,x){ return a + x.n; }, 0) || 1;
+
+    var rows = STAGES.map(function(s){
+      var n = gc(c, s.k);
+      if(!n) return '';
+      return '<tr class="click" data-group="' + esc(s.k) + '">' +
+        '<td><span class="dot" style="background:' + s.c + '"></span><b>' + esc(s.l) +
+          '</b> <span style="color:var(--faint)">' + esc(s.what) + '</span></td>' +
+        '<td class="r">' + n0(n) + '</td>' +
+        '<td class="r">' + pc(100 * n / total) + '</td>' +
+        (money ? '<td class="r">' + full(ga(c, s.k)) + '</td>' : '') +
+        '</tr>';
+    }).join('');
+
+    $('out').innerHTML =
+      '<div class="cards">' +
+        '<div class="card"><div class="k">Parcels booked</div><div class="v">' +
+          n0(c.orders) + '</div><div class="n">' + esc(who) + ', in these dates</div></div>' +
+        '<div class="card ' + (rate >= 75 ? 'good' : 'bad') + '">' +
+          '<div class="k">Delivery rate</div><div class="v" style="color:' + grade(rate) +
+          '">' + (settled ? pc(rate) : '—') + '</div><div class="n">' +
+          n0(delivered) + ' of ' + n0(settled) + ' settled</div></div>' +
+        '<div class="card"><div class="k">Came back</div><div class="v">' + n0(returned) +
+          '</div><div class="n">' + (settled ? pc(100*returned/settled) : '—') +
+          ' of settled</div></div>' +
+        '<div class="card"><div class="k">Still moving</div><div class="v">' + n0(moving) +
+          '</div><div class="n">not settled either way</div></div>' +
+        '<div class="card' + (gone ? ' bad' : '') + '"><div class="k">Missing or damaged</div>' +
+          '<div class="v">' + n0(gone) + '</div><div class="n">' +
+          (gone ? 'worth chasing' : 'none') + '</div></div>' +
+        (money
+          ? '<div class="card"><div class="k">Collected at the door</div><div class="v">' +
+            full(ga(c,'delivered')) + '</div><div class="n">on delivered parcels</div></div>'
+          : '') +
+      '</div>' +
+
+      '<div class="box"><h3>Where the parcels got to' +
+        '<span class="aside">click a line to see those parcels</span></h3>' +
+        '<div class="meter">' + mix.map(function(x){
+          return '<i style="background:' + x.c + ';width:' +
+                 (100 * x.n / total).toFixed(2) + '%"></i>';
+        }).join('') + '</div>' +
+        '<div class="legend">' + mix.map(function(x){
+          return '<span><span class="dot" style="background:' + x.c + '"></span>' +
+                 esc(x.l) + ' ' + n0(x.n) + '</span>';
+        }).join('') + '</div>' +
+        '<table class="t" style="margin-top:12px">' +
+        '<tr><th>Stage</th><th class="r">Parcels</th><th class="r">Share</th>' +
+        (money ? '<th class="r">Worth</th>' : '') + '</tr>' + rows + '</table>' +
+        '<div class="note">Thirteen stages, the same thirteen for every courier. ' +
+        'Each courier’s own word for a stage is on the next tab.</div></div>' +
+
+      (report.couriers.length > 1 && !courier ? sideBySide() : '');
+
+    wireGroups();
+  }
+
+  // PostEx against M&P, by name, on the one screen
+  function sideBySide(){
+    var rows = report.couriers.map(function(c){
+      var d = gc(c,'delivered'), r = gc(c,'returned');
+      var rate = (d + r) ? 100 * d / (d + r) : null;
+      return '<tr class="click" data-courier="' + esc(c.courier) + '">' +
+        '<td><b>' + esc(cname(c.courier)) + '</b></td>' +
+        '<td class="r">' + n0(c.orders) + '</td>' +
+        '<td class="r">' + n0(d) + '</td>' +
+        '<td class="r">' + n0(r) + '</td>' +
+        '<td class="r">' + n0(gc(c,'lost') + gc(c,'damaged')) + '</td>' +
+        '<td class="r">' + n0(gc(c,'cancelled')) + '</td>' +
+        '<td class="r" style="color:' + (rate == null ? 'inherit' : grade(rate)) +
+          ';font-weight:600">' + pc(rate) + '</td>' +
+        '<td class="r">' + (c.speed && c.speed.doorToDoor.days != null
+          ? c.speed.doorToDoor.days + ' days' : '—') + '</td>' +
+        (money ? '<td class="r">' + full(ga(c,'delivered')) + '</td>' : '') +
+        '</tr>';
+    }).join('');
+
+    return '<div class="box"><h3>Courier against courier' +
+      '<span class="aside">click one to read only its report</span></h3>' +
+      '<table class="t"><tr><th>Courier</th><th class="r">Booked</th>' +
+      '<th class="r">Delivered</th><th class="r">Returned</th>' +
+      '<th class="r">Missing</th><th class="r">Cancelled</th>' +
+      '<th class="r">Rate</th><th class="r">Door to door</th>' +
+      (money ? '<th class="r">Collected</th>' : '') + '</tr>' + rows + '</table></div>';
+  }
+
+  /* ---------- 2. every status, in the courier's own words ---------- */
+
+  function paintStatus(c, who){
+    var rows = c.statuses.map(function(s){
+      var st = STAGE[s.group] || STAGE.other;
+      return '<tr class="click" data-status="' + esc(s.status) + '">' +
+        '<td class="mono">' + esc(s.status || '(nothing said)') + '</td>' +
+        (s.from ? '<td>' + esc(cname(s.from)) + '</td>' : '') +
+        '<td><span class="dot" style="background:' + st.c + '"></span>' + esc(st.l) + '</td>' +
+        '<td class="r">' + n0(s.n) + '</td>' +
+        (money ? '<td class="r">' + full(s.amount) + '</td>' : '') +
+        (money ? '<td class="r">' + full(s.charges) + '</td>' : '') +
+        '</tr>';
+    }).join('');
+
+    var mixed = c.statuses.some(function(s){ return s.from; });
+
+    $('out').innerHTML = '<div class="box"><h3>Every status ' +
+      esc(who) + ' has used' +
+      '<span class="aside">' + n0(c.statuses.length) +
+      ' different words · click one to see those parcels</span></h3>' +
+      '<div class="hint">This is the courier’s own wording, exactly as it came ' +
+      'over. The stage beside it is where Fusion filed it — if one of these ' +
+      'is in the wrong place, this is the table that proves it.</div>' +
+      '<div class="lst"><table class="t"><tr><th>What the courier said</th>' +
+      (mixed ? '<th>Courier</th>' : '') +
+      '<th>Filed under</th><th class="r">Parcels</th>' +
+      (money ? '<th class="r">Worth</th><th class="r">Charges</th>' : '') +
+      '</tr>' + rows + '</table></div></div>';
+
+    $('out').querySelectorAll('tr[data-status]').forEach(function(tr){
+      tr.addEventListener('click', function(){
+        tab = 'parcels'; parcelGroup = ''; parcels = null;
+        parcelFind = '';
+        paintTabs();
+        loadParcels({ status: tr.getAttribute('data-status') });
+      });
+    });
+  }
+
+  /* ---------- 3. how long it took ---------- */
+
+  function paintSpeed(c, who){
+    var s = c.speed;
+    if(!s){ $('out').innerHTML = '<div class="box"><div class="empty">' +
+      'No dates to measure yet.</div></div>'; return; }
+
+    var sp = s.spread;
+    var tot = sp.fast + sp.ok + sp.slow + sp.bad || 1;
+    var bars = [
+      { l:'1–2 days', n:sp.fast, c:'#4FB477' },
+      { l:'3–5 days', n:sp.ok,   c:'#9BCB7F' },
+      { l:'6–10 days',n:sp.slow, c:'#E0B35C' },
+      { l:'over 10 days',  n:sp.bad,  c:'#C9453F' }
+    ];
+
+    function leg(l, x, what){
+      return '<tr><td><b>' + l + '</b><div style="font-size:11.5px;color:var(--faint)">' +
+        what + '</div></td>' +
+        '<td class="r" style="font-size:16px">' +
+          (x.days == null ? '—' : x.days + ' days') + '</td>' +
+        '<td class="r">' + n0(x.of) + ' parcels</td></tr>';
+    }
+
+    $('out').innerHTML =
+      '<div class="cards">' +
+        '<div class="card"><div class="k">Door to door</div><div class="v">' +
+          (s.doorToDoor.days == null ? '—' : s.doorToDoor.days) +
+          '</div><div class="n">days on average, booked to delivered</div></div>' +
+        '<div class="card"><div class="k">Sitting with us</div><div class="v">' +
+          (s.toPickup.days == null ? '—' : s.toPickup.days) +
+          '</div><div class="n">days from booking to pickup</div></div>' +
+        '<div class="card"><div class="k">With the courier</div><div class="v">' +
+          (s.onTheRoad.days == null ? '—' : s.onTheRoad.days) +
+          '</div><div class="n">days from pickup to the door</div></div>' +
+        '<div class="card' + (s.stuck ? ' bad' : '') + '"><div class="k">Stuck</div>' +
+          '<div class="v">' + n0(s.stuck) + '</div>' +
+          '<div class="n">still moving a fortnight on</div></div>' +
+      '</div>' +
+
+      '<div class="two">' +
+        '<div class="box"><h3>The three legs</h3><table class="t">' +
+          leg('Booked → picked up', s.toPickup,
+              'ours to fix: how long a parcel waits for the courier to come') +
+          leg('Picked up → delivered', s.onTheRoad,
+              'theirs to fix: how long the courier holds it') +
+          leg('Booked → delivered', s.doorToDoor,
+              'what the customer feels') +
+        '</table>' +
+        '<div class="note">Counted only where both dates are known. A parcel ' +
+        'with no pickup date is a missing date, not a same-day pickup.</div></div>' +
+
+        '<div class="box"><h3>How the deliveries spread' +
+          '<span class="aside">' + n0(tot) + ' delivered</span></h3>' +
+          '<div class="meter">' + bars.map(function(b){
+            return '<i style="background:' + b.c + ';width:' +
+                   (100 * b.n / tot).toFixed(2) + '%"></i>';
+          }).join('') + '</div>' +
+          '<table class="t" style="margin-top:10px">' + bars.map(function(b){
+            return '<tr><td><span class="dot" style="background:' + b.c + '"></span>' +
+              b.l + '</td><td class="r">' + n0(b.n) + '</td>' +
+              '<td class="r">' + pc(100 * b.n / tot) + '</td></tr>';
+          }).join('') + '</table></div>' +
+      '</div>' +
+
+      (s.stuck
+        ? '<div class="box"><h3>Still moving after a fortnight' +
+          '<span class="aside">click to see them</span></h3>' +
+          '<table class="t"><tr class="click" data-group="booked,transit,returning,review">' +
+          '<td><b>' + n0(s.stuck) + ' parcels</b> were handed over more than two ' +
+          'weeks ago and have not been delivered or returned.</td>' +
+          '<td class="r">' + n0(s.stuck) + '</td></tr></table></div>'
+        : '');
+
+    wireGroups();
+  }
+
+  /* ---------- 4. trouble ---------- */
+
+  function paintTrouble(c, who){
+    var rows = TROUBLE.map(function(k){
+      var st = STAGE[k], n = gc(c, k);
+      return '<tr class="click" data-group="' + k + '">' +
+        '<td><span class="dot" style="background:' + st.c + '"></span><b>' + st.l +
+          '</b><div style="font-size:11.5px;color:var(--faint)">' + st.what + '</div></td>' +
+        '<td class="r" style="font-size:15px">' + n0(n) + '</td>' +
+        '<td class="r">' + (c.orders ? pc(100 * n / c.orders) : '—') + '</td>' +
+        (money ? '<td class="r">' + full(ga(c, k)) + '</td>' : '') +
+        '</tr>';
+    }).join('');
+
+    var bad = TROUBLE.reduce(function(a,k){ return a + gc(c,k); }, 0);
+    var badAmount = TROUBLE.reduce(function(a,k){ return a + ga(c,k); }, 0);
+
+    // the courier's own words, but only the ones filed as trouble
+    var words = c.statuses.filter(function(s){ return TROUBLE.indexOf(s.group) > -1; });
+
+    $('out').innerHTML =
+      '<div class="cards">' +
+        '<div class="card' + (bad ? ' bad' : ' good') + '"><div class="k">Did not go well</div>' +
+          '<div class="v">' + n0(bad) + '</div><div class="n">' +
+          (c.orders ? pc(100 * bad / c.orders) + ' of everything booked' : '') + '</div></div>' +
+        '<div class="card"><div class="k">Missing</div><div class="v">' + n0(gc(c,'lost')) +
+          '</div><div class="n">the courier cannot find it</div></div>' +
+        '<div class="card"><div class="k">Damaged</div><div class="v">' + n0(gc(c,'damaged')) +
+          '</div><div class="n">broken on the way</div></div>' +
+        '<div class="card"><div class="k">Cancelled</div><div class="v">' +
+          n0(gc(c,'cancelled')) + '</div><div class="n">called off</div></div>' +
+        (money
+          ? '<div class="card"><div class="k">At risk</div><div class="v">' +
+            full(badAmount) + '</div><div class="n">what those parcels were worth</div></div>'
+          : '') +
+      '</div>' +
+
+      '<div class="box"><h3>What went wrong, ' + esc(who) +
+        '<span class="aside">click a line to see those parcels</span></h3>' +
+        '<table class="t"><tr><th>What happened</th><th class="r">Parcels</th>' +
+        '<th class="r">Share of booked</th>' +
+        (money ? '<th class="r">Worth</th>' : '') + '</tr>' + rows + '</table></div>' +
+
+      (words.length
+        ? '<div class="box"><h3>In the courier’s own words' +
+          '<span class="aside">the reasons they gave</span></h3>' +
+          '<div class="lst"><table class="t">' +
+          '<tr><th>What they said</th>' + (words[0].from ? '<th>Courier</th>' : '') +
+          '<th>Filed under</th><th class="r">Parcels</th></tr>' +
+          words.map(function(s){
+            return '<tr class="click" data-status="' + esc(s.status) + '">' +
+              '<td class="mono">' + esc(s.status || '(nothing said)') + '</td>' +
+              (s.from ? '<td>' + esc(cname(s.from)) + '</td>' : '') +
+              '<td>' + esc((STAGE[s.group] || STAGE.other).l) + '</td>' +
+              '<td class="r">' + n0(s.n) + '</td></tr>';
+          }).join('') + '</table></div></div>'
+        : '');
+
+    wireGroups();
+    $('out').querySelectorAll('tr[data-status]').forEach(function(tr){
+      tr.addEventListener('click', function(){
+        tab = 'parcels'; parcelGroup = ''; parcels = null; parcelFind = '';
+        paintTabs();
+        loadParcels({ status: tr.getAttribute('data-status') });
+      });
+    });
+  }
+
+  /* ---------- 5. cities ---------- */
+
+  var cityFind = '';
+
+  function paintCities(c, who){
+    var all = c.cities || [];
+    var q = cityFind.trim().toLowerCase();
+    var list = q ? all.filter(function(x){
+      return x.city.toLowerCase().indexOf(q) > -1;
+    }) : all;
+
+    var enough = all.filter(function(x){ return (x.delivered + x.returned) >= 5; });
+    var best = enough.slice().sort(function(a,b){ return b.rate - a.rate; })[0];
+    var worst = enough.slice().sort(function(a,b){ return a.rate - b.rate; })[0];
+
+    var rows = list.slice(0, 800).map(function(x){
+      return '<tr class="click" data-city="' + esc(x.city) + '">' +
+        '<td><b>' + esc(x.city) + '</b></td>' +
+        '<td class="r">' + n0(x.orders) + '</td>' +
+        '<td class="r">' + n0(x.delivered) + '</td>' +
+        '<td class="r">' + n0(x.returned) + '</td>' +
+        '<td class="r">' + (x.trouble ? n0(x.trouble) : '—') + '</td>' +
+        '<td class="r" style="color:' + (x.rate == null ? 'inherit' : grade(x.rate)) +
+          ';font-weight:600">' + pc(x.rate) + '</td>' +
+        (money ? '<td class="r">' + full(x.amount) + '</td>' : '') +
+        '</tr>';
+    }).join('');
+
+    $('out').innerHTML =
+      '<div class="cards">' +
+        '<div class="card"><div class="k">Cities</div><div class="v">' + n0(all.length) +
+          '</div><div class="n">' + esc(who) + ' delivered into</div></div>' +
+        (best
+          ? '<div class="card good"><div class="k">Best</div><div class="v" style="font-size:18px">' +
+            esc(best.city) + '</div><div class="n">' + pc(best.rate) + ' of ' +
+            n0(best.delivered + best.returned) + ' settled</div></div>' : '') +
+        (worst
+          ? '<div class="card bad"><div class="k">Worst</div><div class="v" style="font-size:18px">' +
+            esc(worst.city) + '</div><div class="n">' + pc(worst.rate) + ' of ' +
+            n0(worst.delivered + worst.returned) + ' settled</div></div>' : '') +
+      '</div>' +
+      '<div class="box"><h3>City by city' +
+        '<span class="aside">' + (q ? n0(list.length) + ' match' : n0(all.length) + ' cities') +
+        ' · click one to see its parcels</span></h3>' +
+        '<div class="cbar"><input type="text" id="cityFind" placeholder="Find a city" ' +
+          'value="' + esc(cityFind) + '" style="min-width:260px"></div>' +
+        '<div class="lst"><table class="t"><tr><th>City</th><th class="r">Parcels</th>' +
+        '<th class="r">Delivered</th><th class="r">Returned</th>' +
+        '<th class="r">Missing or damaged</th><th class="r">Rate</th>' +
+        (money ? '<th class="r">Collected</th>' : '') + '</tr>' +
+        (rows || '<tr><td colspan="7" class="empty">Nothing matches that.</td></tr>') +
+        '</table></div>' +
+        '<div class="note">Rate is delivered as a share of what was settled either ' +
+        'way — parcels still moving are left out of it.</div></div>';
+
+    var f = $('cityFind');
+    f.addEventListener('input', function(){
+      cityFind = f.value;
+      var at = f.selectionStart;
+      paint();
+      var again = $('cityFind');
+      if(again){ again.focus(); again.setSelectionRange(at, at); }
+    });
+
+    $('out').querySelectorAll('tr[data-city]').forEach(function(tr){
+      tr.addEventListener('click', function(){
+        tab = 'parcels'; parcelGroup = ''; parcels = null; parcelFind = '';
+        paintTabs();
+        loadParcels({ city: tr.getAttribute('data-city') });
+      });
+    });
+  }
+
+  /* ---------- 6. day by day ---------- */
+
+  function paintDays(c, who){
+    var days = c.days || [];
+    var top = days.reduce(function(a,d){
+      return Math.max(a, d.booked, d.delivered + d.returned);
+    }, 1);
+
+    var cols = days.map(function(d){
+      var h = function(n){ return Math.round(110 * n / top); };
+      return '<div class="col" title="' + esc(d.day) + ': ' + d.booked + ' booked, ' +
+        d.delivered + ' delivered, ' + d.returned + ' returned">' +
+        '<i class="d" style="height:' + h(d.delivered) + 'px"></i>' +
+        '<i class="r" style="height:' + h(d.returned) + 'px"></i>' +
+        '<i class="b" style="height:' + h(d.booked) + 'px"></i></div>';
+    }).join('');
+
+    var rows = days.slice().reverse().map(function(d){
+      return '<tr><td class="mono">' + esc(d.day) + '</td>' +
+        '<td class="r">' + n0(d.booked) + '</td>' +
+        '<td class="r">' + n0(d.delivered) + '</td>' +
+        '<td class="r">' + n0(d.returned) + '</td>' +
+        (money ? '<td class="r">' + full(d.amount) + '</td>' : '') + '</tr>';
+    }).join('');
+
+    $('out').innerHTML =
+      '<div class="box"><h3>Day by day' +
+        '<span class="aside">' + esc(report.from) + ' → ' + esc(report.to) +
+        '</span></h3>' +
+        '<div class="chart">' + cols + '</div>' +
+        '<div class="legend" style="margin-top:8px">' +
+          '<span><span class="dot" style="background:#CBD8E2"></span>booked that day</span>' +
+          '<span><span class="dot" style="background:#4FB477"></span>delivered that day</span>' +
+          '<span><span class="dot" style="background:#E48B85"></span>returned that day</span>' +
+        '</div>' +
+        '<div class="note">A parcel booked on Monday and delivered on Friday is ' +
+        'counted on both days. That is the point of two colours.</div></div>' +
+      '<div class="box"><h3>The same, as a list</h3>' +
+        '<div class="lst"><table class="t"><tr><th>Day</th><th class="r">Booked</th>' +
+        '<th class="r">Delivered</th><th class="r">Returned</th>' +
+        (money ? '<th class="r">Collected</th>' : '') + '</tr>' +
+        (rows || '<tr><td colspan="5" class="empty">Nothing yet.</td></tr>') +
+        '</table></div></div>';
+  }
+
+  /* ---------- 7. parcel by parcel ---------- */
+
+  function loadParcels(extra){
+    parcels = 'loading';
+    paintParcels(one(), courier ? cname(courier) : 'every courier');
+
+    var p = new URLSearchParams();
+    p.set('from', fromEl.value); p.set('to', toEl.value);
+    if(courier) p.set('courier', courier);
+    Object.keys(extra || {}).forEach(function(k){ if(extra[k]) p.set(k, extra[k]); });
+    if(!extra || (!extra.status && !extra.city && !extra.group)){
+      if(parcelGroup) p.set('group', parcelGroup);
+    }
+
+    fetch('/api/courier/rows?' + p.toString(), { cache:'no-store' })
+      .then(function(r){ return r.json(); })
+      .then(function(d){
+        parcels = d.error ? { error:d.error } : d;
+        parcels.asked = extra || {};
+        paintParcels(one(), courier ? cname(courier) : 'every courier');
+      })
+      .catch(function(e){
+        parcels = { error:e.message };
+        paintParcels(one(), courier ? cname(courier) : 'every courier');
+      });
+  }
+
+  function daysBetween(a, b){
+    if(!a || !b) return null;
+    return Math.round((new Date(b + 'T00:00:00Z') - new Date(a + 'T00:00:00Z')) / 86400000);
+  }
+
+  function paintParcels(c, who){
+    if(parcels === 'loading' || parcels === null){
+      $('out').innerHTML = picker() + '<div class="loading">Reading the parcels&hellip;</div>';
+      wirePicker();
+      if(parcels === null) loadParcels({ group: parcelGroup });
+      return;
+    }
+    if(parcels.error){
+      $('out').innerHTML = picker() + '<div class="msg">' + esc(parcels.error) + '</div>';
+      wirePicker();
+      return;
+    }
+
+    var q = parcelFind.trim().toLowerCase();
+    var list = (parcels.orders || []).filter(function(o){
+      if(!q) return true;
+      return (String(o.tracking || '') + ' ' + String(o.orderRef || '') + ' ' +
+              String(o.city || '')).toLowerCase().indexOf(q) > -1;
+    });
+
+    var rows = list.map(function(o){
+      var st = STAGE[o.statusGroup] || STAGE.other;
+      var took = daysBetween(o.bookedOn, o.deliveredOn);
+      var waited = daysBetween(o.bookedOn, o.pickedOn);
+      return '<tr>' +
+        '<td class="mono">' + esc(o.tracking) + '</td>' +
+        '<td class="mono">' + esc(o.orderRef || '') + '</td>' +
+        '<td>' + esc(o.account || '') + '</td>' +
+        '<td>' + esc(o.city || '') + '</td>' +
+        '<td><span class="dot" style="background:' + st.c + '"></span>' + esc(st.l) +
+          '<div style="font-size:11px;color:var(--faint)">' + esc(o.status || '') +
+          '</div></td>' +
+        '<td class="mono">' + esc(o.bookedOn || '—') + '</td>' +
+        '<td class="mono">' + esc(o.pickedOn || '—') +
+          (waited != null ? '<div style="font-size:11px;color:var(--faint)">+' +
+            waited + 'd</div>' : '') + '</td>' +
+        '<td class="mono">' + esc(o.deliveredOn || '—') +
+          (took != null ? '<div style="font-size:11px;color:var(--faint)">' +
+            took + ' days</div>' : '') + '</td>' +
+        (money ? '<td class="r">' + full(o.amount) + '</td>' : '') +
+        (money ? '<td class="r">' + full(o.fee + o.tax) + '</td>' : '') +
+        (money ? '<td>' + (o.cprNumber
+          ? '<span class="pill ok">paid ' + esc(o.settledOn || '') + '</span>'
+          : (o.statusGroup === 'delivered'
+              ? '<span class="pill warn">not paid</span>'
+              : '<span class="pill grey">—</span>')) + '</td>' : '') +
+        '</tr>';
+    }).join('');
+
+    var asked = parcels.asked || {};
+    var what = asked.status ? 'status “' + asked.status + '”'
+             : asked.city   ? asked.city
+             : asked.group  ? (STAGE[asked.group] ? STAGE[asked.group].l : asked.group)
+             : 'everything';
+
+    $('out').innerHTML = picker() +
+      '<div class="box"><h3>' + esc(who) + ' · ' + esc(what) +
+        '<span class="aside">' + n0(list.length) +
+        (parcels.count >= 2000 ? ' of the first 2,000' : '') + ' parcels' +
+        (money && parcels.amount ? ' · ' + full(parcels.amount) : '') +
+        '</span></h3>' +
+        '<div class="scroll lst"><table class="t"><tr>' +
+        '<th>Tracking</th><th>Order</th><th>Account</th><th>City</th><th>Stage</th>' +
+        '<th>Booked</th><th>Picked up</th><th>Delivered</th>' +
+        (money ? '<th class="r">COD</th><th class="r">Charges</th><th>Paid</th>' : '') +
+        '</tr>' +
+        (rows || '<tr><td colspan="11" class="empty">Nothing matches that.</td></tr>') +
+        '</table></div>' +
+        '<div class="note">Booked is the day it was handed over, picked up the day ' +
+        'the courier took it, delivered the day it reached the door. Where one is ' +
+        'blank the courier never said.</div></div>';
+
+    wirePicker();
+  }
+
+  function picker(){
+    var opts = [{ k:'', l:'Every stage' }].concat(STAGES.map(function(s){
+      return { k:s.k, l:s.l };
+    }));
+    return '<div class="cbar">' +
+      '<select id="pg">' + opts.map(function(o){
+        return '<option value="' + esc(o.k) + '"' +
+          (parcelGroup === o.k ? ' selected' : '') + '>' + esc(o.l) + '</option>';
+      }).join('') + '</select>' +
+      '<input type="text" id="pf" placeholder="Tracking, order number or city" ' +
+        'value="' + esc(parcelFind) + '" style="min-width:280px">' +
+      '<div class="right"><button id="pcsv">Download these</button></div></div>';
+  }
+
+  function wirePicker(){
+    var pg = $('pg'); if(!pg) return;
+    pg.addEventListener('change', function(){
+      parcelGroup = pg.value; parcels = null;
+      loadParcels({ group: parcelGroup });
+    });
+    var pf = $('pf');
+    pf.addEventListener('input', function(){
+      parcelFind = pf.value;
+      var at = pf.selectionStart;
+      paintParcels(one(), courier ? cname(courier) : 'every courier');
+      var again = $('pf');
+      if(again){ again.focus(); again.setSelectionRange(at, at); }
+    });
+    $('pcsv').addEventListener('click', downloadParcels);
+  }
+
+  /* ---------- downloads ---------- */
+
+  function save(name, lines){
+    var cell = function(v){
+      var s = v == null ? '' : String(v);
+      return /[",\n\r]/.test(s) ? '"' + s.replace(/"/g,'""') + '"' : s;
+    };
+    var text = lines.map(function(r){ return r.map(cell).join(','); }).join('\r\n');
+    var blob = new Blob(['﻿' + text], { type:'text/csv;charset=utf-8' });
+    var url = URL.createObjectURL(blob);
+    var a = document.createElement('a');
+    a.href = url; a.download = name;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(function(){ URL.revokeObjectURL(url); }, 1000);
+  }
+
+  function downloadParcels(){
+    if(!parcels || !parcels.orders) return;
+    var head = ['Tracking','Order','Account','City','Stage','What the courier said',
+                'Booked','Picked up','Delivered','Days'];
+    if(money) head = head.concat(['COD','Charges','Receipt','Paid on']);
+
+    var lines = [head];
+    parcels.orders.forEach(function(o){
+      var r = [o.tracking, o.orderRef || '', o.account || '', o.city || '',
+               (STAGE[o.statusGroup] || STAGE.other).l, o.status || '',
+               o.bookedOn || '', o.pickedOn || '', o.deliveredOn || '',
+               daysBetween(o.bookedOn, o.deliveredOn)];
+      if(money) r = r.concat([o.amount, o.fee + o.tax, o.cprNumber || '', o.settledOn || '']);
+      lines.push(r);
+    });
+    save('parcels-' + fromEl.value + '-to-' + toEl.value + '.csv', lines);
+  }
+
+  // the report itself, courier by courier, as one sheet
+  function downloadReport(){
+    if(!report) return;
+    var head = ['Courier','Stage','Parcels'];
+    if(money) head = head.concat(['Worth','Charges']);
+    var lines = [head];
+
+    report.couriers.forEach(function(c){
+      STAGES.forEach(function(s){
+        var g = c.groups[s.k];
+        if(!g || !g.n) return;
+        var r = [cname(c.courier), s.l, g.n];
+        if(money) r = r.concat([g.amount, g.charges]);
+        lines.push(r);
+      });
+    });
+
+    lines.push([]);
+    lines.push(['Courier','Status the courier used','Filed under','Parcels']);
+    report.couriers.forEach(function(c){
+      c.statuses.forEach(function(s){
+        lines.push([cname(c.courier), s.status, (STAGE[s.group] || STAGE.other).l, s.n]);
+      });
+    });
+
+    lines.push([]);
+    lines.push(['Courier','City','Parcels','Delivered','Returned','Missing or damaged','Rate']);
+    report.couriers.forEach(function(c){
+      (c.cities || []).forEach(function(x){
+        lines.push([cname(c.courier), x.city, x.orders, x.delivered, x.returned,
+                    x.trouble, x.rate == null ? '' : x.rate]);
+      });
+    });
+
+    save('delivery-report-' + fromEl.value + '-to-' + toEl.value + '.csv', lines);
+  }
+
+  /* ---------- plumbing ---------- */
+
+  function wireGroups(){
+    $('out').querySelectorAll('tr[data-group]').forEach(function(tr){
+      tr.addEventListener('click', function(){
+        parcelGroup = tr.getAttribute('data-group');
+        tab = 'parcels'; parcels = null; parcelFind = '';
+        paintTabs();
+        loadParcels({ group: parcelGroup });
+      });
+    });
+    $('out').querySelectorAll('tr[data-courier]').forEach(function(tr){
+      tr.addEventListener('click', function(){
+        courier = tr.getAttribute('data-courier');
+        parcels = null;
+        paintCourierTabs(); paint();
+      });
+    });
+  }
+
+  function paintTabs(){
+    $('tabs').querySelectorAll('button').forEach(function(b){
+      b.classList.toggle('on', b.getAttribute('data-tab') === tab);
+    });
+  }
+
+  function load(){
+    $('out').innerHTML = '<div class="loading">Reading&hellip;</div>';
+    parcels = null;
+
+    var p = new URLSearchParams();
+    p.set('from', fromEl.value); p.set('to', toEl.value);
+
+    fetch('/api/courier/report?' + p.toString(), { cache:'no-store' })
+      .then(function(r){ return r.json(); })
+      .then(function(d){
+        if(d.error){ $('out').innerHTML = '<div class="msg">' + esc(d.error) + '</div>'; return; }
+        report = d;
+
+        // An administrator can hide the money from one user id. When they
+        // have, the figures never leave the server, so there is nothing for
+        // the eye to switch back on - and the eye is not shown.
+        mayMoney = d.money !== false;
+        if(!mayMoney) money = false;
+        paintEye();
+
+        if(courier && !(d.couriers || []).some(function(c){ return c.courier === courier; })){
+          courier = '';
+        }
+        paintCourierTabs();
+        paint();
+      })
+      .catch(function(e){ $('out').innerHTML = '<div class="msg">' + esc(e.message) + '</div>'; });
+  }
+
+  $('btnConnect').addEventListener('click', function(){ location.href = '/auth/connect'; });
+
+  window.APP.ready.then(function(s){
+    if(!s.connected){ $('gate').classList.remove('hide'); return; }
+    $('body').classList.remove('hide');
+
+    if(s.hideMoney){ mayMoney = false; money = false; }
+    paintEye();
+
+    var sf = localStorage.getItem('drFrom'), st = localStorage.getItem('drTo');
+    if(sf && st){ fromEl.value = sf; toEl.value = st; } else setRange(89);
+
+    document.querySelectorAll('.cbar button[data-days]').forEach(function(b){
+      b.addEventListener('click', function(){
+        document.querySelectorAll('.cbar button[data-days]').forEach(function(x){
+          x.classList.remove('on');
+        });
+        b.classList.add('on');
+        setRange(Number(b.getAttribute('data-days')));
+        remember(); load();
+      });
+    });
+
+    $('go').addEventListener('click', function(){ remember(); load(); });
+
+    $('eye').addEventListener('click', function(){
+      if(!mayMoney) return;
+      money = !money;
+      try { localStorage.setItem('drMoney', money ? '1' : '0'); } catch(e){}
+      paintEye();
+      paint();
+    });
+
+    $('csv').addEventListener('click', function(){
+      if(tab === 'parcels') downloadParcels(); else downloadReport();
+    });
+
+    $('tabs').querySelectorAll('button').forEach(function(b){
+      b.addEventListener('click', function(){
+        tab = b.getAttribute('data-tab');
+        paintTabs();
+        if(tab === 'parcels' && !parcels) loadParcels({ group: parcelGroup });
+        else paint();
+      });
+    });
+
+    fetch('/api/courier/kinds', { cache:'no-store' })
+      .then(function(r){ return r.json(); })
+      .then(function(d){ (d.kinds || []).forEach(function(k){ COURIER_NAME[k.key] = k.name; }); })
+      .catch(function(){})
+      .then(load);
+  });
+
+  function remember(){
+    try {
+      localStorage.setItem('drFrom', fromEl.value);
+      localStorage.setItem('drTo', toEl.value);
+    } catch(e){}
+  }
+})();
+</script>
+</body>
+</html>

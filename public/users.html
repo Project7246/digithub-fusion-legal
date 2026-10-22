@@ -393,6 +393,17 @@
               '</div></div>';
           }).join('') +
         '</div>' +
+        '<div class="jobs cos show">' +
+          '<div class="cap">What they see on the courier reports</div>' +
+          '<div class="grid">' +
+            '<label class="b-moneylab' + (u.hideMoney ? ' on' : '') + '"' +
+              ' data-tip="Tracking, cities, delivered and returned - but no COD, ' +
+              'no charges and no receipts. For somebody who packs the parcels ' +
+              'and has no business with what they are worth.">' +
+              '<input type="checkbox" class="b-money"' + (u.hideMoney ? ' checked' : '') + '>' +
+              '<span>Hide the money</span></label>' +
+          '</div>' +
+        '</div>' +
         '<div class="editacts">' +
           '<button class="solid b-save">Save</button>' +
           '<button class="mini b-cancel">Cancel</button>' +
@@ -432,7 +443,10 @@
       var picked = [];
       tr.querySelectorAll('.jobs.rights input:checked').forEach(function(i){ picked.push(i.value); });
       var realms = [];
-      tr.querySelectorAll('.cos input:checked').forEach(function(i){ realms.push(i.value); });
+      tr.querySelectorAll('.cos input:checked').forEach(function(i){
+        if(i.value) realms.push(i.value);
+      });
+      var hideMoney = tr.querySelector('.b-money').checked;
 
       save.disabled = true;
       tr.querySelector('.b-note').textContent = 'Saving...';
@@ -447,6 +461,12 @@
           return post('/api/admin/users/companies', { sub: u.sub, realms: realms });
         })
         .then(function(){
+          return hideMoney === !!u.hideMoney
+            ? null
+            : post('/api/admin/users/money', { sub: u.sub, hide: hideMoney });
+        })
+        .then(function(){
+          u.hideMoney = hideMoney;
           u.role = role;
           u.rights = role === 'custom' ? picked : [];
           u.realms = realms;

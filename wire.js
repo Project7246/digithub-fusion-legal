@@ -148,7 +148,7 @@ export async function call({ url, method, headers, body }) {
 const WRAPPERS = [
   'dist', 'data', 'result', 'results', 'rows', 'records', 'items', 'list',
   'shipments', 'shipment', 'orders', 'order', 'payload', 'response', 'details',
-  'trackingdetails', 'packetlist', 'cnlist'
+  'trackingdetails', 'packetlist', 'cnlist', 'cities', 'city'
 ];
 
 export function rows(json, depth) {

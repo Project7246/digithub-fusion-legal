@@ -513,6 +513,198 @@ export async function recentCprs(realmId, opts) {
   });
 }
 
+/* ==================== the delivery report ====================  */
+//
+// One question, asked four ways, and every one of them per courier company:
+// where did the parcels get to, how long did each leg take, which cities are
+// the trouble, and what happened day by day. It is kept to four queries on
+// purpose - a report page that fires a dozen is a database that never sleeps,
+// and the month's compute is what pays for that.
+//
+// Nothing here is PostEx's or M&P's vocabulary. The thirteen buckets in
+// statuses.js are what a report counts, with the courier's own words kept
+// beside them so a dispute can be settled with what the courier actually
+// said.
+
+export async function deliveryReport(realmId, opts) {
+  const base = scope(realmId, opts);
+  const w = base.where.join(' AND ');
+  const args = base.args.slice();
+
+  args.push(opts.from); const iFrom = args.length;
+  args.push(opts.to);   const iTo = args.length;
+
+  // Booked in the range. A parcel booked last week and delivered today is
+  // this week's parcel: the date it was handed over is the one a merchant
+  // counts a batch by.
+  const inRange = `${w} AND o.booked_on >= $${iFrom} AND o.booked_on <= $${iTo}`;
+
+  const [states, speed, cities, daily] = await Promise.all([
+    /* ---- 1. every status, under its bucket, under its courier ---- */
+    pool.query(
+      `SELECT o.courier, o.status_group, COALESCE(o.status,'') AS status,
+              COUNT(*) AS n,
+              COALESCE(SUM(o.amount),0)       AS amount,
+              COALESCE(SUM(o.fee + o.tax),0)  AS charges,
+              COUNT(*) FILTER (WHERE o.settled IS TRUE
+                                  OR COALESCE(o.cpr_number,'') <> '') AS paid
+         FROM courier_orders o
+        WHERE ${inRange}
+        GROUP BY o.courier, o.status_group, COALESCE(o.status,'')
+        ORDER BY n DESC`, args),
+
+    /* ---- 2. how long each leg took ---- */
+    // Three legs: with us until pickup, with the courier until the door, and
+    // the whole journey. Counted only where both ends are known, because a
+    // parcel with no pickup date is a missing date, not a same-day pickup.
+    pool.query(
+      `SELECT o.courier,
+              COUNT(*) FILTER (WHERE o.picked_on IS NOT NULL
+                                 AND o.booked_on IS NOT NULL) AS n_pick,
+              AVG(o.picked_on - o.booked_on) FILTER (WHERE o.picked_on IS NOT NULL
+                                 AND o.booked_on IS NOT NULL) AS d_pick,
+              COUNT(*) FILTER (WHERE o.delivered_on IS NOT NULL
+                                 AND o.picked_on IS NOT NULL) AS n_leg,
+              AVG(o.delivered_on - o.picked_on) FILTER (WHERE o.delivered_on IS NOT NULL
+                                 AND o.picked_on IS NOT NULL) AS d_leg,
+              COUNT(*) FILTER (WHERE o.delivered_on IS NOT NULL
+                                 AND o.booked_on IS NOT NULL) AS n_all,
+              AVG(o.delivered_on - o.booked_on) FILTER (WHERE o.delivered_on IS NOT NULL
+                                 AND o.booked_on IS NOT NULL) AS d_all,
+              COUNT(*) FILTER (WHERE o.delivered_on - o.booked_on <= 2)            AS b_fast,
+              COUNT(*) FILTER (WHERE o.delivered_on - o.booked_on BETWEEN 3 AND 5) AS b_ok,
+              COUNT(*) FILTER (WHERE o.delivered_on - o.booked_on BETWEEN 6 AND 10) AS b_slow,
+              COUNT(*) FILTER (WHERE o.delivered_on - o.booked_on > 10)            AS b_bad,
+              COUNT(*) FILTER (WHERE o.status_group IN
+                      ('booked','transit','returning','review')
+                   AND o.booked_on < (CURRENT_DATE - 14))                          AS stuck
+         FROM courier_orders o
+        WHERE ${inRange}
+        GROUP BY o.courier`, args),
+
+    /* ---- 3. the cities, per courier ---- */
+    pool.query(
+      `SELECT o.courier, COALESCE(NULLIF(TRIM(o.city),''),'(no city)') AS city,
+              COUNT(*) AS n,
+              COUNT(*) FILTER (WHERE o.status_group = 'delivered') AS delivered,
+              COUNT(*) FILTER (WHERE o.status_group = 'returned')  AS returned,
+              COUNT(*) FILTER (WHERE o.status_group IN ('lost','damaged')) AS trouble,
+              COALESCE(SUM(o.amount) FILTER (WHERE o.status_group = 'delivered'),0) AS amount
+         FROM courier_orders o
+        WHERE ${inRange}
+        GROUP BY o.courier, 2
+        ORDER BY n DESC
+        LIMIT 600`, args),
+
+    /* ---- 4. the days ---- */
+    // Booked on the day, and - separately - delivered on the day and returned
+    // on the day, because a parcel booked on Monday and delivered on Friday
+    // belongs to both Monday and Friday and to neither alone.
+    pool.query(
+      `SELECT d::date AS day, courier,
+              SUM(booked) AS booked, SUM(delivered) AS delivered, SUM(returned) AS returned,
+              SUM(amount) AS amount
+         FROM (
+           SELECT o.booked_on AS d, o.courier, 1 AS booked, 0 AS delivered, 0 AS returned,
+                  0::numeric AS amount
+             FROM courier_orders o WHERE ${inRange} AND o.booked_on IS NOT NULL
+           UNION ALL
+           SELECT o.delivered_on, o.courier, 0, 1, 0, COALESCE(o.amount,0)
+             FROM courier_orders o WHERE ${inRange} AND o.delivered_on IS NOT NULL
+                  AND o.status_group = 'delivered'
+           UNION ALL
+           SELECT o.delivered_on, o.courier, 0, 0, 1, 0
+             FROM courier_orders o WHERE ${inRange} AND o.delivered_on IS NOT NULL
+                  AND o.status_group = 'returned'
+         ) t
+        WHERE d IS NOT NULL
+        GROUP BY 1, 2
+        ORDER BY 1`, args)
+  ]);
+
+  /* ---------- the buckets, rolled up per courier ---------- */
+
+  const couriers = new Map();
+  const get = key => {
+    if (!couriers.has(key)) {
+      couriers.set(key, {
+        courier: key, orders: 0, amount: 0, charges: 0, paid: 0,
+        groups: {}, statuses: []
+      });
+    }
+    return couriers.get(key);
+  };
+
+  states.rows.forEach(x => {
+    const c = get(x.courier);
+    const n = Number(x.n), amount = r2(x.amount), charges = r2(x.charges);
+    const g = x.status_group || 'other';
+
+    c.orders += n; c.amount += amount; c.charges += charges;
+    c.paid += Number(x.paid);
+
+    const had = c.groups[g] || { n: 0, amount: 0, charges: 0 };
+    c.groups[g] = { n: had.n + n, amount: r2(had.amount + amount),
+                    charges: r2(had.charges + charges) };
+
+    // the courier's own word for it, kept so a report can be argued with
+    c.statuses.push({ status: x.status, group: g, n, amount, charges });
+  });
+
+  speed.rows.forEach(x => {
+    const c = get(x.courier);
+    const avg = v => v == null ? null : Math.round(Number(v) * 10) / 10;
+    c.speed = {
+      toPickup:   { days: avg(x.d_pick), of: Number(x.n_pick) },
+      onTheRoad:  { days: avg(x.d_leg),  of: Number(x.n_leg) },
+      doorToDoor: { days: avg(x.d_all),  of: Number(x.n_all) },
+      spread: {
+        fast: Number(x.b_fast), ok: Number(x.b_ok),
+        slow: Number(x.b_slow), bad: Number(x.b_bad)
+      },
+      // still moving, a fortnight after it was handed over
+      stuck: Number(x.stuck)
+    };
+  });
+
+  cities.rows.forEach(x => {
+    const c = get(x.courier);
+    (c.cities = c.cities || []).push({
+      city: x.city,
+      orders: Number(x.n),
+      delivered: Number(x.delivered),
+      returned: Number(x.returned),
+      trouble: Number(x.trouble),
+      amount: r2(x.amount),
+      rate: (Number(x.delivered) + Number(x.returned))
+        ? Math.round(1000 * Number(x.delivered) /
+            (Number(x.delivered) + Number(x.returned))) / 10
+        : null
+    });
+  });
+
+  daily.rows.forEach(x => {
+    const c = get(x.courier);
+    (c.days = c.days || []).push({
+      day: day(x.day),
+      booked: Number(x.booked),
+      delivered: Number(x.delivered),
+      returned: Number(x.returned),
+      amount: r2(x.amount)
+    });
+  });
+
+  const list = [...couriers.values()].sort((a, b) => b.orders - a.orders);
+  list.forEach(c => {
+    c.statuses.sort((a, b) => b.n - a.n);
+    c.cities = (c.cities || []).sort((a, b) => b.orders - a.orders);
+    c.days = c.days || [];
+    c.speed = c.speed || null;
+  });
+
+  return { from: opts.from, to: opts.to, couriers: list };
+}
+
 /* ==================== pickups, which stand in for load sheets ==================== */
 
 export async function pickups(realmId, opts) {

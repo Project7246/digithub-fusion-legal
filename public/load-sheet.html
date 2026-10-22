@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Load sheet</title>
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="manifest" href="/manifest.json">
+<meta name="theme-color" content="#222F34">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@600;700;800&family=Roboto:wght@400;500&family=Roboto+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/app.css">
+<style>
+  /* The router runs in a frame of its own.
+   *
+   * It is a whole application - its own sidebar, its own router, its own
+   * rules for splitting a day's parcels between couriers - and it was built
+   * and used as one. Its stylesheet names .main, .card, .btn and .head, every
+   * one of which app.css also names, so dropping it into this page would have
+   * meant renaming a few hundred selectors and hoping. A frame is the honest
+   * answer: the tool stays exactly the tool, Fusion's rail stays outside it,
+   * and the two cannot tread on each other. Same origin, so it signs in as
+   * you and reads your Shopify orders without being handed anything.
+   */
+  .frame{width:100%;border:0;display:block;background:var(--panel);
+    border-radius:10px;min-height:720px}
+  .shell.wide{max-width:none;padding:0 18px 18px}
+  .lead{padding:0 0 14px;font-size:12.5px;color:var(--muted);line-height:1.6;
+    max-width:760px}
+  .lead b{color:var(--ink);font-weight:600}
+  .lead a{color:var(--qbo);text-decoration:none}
+  .lead a:hover{text-decoration:underline}
+</style>
+</head>
+<body>
+
+<div class="layout">
+  <aside class="rail"></aside>
+
+  <div class="main">
+    <div class="topline">
+      <div>
+        <h1>Load sheet</h1>
+        <div class="sub">A day&rsquo;s orders, split between the couriers, as a sheet each</div>
+      </div>
+    </div>
+
+    <div class="shell wide">
+
+      <div id="gate" class="gate hide">
+        <img src="/logo.svg" alt="">
+        <h2>Connect your QuickBooks company</h2>
+        <p>Courier accounts are kept per company.</p>
+        <button class="solid" id="btnConnect">Connect to QuickBooks</button>
+      </div>
+
+      <div id="body" class="hide">
+        <div class="lead">
+          <b>Aaj ke Shopify orders laayein</b> &mdash; or drop a Shopify export
+          &mdash; and the router splits the day between your courier companies by
+          city, by the share you set each one, and by what went wrong there last
+          time. Every account gets its own sheet in that courier&rsquo;s own column
+          order. What was handed over afterwards is on
+          <a href="/pickups">Pickups</a>; where each courier will go is on
+          <a href="/service-areas">Service areas</a>.
+        </div>
+        <iframe class="frame" id="frame" src="/dispatch-app.html"
+                title="Courier router"></iframe>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<script src="/nav.js"></script>
+<script>
+(function(){
+  "use strict";
+  var $ = function(id){ return document.getElementById(id); };
+
+  $('btnConnect').addEventListener('click', function(){ location.href = '/auth/connect'; });
+
+  // The frame is as tall as the window below the heading, so the tool scrolls
+  // inside itself rather than the page scrolling a scrolling thing.
+  function fit(){
+    var f = $('frame');
+    if(!f) return;
+    var top = f.getBoundingClientRect().top;
+    f.style.height = Math.max(560, window.innerHeight - top - 22) + 'px';
+  }
+
+  window.APP.ready.then(function(s){
+    if(!s.connected){ $('gate').classList.remove('hide'); return; }
+    $('body').classList.remove('hide');
+    fit();
+    window.addEventListener('resize', fit);
+  });
+})();
+</script>
+</body>
+</html>

@@ -392,6 +392,56 @@ export async function fetchPayment(token, tracking, extra) {
 // What M&P paid out in a span of days, as their own payment report sees it:
 // one row per payment, with the instrument it went out on. Their limit is 31
 // days a call, so the caller keeps the span short.
+// M&P keep two city lists and they are not the same list: Get_Cities is
+// where they will collect from, Get_Cities_All is where they will deliver to.
+// A merchant asking "do M&P go there" means the second; a merchant asking
+// "can they pick up from our second warehouse" means the first. Both are
+// read and merged into one row per city with two flags, because showing two
+// lists side by side only makes somebody compare them by eye.
+export async function fetchAreas(token, extra) {
+  const account = accountOf(extra);
+  const params = { AccountNo: account, 'Account No': account };
+
+  async function names(path) {
+    try {
+      const { body } = await get(token, extra, path, params);
+      const list = Array.isArray(body.City) ? body.City
+                 : (Array.isArray(body.city) ? body.city : []);
+      return list.map(v => String(v || '').trim()).filter(Boolean);
+    } catch (e) {
+      // one of the two refusing is not a reason to show neither
+      return { error: e.message };
+    }
+  }
+
+  const [pick, drop] = await Promise.all([
+    names('/Branches/Get_Cities'),
+    names('/Branches/Get_Cities_All')
+  ]);
+
+  const trouble = [];
+  if (!Array.isArray(pick)) trouble.push('pickup list: ' + pick.error);
+  if (!Array.isArray(drop)) trouble.push('delivery list: ' + drop.error);
+  if (trouble.length === 2) throw new Error(trouble.join('; '));
+
+  const byKey = new Map();
+  const add = (list, which) => {
+    (Array.isArray(list) ? list : []).forEach(n => {
+      const key = n.toUpperCase();
+      const row = byKey.get(key) ||
+        { id: '', name: n, hub: '', zone: '', pickup: false, delivery: false, services: [] };
+      row[which] = true;
+      byKey.set(key, row);
+    });
+  };
+  add(pick, 'pickup');
+  add(drop, 'delivery');
+
+  const out = [...byKey.values()].sort((a, b) => a.name.localeCompare(b.name));
+  if (trouble.length) out.trouble = trouble.join('; ');
+  return out;
+}
+
 export async function fetchPayouts(token, from, to, extra) {
   const location = (extra && (extra.location || extra.locationId)) || '';
   const { all } = await post(token, extra, '/Reports/Payment_Report', {
@@ -451,5 +501,6 @@ export const adapter = {
   trackOne,
   refreshKnown,
   listAccounts,
-  listLocations
+  listLocations,
+  fetchAreas
 };

@@ -90,8 +90,22 @@
         { href:'/pickups',      label:'Pickups',       icon:'hand',   need:'couriersync', tile:'hand' },
         // One line, because a CPR and a receipt are the same piece of paper.
         // /cprs redirects here and the page carries both: every courier's
-        // receipts, and the PostEx work of writing them into QuickBooks.
-        { href:'/receipts',     label:'Receipts (CPR)', icon:'receipt',need:'couriersync', tile:'receipt' }
+        // receipts, and the PostEx work of writing them into QuickBooks. It
+        // opens into a shelf of courier companies, because a receipt belongs
+        // to one of them and a list with two couriers in it is not a list.
+        { href:'/receipts',     label:'Receipts (CPR)', icon:'receipt',
+          need:'couriersync', tile:'receipt', rtree:true }
+      ]},
+      // The day as it is run, rather than the accounts behind it. These three
+      // are Logistics' own and are not repeated under Operations: the same
+      // line in two rails is two places to look for one page.
+      { group: 'The day', items: [
+        { href:'/load-sheet',       label:'Load sheet',       icon:'sheet',
+          need:'couriersync', tile:'sheet' },
+        { href:'/delivery-reports', label:'Delivery reports', icon:'chart',
+          need:'couriersync', tile:'chart' },
+        { href:'/service-areas',    label:'Service areas',    icon:'map',
+          need:'couriersync', tile:'map' }
       ]}
     ]},
 
@@ -106,7 +120,8 @@
       { group: 'Couriers', items: [
         { href:'/couriers',     label:'Courier accounts', icon:'truck', need:'couriersync', tile:'truck', as:'Couriers' },
         { href:'/courier-dash', label:'Tracking',      icon:'pin',    need:'couriersync', tile:'pin' },
-        { href:'/receipts',     label:'Receipts (CPR)', icon:'receipt',need:'couriersync', tile:'receipt' }
+        { href:'/receipts',     label:'Receipts (CPR)', icon:'receipt',
+          need:'couriersync', tile:'receipt', rtree:true }
       ]}
     ]},
 
@@ -172,7 +187,10 @@
     check:  '<path d="M9 11l3 3 5-6"/><rect x="3" y="3" width="18" height="18" rx="3"/>',
     pin:    '<path d="M12 21s7-6.3 7-11.5A7 7 0 005 9.5C5 14.7 12 21 12 21z"/><circle cx="12" cy="9.5" r="2.6"/>',
     hand:   '<path d="M9 11V4.5a1.5 1.5 0 013 0V11"/><path d="M12 11V3.5a1.5 1.5 0 013 0V11"/><path d="M15 11V6.5a1.5 1.5 0 013 0V15a6 6 0 01-6 6h-1a6 6 0 01-6-6v-3a1.5 1.5 0 013 0"/>',
-    sheet:  '<rect x="4" y="3" width="16" height="18" rx="2"/><path d="M8 8h8M8 12h8M8 16h5"/>'
+    sheet:  '<rect x="4" y="3" width="16" height="18" rx="2"/><path d="M8 8h8M8 12h8M8 16h5"/>',
+    chart:  '<path d="M4 20V4"/><path d="M4 20h16"/><rect x="7" y="12" width="3" height="5"/>' +
+            '<rect x="12" y="8" width="3" height="9"/><rect x="17" y="14" width="3" height="3"/>',
+    map:    '<path d="M9 4L3 6.5v13.5L9 17.5l6 2.5 6-2.5V4l-6 2.5z"/><path d="M9 4v13.5M15 6.5V20"/>'
   };
 
   function svg(name){
@@ -266,11 +284,15 @@
               (it.need ? ' data-line="' + it.need + '"' : '') +
               (on ? ' class="on"' : (it.admin ? ' class="admin-only"' : '')) +
               (on && it.admin ? ' data-admin="1"' : '') +
-              (it.tree ? ' id="couriersLink"' : '') + '>' +
+              (it.tree ? ' id="couriersLink"' : '') +
+              (it.rtree ? ' id="receiptsLink"' : '') + '>' +
               svg(it.icon) + it.label +
-              (it.tree ? '<span class="tcar" id="couriersCar">\u25B8</span>' : '') + '</a>';
+              (it.tree ? '<span class="tcar" id="couriersCar">\u25B8</span>' : '') +
+              (it.rtree ? '<span class="tcar" id="receiptsCar">\u25B8</span>' : '') + '</a>';
       // Couriers is not one page but a small tree, filled in further down
       if(it.tree) html += '<div class="ctree" id="ctree"></div>';
+      // Receipts opens the same way, into one shelf per courier company
+      if(it.rtree) html += '<div class="ctree" id="rtree"></div>';
     });
   });
 
@@ -1073,6 +1095,71 @@
             if(kids) kids.classList.toggle('open', now);
           });
         });
+      })
+      .catch(function(){});
+  })();
+
+  /* ---------- the receipts shelf ---------- */
+  //
+  // A CPR belongs to one courier. PostEx's receipts and M&P's in one list is
+  // two merchants' paperwork in one envelope, so the rail opens into a line
+  // per courier company and the page itself answers to whichever was picked.
+  // It does not go down to the account: a courier pays per receipt, not per
+  // account, and the page has its own account picker where that matters.
+
+  (function receiptsShelf(){
+    var box = document.getElementById('rtree');
+    if(!box) return;
+
+    var link = document.getElementById('receiptsLink');
+    var car  = document.getElementById('receiptsCar');
+    var here = location.pathname + location.search;
+
+    var open = path === '/receipts' || localStorage.getItem('rtreeOpen') === '1';
+
+    function setOpen(v){
+      open = v;
+      box.classList.toggle('open', v);
+      if(car) car.classList.toggle('open', v);
+      localStorage.setItem('rtreeOpen', v ? '1' : '0');
+    }
+    setOpen(open);
+
+    // Unlike Couriers, Receipts IS a page - the shelf is an extra, so the
+    // caret opens it and the words still go to the page.
+    if(car){
+      car.addEventListener('click', function(e){
+        e.preventDefault(); e.stopPropagation();
+        setOpen(!open);
+      });
+    }
+    if(link){
+      link.addEventListener('click', function(){
+        if(path !== '/receipts') setOpen(true);
+      });
+    }
+
+    fetch('/api/courier/tree', { cache: 'no-store' })
+      .then(function(r){ return r.json(); })
+      .then(function(d){
+        if(d.error) return;
+
+        var withAccounts = (d.couriers || []).filter(function(c){
+          return c.accounts && c.accounts.length;
+        });
+        if(!withAccounts.length){ box.innerHTML = ''; return; }
+
+        var onAll = path === '/receipts' && here.indexOf('courier=') < 0 &&
+                    here.indexOf('account=') < 0;
+
+        box.innerHTML =
+          '<a class="all' + (onAll ? ' on' : '') + '" href="/receipts">' +
+            'All courier companies</a>' +
+          withAccounts.map(function(c){
+            var on = here.indexOf('courier=' + c.key) > -1;
+            return '<a class="acc' + (on ? ' on' : '') +
+              '" href="/receipts?courier=' + esc(c.key) + '">' + esc(c.name) + '</a>';
+          }).join('');
       })
       .catch(function(){});
   })();

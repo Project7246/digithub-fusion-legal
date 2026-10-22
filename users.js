@@ -61,10 +61,24 @@ export async function upsertUser(sub, email, name) {
 export async function listUsers() {
   const r = await pool.query(
     `SELECT sub, email, name, login_id, door, home_realm, disabled, made_by,
-            allowed, rights, role, last_in, decided_at, asked, created_at
+            allowed, rights, role, last_in, decided_at, asked, created_at,
+            hide_money
      FROM users ORDER BY created_at`
   );
   return r.rows;
+}
+
+// Whether this person sees money on the courier reports.
+//
+// Not a right, and deliberately not in RIGHT_GROUPS: rights are things
+// somebody may *do*, they only bite on a custom role, and a "may see money"
+// right would have had to be ticked again for everybody who already works
+// here. This is a hide, off for everyone until an administrator turns it on
+// for one user id - a packer who needs the tracking numbers and has no
+// business with what the parcels are worth.
+export async function setUserMoney(sub, hide) {
+  await pool.query('UPDATE users SET hide_money = $2 WHERE sub = $1',
+                   [sub, !!hide]);
 }
 
 // The admin says whether someone may use the app, and what they may change

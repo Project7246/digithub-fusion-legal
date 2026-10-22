@@ -35,6 +35,12 @@ export async function initAccounts() {
     `CREATE UNIQUE INDEX IF NOT EXISTS users_login_id_key
        ON users (LOWER(login_id)) WHERE login_id IS NOT NULL`);
 
+  // A hide rather than a right - see setUserMoney() in users.js. Added on, so
+  // rows that predate it carry on seeing everything, which is what they saw
+  // yesterday.
+  await pool.query(
+    `ALTER TABLE users ADD COLUMN IF NOT EXISTS hide_money BOOLEAN DEFAULT FALSE`);
+
   // An email address is one account, whichever door it came through, so a person
   // who signed up with a password and later uses Google lands on their own row
   // instead of a second one.

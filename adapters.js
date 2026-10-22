@@ -21,6 +21,7 @@
 //   fetchPayment(token, tracking, extra)      - settlement, if they tell us
 //   trackOne(token, tracking, extra)          - one parcel, if they allow it
 //   fetchCprs(...)                            - PostEx's portal receipts only
+//   fetchAreas(token, extra)                  - where they go, if they say
 
 import { adapter as postex } from './postex.js';
 import { adapter as trax }   from './trax.js';
@@ -60,7 +61,10 @@ export function courierKinds() {
     lists: a.lists !== false,
     tracks: typeof a.trackOne === 'function',
     settles: typeof a.fetchPayment === 'function',
-    receipts: typeof a.fetchCprs === 'function'
+    receipts: typeof a.fetchCprs === 'function',
+    // whether the courier will say where it goes - the service areas page
+    // offers a tab only for a courier that answers
+    areas: typeof a.fetchAreas === 'function'
   }));
 }
 

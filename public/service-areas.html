@@ -1,0 +1,433 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Service areas</title>
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="manifest" href="/manifest.json">
+<meta name="theme-color" content="#222F34">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@600;700;800&family=Roboto:wght@400;500&family=Roboto+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/app.css">
+<style>
+  /* Not .bar: app.css keeps a 7px progress bar under that name. */
+  .cbar{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:16px}
+  .cbar input[type=text],.cbar select{border:1px solid var(--line);border-radius:7px;
+    padding:7px 9px;font:inherit;font-size:12.5px;background:#fff;height:auto;width:auto}
+  .cbar button{border:1px solid var(--line);background:#fff;border-radius:7px;padding:7px 12px;
+    font:inherit;font-size:12.5px;cursor:pointer;width:auto;height:auto;color:var(--ink)}
+  .cbar button:hover{border-color:var(--qbo)}
+  .cbar .right{margin-left:auto;display:flex;gap:6px;align-items:center}
+
+  .ctabs{display:flex;gap:7px;flex-wrap:wrap;margin:0 0 14px}
+  .ctabs button{padding:6px 13px;border:1px solid var(--line);border-radius:20px;
+    font:inherit;font-size:12.5px;color:var(--muted);background:#fff;cursor:pointer;
+    white-space:nowrap;width:auto;height:auto}
+  .ctabs button:hover{border-color:var(--qbo);color:var(--ink)}
+  .ctabs button.on{background:var(--qbo);border-color:var(--qbo);color:#fff;font-weight:600}
+  .ctabs button .ct{font-family:var(--mono);font-size:11px;opacity:.75;margin-left:5px}
+
+  .box{background:var(--panel);border:1px solid var(--line);border-radius:10px;
+    padding:16px 18px;margin-bottom:14px}
+  .box h3{margin:0 0 14px;font-size:13.5px;font-weight:600;display:flex;
+    align-items:baseline;gap:9px}
+  .box h3 .aside{margin-left:auto;font-size:11.5px;color:var(--faint);font-weight:400}
+
+  .cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(168px,1fr));gap:12px;
+    margin-bottom:16px}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:15px 17px}
+  .card .k{font-size:10.5px;letter-spacing:.08em;text-transform:uppercase;color:var(--faint)}
+  .card .v{font-family:var(--mono);font-size:22px;font-weight:500;margin-top:6px;line-height:1.1}
+  .card .n{font-size:11.5px;color:var(--muted);margin-top:4px}
+
+  table.t{width:100%;border-collapse:collapse;font-size:12.5px}
+  table.t th{text-align:left;font-size:10px;text-transform:uppercase;letter-spacing:.06em;
+    color:var(--faint);border-bottom:1px solid var(--line);padding:8px;font-weight:600;
+    position:sticky;top:0;background:var(--panel);z-index:1}
+  table.t td{padding:8px;border-bottom:1px solid var(--line);vertical-align:top}
+  table.t tr:last-child td{border-bottom:0}
+  .lst{max-height:560px;overflow:auto}
+
+  .yes{color:#1B7A44;font-weight:600}
+  .no{color:var(--faint)}
+  .svc{font-size:11px;color:var(--muted)}
+
+  /* the one question this page exists for: who goes there */
+  .ask{display:grid;grid-template-columns:minmax(220px,320px) 1fr;gap:20px;
+    align-items:start}
+  .ask input{width:100%;border:1px solid var(--line);border-radius:7px;padding:10px 12px;
+    font:inherit;font-size:14px;background:#fff}
+  .hit{display:flex;align-items:center;gap:10px;padding:8px 0;
+    border-bottom:1px dashed var(--line);font-size:13px}
+  .hit:last-child{border-bottom:0}
+  .hit b{min-width:90px}
+  .pill{display:inline-block;padding:2px 9px;border-radius:20px;font-size:10.5px;
+    font-weight:600;white-space:nowrap}
+  .pill.ok{background:#E7F5EC;color:#1B7A44}
+  .pill.no{background:#F3F5F7;color:#75828C}
+  .pill.part{background:#FFF4E0;color:#8A5A00}
+  @media (max-width:900px){ .ask{grid-template-columns:1fr} }
+
+  .note{font-size:11.5px;color:var(--faint);margin-top:11px}
+  .msg{padding:13px 15px;border-radius:8px;background:#FDF3F3;border:1px solid var(--neg);
+    color:var(--neg);font-size:12.5px;margin-bottom:12px}
+  .warn{padding:11px 14px;border-radius:8px;background:#FFF8E8;border:1px solid var(--warn);
+    color:#7A5200;font-size:12.5px;margin-bottom:12px}
+  .loading{color:var(--muted);font-size:12.5px;padding:22px 0}
+  .empty{color:var(--muted);font-size:12.5px;padding:16px 0}
+</style>
+</head>
+<body>
+
+<div class="layout">
+  <aside class="rail"></aside>
+
+  <div class="main">
+    <div class="topline">
+      <div>
+        <h1>Service areas</h1>
+        <div class="sub" id="sub">Where each courier will collect from and deliver to</div>
+      </div>
+    </div>
+
+    <div class="shell">
+
+      <div id="gate" class="gate hide">
+        <img src="/logo.svg" alt="">
+        <h2>Connect your QuickBooks company</h2>
+        <p>Courier accounts are kept per company.</p>
+        <button class="solid" id="btnConnect">Connect to QuickBooks</button>
+      </div>
+
+      <div id="body" class="hide">
+
+        <!-- The question first. "Does anybody go to Chaman" is what this page
+             is opened for; the lists underneath are for reading afterwards. -->
+        <div class="box">
+          <h3>Which courier goes there?<span class="aside" id="askNote"></span></h3>
+          <div class="ask">
+            <div>
+              <input type="text" id="ask" placeholder="Type a city or an area"
+                     autocomplete="off">
+              <div class="note">Part of a name is enough &mdash; "khan" finds Dera
+                Ismail Khan.</div>
+            </div>
+            <div id="answer"><div class="empty">Every courier's own list, side by
+              side, as soon as you type.</div></div>
+          </div>
+        </div>
+
+        <div class="ctabs" id="ctabs"></div>
+        <div id="out"><div class="loading">Reading&hellip;</div></div>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<script src="/nav.js"></script>
+<script>
+(function(){
+  "use strict";
+  var $ = function(id){ return document.getElementById(id); };
+
+  function esc(s){
+    return String(s == null ? '' : s)
+      .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  }
+  function n0(v){ return Number(v||0).toLocaleString('en-US'); }
+
+  var COURIER_NAME = {};
+  function cname(k){ return COURIER_NAME[k] || String(k || ''); }
+
+  // one account per courier is enough: the city list is the courier's, not
+  // the account's, and asking twice for the same answer costs a call
+  var byCourier = {};     // key -> { account, label, areas, error, note }
+  var order = [];         // the couriers, in the order their accounts were added
+  var shown = '';         // the tab open now
+
+  function loadAll(){
+    return fetch('/api/courier/accounts', { cache:'no-store' })
+      .then(function(r){ return r.json(); })
+      .then(function(d){
+        var first = {};
+        (d.accounts || []).forEach(function(a){
+          if(!first[a.courier]){ first[a.courier] = a; order.push(a.courier); }
+        });
+
+        if(!order.length){
+          $('out').innerHTML = '<div class="box"><h3>No courier account yet</h3>' +
+            '<p style="font-size:12.5px;color:var(--muted);margin:0">Add one on the ' +
+            '<a href="/couriers">Couriers</a> page. A courier only hands over its ' +
+            'city list to an account of its own.</p></div>';
+          $('askNote').textContent = '';
+          return;
+        }
+
+        shown = order[0];
+        paintTabs();
+        $('out').innerHTML = '<div class="loading">Asking each courier where it goes&hellip;</div>';
+
+        return Promise.all(order.map(function(k){
+          var a = first[k];
+          byCourier[k] = { account: a.id, label: a.label, areas: null };
+
+          return fetch('/api/courier/areas?account=' + a.id, { cache:'no-store' })
+            .then(function(r){ return r.json(); })
+            .then(function(o){
+              if(o.error){ byCourier[k].error = o.error; return; }
+              byCourier[k].areas = o.areas || [];
+              byCourier[k].note = o.note || o.trouble || '';
+              byCourier[k].cached = !!o.cached;
+            })
+            .catch(function(e){ byCourier[k].error = e.message; });
+        })).then(function(){ paintTabs(); paint(); answer(); });
+      });
+  }
+
+  function paintTabs(){
+    $('ctabs').innerHTML = order.map(function(k){
+      var c = byCourier[k] || {};
+      var n = c.areas ? c.areas.length : null;
+      return '<button data-k="' + esc(k) + '" class="' + (shown === k ? 'on' : '') + '">' +
+        esc(cname(k)) + (n == null ? '' : '<span class="ct">' + n0(n) + '</span>') +
+        '</button>';
+    }).join('');
+
+    $('ctabs').querySelectorAll('button').forEach(function(b){
+      b.addEventListener('click', function(){
+        shown = b.getAttribute('data-k');
+        paintTabs(); paint();
+      });
+    });
+  }
+
+  var filter = '';
+
+  function paint(){
+    var c = byCourier[shown];
+    if(!c){ $('out').innerHTML = ''; return; }
+
+    if(c.error){
+      $('out').innerHTML = '<div class="box"><h3>' + esc(cname(shown)) + '</h3>' +
+        '<div class="msg">' + esc(c.error) + '</div>' +
+        '<div class="note">A courier that cannot be reached from this server is ' +
+        'not a courier with no cities. Press <b>Can this server reach it?</b> on ' +
+        'the <a href="/couriers">Couriers</a> page first.</div></div>';
+      return;
+    }
+
+    var areas = c.areas || [];
+    if(!areas.length){
+      $('out').innerHTML = '<div class="box"><h3>' + esc(cname(shown)) + '</h3>' +
+        '<div class="empty">' + esc(c.note ||
+          cname(shown) + ' handed over no city list.') + '</div></div>';
+      return;
+    }
+
+    var pick = areas.filter(function(a){ return a.pickup === true; }).length;
+    var drop = areas.filter(function(a){ return a.delivery === true; }).length;
+    var zones = {};
+    areas.forEach(function(a){ if(a.zone) zones[a.zone] = (zones[a.zone] || 0) + 1; });
+    var zoneKeys = Object.keys(zones);
+
+    var q = filter.trim().toLowerCase();
+    var list = q
+      ? areas.filter(function(a){
+          return (a.name + ' ' + (a.hub||'') + ' ' + (a.zone||'')).toLowerCase().indexOf(q) > -1;
+        })
+      : areas;
+
+    var hasHub  = areas.some(function(a){ return a.hub; });
+    var hasZone = areas.some(function(a){ return a.zone; });
+    var hasSvc  = areas.some(function(a){ return a.services && a.services.length; });
+    var hasPick = areas.some(function(a){ return a.pickup !== null; });
+
+    var rows = list.slice(0, 2500).map(function(a){
+      return '<tr><td><b>' + esc(a.name) + '</b></td>' +
+        (hasHub  ? '<td>' + esc(a.hub || '') + '</td>' : '') +
+        (hasZone ? '<td>' + esc(a.zone || '') + '</td>' : '') +
+        (hasPick ? '<td>' + (a.pickup === true
+          ? '<span class="yes">yes</span>'
+          : (a.pickup === false ? '<span class="no">no</span>' : '<span class="no">&mdash;</span>')) +
+          '</td>' : '') +
+        '<td>' + (a.delivery ? '<span class="yes">yes</span>'
+                             : '<span class="no">no</span>') + '</td>' +
+        (hasSvc ? '<td class="svc">' + esc((a.services || []).join(', ')) + '</td>' : '') +
+        '</tr>';
+    }).join('');
+
+    $('out').innerHTML =
+      '<div class="cards">' +
+        '<div class="card"><div class="k">Areas listed</div><div class="v">' +
+          n0(areas.length) + '</div><div class="n">' + esc(cname(shown)) +
+          ' &middot; ' + esc(c.label) + '</div></div>' +
+        (hasPick
+          ? '<div class="card"><div class="k">They collect from</div><div class="v">' +
+            n0(pick) + '</div><div class="n">pickup allowed</div></div>' : '') +
+        '<div class="card"><div class="k">They deliver to</div><div class="v">' +
+          n0(drop) + '</div><div class="n">delivery allowed</div></div>' +
+        (zoneKeys.length
+          ? '<div class="card"><div class="k">Zones</div><div class="v">' +
+            n0(zoneKeys.length) + '</div><div class="n">' +
+            esc(zoneKeys.slice(0, 4).join(', ')) + '</div></div>' : '') +
+      '</div>' +
+
+      (c.note ? '<div class="warn">' + esc(c.note) + '</div>' : '') +
+
+      '<div class="box"><h3>' + esc(cname(shown)) + '’s own list' +
+        '<span class="aside">' +
+        (q ? n0(list.length) + ' of ' + n0(areas.length) + ' match “' + esc(q) + '”'
+           : n0(areas.length) + ' areas') +
+        (c.cached ? ' · read within the hour' : ' · just read') +
+        '</span></h3>' +
+      '<div class="cbar">' +
+        '<input type="text" id="find" placeholder="Search this courier’s areas" ' +
+          'value="' + esc(filter) + '" style="min-width:280px">' +
+        '<div class="right">' +
+          '<button id="csv">Download as CSV</button>' +
+          '<button id="fresh" title="Ask the courier again rather than use the ' +
+            'copy read within the last hour">Read it again</button>' +
+        '</div>' +
+      '</div>' +
+      '<div class="lst"><table class="t"><tr><th>Area</th>' +
+        (hasHub  ? '<th>Hub</th>' : '') +
+        (hasZone ? '<th>Zone</th>' : '') +
+        (hasPick ? '<th>Pickup</th>' : '') +
+        '<th>Delivery</th>' +
+        (hasSvc ? '<th>Services</th>' : '') +
+      '</tr>' +
+      (rows || '<tr><td colspan="6" class="empty">Nothing matches that.</td></tr>') +
+      '</table></div>' +
+      (list.length > 2500
+        ? '<div class="note">Showing the first 2,500. Narrow it with the search box.</div>'
+        : '') +
+      '</div>';
+
+    var find = $('find');
+    find.addEventListener('input', function(){
+      filter = find.value;
+      var at = find.selectionStart;
+      paint();
+      var again = $('find');
+      if(again){ again.focus(); again.setSelectionRange(at, at); }
+    });
+
+    $('csv').addEventListener('click', function(){
+      var head = ['Area'];
+      if(hasHub) head.push('Hub');
+      if(hasZone) head.push('Zone');
+      if(hasPick) head.push('Pickup');
+      head.push('Delivery');
+      if(hasSvc) head.push('Services');
+
+      var cell = function(v){
+        var s = v == null ? '' : String(v);
+        return /[",\n\r]/.test(s) ? '"' + s.replace(/"/g,'""') + '"' : s;
+      };
+      var lines = [head.map(cell).join(',')];
+      list.forEach(function(a){
+        var r = [a.name];
+        if(hasHub) r.push(a.hub || '');
+        if(hasZone) r.push(a.zone || '');
+        if(hasPick) r.push(a.pickup === true ? 'yes' : (a.pickup === false ? 'no' : ''));
+        r.push(a.delivery ? 'yes' : 'no');
+        if(hasSvc) r.push((a.services || []).join(' / '));
+        lines.push(r.map(cell).join(','));
+      });
+
+      var blob = new Blob(['﻿' + lines.join('\r\n')], { type:'text/csv;charset=utf-8' });
+      var url = URL.createObjectURL(blob);
+      var a = document.createElement('a');
+      a.href = url; a.download = shown + '-service-areas.csv';
+      document.body.appendChild(a); a.click(); a.remove();
+      setTimeout(function(){ URL.revokeObjectURL(url); }, 1000);
+    });
+
+    $('fresh').addEventListener('click', function(){
+      var b = $('fresh');
+      b.disabled = true; b.textContent = 'Asking…';
+      fetch('/api/courier/areas?fresh=1&account=' + byCourier[shown].account,
+            { cache:'no-store' })
+        .then(function(r){ return r.json(); })
+        .then(function(o){
+          if(o.error){ byCourier[shown].error = o.error; }
+          else { byCourier[shown].areas = o.areas || []; byCourier[shown].cached = false; }
+          paintTabs(); paint(); answer();
+        })
+        .catch(function(e){ byCourier[shown].error = e.message; paint(); });
+    });
+  }
+
+  /* ---------- the question at the top ---------- */
+  //
+  // Asked of every courier at once, because the useful answer is comparative:
+  // one goes there, one does not, and that is which one the parcel is booked
+  // with. An exact name wins; otherwise the closest few are offered, since
+  // couriers spell the same town three ways between them.
+
+  function answer(){
+    var q = $('ask').value.trim().toLowerCase();
+    if(!q){
+      $('answer').innerHTML = '<div class="empty">Every courier’s own list, ' +
+        'side by side, as soon as you type.</div>';
+      return;
+    }
+
+    var out = order.map(function(k){
+      var c = byCourier[k] || {};
+      if(c.error) return '<div class="hit"><b>' + esc(cname(k)) + '</b>' +
+        '<span class="pill no">could not be read</span></div>';
+      if(!c.areas) return '<div class="hit"><b>' + esc(cname(k)) + '</b>' +
+        '<span class="pill no">no list</span></div>';
+
+      var hits = c.areas.filter(function(a){
+        return a.name.toLowerCase().indexOf(q) > -1;
+      });
+      var exact = hits.filter(function(a){ return a.name.toLowerCase() === q; });
+      var best = exact.length ? exact : hits;
+
+      if(!best.length){
+        return '<div class="hit"><b>' + esc(cname(k)) + '</b>' +
+          '<span class="pill no">does not go there</span>' +
+          '<span class="svc">nothing in their list matches</span></div>';
+      }
+
+      var one = best[0];
+      var can = one.delivery
+        ? (one.pickup === true ? 'pickup and delivery' : 'delivery')
+        : (one.pickup === true ? 'pickup only' : 'listed');
+
+      return '<div class="hit"><b>' + esc(cname(k)) + '</b>' +
+        '<span class="pill ' + (one.delivery ? 'ok' : 'part') + '">' + esc(can) + '</span>' +
+        '<span class="svc">' + esc(one.name) +
+        (one.hub ? ' · ' + esc(one.hub) + ' hub' : '') +
+        (one.zone ? ' · ' + esc(one.zone) : '') +
+        (best.length > 1 ? ' · and ' + n0(best.length - 1) + ' more like it' : '') +
+        '</span></div>';
+    }).join('');
+
+    $('answer').innerHTML = out;
+  }
+
+  $('btnConnect').addEventListener('click', function(){ location.href = '/auth/connect'; });
+
+  window.APP.ready.then(function(s){
+    if(!s.connected){ $('gate').classList.remove('hide'); return; }
+    $('body').classList.remove('hide');
+
+    $('ask').addEventListener('input', answer);
+
+    fetch('/api/courier/kinds', { cache:'no-store' })
+      .then(function(r){ return r.json(); })
+      .then(function(d){ (d.kinds || []).forEach(function(k){ COURIER_NAME[k.key] = k.name; }); })
+      .catch(function(){})
+      .then(loadAll)
+      .catch(function(e){ $('out').innerHTML = '<div class="msg">' + esc(e.message) + '</div>'; });
+  });
+})();
+</script>
+</body>
+</html>

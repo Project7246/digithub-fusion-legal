@@ -92,7 +92,14 @@
     cal:    '<rect x="6" y="10" width="36" height="32" rx="3" fill="' + SL + '"/>' +
             '<rect x="6" y="10" width="36" height="9" rx="3" fill="' + GY + '"/>' +
             '<rect x="13" y="25" width="7" height="7" rx="2" fill="' + LG + '"/>' +
-            '<rect x="24" y="25" width="7" height="7" rx="2" fill="' + TL + '"/>'
+            '<rect x="24" y="25" width="7" height="7" rx="2" fill="' + TL + '"/>',
+    chart:  '<rect x="6" y="8" width="36" height="32" rx="3" fill="' + SL + '"/>' +
+            '<rect x="12" y="25" width="6" height="9" rx="1.5" fill="' + LG + '"/>' +
+            '<rect x="21" y="18" width="6" height="16" rx="1.5" fill="' + GY + '"/>' +
+            '<rect x="30" y="13" width="6" height="21" rx="1.5" fill="' + TL + '"/>',
+    map:    '<path d="M17 7L5 12v29l12-5 14 5 12-5V7L31 12z" fill="' + SL + '"/>' +
+            '<path d="M17 7v29M31 12v29" stroke="' + LG + '" stroke-width="2.5" fill="none"/>' +
+            '<circle cx="24" cy="22" r="6" fill="' + TL + '"/>'
   };
 
   function esc(s){

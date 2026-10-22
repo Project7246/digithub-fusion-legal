@@ -39,7 +39,7 @@ import { listCompanies } from './companies.js';
 import { listSheets, listTabs, readTab, paintRows, testConnection } from './sheets.js';
 import {
   initUsers, getUser, linkCompany, userOwns,
-  listUsers, setUserAccess, setUserCompanies, realmsForUser, usersByEmails,
+  listUsers, setUserAccess, setUserMoney, setUserCompanies, realmsForUser, usersByEmails,
   askAgain, stopAsking
 } from './users.js';
 import {
@@ -165,7 +165,8 @@ import { startHousekeeping, cleanUp, lastClean } from './housekeeping.js';
 import { reachCourier } from './reach.js';
 import { relayState } from './wire.js';
 import {
-  dashboard as dashData, recentCprs, pickups, pickupOrders, ordersBy, eachOrder
+  dashboard as dashData, recentCprs, pickups, pickupOrders, ordersBy, eachOrder,
+  deliveryReport
 } from './dashdata.js';
 const app = express();
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 25 * 1024 * 1024 } });
@@ -547,6 +548,9 @@ async function whoIs(sub) {
     // the logs with their name on them are still the company's record - but every
     // door is shut to them from the next page they ask for.
     disabled: !!(u && u.disabled),
+    // Money on the courier reports is hidden from this person. A hide, not a
+    // right: see setUserMoney() in users.js for why it is not in RIGHT_GROUPS.
+    hideMoney: !!(u && u.hide_money),
     at: Date.now()
   };
   // The server's own list, and nothing else, makes somebody an admin of Fusion
@@ -557,7 +561,7 @@ async function whoIs(sub) {
   // decision about a user, and there is nobody above this address to make it -
   // left as it was, an admin whose row had never been ruled on was refused by
   // every route that asks (switching company among them).
-  if (who.admin) { who.role = 'admin'; who.allowed = true; }
+  if (who.admin) { who.role = 'admin'; who.allowed = true; who.hideMoney = false; }
   if (who.disabled) { who.allowed = false; who.role = 'none'; who.rights = []; }
   whoCache.set(sub, who);
   return who;
@@ -684,6 +688,8 @@ app.get('/api/admin/users', async (req, res) => {
         role: (!!u.email && ADMIN_EMAILS.has(String(u.email).toLowerCase()))
           ? 'admin' : (u.role || 'viewer'),
         rights: Array.isArray(u.rights) ? u.rights : [],
+        // parcels yes, money no - the tick beside the role on /users
+        hideMoney: !!u.hide_money,
         realms: byUser.get(u.sub) || [],
         decided: !!u.decided_at,
         asking: u.asked !== false,
@@ -898,6 +904,44 @@ app.post('/api/mail/test', async (req, res) => {
     return res.status(502).json({ error: 'The mail server refused it.', status: mailStatus() });
   }
   res.json({ ok: true, to: who.email, status: mailStatus() });
+});
+
+// Parcels yes, money no.
+//
+// Asked for by name: a user id that should see where every parcel got to and
+// nothing about what it was worth. It is not one of RIGHT_GROUPS - those are
+// things somebody may *do*, and they only bite on a custom role - so it is a
+// flag of its own, off until an administrator turns it on, and the report
+// route strips the figures before they leave the server.
+app.post('/api/admin/users/money', async (req, res) => {
+  const realmId = await requireAdmin(req, res);
+  if (!realmId) return;
+
+  const { sub, hide } = req.body || {};
+  if (!sub) return res.status(400).json({ error: 'Which person?' });
+
+  try {
+    const u = await getUser(sub);
+    if (!u) return res.status(404).json({ error: 'No such person.' });
+    if (u.email && ADMIN_EMAILS.has(String(u.email).toLowerCase())) {
+      return res.status(400).json({ error: 'That address runs Fusion and sees everything.' });
+    }
+
+    // the same fence as /access: one company's administrator changes the
+    // people in that company and nobody else's
+    const me = await whoIs(currentUser(req));
+    if (!(me && me.admin)) {
+      const theirs = u.home_realm === realmId ||
+        (await realmsForUser(sub)).indexOf(realmId) > -1;
+      if (!theirs) return res.status(403).json({ error: 'That person is not in this company.' });
+    }
+
+    await setUserMoney(sub, !!hide);
+    forgetWho(sub);
+    res.json({ ok: true, hide: !!hide });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
 });
 
 app.post('/api/admin/users/access', async (req, res) => {
@@ -1401,6 +1445,10 @@ const PAGE_NEED = new Map(Object.entries({
   '/couriers.html': 'couriersync',
   '/courier-dash.html': 'couriersync',
   '/receipts.html': 'couriersync',
+  '/delivery-reports.html': 'couriersync',
+  '/service-areas.html': 'couriersync',
+  '/load-sheet.html': 'couriersync',
+  '/dispatch-app.html': 'couriersync',
   '/cprs.html': 'couriersync',
   '/shopify.html': 'shopify',
   '/shopify-log.html': 'shopify',
@@ -2237,6 +2285,11 @@ app.get('/auth/status', async (req, res) => {
       ? RIGHT_GROUPS.map(g => g.key)
       : ((who && who.rights) || []),
     jobs: RIGHT_GROUPS.map(g => g.key),
+    // Parcels yes, money no. The eye on the delivery report is hidden rather
+    // than offered-and-refused when this is on, and the report itself comes
+    // back without the figures - a switch the page could flick back is not a
+    // switch.
+    hideMoney: !!(who && who.hideMoney),
     user: user ? (user.name || user.email) : null,
     loginId: (user && user.login_id) || null,
     avatarV: (user && user.avatar && user.avatar_at) ? new Date(user.avatar_at).getTime() : null
@@ -7552,6 +7605,22 @@ app.get('/api/shopify/orders', async (req, res) => {
         gid: r.order_gid, name: r.name, number: r.number,
         placedAt: r.placed_at, customer: r.customer, city: r.city,
         shop: r.shop_label,
+        // Where the parcel is going, for the load sheet. bill_to is the block
+        // the invoice prints - [name, address1, address2, "city, province"] -
+        // so the street is what is left when the name is taken off the front
+        // and the city line off the back. It is thrown away ten days after an
+        // order is invoiced (housekeeping.js), which is long after the parcel
+        // went out, so a load sheet never misses it.
+        phone: r.phone || '',
+        shipTo: (function () {
+          const b = Array.isArray(r.bill_to) ? r.bill_to : [];
+          return {
+            name: b[0] || r.customer || '',
+            address: b.slice(1, Math.max(1, b.length - 1)).join(', '),
+            city: r.city || '',
+            phone: r.phone || ''
+          };
+        })(),
         subtotal: Number(r.subtotal), discount: Number(r.discount),
         shipping: Number(r.shipping), tax: Number(r.tax), total: Number(r.total),
         financial: r.financial, fulfillment: r.fulfillment, cancelled: r.cancelled,
@@ -8499,6 +8568,48 @@ app.get('/api/courier/pickups', async (req, res) => {
   }
 });
 
+// One day's handover as a file - what a load sheet would have listed.
+//
+// This route was written into public/pickups.html by mistake, where it was
+// never code at all: express.static served it to the browser as the text of
+// a page, so /pickups showed a screenful of JavaScript and the download it
+// defines did not exist. It belongs here.
+app.get('/api/courier/pickup-file', async (req, res) => {
+  const realmId = await requireCompany(req, res);
+  if (!realmId) return;
+
+  const day = String(req.query.day || '').trim();
+  if (!day) return res.status(400).json({ error: 'Which day?' });
+
+  try {
+    const d = await pickupOrders(realmId, {
+      day, account: req.query.account, courier: req.query.courier
+    });
+
+    const cell = v => {
+      const s = v == null ? '' : String(v);
+      return /[",\n\r]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
+    };
+
+    const rows = [['Order ref', 'Tracking', 'City', 'Amount', 'Status',
+                   'Booked', 'Delivered'].map(cell).join(',')];
+
+    d.orders.forEach(o => {
+      rows.push([o.orderRef, o.tracking, o.city, o.amount, o.status,
+                 o.bookedOn, o.deliveredOn].map(cell).join(','));
+    });
+
+    rows.push('');
+    rows.push([`${d.parcels} parcels`, '', '', d.amount].map(cell).join(','));
+
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+    res.setHeader('Content-Disposition', `attachment; filename="handover-${day}.csv"`);
+    res.send('\uFEFF' + rows.join('\r\n') + '\r\n');
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 // the orders behind any number on the page
 app.get('/api/courier/rows', async (req, res) => {
   const realmId = await requireCompany(req, res);
@@ -8830,6 +8941,96 @@ app.get('/api/courier/reach', async (req, res) => {
     res.setHeader('Cache-Control', 'no-store');
     const out = await reachCourier(a);
     out.relay = relayState();
+    res.json(out);
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// ==================== where each courier goes ====================
+//
+// The courier's own coverage list, not ours. Trax hand over every city with
+// its hub, its zone, whether they collect there and which services reach it;
+// M&P keep two lists, one for collection and one for delivery; PostEx hand
+// over the cities they deliver to. One shape above this line, so the page can
+// put three couriers side by side and answer "who goes to Chaman".
+//
+// Kept in memory for an hour per account. A city list changes a few times a
+// year, and reading it from the courier on every page open would be a slow
+// page and a charge on the month for nothing - it does not touch the database
+// at all, which is the point.
+const AREA_CACHE = new Map();
+const AREA_LIFE = 60 * 60 * 1000;
+
+app.get('/api/courier/areas', async (req, res) => {
+  const realmId = await requireCompany(req, res);
+  if (!realmId) return;
+
+  const id = Number(req.query.account);
+  if (!id) return res.status(400).json({ error: 'Which account?' });
+
+  try {
+    res.setHeader('Cache-Control', 'no-store');
+
+    const key = realmId + ':' + id;
+    const kept = AREA_CACHE.get(key);
+    if (kept && Date.now() - kept.at < AREA_LIFE && req.query.fresh !== '1') {
+      return res.json(Object.assign({}, kept.out, { cached: true }));
+    }
+
+    const acc = await getCourierAccount(realmId, id);
+    if (!acc) return res.status(404).json({ error: 'No such courier account' });
+
+    const a = adapterFor(acc.courier);
+    if (!a) return res.status(400).json({ error: 'Unknown courier' });
+    if (typeof a.fetchAreas !== 'function') {
+      return res.json({ courier: acc.courier, account: acc.label, areas: [],
+        note: a.name + ' have no call that lists where they go.' });
+    }
+
+    const areas = await a.fetchAreas(acc.token, credsOf(acc));
+    const out = {
+      courier: acc.courier, account: acc.label, accountId: acc.id,
+      areas, trouble: areas.trouble || null, at: new Date().toISOString()
+    };
+    AREA_CACHE.set(key, { at: Date.now(), out });
+    res.json(out);
+  } catch (e) {
+    res.status(502).json({ error: e.message });
+  }
+});
+
+// ==================== the delivery report ====================
+//
+// Everything a merchant asks of a courier at the end of a week, per courier
+// company, with the money stripped out for anybody an administrator has
+// hidden it from. Stripped here rather than hidden on the page, because a
+// figure the browser was sent is a figure that was shown.
+app.get('/api/courier/report', async (req, res) => {
+  const realmId = await requireCompany(req, res);
+  if (!realmId) return;
+
+  const { from, to, account, courier } = req.query;
+  if (!from || !to) return res.status(400).json({ error: 'Which dates?' });
+
+  try {
+    res.setHeader('Cache-Control', 'no-store');
+    const who = await whoIs(currentUser(req));
+    const out = await deliveryReport(realmId, { from, to, account, courier });
+
+    out.money = !(who && who.hideMoney);
+    if (!out.money) {
+      out.couriers.forEach(c => {
+        c.amount = null; c.charges = null; c.paid = null;
+        Object.keys(c.groups).forEach(g => {
+          c.groups[g] = { n: c.groups[g].n, amount: null, charges: null };
+        });
+        c.statuses.forEach(s => { s.amount = null; s.charges = null; });
+        (c.cities || []).forEach(x => { x.amount = null; });
+        (c.days || []).forEach(x => { x.amount = null; });
+      });
+    }
+
     res.json(out);
   } catch (e) {
     res.status(500).json({ error: e.message });

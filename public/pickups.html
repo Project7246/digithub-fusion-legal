@@ -1,36 +1,285 @@
-// one day's handover as a file - what a load sheet would have listed
-app.get('/api/courier/pickup-file', async (req, res) => {
-  const realmId = await requireCompany(req, res);
-  if (!realmId) return;
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Pickups</title>
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="manifest" href="/manifest.json">
+<meta name="theme-color" content="#222F34">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@600;700;800&family=Roboto:wght@400;500&family=Roboto+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/app.css">
+<style>
+  /* Not .bar: app.css keeps a 7px progress bar under that name. */
+  .cbar{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:14px}
+  .cbar input[type=date],.cbar select{border:1px solid var(--line);border-radius:7px;
+    padding:7px 9px;font:inherit;font-size:12.5px;background:#fff;height:auto;width:auto}
+  .cbar button{border:1px solid var(--line);background:#fff;border-radius:7px;
+    padding:7px 12px;font:inherit;font-size:12.5px;cursor:pointer;width:auto;height:auto;
+    color:var(--ink)}
+  .cbar button:hover{border-color:var(--qbo)}
+  .cbar button.on{background:var(--qbo);border-color:var(--qbo);color:#fff;font-weight:600}
+  .cbar .right{margin-left:auto;display:flex;gap:6px;align-items:center}
 
-  const day = String(req.query.day || '').trim();
-  if (!day) return res.status(400).json({ error: 'day required' });
+  .cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(168px,1fr));gap:12px;
+    margin-bottom:16px}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:15px 17px}
+  .card .k{font-size:10.5px;letter-spacing:.08em;text-transform:uppercase;color:var(--faint)}
+  .card .v{font-family:var(--mono);font-size:22px;font-weight:500;margin-top:6px;line-height:1.1}
+  .card .n{font-size:11.5px;color:var(--muted);margin-top:4px}
 
-  try {
-    const d = await pickupOrders(realmId, {
-      day, account: req.query.account, courier: req.query.courier
-    });
+  .box{background:var(--panel);border:1px solid var(--line);border-radius:10px;
+    padding:16px 18px;margin-bottom:14px}
+  .box h3{margin:0 0 14px;font-size:13.5px;font-weight:600;display:flex;
+    align-items:baseline;gap:9px}
+  .box h3 .aside{margin-left:auto;font-size:11.5px;color:var(--faint);font-weight:400}
 
-    const cell = v => {
-      const s = v == null ? '' : String(v);
-      return /[",\n\r]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
-    };
+  table.t{width:100%;border-collapse:collapse;font-size:12.5px}
+  table.t th{text-align:left;font-size:10px;text-transform:uppercase;letter-spacing:.06em;
+    color:var(--faint);border-bottom:1px solid var(--line);padding:8px;font-weight:600}
+  table.t td{padding:8px;border-bottom:1px solid var(--line);vertical-align:top}
+  table.t td.r,table.t th.r{text-align:right;font-family:var(--mono)}
+  table.t td.mono{font-family:var(--mono);font-size:12px;white-space:nowrap}
+  table.t tr:last-child td{border-bottom:0}
+  table.t tr.click{cursor:pointer}
+  table.t tr.click:hover td{background:#F5FAFD}
+  td.kidcell{padding:0 0 10px 18px;background:#FBFDFE}
+  table.t.sub th{font-size:9.5px}
+  table.t.sub td{padding:5px 8px;font-size:12px}
+  .lst{max-height:600px;overflow:auto}
+  .mkd{border:1px solid var(--line);background:#fff;border-radius:6px;padding:3px 9px;
+    font:inherit;font-size:11px;cursor:pointer;color:var(--ink);width:auto;height:auto}
+  .mkd:hover{border-color:var(--qbo);color:var(--qbo)}
 
-    const rows = [['Order ref', 'Tracking', 'City', 'Amount', 'Status',
-                   'Booked', 'Delivered'].map(cell).join(',')];
+  .note{font-size:11.5px;color:var(--faint);margin-top:11px}
+  .msg{padding:13px 15px;border-radius:8px;background:#FDF3F3;border:1px solid var(--neg);
+    color:var(--neg);font-size:12.5px;margin-bottom:12px}
+  .loading{color:var(--muted);font-size:12.5px;padding:22px 0}
+  .empty{color:var(--muted);font-size:12.5px;padding:16px 0}
+</style>
+</head>
+<body>
 
-    d.orders.forEach(o => {
-      rows.push([o.orderRef, o.tracking, o.city, o.amount, o.status,
-                 o.bookedOn, o.deliveredOn].map(cell).join(','));
-    });
+<div class="layout">
+  <aside class="rail"></aside>
 
-    rows.push('');
-    rows.push([`${d.parcels} parcels`, '', '', d.amount].map(cell).join(','));
+  <div class="main">
+    <div class="topline">
+      <div>
+        <h1>Pickups</h1>
+        <div class="sub" id="sub">What was handed over, day by day</div>
+      </div>
+    </div>
 
-    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
-    res.setHeader('Content-Disposition', `attachment; filename="handover-${day}.csv"`);
-    res.send('\uFEFF' + rows.join('\r\n') + '\r\n');
-  } catch (e) {
-    res.status(500).json({ error: e.message });
+    <div class="shell">
+
+      <div id="gate" class="gate hide">
+        <img src="/logo.svg" alt="">
+        <h2>Connect your QuickBooks company</h2>
+        <p>Courier accounts are kept per company.</p>
+        <button class="solid" id="btnConnect">Connect to QuickBooks</button>
+      </div>
+
+      <div id="body" class="hide">
+        <div class="cbar">
+          <button data-days="29" class="on">30 days</button>
+          <button data-days="89">3 months</button>
+          <button data-days="364">A year</button>
+          <input type="date" id="from">
+          <input type="date" id="to">
+          <button id="go" class="on">Show</button>
+          <div class="right">
+            <select id="acct"><option value="">Every account</option></select>
+          </div>
+        </div>
+        <div id="out"><div class="loading">Reading&hellip;</div></div>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<script src="/nav.js"></script>
+<script>
+(function(){
+  "use strict";
+  var $ = function(id){ return document.getElementById(id); };
+
+  function esc(s){
+    return String(s == null ? '' : s)
+      .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
   }
-});
+  function n0(v){ return Number(v||0).toLocaleString('en-US'); }
+  function full(v){
+    return Number(v||0).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2});
+  }
+  function iso(d){
+    return d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' +
+           String(d.getDate()).padStart(2,'0');
+  }
+
+  var fromEl = $('from'), toEl = $('to');
+  function setRange(days){
+    var t = new Date(), f = new Date();
+    f.setDate(f.getDate() - days);
+    fromEl.value = iso(f); toEl.value = iso(t);
+  }
+
+  var days = [];
+
+  function load(){
+    $('out').innerHTML = '<div class="loading">Reading&hellip;</div>';
+
+    var p = new URLSearchParams();
+    p.set('from', fromEl.value); p.set('to', toEl.value);
+    if($('acct').value) p.set('account', $('acct').value);
+
+    fetch('/api/courier/pickups?' + p.toString(), { cache:'no-store' })
+      .then(function(r){ return r.json(); })
+      .then(function(d){
+        if(d.error){ $('out').innerHTML = '<div class="msg">' + esc(d.error) + '</div>'; return; }
+        days = d.days || [];
+        paint();
+      })
+      .catch(function(e){ $('out').innerHTML = '<div class="msg">' + esc(e.message) + '</div>'; });
+  }
+
+  function paint(){
+    if(!days.length){
+      $('out').innerHTML = '<div class="box"><h3>Nothing handed over in these dates</h3>' +
+        '<p style="font-size:12.5px;color:var(--muted);margin:0">A day appears here ' +
+        'once a courier says it collected the parcels. Bring the orders in from the ' +
+        '<a href="/couriers">Couriers</a> page, or widen the dates.</p></div>';
+      return;
+    }
+
+    var parcels = days.reduce(function(a,d){ return a + d.parcels; }, 0);
+    var amount  = days.reduce(function(a,d){ return a + d.amount; }, 0);
+    var delivered = days.reduce(function(a,d){ return a + d.delivered; }, 0);
+    var returned  = days.reduce(function(a,d){ return a + d.returned; }, 0);
+    var settled = delivered + returned;
+
+    var rows = days.map(function(d, i){
+      return '<tr class="click" data-i="' + i + '">' +
+        '<td class="mono"><b>' + esc(d.day) + '</b></td>' +
+        '<td>' + esc(d.account) + '</td>' +
+        '<td class="r">' + n0(d.parcels) + '</td>' +
+        '<td class="r">' + full(d.amount) + '</td>' +
+        '<td class="r">' + n0(d.delivered) + '</td>' +
+        '<td class="r">' + n0(d.returned) + '</td>' +
+        '<td><button class="mkd" data-dl="' + i + '">Sheet</button></td></tr>' +
+        '<tr class="kids" id="kids' + i + '" style="display:none">' +
+          '<td colspan="7" class="kidcell"></td></tr>';
+    }).join('');
+
+    $('out').innerHTML =
+      '<div class="cards">' +
+        '<div class="card"><div class="k">Handover days</div><div class="v">' +
+          n0(days.length) + '</div><div class="n">in these dates</div></div>' +
+        '<div class="card"><div class="k">Parcels given</div><div class="v">' +
+          n0(parcels) + '</div><div class="n">collected by a courier</div></div>' +
+        '<div class="card"><div class="k">Worth</div><div class="v">' + full(amount) +
+          '</div><div class="n">COD on what went out</div></div>' +
+        '<div class="card"><div class="k">Settled since</div><div class="v">' +
+          (settled ? Math.round(1000 * delivered / settled) / 10 + '%' : '—') +
+          '</div><div class="n">' + n0(delivered) + ' delivered, ' + n0(returned) +
+          ' back</div></div>' +
+      '</div>' +
+      '<div class="box"><h3>Each handover' +
+        '<span class="aside">click a day to see its parcels</span></h3>' +
+        '<div class="lst"><table class="t"><tr><th>Day</th><th>Account</th>' +
+        '<th class="r">Parcels</th><th class="r">Worth</th>' +
+        '<th class="r">Delivered since</th><th class="r">Returned</th><th></th></tr>' +
+        rows + '</table></div>' +
+        '<div class="note">This is what the courier says it collected — the ' +
+        'load sheet after the fact. The sheet you hand the rider before the day ' +
+        'starts is on <a href="/load-sheet">Load sheet</a>.</div></div>';
+
+    $('out').querySelectorAll('button[data-dl]').forEach(function(b){
+      b.addEventListener('click', function(e){
+        e.stopPropagation();
+        var d = days[Number(b.getAttribute('data-dl'))];
+        var p = new URLSearchParams();
+        p.set('day', d.day);
+        if(d.accountId) p.set('account', d.accountId);
+        location.href = '/api/courier/pickup-file?' + p.toString();
+      });
+    });
+
+    $('out').querySelectorAll('tr[data-i]').forEach(function(tr){
+      tr.addEventListener('click', function(){
+        var i = Number(tr.getAttribute('data-i'));
+        var kids = document.getElementById('kids' + i);
+        if(kids.style.display !== 'none'){ kids.style.display = 'none'; return; }
+        kids.style.display = '';
+
+        var cell = kids.querySelector('.kidcell');
+        if(cell.getAttribute('data-done')) return;
+        cell.innerHTML = '<div class="loading">Reading&hellip;</div>';
+
+        var d = days[i];
+        var p = new URLSearchParams();
+        p.set('day', d.day);
+        if(d.accountId) p.set('account', d.accountId);
+
+        fetch('/api/courier/pickups?' + p.toString(), { cache:'no-store' })
+          .then(function(r){ return r.json(); })
+          .then(function(o){
+            cell.setAttribute('data-done', '1');
+            var lines = (o.orders || []).map(function(x){
+              return '<tr><td class="mono">' + esc(x.tracking) + '</td>' +
+                '<td class="mono">' + esc(x.orderRef || '') + '</td>' +
+                '<td>' + esc(x.city || '') + '</td>' +
+                '<td>' + esc(x.status || '') + '</td>' +
+                '<td class="r">' + full(x.amount) + '</td></tr>';
+            }).join('');
+            cell.innerHTML = '<table class="t sub"><tr><th>Tracking</th><th>Order</th>' +
+              '<th>City</th><th>Status now</th><th class="r">Amount</th></tr>' +
+              (lines || '<tr><td colspan="5">No parcels on that day.</td></tr>') +
+              '</table>';
+          })
+          .catch(function(e){ cell.innerHTML = '<div class="msg">' + esc(e.message) + '</div>'; });
+      });
+    });
+  }
+
+  $('btnConnect').addEventListener('click', function(){ location.href = '/auth/connect'; });
+
+  window.APP.ready.then(function(s){
+    if(!s.connected){ $('gate').classList.remove('hide'); return; }
+    $('body').classList.remove('hide');
+
+    setRange(29);
+
+    document.querySelectorAll('.cbar button[data-days]').forEach(function(b){
+      b.addEventListener('click', function(){
+        document.querySelectorAll('.cbar button[data-days]').forEach(function(x){
+          x.classList.remove('on');
+        });
+        b.classList.add('on');
+        setRange(Number(b.getAttribute('data-days')));
+        load();
+      });
+    });
+    $('go').addEventListener('click', load);
+    $('acct').addEventListener('change', load);
+
+    fetch('/api/courier/accounts', { cache:'no-store' })
+      .then(function(r){ return r.json(); })
+      .then(function(d){
+        var want = new URLSearchParams(location.search).get('account');
+        $('acct').innerHTML = '<option value="">Every account</option>' +
+          (d.accounts || []).map(function(a){
+            return '<option value="' + a.id + '"' +
+              (String(a.id) === want ? ' selected' : '') + '>' + esc(a.label) + '</option>';
+          }).join('');
+      })
+      .catch(function(){})
+      .then(load);
+  });
+})();
+</script>
+</body>
+</html>
