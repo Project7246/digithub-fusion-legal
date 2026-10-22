@@ -31,6 +31,7 @@ import {
 import {
   settingsOf as shopifySettings, saveSettings as saveShopifySettings,
   itemsPossible, standingAccounts, openBooks, itemFor, previewItem, whyNot,
+  shelfSeen,
   shippingItemFor, descOf,
   sweep as shopifySweep, syncState, startShopifySync, wakeSoon,
   nudgeOrder, nudgeProduct, wireHooks
@@ -8397,6 +8398,9 @@ app.get('/api/shopify/progress', (req, res) => {
   res.json({
     ok: true,
     state: syncState(),
+    // what the last read of QuickBooks' product list held - the one figure
+    // that tells "your SKUs are missing" from "the read of them is broken"
+    shelf: shelfSeen(),
     at: new Date().toISOString(),
     upSeconds: Math.round(process.uptime())
   });

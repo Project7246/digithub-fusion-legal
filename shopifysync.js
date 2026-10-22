@@ -33,7 +33,7 @@ import {
 import { decrypt } from './secrets.js';
 import {
   getAccessToken, qbQuery, loadTerms, getOrCreateCustomer,
-  postInvoice, createItem, setItemSku, listAccounts, salesPrefs, isRetryable
+  postInvoice, listAccounts, salesPrefs, isRetryable
 } from './qb.js';
 
 const KEY = 'shopify';
@@ -61,15 +61,14 @@ export const DEFAULTS = {
   prefix: '',
   terms: '',
   shippingItem: '',
-  makeItems: true,                         // make the item if the books lack it
-  // Which kind of item to make is NOT a setting. Shopify already knows whether
-  // it tracks stock for a product; an item made here is made as the same kind
-  // of thing. A box ticked here could only ever disagree with the shop.
+  // Nothing here makes an item, renames one, or puts a SKU on one. The books
+  // are read and invoices are written, and that is the whole of what this
+  // touches - the same deal the file upload has always had.
   //
-  // The three accounts are not a choice about the product either - they are
-  // what QuickBooks requires before it will make any item at all. Left blank
-  // they are worked out from the company's own chart (see standingAccounts),
-  // so most books never need them touched.
+  // There used to be a `makeItems` switch, default on, and it did real damage
+  // before it was taken out: items created under Shopify's names beside the
+  // real ones, SKUs written onto items night after night. Anything a SKU
+  // cannot be matched to waits, by name, and somebody fixes it in QuickBooks.
   incomeAccount: '',
   cogsAccount: '',
   assetAccount: '',
@@ -125,23 +124,44 @@ export function standingAccounts(all, s) {
 
 // Can an item be made at all? Said in words rather than left to QuickBooks to
 // refuse, because "ValidationFault 2030" is not something anybody should read.
-export function itemsPossible(s, found) {
-  if (!s.makeItems) return { can: false, why: 'making items is switched off' };
-  const a = found || {};
-  if (!a.income) {
-    return { can: false, why: 'QuickBooks has no income account to put sales in' };
-  }
-  return { can: true, inventory: !!(a.asset && a.cogs) };
+// Nothing is ever made in the books from here. Kept because the settings
+// screen still asks, and the honest answer is no rather than silence.
+export function itemsPossible() {
+  return { can: false, inventory: false,
+           why: 'Fusion never makes a product in QuickBooks. A SKU it cannot ' +
+                'match waits, by name, and you put it right in QuickBooks.' };
 }
 
 /* ==================== the books, held open for one pass ==================== */
 
 // Everything a pass needs from QuickBooks, read once. A hundred orders should
 // not be a hundred readings of the item list.
+// What the last read of QuickBooks' product list actually contained.
+//
+// One line, and this whole business would have been over in a minute:
+// "QuickBooks handed back 30 products, 0 of them with a SKU" says at a glance
+// that the read is broken, where five hundred orders each naming a SKU that
+// is sitting in the books says the opposite of what is true. Kept in memory,
+// so the screen can show it without asking the database or QuickBooks again.
+const lastShelf = { at: null, items: 0, withSku: 0, why: '' };
+export function shelfSeen() { return Object.assign({}, lastShelf); }
+
 export async function openBooks(realmId, s) {
   const token = await getAccessToken(realmId);
   const settings = s || await settingsOf(realmId);
-  const shelf = await itemShelf(realmId, token);
+
+  let shelf;
+  try {
+    shelf = await itemShelf(realmId, token);
+  } catch (e) {
+    lastShelf.at = new Date().toISOString();
+    lastShelf.why = e.message;
+    throw e;
+  }
+  lastShelf.at = new Date().toISOString();
+  lastShelf.items = shelf.seen || 0;
+  lastShelf.withSku = shelf.skus.size;
+  lastShelf.why = '';
   return {
     realmId,
     token,
@@ -173,9 +193,19 @@ async function itemShelf(realmId, token) {
   let start = 1;
   let seen = 0;
   while (true) {
+    // SELECT *, not a list of columns.
+    //
+    // This read asked for `Id, Name, Sku, Description, Active` and the Sku
+    // never came back - for weeks. Every pass therefore believed that not one
+    // product in the books had a SKU, which is why the log reads "QuickBooks
+    // already had X without a SKU - put SP-21-100 on it" over and over for
+    // the same four products, night after night, and why the pass after that
+    // behaviour was removed held every order for a SKU that was plainly
+    // there. A company's whole item list is small and this is read once a
+    // pass; there is nothing to save by naming columns and a working read is
+    // worth more than the bytes.
     const q = await qbQuery(realmId, token,
-      'SELECT Id, Name, Sku, Description, Active FROM Item STARTPOSITION ' +
-      start + ' MAXRESULTS 1000');
+      'SELECT * FROM Item STARTPOSITION ' + start + ' MAXRESULTS 1000');
     const arr = q.Item || [];
     seen += arr.length;
     arr.forEach(i => {
@@ -206,46 +236,52 @@ async function itemShelf(realmId, token) {
       'it lasts, reconnect QuickBooks on the Finance page.');
   }
 
+  // Products came back and not one of them had a SKU. Matching is done on the
+  // SKU and nothing else, so every order would be held, each naming a SKU
+  // that is sitting in QuickBooks - which is exactly what happened, and it
+  // sends somebody looking for a problem that is not in their books. Said
+  // once, plainly, instead of five hundred times in the wrong words.
+  if (!skus.size) {
+    throw new Error('QuickBooks handed back ' + seen + ' products and not one ' +
+      'of them carried a SKU. Orders are matched on the SKU and nothing else, ' +
+      'so nothing has been touched. If your products do have SKUs, this is the ' +
+      'read and not the books.');
+  }
+
   return { ids, desc, skus, seen };
 }
 
-// One SKU, asked of QuickBooks itself.
+// The item list, read again, once.
 //
-// Only ever reached when the shelf read at the start of the pass does not
-// have it, which makes it cheap - and it is the difference between "we could
-// not find it" and "it is not there". A shelf is a photograph taken at the
-// start of a pass: a SKU put on an item five minutes ago is not in it, and
-// neither is anything a refused or half-answered read left out. Holding an
-// order on a photograph, and telling somebody their SKU is missing when it is
-// not, is worse than one extra query.
-async function skuInBooks(books, sku) {
-  if (!books._asked) books._asked = new Map();
-  const key = String(sku || '').toLowerCase().trim();
-  if (!key) return null;
-  if (books._asked.has(key)) return books._asked.get(key);
+// A shelf is a photograph taken at the start of a pass: a SKU put on an item
+// five minutes ago is not in it. Before an order is held for a SKU nobody can
+// find, the list is read once more and the order tried against that.
+//
+// It is the whole list and not `WHERE Sku = '...'`. That was tried and
+// QuickBooks refused it - Sku is not something their query language will
+// filter on - and the refusal came back as "QuickBooks would not say whether
+// this SKU is there", which is a true sentence and a useless one. A company's
+// item list is small; reading it twice in a pass costs almost nothing and
+// cannot be refused.
+async function freshShelf(books) {
+  if (books._reread) return books._reread;
 
-  let name = null;
-  try {
-    const safe = String(sku).replace(/'/g, "''");
-    const q = await qbQuery(books.realmId, books.token,
-      `SELECT Id, Name, Sku, Active FROM Item WHERE Sku = '${safe}' MAXRESULTS 5`);
-    const hit = (q.Item || []).filter(i => i.Active !== false)[0] || (q.Item || [])[0];
-    if (hit && hit.Name) {
-      name = hit.Name;
-      // put it on the shelf so the rest of this pass knows it too
-      books.skus.set(key, hit.Name);
-      books.ids[String(hit.Name).toLowerCase()] = hit.Id;
+  books._reread = (async () => {
+    try {
+      const shelf = await itemShelf(books.realmId, books.token);
+      books.items = shelf.ids;
+      books.desc = shelf.desc;
+      books.skus = shelf.skus;
+      return true;
+    } catch (e) {
+      // Could not be read. That is not proof the SKU is missing, and the
+      // order must not be written down as though it were.
+      books._rereadWhy = e.message;
+      return false;
     }
-  } catch (e) {
-    // A read that could not be made is not proof the SKU is missing, and the
-    // order must not be held as though it were. Said as unknown, and the
-    // caller leaves the order to be tried again.
-    books._asked.set(key, undefined);
-    return undefined;
-  }
+  })();
 
-  books._asked.set(key, name);
-  return name;
+  return books._reread;
 }
 
 // What QuickBooks itself says this item is. Blank where it says nothing, which
@@ -292,18 +328,19 @@ async function itemFor(books, line, s, ctx) {
   // different names, and the SKU is what says they are the same thing.
   if (books.skus.has(sku)) return { name: books.skus.get(sku) };
 
-  // Not on the shelf. Before holding the order, ask QuickBooks about this one
-  // SKU directly - the shelf was read at the start of the pass and a SKU put
-  // on an item since then is not in it.
-  const straight = await skuInBooks(books, sku);
-  if (straight) return { name: straight };
+  // Not on the shelf. Read the list once more before holding the order: the
+  // shelf was taken at the start of the pass, and a SKU put on an item since
+  // then is not in it.
+  const ok = await freshShelf(books);
+  if (ok && books.skus.has(sku)) return { name: books.skus.get(sku) };
 
-  if (straight === undefined) {
-    // QuickBooks would not answer. That is not the same as the SKU being
-    // missing, and must not be written down as if it were.
+  if (!ok) {
+    // The list could not be read at all. That is not the same as the SKU
+    // being missing, and must not be written down as if it were.
     return {
       missing: line.sku + (title ? ' (' + title + ')' : ''),
-      why: 'QuickBooks would not say whether this SKU is there',
+      why: 'QuickBooks would not hand over the product list, so this could ' +
+           'not be checked',
       unsure: true
     };
   }

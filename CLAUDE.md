@@ -707,6 +707,25 @@ a time, about 28 minutes to get through them"*. **Twenty an order a minute
 at once**, and nothing on the screen used to say that. Its count poll also
 stops while the tab is in the background, like every other poll here.
 
+## Fusion never changes anything in QuickBooks' product list
+
+Said by the owner, in as many words: **whatever is in QuickBooks stays as it
+is**. Every product is there and every SKU is on it. Match on the SKU, put the
+line on the invoice, change nothing - the same deal the file upload has always
+had.
+
+So nothing here makes an item, renames one, or writes a SKU onto one. The
+`makeItems` setting is gone, its tick is off the How it runs tab, and
+`createItem`/`setItemSku` are no longer imported. `itemsPossible()` answers no,
+always, and says why. A SKU that matches nothing stops that one order, names
+the SKU under **Needs you**, and goes through by itself the moment somebody
+puts that SKU on the right item in QuickBooks.
+
+The damage the old switch did is in the log and in the books: items created
+under Shopify's names beside the real ones (`SP-22`, `SP-3` as *product
+names*), and the same four products having a SKU written onto them every pass,
+night after night - because of the bug below.
+
 ## "SKU not on any item in QuickBooks" when the SKU was in QuickBooks
 
 A whole batch was held, each order naming a SKU - SP-1, SP-2, SP-11, SP-15,
@@ -715,6 +734,20 @@ products export proved it.
 
 Three things made that possible, and all three are now shut.
 
+- **The read asked for columns and QuickBooks did not send one of them.**
+  `SELECT Id, Name, Sku, Description, Active FROM Item` came back **without
+  the Sku**, every time. So every pass believed not one product in the books
+  had a SKU - which is why the log reads *"QuickBooks already had Anti Acne
+  Cleanser without a SKU - put SP-21-100 on it"* over and over for the same
+  four products, night after night, and why the pass after that behaviour was
+  removed held every order for a SKU that was plainly there. It is
+  **`SELECT * FROM Item`** now. A company's item list is small and it is read
+  once a pass; there was nothing to save by naming columns.
+- **`Sku` is not something QuickBooks will filter on.** The first attempt at a
+  fix asked `WHERE Sku = '…'` for the one missing SKU, QuickBooks refused it,
+  and the refusal reached the screen as *"QuickBooks would not say whether
+  this SKU is there"* - a true sentence and a useless one. The whole list is
+  read again instead, once per pass, which cannot be refused.
 - **`qbQuery` turned a refusal into an empty answer.** QuickBooks answers some
   refusals with a **200 and a `Fault` in the body**, and the line
   `return json.QueryResponse || {}` handed that back as a result with nothing
@@ -731,13 +764,25 @@ Three things made that possible, and all three are now shut.
   with the reason on the pulse.
 - **The shelf is a photograph.** It is read once at the start of a pass, so a
   SKU put on an item five minutes ago is not in it. Before holding an order,
-  `itemFor()` now asks QuickBooks about **that one SKU** directly
-  (`WHERE Sku = '…'`), memoised per pass, and puts what comes back on the
-  shelf for the rest of the pass. It is only ever reached on the failure path,
-  so it costs one query where there would otherwise have been a wrong answer.
-  And when that ask cannot be made at all, the order is **failed, not held** -
+  `itemFor()` reads the list once more (`freshShelf()`, memoised per pass) and
+  tries the SKU against that. It is only ever reached on the failure path, so
+  it costs one query where there would otherwise have been a wrong answer. And
+  when that read cannot be made at all, the order is **failed, not held** -
   "QuickBooks would not answer" is not "your SKU is missing", and must not be
   written down as if it were.
+- **Products back, no SKUs on any of them, is also a failed read.** Matching
+  is on the SKU and nothing else, so that state holds every order and names
+  SKUs that are sitting in the books. It throws instead, once, in words.
+
+**And the one line that would have ended this in a minute.** How it runs now
+says what the last read of QuickBooks actually contained:
+
+> Last read at 15:21: QuickBooks handed back 30 products, 0 of them carrying a
+> SKU.
+
+`shelfSeen()` keeps it in memory and `/api/shopify/progress` carries it, so the
+screen can show it without asking the database or QuickBooks again. Nothing on
+that page could answer "does Fusion actually see my SKUs" until it was there.
 
 **One held order, one reason per reason.** The message put every missing name
 under the *first* reason's heading, so an order with one line missing a SKU in

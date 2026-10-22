@@ -225,19 +225,21 @@
           <h3 style="font:600 13px var(--head);margin:22px 0 6px">A product that is not in the books yet</h3>
           <div class="hint">
             Products are matched on the <b>SKU</b> and nothing else &mdash; the same
-            SKU is used on both sides. A product QuickBooks has never heard of is
-            <b>made</b> when an invoice needs it, as the same kind of thing it is in
-            Shopify: stock-tracked there, inventory here. There is nothing to choose,
-            because choosing could only disagree with the shop.
+            SKU is used on both sides, so the two may call a thing by different
+            names and the SKU says they are the same thing.
             <br><br>
-            QuickBooks does need to be told where the money lands before it will make
-            any item. Those accounts are found in your own chart below; change them
-            only if the ones found are the wrong ones.
+            <b>Nothing is ever made, renamed, or changed in QuickBooks.</b> No item
+            is created, no SKU is written onto one. The books are read and invoices
+            are written, and that is the whole of what this touches &mdash; the same
+            deal the file upload has always had. A SKU that matches nothing stops
+            that one order, names the SKU under <b>Needs you</b>, and goes through
+            by itself the moment that SKU is on the right item in QuickBooks.
           </div>
 
-          <label class="onoff">
-            <input type="checkbox" id="sMake"> <span>Make the item in QuickBooks when it is missing</span>
-          </label>
+          <!-- The one figure that says whether the reading works. Nothing on
+               this page was able to answer "does Fusion actually see my SKUs"
+               until it was here. -->
+          <div class="said" id="shelfSaid" style="margin-bottom:14px"></div>
 
           <div class="said" id="accFound" style="margin-bottom:12px"></div>
 
@@ -619,12 +621,43 @@
       }).join('');
   }
 
+  function shelfLine(){
+    return get('/api/shopify/progress', 8).then(function(d){
+      var sh = (d && d.shelf) || {};
+      var box = $('shelfSaid');
+      if(!box) return;
+
+      if(!sh.at){
+        box.className = 'said';
+        box.textContent = 'QuickBooks\u2019 product list has not been read yet ' +
+          'this time round. It is read at the start of each pass.';
+        return;
+      }
+
+      if(sh.why){
+        box.className = 'said bad';
+        box.textContent = 'The last read of your products did not work: ' + sh.why;
+        return;
+      }
+
+      var when = new Date(sh.at).toLocaleTimeString([], { hour:'2-digit', minute:'2-digit' });
+      var ok = sh.withSku > 0;
+      box.className = 'said ' + (ok ? 'good' : 'bad');
+      box.textContent = 'Last read at ' + when + ': QuickBooks handed back ' +
+        n0(sh.items) + ' product' + (sh.items === 1 ? '' : 's') + ', ' +
+        n0(sh.withSku) + ' of them carrying a SKU.' +
+        (ok ? '' : ' Matching is on the SKU alone, so nothing can go in until ' +
+              'that reads properly \u2014 if your products do have SKUs, this is ' +
+              'the read and not your books.');
+    }).catch(function(){});
+  }
+
   function loadSetup(){
+    shelfLine();
     get('/api/shopify/settings').then(function(d){
       var s = d.settings || {};
       $('sOn').checked = s.on !== false;
       $('sFrom').value = s.startFrom || '';
-      $('sMake').checked = s.makeItems !== false;
       if(!accounts){
         get('/api/shopify/accounts').then(function(a){
           accounts = a;
@@ -669,9 +702,6 @@
       window.__paintFound = paintFound;
       paintFound();
 
-      if(d.canMakeItems === false && $('sMake').checked){
-        say($('setSaid'),'bad', 'Items cannot be made yet: ' + d.why);
-      }
     }).catch(function(e){ say($('setSaid'),'bad', e.message); });
   }
 
@@ -681,18 +711,14 @@
     post('/api/shopify/settings', {
       on: $('sOn').checked,
       startFrom: $('sFrom').value || '',
-      makeItems: $('sMake').checked,
       incomeAccount: $('sIncome').value,
       cogsAccount: $('sCogs').value,
       assetAccount: $('sAsset').value
     })
       .then(function(d){
-        say($('setSaid'), d.canMakeItems === false && d.settings.makeItems ? 'bad' : 'good',
-          d.canMakeItems === false && d.settings.makeItems
-            ? 'Saved, but items still cannot be made: ' + d.why
-            : ($('sOn').checked
-                ? 'Saved. Orders will go into QuickBooks by themselves from now on.'
-                : 'Saved.'));
+        say($('setSaid'), 'good', $('sOn').checked
+          ? 'Saved. Orders will go into QuickBooks by themselves from now on.'
+          : 'Saved.');
         loadTally();
         loadSetup();
       })
