@@ -238,47 +238,56 @@ export async function events(realmId, { kind, limit, since }) {
 }
 
 // The headline numbers, counted rather than guessed at.
+//
+// Seven counts, asked together rather than one after another. They used to be
+// seven awaits in a row, which is seven round trips to Neon for one page -
+// slow enough on a cold compute to look like a hang, and seven chances for
+// one of them to be the thing the whole screen waits behind.
 export async function tally(realmId) {
-  const byState = await pool.query(
-    `SELECT state, COUNT(*)::int AS n FROM shopify_orders
-      WHERE realm_id = $1 GROUP BY state`, [realmId]);
+  const one = [realmId];
 
-  const byKind = await pool.query(
-    `SELECT kind, COUNT(*)::int AS n FROM shopify_events
-      WHERE realm_id = $1 AND at > NOW() - INTERVAL '30 days'
-      GROUP BY kind`, [realmId]);
+  const [byState, byKind, held, due, soon, sore, stuck] = await Promise.all([
+    pool.query(
+      `SELECT state, COUNT(*)::int AS n FROM shopify_orders
+        WHERE realm_id = $1 GROUP BY state`, one),
 
-  const held = await pool.query(
-    `SELECT held_why, COUNT(*)::int AS n FROM shopify_orders
-      WHERE realm_id = $1 AND state IN ('held','waiting') AND held_why IS NOT NULL
-      GROUP BY held_why ORDER BY COUNT(*) DESC LIMIT 20`, [realmId]);
+    pool.query(
+      `SELECT kind, COUNT(*)::int AS n FROM shopify_events
+        WHERE realm_id = $1 AND at > NOW() - INTERVAL '30 days'
+        GROUP BY kind`, one),
 
-  // "Waiting" and "waiting on something that has not come round yet" are two
-  // different things, and saying only the first is how five hundred orders sit
-  // under the words "nothing waiting". How many are due now, when the next one
-  // comes round, and what went wrong last time.
-  const due = await pool.query(
-    `SELECT COUNT(*)::int AS n FROM shopify_orders
-      WHERE realm_id = $1 AND state = 'waiting' AND cancelled = FALSE
-        AND (next_try IS NULL OR next_try <= NOW())`, [realmId]);
+    pool.query(
+      `SELECT held_why, COUNT(*)::int AS n FROM shopify_orders
+        WHERE realm_id = $1 AND state IN ('held','waiting') AND held_why IS NOT NULL
+        GROUP BY held_why ORDER BY COUNT(*) DESC LIMIT 20`, one),
 
-  const soon = await pool.query(
-    `SELECT MIN(next_try) AS at FROM shopify_orders
-      WHERE realm_id = $1 AND state = 'waiting' AND next_try > NOW()`, [realmId]);
+    // "Waiting" and "waiting on something that has not come round yet" are two
+    // different things, and saying only the first is how five hundred orders
+    // sit under the words "nothing waiting". How many are due now, when the
+    // next one comes round, and what went wrong last time.
+    pool.query(
+      `SELECT COUNT(*)::int AS n FROM shopify_orders
+        WHERE realm_id = $1 AND state = 'waiting' AND cancelled = FALSE
+          AND (next_try IS NULL OR next_try <= NOW())`, one),
 
-  const sore = await pool.query(
-    `SELECT sync_error, COUNT(*)::int AS n FROM shopify_orders
-      WHERE realm_id = $1 AND state = 'waiting' AND sync_error IS NOT NULL
-      GROUP BY sync_error ORDER BY COUNT(*) DESC LIMIT 1`, [realmId]);
+    pool.query(
+      `SELECT MIN(next_try) AS at FROM shopify_orders
+        WHERE realm_id = $1 AND state = 'waiting' AND next_try > NOW()`, one),
 
-  // the whole of the queue, by the thing that is stopping each part of it
-  const stuck = await pool.query(
-    `SELECT COALESCE(held_why, sync_error, 'no reason recorded') AS why,
-            COUNT(*)::int AS n
-       FROM shopify_orders
-      WHERE realm_id = $1 AND state IN ('held','waiting')
-        AND (held_why IS NOT NULL OR sync_error IS NOT NULL)
-      GROUP BY 1 ORDER BY COUNT(*) DESC LIMIT 6`, [realmId]);
+    pool.query(
+      `SELECT sync_error, COUNT(*)::int AS n FROM shopify_orders
+        WHERE realm_id = $1 AND state = 'waiting' AND sync_error IS NOT NULL
+        GROUP BY sync_error ORDER BY COUNT(*) DESC LIMIT 1`, one),
+
+    // the whole of the queue, by the thing that is stopping each part of it
+    pool.query(
+      `SELECT COALESCE(held_why, sync_error, 'no reason recorded') AS why,
+              COUNT(*)::int AS n
+         FROM shopify_orders
+        WHERE realm_id = $1 AND state IN ('held','waiting')
+          AND (held_why IS NOT NULL OR sync_error IS NOT NULL)
+        GROUP BY 1 ORDER BY COUNT(*) DESC LIMIT 6`, one)
+  ]);
 
   const out = {
     states: {}, kinds: {}, why: held.rows, stuck: stuck.rows,

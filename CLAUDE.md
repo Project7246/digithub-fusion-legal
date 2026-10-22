@@ -647,6 +647,66 @@ pixels. That is the row of half boxes under the tabs. It is `.cbar` now, and
 renamed rather than overridden, because the next page to borrow `.bar` would
 have hit it again. The new pages all use `.cbar`.
 
+## A page whose script does not parse looks exactly like a slow server
+
+`/shopify-log` and `/shopify-undo` each shipped with **a real newline inside a
+JavaScript literal** - a `\n` that lost its backslash somewhere between an
+editor and a shell. One was `/[",<newline>]/` in a CSV helper, the other a
+`confirm()` string broken over two lines.
+
+Every page here keeps its whole script in **one block**, so one bad character
+takes the page with it. Nothing crashes, nothing reaches the server log, and
+the page still draws - the HTML is fine. What is on screen is the markup's own
+placeholder text, frozen: "Waiting…" in the live log, "Loading…" under the
+tabs, an empty strip where the figures go. It reads as a slow database and it
+is not one. Those two pages had been dead since the day they were written.
+
+- **`npm run check`** (`tools/check-pages.js`) parses every inline script and
+  every file in `public/`, names the file and line, and exits 1. Run it before
+  pushing anything that touched a page.
+- **Writing these files from a shell heredoc is what does it.** The shell eats
+  a backslash and the result is valid-looking text. Write pages with the
+  editor, or with a Python script held in a file - never a heredoc with
+  escapes in it.
+
+### And the page must say when a read fails
+
+The same screen had three loaders ending in `.catch(function(){})`. A failed
+read left the placeholder exactly as it was, so "the request died" and
+"nothing has happened yet" looked identical. Every loader says what went wrong
+now, `get()` gives up after twenty-five seconds rather than spinning for ever,
+and there is one call whose whole job is to tell the two halves apart:
+
+**`GET /api/shopify/progress` touches no database.** It answers out of memory.
+If it comes back while `/api/shopify/report` does not, everything is queued
+behind the database, and the page says so - rather than leaving somebody
+looking at a spinner wondering whether the server is up.
+
+`tally()` in `shopify.js` was seven `await`s in a row - seven round trips to
+Neon for one page, slow enough on a cold compute to look like a hang. They are
+one `Promise.all` now.
+
+## Auto sync says what it is doing, not that it is on
+
+"Auto sync on" is a switch. It is not an answer to *what is being synced*, and
+the Connector made that worse: it said **"running; nothing is waiting"** over
+542 orders that were ready to go, because that sentence was printed whenever
+no next turn was booked and nothing had failed. The queue was never in it.
+
+The writer now keeps `state.doing` - the batch total, how many of it are done
+and **the order it is on** - updated as each one is written. It is in memory,
+so reading it is free, and both screens show it:
+
+- the Connector has a bar under the five counts while a pass is running
+- the live log on `/shopify-log` has the same bar above the lines already
+  written, asked every four seconds, which costs the database nothing
+
+And the Connector's line now accounts for the queue: *"542 ready to go — 20 at
+a time, about 28 minutes to get through them"*. **Twenty an order a minute
+(`SHOPIFY_BATCH`, `SHOPIFY_SWEEP_SECONDS`) is why five hundred do not all move
+at once**, and nothing on the screen used to say that. Its count poll also
+stops while the tab is in the background, like every other poll here.
+
 ## What the database is allowed to keep
 
 47 MB in a fortnight, on a plan with about 1 GB, with three different reasons

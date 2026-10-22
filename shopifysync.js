@@ -505,7 +505,14 @@ export async function writeOne(books, row, s) {
 
 const state = {
   running: false, startedAt: 0, lastAt: null, lastDid: null, note: '',
-  everyMs: BUSY_EVERY
+  everyMs: BUSY_EVERY,
+  // Where this pass has got to. "Working through them now" is not an answer
+  // to "what is it doing": five hundred orders take half an hour at twenty a
+  // minute, and for all of that the only word on the screen was "working".
+  // This is the order it is on and how far through the batch it is, kept in
+  // memory, so reading it costs no query at all.
+  doing: null,
+  batch: BATCH
 };
 
 // If a pass ever dies in a way that leaves `running` true, every pass after it
@@ -519,11 +526,13 @@ export async function sweep() {
   if (state.running && (Date.now() - state.startedAt) < STUCK_AFTER) return;
   state.running = true;
   state.startedAt = Date.now();
+  state.doing = { step: 'looking', total: 0, done: 0, order: '' };
   const did = { done: 0, held: 0, failed: 0, off: 0, items: 0, looked: 0 };
 
   try {
     const rows = await dueOrders(BATCH);
     did.looked = rows.length;
+    state.doing = { step: 'writing', total: rows.length, done: 0, order: '' };
     const byRealm = new Map();
     rows.forEach(r => {
       if (!byRealm.has(r.realm_id)) byRealm.set(r.realm_id, []);
@@ -559,6 +568,9 @@ export async function sweep() {
       }
 
       for (const r of list) {
+        // named before the attempt, not after: the point is to say which one
+        // it is on while it is on it
+        if (state.doing) state.doing.order = r.name || r.order_gid || '';
         try {
           const how = await writeOne(books, r, s);
           did[how] = (did[how] || 0) + 1;
@@ -566,6 +578,7 @@ export async function sweep() {
           await setFailed(realmId, r.order_gid, e.message);
           did.failed++;
         }
+        if (state.doing) state.doing.done++;
       }
       did.items += books.made;
     }
@@ -575,6 +588,7 @@ export async function sweep() {
     // whatever happened in there, this comes off - otherwise the next pass and
     // every pass after it turns round at the door
     state.running = false;
+    state.doing = null;
     state.lastAt = new Date().toISOString();
     state.lastDid = did;
   }

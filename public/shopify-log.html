@@ -71,6 +71,19 @@
   table.t td.mono{font-family:var(--mono);font-size:11.5px;white-space:nowrap}
   table.t td.num{text-align:right;font-family:var(--mono);white-space:nowrap}
   table.t tr.bad td{background:#FDF6F5}
+
+  /* what the writer is doing this second */
+  .nowline{display:flex;align-items:baseline;gap:10px;padding:9px 12px 6px;
+    font-size:12.5px;flex-wrap:wrap}
+  .nowline b{font-size:12.5px}
+  .nowline span{color:var(--muted);font-family:var(--mono);font-size:11.5px}
+  .nowbar{height:6px;background:var(--line);margin:0 12px 10px;border-radius:3px;
+    overflow:hidden}
+  .nowbar i{display:block;height:6px;background:var(--qbo);border-radius:3px;
+    transition:width .4s}
+  .tot.broke{display:block}
+  .trouble{padding:12px 14px;border:1px solid var(--neg);border-radius:9px;
+    background:#FDF3F3;color:var(--neg);font-size:12.5px}
   .scroll{max-height:520px;overflow:auto;border:1px solid var(--line);border-radius:8px}
   .none{padding:30px;text-align:center;color:var(--muted);font-size:12.5px}
 
@@ -133,7 +146,8 @@
           <span style="flex:1"></span>
           <button class="ghost" id="btnSwitch">&nbsp;</button>
         </div>
-        <pre class="runlog" id="runLog">Waiting&hellip;</pre>
+        <div id="nowBar" style="display:none"></div>
+        <pre class="runlog" id="runLog">Reading the log&hellip;</pre>
       </div>
 
       <div class="step">
@@ -281,10 +295,36 @@
   }
   function say(el, cls, text){ el.className = 'said ' + (cls||''); el.textContent = text || ''; }
 
-  function get(url){
-    return fetch(url, { cache:'no-store' }).then(function(r){
-      return r.json().then(function(d){ if(!r.ok) throw new Error(d.error||'Server said '+r.status); return d; });
-    });
+  // A request that never answers used to leave "Loading…" on the screen for
+  // as long as the tab stayed open. There is no such thing as a read of this
+  // page that is worth waiting twenty-five seconds for, so it gives up and
+  // says so - a page that says nothing is a page nobody can act on.
+  function get(url, seconds){
+    var ctl = window.AbortController ? new AbortController() : null;
+    var gaveUp = false;
+    var timer = setTimeout(function(){
+      gaveUp = true;
+      if(ctl) ctl.abort();
+    }, (seconds || 25) * 1000);
+
+    return fetch(url, { cache:'no-store', signal: ctl ? ctl.signal : undefined })
+      .then(function(r){
+        clearTimeout(timer);
+        return r.json().then(function(d){
+          if(!r.ok) throw new Error(d.error || 'The server said ' + r.status);
+          return d;
+        }, function(){
+          throw new Error('The server answered ' + r.status +
+                          ' with something that was not an answer.');
+        });
+      })
+      .catch(function(e){
+        clearTimeout(timer);
+        if(gaveUp) throw new Error('No answer in ' + (seconds || 25) +
+          ' seconds. The database may be asleep or busy \u2014 try again, and if ' +
+          'it keeps happening the live line above says which half is stuck.');
+        throw e;
+      });
   }
   function post(url, body){
     return fetch(url, {
@@ -414,7 +454,50 @@
       } else {
         off.style.display = 'none';
       }
-    }).catch(function(){});
+      $('tot').classList.remove('broke');
+    }).catch(function(e){
+      // It used to swallow this, so a failed read left an empty strip where
+      // the figures go and a page that looked half drawn with no reason given.
+      $('tot').className = 'tot broke';
+      $('tot').innerHTML = '<div class="trouble"><b>The figures could not be ' +
+        'read.</b> ' + esc(e.message) + '</div>';
+      pulseTrouble(e.message);
+    });
+  }
+
+  // Which half is stuck. /api/shopify/progress answers out of memory and
+  // never asks the database anything, so if it comes back while the rest does
+  // not, everything is waiting behind the database and not behind a server
+  // that has fallen over. Worth one extra call only when something is already
+  // wrong.
+  function pulseTrouble(why){
+    $('pulse').className = 'pulse bad';
+    $('pulse').innerHTML = '<span class="beat off"></span><span>' +
+      '<b>Checking what is stuck\u2026</b></span>';
+
+    get('/api/shopify/progress', 8).then(function(d){
+      var st = d.state || {};
+      var doing = st.doing;
+      var line = doing && doing.total
+        ? 'It is in the middle of writing <b>' + n0(doing.done) + ' of ' +
+          n0(doing.total) + '</b>' + (doing.order ? ' \u00b7 ' + esc(doing.order) : '') +
+          ', which is most likely what the database is busy with. Give it a ' +
+          'minute and look again.'
+        : (st.running
+            ? 'A pass is running, which is most likely what the database is ' +
+              'busy with. Give it a minute and look again.'
+            : 'The server is up and nothing is running, so the <b>database</b> ' +
+              'is what did not answer \u2014 Neon wakes slowly after it has been ' +
+              'idle. Reload in a moment.');
+
+      $('pulse').innerHTML = '<span class="beat off"></span><span>' +
+        '<b>The server is answering.</b> ' + line + '</span>';
+    }).catch(function(){
+      $('pulse').innerHTML = '<span class="beat off"></span><span>' +
+        '<b>The server itself is not answering.</b> ' + esc(why) +
+        ' \u2014 this is not a database problem. If it lasts, the app is ' +
+        'restarting or down.</span>';
+    });
   }
 
   function card(cls, n, what){
@@ -623,8 +706,11 @@
   // read at leisure, kept, or sent to somebody.
   function csvCell(v){
     var t = String(v == null ? '' : v);
-    return /[",
-]/.test(t) ? '"' + t.replace(/"/g, '""') + '"' : t;
+    // A real newline inside a regex literal is a syntax error, and this one
+    // took the whole page down with it: every script on /shopify-log is in
+    // one block, so the log never read, the figures never drew and the
+    // "Loading..." under the tabs was the markup, not a request.
+    return /[",\n\r]/.test(t) ? '"' + t.replace(/"/g, '""') + '"' : t;
   }
 
   $('btnCsv').addEventListener('click', function(){
@@ -699,7 +785,41 @@
       $('runWhen').textContent = rows.length
         ? 'last ' + clock(rows[rows.length - 1].at) : '';
       if(atEnd) box.scrollTop = box.scrollHeight;
-    }).catch(function(){});
+    }).catch(function(e){
+      // "Waiting…" for ever was the old answer to this, and it is the same
+      // word the log shows before anything has happened - so a dead read and
+      // a quiet morning looked identical.
+      $('runLog').innerHTML = '<span class="no">' + esc(e.message) + '</span>';
+      $('runWhen').textContent = 'not reading';
+    });
+  }
+
+  // The one line that answers "what is it doing right now". It reads the
+  // in-memory state, so it costs the database nothing and can be asked every
+  // few seconds while a pass is running.
+  function loadNow(){
+    return get('/api/shopify/progress', 8).then(function(d){
+      var st = d.state || {}, doing = st.doing;
+      var bar = $('nowBar');
+
+      if(!st.running || !doing){
+        bar.style.display = 'none';
+        return st;
+      }
+
+      bar.style.display = '';
+      var pct = doing.total ? Math.round(100 * doing.done / doing.total) : 0;
+      bar.innerHTML =
+        '<div class="nowline"><b>Writing now</b>' +
+          (doing.step === 'looking'
+            ? '<span>looking for what is due\u2026</span>'
+            : '<span>' + n0(doing.done) + ' of ' + n0(doing.total) +
+              ' in this batch' + (doing.order ? ' \u00b7 ' + esc(doing.order) : '') +
+              '</span>') +
+        '</div>' +
+        '<div class="nowbar"><i style="width:' + pct + '%"></i></div>';
+      return st;
+    }).catch(function(){ return null; });
   }
 
   // Started by hand, stopped by hand, and nothing else stops it.
@@ -718,12 +838,13 @@
         paintSwitch(d.settings && d.settings.on !== false);
         loadTally();
       })
-      .catch(function(){})
+      .catch(function(e){ pulseTrouble(e.message); })
       .then(function(){ $('btnSwitch').disabled = false; });
   });
 
   /* ---------- off we go ---------- */
   window.APP.ready.then(function(){
+    loadNow();
     loadTally();
     loadHeld();
     loadLog();
@@ -742,8 +863,11 @@
     // Only the totals and the log keep moving. A table somebody is reading
     // should stay where it is - the log above already says it is alive.
     beat(loadTally, 30000);
+    // And the one that costs nothing: it reads memory, not the database, so
+    // it can say which order is being written without keeping Neon awake.
+    beat(loadNow, 4000);
     document.addEventListener('visibilitychange', function(){
-      if(!document.hidden){ loadLog(); loadTally(); }
+      if(!document.hidden){ loadNow(); loadLog(); loadTally(); }
     });
   });
 })();

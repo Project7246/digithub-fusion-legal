@@ -5,6 +5,7 @@
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
+    "check": "node tools/check-pages.js",
     "postinstall": "node buildstamp.js"
   },
   "dependencies": {

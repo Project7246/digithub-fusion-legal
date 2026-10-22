@@ -8383,6 +8383,25 @@ app.get('/api/shopify/accounts', async (req, res) => {
 
 /* ==================== what happened ==================== */
 
+// What the writer is doing this second - and the one call on the page that
+// never touches the database.
+//
+// That is the whole point of it. When /api/shopify/report sat there and the
+// screen said "Loading…" for ten minutes, there was no way from the outside to
+// tell a server that had stopped answering from a database that had. This
+// answers out of memory, so if it comes back and the others do not, the
+// database is what everyone is waiting behind, and the page says so instead of
+// spinning.
+app.get('/api/shopify/progress', (req, res) => {
+  res.setHeader('Cache-Control', 'no-store');
+  res.json({
+    ok: true,
+    state: syncState(),
+    at: new Date().toISOString(),
+    upSeconds: Math.round(process.uptime())
+  });
+});
+
 app.get('/api/shopify/report', async (req, res) => {
   const realmId = await requireCompany(req, res);
   if (!realmId) return;

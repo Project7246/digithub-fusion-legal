@@ -357,9 +357,10 @@
         'Choose one, or untick them.');
       return;
     }
-    if(!confirm('Fold ' + want.length + ' products back into the ones chosen?
-
-' +
+    // Two real newlines inside this string were a syntax error, and the
+    // whole page's script is one block - so nothing on /shopify-undo ever
+    // ran, not the merge, not the lists, not the undo.
+    if(!confirm('Fold ' + want.length + ' products back into the ones chosen?\n\n' +
                 'Each duplicate loses its SKU, its name is parked and it is made ' +
                 'inactive. The product it goes into keeps everything of its own and ' +
                 'gains the SKU if it had none.')) return;

@@ -99,6 +99,17 @@
   .said.good{color:var(--qbo)}
 
   /* ---- where the orders are ---- */
+  /* what the writer is doing this second */
+  .nowbox{border:1px solid var(--qbo);border-radius:10px;background:#F2FBFA;
+    margin:0 0 14px}
+  .nowline{display:flex;align-items:baseline;gap:10px;padding:10px 14px 7px;
+    font-size:12.5px;flex-wrap:wrap}
+  .nowline span{color:var(--muted);font-family:var(--mono);font-size:11.5px}
+  .nowbar{height:6px;background:#D9EEEC;margin:0 14px 11px;border-radius:3px;
+    overflow:hidden}
+  .nowbar i{display:block;height:6px;background:var(--qbo);border-radius:3px;
+    transition:width .4s}
+
   .counts{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:12px;
     margin-bottom:16px}
   .cnt{background:var(--panel);border:1px solid var(--line);border-radius:10px;
@@ -351,6 +362,8 @@
       <span class="said" id="said" style="display:block;margin:-6px 0 16px"></span>
 
       <!-- ===================== where the orders are ===================== -->
+      <div class="nowbox" id="nowBox" style="display:none"></div>
+
       <div class="counts" id="counts"></div>
 
       <pre class="runlog" id="log"></pre>
@@ -552,11 +565,24 @@
         '<b>' + n0(Math.max(0, r.n)) + '</b><span>' + r.w + '</span></a>';
     }).join('');
 
+    // It used to say "running; nothing is waiting" whenever no next turn was
+    // booked and nothing had failed - and said it over five hundred orders
+    // that were ready to go. The queue is the first thing this line has to
+    // account for, and the batch size is the second: twenty at a time, once a
+    // minute, is the reason 542 do not all move at once.
     var bits = [];
+
+    if(t.due){
+      var mins = Math.max(1, Math.ceil(t.due / (NOW.batch || 20)));
+      bits.push(n0(t.due) + ' ready to go — ' + (NOW.batch || 20) +
+                ' at a time, about ' + mins + ' minute' + (mins === 1 ? '' : 's') +
+                ' to get through them');
+    }
     if(t.nextTry) bits.push('next turn at ' + clock(t.nextTry));
     if(t.lastError) bits.push('last thing that stopped one: ' + t.lastError);
+
     $('when').textContent = S.on
-      ? (bits.length ? bits.join(' · ') : 'running; nothing is waiting')
+      ? (bits.length ? bits.join(' · ') : 'running · nothing is waiting')
       : 'auto sync is off — only this button writes anything';
 
     if((st.held || 0) > 0){
@@ -568,6 +594,39 @@
     } else {
       $('tell').className = 'tell';
     }
+  }
+
+  /* ---------- what it is doing this second ---------- */
+  //
+  // "Auto sync is on" says a switch is on. It does not say whether anything
+  // is happening, which is what somebody actually wants to know after turning
+  // it on. This reads the writer's own state out of memory - no database at
+  // all, so it can be asked every few seconds without keeping Neon awake -
+  // and names the order going in right now.
+
+  var NOW = { batch: 20 };
+
+  function nowLine(){
+    return fetch('/api/shopify/progress', { cache:'no-store' })
+      .then(function(r){ return r.json(); })
+      .then(function(d){
+        var st = d.state || {}, doing = st.doing;
+        NOW.batch = st.batch || NOW.batch;
+
+        var box = $('nowBox');
+        if(!st.running || !doing){ box.style.display = 'none'; return; }
+
+        box.style.display = '';
+        var pct = doing.total ? Math.round(100 * doing.done / doing.total) : 0;
+        box.innerHTML =
+          '<div class="nowline"><b>Writing now</b><span>' +
+          (doing.step === 'looking'
+            ? 'looking for what is due\u2026'
+            : n0(doing.done) + ' of ' + n0(doing.total) + ' in this batch' +
+              (doing.order ? ' \u00b7 ' + esc(doing.order) : '')) +
+          '</span></div><div class="nowbar"><i style="width:' + pct + '%"></i></div>';
+      })
+      .catch(function(){ $('nowBox').style.display = 'none'; });
   }
 
   /* ---------- reading the state ---------- */
@@ -632,13 +691,29 @@
   }
 
   /* ---------- off we go ---------- */
+  var NOWTIMER = null;
+
   window.APP.ready.then(function(){
+    nowLine();
     look().then(terms);
-    // the numbers move on their own while this page is open, because the loop
-    // is running whether anybody is looking or not
-    TIMER = setInterval(function(){ if(!BUSY) look(); }, 20000);
+    // The counts come from the database, so they are asked for rarely and
+    // never while this tab is in the background - a page left open on a desk
+    // should not be the reason the month's compute runs out.
+    TIMER = setInterval(function(){
+      if(!BUSY && !document.hidden) look();
+    }, 20000);
+    // The live line costs nothing - it reads memory - so it can be quick.
+    NOWTIMER = setInterval(function(){
+      if(!document.hidden) nowLine();
+    }, 4000);
+    document.addEventListener('visibilitychange', function(){
+      if(!document.hidden){ nowLine(); if(!BUSY) look(); }
+    });
   });
-  window.addEventListener('beforeunload', function(){ if(TIMER) clearInterval(TIMER); });
+  window.addEventListener('beforeunload', function(){
+    if(TIMER) clearInterval(TIMER);
+    if(NOWTIMER) clearInterval(NOWTIMER);
+  });
 })();
 </script>
 </body>
