@@ -19,6 +19,17 @@
     border-bottom:2px solid transparent;white-space:nowrap}
   .tabs a:hover{color:var(--ink)}
   .tabs a.on{color:var(--ink);border-bottom-color:var(--qbo);font-weight:600}
+  /* the all-couriers receipt list, and the parcels that open under a row */
+  tr.rrow{cursor:pointer}
+  tr.rrow:hover td{background:#F7FAFC}
+  td.kidcell{padding:0 0 10px 18px;background:#FBFDFE}
+  table.t.sub{margin:0}
+  table.t.sub th{font-size:10.5px}
+  table.t.sub td{padding:5px 8px;font-size:12px}
+  .pill{display:inline-block;padding:1px 8px;border-radius:20px;font-size:10.5px;
+    font-weight:600}
+  .pill.ok{background:#E7F6EE;color:#2F7A52}
+  .pill.wait{background:#FFF4E5;color:#8A5A1B}
 
   .bar{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:16px}
   .bar input[type=date],.bar input[type=text],.bar input[type=email],
@@ -185,8 +196,8 @@
   <div class="main">
     <div class="topline">
       <div>
-        <h1>Cash payment receipts</h1>
-        <div class="sub" id="sub">Read straight from the courier</div>
+        <h1>Receipts</h1>
+        <div class="sub" id="sub">Every CPR the couriers have paid out, and what is in QuickBooks</div>
       </div>
     </div>
 
@@ -217,6 +228,15 @@
             <button id="signout" class="hide" title="Forget the saved PostEx sign-in">Sign out</button>
           </div>
         </div>
+
+        <!-- Every receipt, whichever courier paid it.
+             This used to be a page of its own at /cprs, which made two screens
+             out of one thing: a CPR *is* a receipt, and a merchant looking for
+             "what has PostEx paid me" should not have to know which of the two
+             to open. The list below is built from the parcels themselves, so a
+             courier with no portal of ours to sign in to - M&P, Trax - shows
+             up here exactly like PostEx does. -->
+        <div id="ours"></div>
 
         <div id="out"><div class="loading">Reading…</div></div>
       </div>
@@ -381,17 +401,137 @@
       '<a class="on" href="#">Receipts</a>';
   }
 
+  /* ---------- every receipt we hold, whichever courier paid it ---------- */
+  //
+  // Built from the parcels, not from a courier's portal, so it works the same
+  // for all three: PostEx's CPR number, M&P's PaymentID and Trax's payment id
+  // all end up in the same place on the order. Clicking a row opens the
+  // parcels underneath it rather than in the drawer - the drawer on this page
+  // belongs to the PostEx work below and has its own buttons.
+
+  var COURIER_NAME = {};
+  fetch('/api/courier/kinds', { cache:'no-store' })
+    .then(function(r){ return r.json(); })
+    .then(function(d){ (d.kinds || []).forEach(function(k){ COURIER_NAME[k.key] = k.name; }); })
+    .catch(function(){});
+
+  function cname(k){ return COURIER_NAME[k] || String(k || ''); }
+
+  function loadOurs(){
+    var p = new URLSearchParams();
+    p.set('limit', '300');
+
+    fetch('/api/courier/receipts?' + p.toString(), { cache:'no-store' })
+      .then(function(r){ return r.json(); })
+      .then(function(d){
+        var list = d.cprs || [];
+        if(d.error){ $('ours').innerHTML = ''; return; }
+
+        if(!list.length){
+          $('ours').innerHTML = '<div class="box" style="margin-bottom:14px">' +
+            '<h3>Receipts</h3><p style="font-size:12.5px;color:var(--muted);margin:0">' +
+            'None yet. A receipt appears here as soon as a courier says it has ' +
+            'paid for a parcel \u2014 PostEx on its receipt, M&amp;P with a payment ' +
+            'id, Trax on its payment webhook.</p></div>';
+          return;
+        }
+
+        var waiting = list.filter(function(c){ return !c.inBooks; });
+        var waitingAmount = waiting.reduce(function(a, c){ return a + c.net; }, 0);
+
+        var rows = list.map(function(c, i){
+          return '<tr class="click rrow" data-i="' + i + '">' +
+            '<td class="mono">' + esc(c.cpr) + '</td>' +
+            '<td>' + esc(cname(c.courier)) + '</td>' +
+            '<td>' + esc(c.account) + '</td>' +
+            '<td class="mono">' + esc(c.settledOn || '\u2014') + '</td>' +
+            '<td class="r">' + n0(c.orders) + '</td>' +
+            '<td class="r">' + full(c.amount) + '</td>' +
+            '<td class="r">' + full(c.charges) + '</td>' +
+            '<td class="r"><b>' + full(c.net) + '</b></td>' +
+            '<td>' + (c.inBooks
+              ? '<span class="pill ok">in QuickBooks</span>'
+              : '<span class="pill wait">not received</span>') + '</td></tr>' +
+            '<tr class="kids" id="kids' + i + '" style="display:none">' +
+              '<td colspan="9" class="kidcell"></td></tr>';
+        }).join('');
+
+        $('ours').innerHTML =
+          '<div class="box" style="margin-bottom:14px"><h3>Receipts' +
+            '<span class="aside">' + n0(list.length) + ' receipt' +
+            (list.length === 1 ? '' : 's') +
+            (waiting.length ? ' \u00b7 ' + full(waitingAmount) + ' not in QuickBooks yet' : '') +
+            ' \u00b7 click one to see its parcels</span></h3>' +
+          '<div style="max-height:520px;overflow:auto"><table class="t">' +
+          '<tr><th>Receipt</th><th>Courier</th><th>Account</th><th>Paid on</th>' +
+          '<th class="r">Parcels</th><th class="r">Collected</th>' +
+          '<th class="r">Charges</th><th class="r">Net</th><th>In the books</th></tr>' +
+          rows + '</table></div>' +
+          '<div class="note">One row per receipt number, whichever courier it came ' +
+          'from. Net is what was collected less what the courier kept. PostEx ' +
+          'receipts can also be opened and received below.</div></div>';
+
+        $('ours').querySelectorAll('tr.rrow').forEach(function(tr){
+          tr.addEventListener('click', function(){
+            var i = Number(tr.getAttribute('data-i'));
+            var kids = document.getElementById('kids' + i);
+            if(!kids) return;
+
+            if(kids.style.display !== 'none'){ kids.style.display = 'none'; return; }
+            kids.style.display = '';
+
+            var cell = kids.querySelector('.kidcell');
+            if(cell.getAttribute('data-done')) return;
+            cell.innerHTML = '<div class="loading">Reading\u2026</div>';
+
+            var q = new URLSearchParams();
+            q.set('cpr', list[i].cpr);
+            q.set('account', list[i].accountId);
+
+            fetch('/api/courier/rows?' + q.toString(), { cache:'no-store' })
+              .then(function(r){ return r.json(); })
+              .then(function(o){
+                cell.setAttribute('data-done', '1');
+                var lines = (o.orders || []).map(function(x){
+                  return '<tr><td class="mono">' + esc(x.tracking) + '</td>' +
+                    '<td class="mono">' + esc(x.orderRef || '') + '</td>' +
+                    '<td>' + esc(x.city || '') + '</td>' +
+                    '<td>' + esc(x.status || '') + '</td>' +
+                    '<td class="mono">' + esc(x.deliveredOn || '') + '</td>' +
+                    '<td class="r">' + full(x.amount) + '</td>' +
+                    '<td class="r">' + full(x.fee + x.tax) + '</td></tr>';
+                }).join('');
+                cell.innerHTML = '<table class="t sub"><tr><th>Tracking</th>' +
+                  '<th>Order</th><th>City</th><th>Status</th><th>Delivered</th>' +
+                  '<th class="r">Amount</th><th class="r">Charges</th></tr>' +
+                  (lines || '<tr><td colspan="7">No parcels on this receipt.</td></tr>') +
+                  '</table>';
+              })
+              .catch(function(e){ cell.innerHTML = '<div class="msg">' + esc(e.message) + '</div>'; });
+          });
+        });
+      })
+      .catch(function(){ $('ours').innerHTML = ''; });
+  }
+
   function loadAccounts(){
+    loadOurs();
+
     fetch('/api/courier/accounts', { cache:'no-store' })
       .then(function(r){ return r.json(); })
       .then(function(d){
         accounts = (d.accounts || []).filter(function(a){ return a.courier === 'postex'; });
 
         if(!accounts.length){
-          $('out').innerHTML = '<div class="box"><h3>No PostEx account yet</h3>' +
+          // Not an error any more, and not the whole page: the receipts above
+          // are the answer for M&P and Trax. This is only the PostEx extra.
+          $('out').innerHTML = '<div class="box"><h3>Reading PostEx\u2019s own portal</h3>' +
             '<p style="font-size:12.5px;color:var(--muted);margin:0">' +
-            'Add one on the <a href="/couriers">Couriers</a> page first, ' +
-            'then come back here to sign in to the PostEx portal.</p></div>';
+            'PostEx keeps its cash payment receipts behind a second sign-in, which ' +
+            'is what lets Fusion open a receipt, match it and write the payment ' +
+            'into QuickBooks. Add a PostEx account on the ' +
+            '<a href="/couriers">Couriers</a> page to use it. The other couriers ' +
+            'need none of this \u2014 their receipts are in the list above.</p></div>';
           $('acct').classList.add('hide');
           return;
         }

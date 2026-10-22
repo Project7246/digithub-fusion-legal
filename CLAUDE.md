@@ -447,6 +447,62 @@ decide and the hint is ignored.
   `+ add an account`, which opens `/couriers?add=<key>` with that courier already
   picked.
 
+## The courier dashboard answers the money question first
+
+The page used to say where every parcel got to and leave the only question
+anybody actually asks - **how much is the courier still holding of ours** - to
+be worked out by eye. It is now the first thing on it, and it is a chain, not a
+figure, so it can be argued with:
+
+```
+  COD on delivered parcels        what the courier collected at the door
+  less their charges and tax      what they keep for carrying it
+  = the courier owes
+  less what they have paid out    settled, or carrying a receipt number
+  = STILL TO RECEIVE              the figure to chase them for
+```
+
+- It is **all-time, not the dates on screen**. Money owed on a parcel delivered
+  last month is still owed today, and a date filter is no reason to leave it
+  off. The chosen range gets its own line underneath, and the Money tab shows
+  both chains side by side.
+- **Every line opens.** `ordersBy()` took `due` (1 = delivered and unpaid,
+  0 = paid) and `late` (delivered over a fortnight ago and still unpaid), so
+  each figure can be opened into the parcels it is made of. A number nobody can
+  open is a number nobody believes.
+- `moneyOwed()` in `dashdata.js` is the whole of it: `owedQuery()` twice - with
+  dates and without - plus `receiptsOwed()`, which is the other half of the
+  story: of the money they have paid, how much is in QuickBooks. A receipt with
+  no payment against it is money in the bank the books do not know about, and
+  that is a different job from chasing a courier.
+- **`settled IS TRUE` or a receipt number** both count as paid: PostEx says so
+  on its payment call, Trax on its payment webhook, M&P by handing back a
+  PaymentID, and all three land in the same two columns.
+- **Each courier company has its own row** (`byCourier` in `dashdata.js`) -
+  PostEx against M&P by name, not two PostEx accounts to be added up by eye.
+  Clicking one scopes the whole page to it.
+
+## CPRs and receipts were the same thing
+
+A cash payment receipt **is** the receipt, and `/cprs` and `/receipts` were two
+screens for it - so a merchant asking "what has PostEx paid me" had to know
+which to open. `/cprs` now redirects to `/receipts` (301; the address is in
+people's history), `public/cprs.html` is gone, and the rail has one line,
+**Receipts (CPR)**.
+
+The merged page has two halves, and the top one is new:
+
+- **Every receipt we hold**, built from the parcels rather than from any
+  courier's portal - so it covers all three. PostEx's CPR number, M&P's
+  PaymentID and Trax's payment id all end up as `courier_orders.cpr_number`,
+  and `recentCprs()` groups by it, joining `courier_cprs` where a row exists
+  for what was done with it in QuickBooks. Clicking a receipt opens its parcels
+  underneath it.
+- **The PostEx portal work** below it, unchanged: sign in, match a receipt,
+  write the payment into QuickBooks. When there is no PostEx account that half
+  now explains itself quietly instead of filling the page with "No PostEx
+  account yet" - the list above is the answer for the other couriers.
+
 ## What the database is allowed to keep
 
 47 MB in a fortnight, on a plan with about 1 GB, with three different reasons

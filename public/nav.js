@@ -88,8 +88,10 @@
           need:'couriersync', tile:'truck', as:'Couriers' },
         { href:'/courier-dash', label:'Tracking',      icon:'pin',    need:'couriersync', tile:'pin' },
         { href:'/pickups',      label:'Pickups',       icon:'hand',   need:'couriersync', tile:'hand' },
-        { href:'/cprs',         label:'CPRs',          icon:'sheet',  need:'couriersync', tile:'sheet' },
-        { href:'/receipts',     label:'Receipts',      icon:'receipt',need:'couriersync', tile:'receipt' }
+        // One line, because a CPR and a receipt are the same piece of paper.
+        // /cprs redirects here and the page carries both: every courier's
+        // receipts, and the PostEx work of writing them into QuickBooks.
+        { href:'/receipts',     label:'Receipts (CPR)', icon:'receipt',need:'couriersync', tile:'receipt' }
       ]}
     ]},
 
@@ -104,7 +106,7 @@
       { group: 'Couriers', items: [
         { href:'/couriers',     label:'Courier accounts', icon:'truck', need:'couriersync', tile:'truck', as:'Couriers' },
         { href:'/courier-dash', label:'Tracking',      icon:'pin',    need:'couriersync', tile:'pin' },
-        { href:'/cprs',         label:'CPRs',          icon:'sheet',  need:'couriersync', tile:'sheet' }
+        { href:'/receipts',     label:'Receipts (CPR)', icon:'receipt',need:'couriersync', tile:'receipt' }
       ]}
     ]},
 

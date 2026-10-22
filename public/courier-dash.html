@@ -50,6 +50,34 @@
   table.t td.mono{font-family:var(--mono);font-size:12px}
   table.t tr:last-child td{border-bottom:0}
   table.t tr.tot td{font-weight:600;background:#FAFCFE}
+
+  /* what the courier owes: the one thing on this page somebody is chasing,
+     so it gets the room and the only big figure above the fold */
+  .box.owed{border-color:#CFE3E2;background:linear-gradient(180deg,#F7FDFC,#fff 60%)}
+  .owedwrap{display:grid;grid-template-columns:minmax(220px,300px) 1fr;gap:22px;
+    align-items:start}
+  .owedbig{padding:4px 2px;cursor:pointer}
+  .owedbig .l2{font-size:11px;letter-spacing:.07em;text-transform:uppercase;
+    color:var(--faint)}
+  .owedbig .huge{font-family:var(--mono);font-size:40px;font-weight:500;
+    line-height:1.05;margin-top:6px;color:var(--ink)}
+  .owedbig:hover .huge{color:var(--qbo)}
+  .owedrest .sub2{font-size:11.5px;color:var(--muted)}
+  .owedrest a{color:var(--qbo);text-decoration:none}
+  .owedrest a:hover{text-decoration:underline}
+  table.t.money td:first-child{color:var(--muted)}
+  table.t.money tr.tot td{color:var(--ink)}
+  table.t.money tr.big2 td{font-size:14px;background:#F2FAF9}
+  .lateline{margin-top:12px;padding:9px 12px;border-radius:8px;background:#FFF6F3;
+    border:1px solid #F2D6CC;font-size:12.5px;color:#8A4B3C;cursor:pointer}
+  .lateline:hover{background:#FDEDE8}
+  .two{display:grid;grid-template-columns:1fr 1fr;gap:22px}
+  h4.sub3{margin:0 0 8px;font-size:11px;letter-spacing:.07em;text-transform:uppercase;
+    color:var(--faint);font-weight:600}
+  @media (max-width:900px){
+    .owedwrap{grid-template-columns:1fr}
+    .two{grid-template-columns:1fr}
+  }
   table.t tr.click{cursor:pointer}
   table.t tr.click:hover td{background:#F5FAFD}
 
@@ -200,7 +228,7 @@
         <div class="tabs" id="tabs">
           <button data-tab="overview" class="on">Overview</button>
           <button data-tab="orders">Orders</button>
-          <button data-tab="payments">Payments</button>
+          <button data-tab="payments">Money</button>
           <button data-tab="cities">Cities</button>
           <button data-go="receipts">Receipts</button>
         </div>
@@ -355,6 +383,12 @@
       (d.kinds || []).forEach(function(k){ COURIER_NAME[k.key] = k.name; });
     })
     .catch(function(){});
+
+  // "postex" is not a word anybody says. Falls back to the key itself, so a
+  // courier whose adapter was taken out still reads sensibly on old rows.
+  function courierName(key){
+    return COURIER_NAME[key] || String(key || '');
+  }
 
   function head(){
     var p = new URLSearchParams();
@@ -586,6 +620,107 @@
 
     var collected = t.deliveredAmount;
     var owed      = t.pendingAmount;
+
+    /* --- what the courier is holding that is ours --- */
+    //
+    // First thing on the page, because it is the first thing anybody wants
+    // from it. Everything below says where parcels got to; this says what
+    // that is worth and how much of it has actually come back.
+    //
+    // The figures are all-time, not the chosen dates: money owed on a parcel
+    // delivered last month is still owed today, and a date filter is no
+    // reason to leave it off the screen. The dates get their own line under
+    // it so both questions are answered at once.
+    var M = d.money || {};
+    var ever = M.ever || {}, inRange = M.range || {}, rec = M.receipts || null;
+
+    var chain =
+      '<table class="t money">' +
+        '<tr class="click" data-due="0"><td>Delivered, money collected at the door</td>' +
+          '<td class="r">' + n0(ever.delivered || 0) + ' parcels</td>' +
+          '<td class="r">' + full(ever.cod || 0) + '</td></tr>' +
+        '<tr><td>Less what the courier keeps \u2014 charges and tax</td>' +
+          '<td class="r">\u2014</td>' +
+          '<td class="r">\u2212 ' + full(ever.charges || 0) + '</td></tr>' +
+        '<tr class="tot"><td>So the courier owes</td>' +
+          '<td class="r">\u2014</td>' +
+          '<td class="r">' + full(ever.net || 0) + '</td></tr>' +
+        '<tr class="click" data-due="0"><td>Already paid out by the courier</td>' +
+          '<td class="r">' + n0(ever.paidOrders || 0) + ' parcels</td>' +
+          '<td class="r">\u2212 ' + full(ever.paid || 0) + '</td></tr>' +
+      '</table>';
+
+    var lateBit = (ever.lateOrders
+      ? '<div class="lateline click" data-late="1">' +
+          n0(ever.lateOrders) + ' of them were delivered more than a fortnight ago \u2014 ' +
+          full(ever.lateCod) + ' collected and still not paid out. Worth chasing.' +
+        '</div>'
+      : '');
+
+    var rangeBit =
+      '<div class="sub2" style="margin-top:8px">In the dates on screen (' +
+      esc(d.from) + ' to ' + esc(d.to) + '): ' +
+      full(inRange.net || 0) + ' owed, ' + full(inRange.paid || 0) + ' paid, ' +
+      '<b>' + full(inRange.due || 0) + ' still to come</b>.</div>';
+
+    var recBit = rec && rec.receipts
+      ? '<div class="sub2" style="margin-top:6px">' +
+        'Of the money they have paid, <b>' + full(rec.notInBooksAmount) + '</b> on ' +
+        n0(rec.notInBooks) + ' receipt' + (rec.notInBooks === 1 ? '' : 's') +
+        ' is not in QuickBooks yet. ' +
+        '<a href="/receipts' + (account ? '?account=' + account : '') + '">Receive it</a>.</div>'
+      : '';
+
+    T.overview +=
+      '<div class="box owed" style="margin-bottom:13px"><h3>' +
+        'What the courier still has to pay you' +
+        '<span class="aside">click any line to see those parcels</span></h3>' +
+      '<div class="owedwrap">' +
+        '<div class="owedbig click" data-due="1">' +
+          '<div class="l2">Still to receive</div>' +
+          '<div class="huge">' + full(ever.due || 0) + '</div>' +
+          '<div class="sub2">' + n0(ever.dueOrders || 0) + ' delivered parcels' +
+          (ever.oldestDue ? ' \u00b7 oldest ' + esc(ever.oldestDue) : '') + '</div>' +
+        '</div>' +
+        '<div class="owedrest">' + chain + rangeBit + recBit + '</div>' +
+      '</div>' + lateBit + '</div>';
+
+    /* --- each courier company, by its own name --- */
+    // Two PostEx accounts are one PostEx. On "All courier companies" this is
+    // the table that was missing: who is carrying how much, and who is
+    // sitting on our money.
+    var cs = d.couriers || [];
+    // one row for the company you are already standing in is noise - this
+    // table earns its place on "All courier companies" and wherever more than
+    // one of them is in the answer
+    if (cs.length > 1 || (!account && !courier && cs.length)) {
+      var cRows = cs.map(function(c){
+        return '<tr class="click" data-courier="' + esc(c.courier) + '">' +
+          '<td><b>' + esc(courierName(c.courier)) + '</b>' +
+            (c.accounts > 1 ? ' <span class="aside">' + c.accounts + ' accounts</span>' : '') +
+          '</td>' +
+          '<td class="r">' + n0(c.orders) + '</td>' +
+          '<td class="r">' + n0(c.delivered) + '</td>' +
+          '<td class="r">' + n0(c.returned) + '</td>' +
+          '<td class="r">' + n0(c.moving) + '</td>' +
+          '<td class="r" style="color:' + gradeColour(c.successRate) + ';font-weight:600">' +
+            (c.delivered + c.returned ? pc(c.successRate) : '\u2014') + '</td>' +
+          '<td class="r">' + full(c.deliveredAmount) + '</td>' +
+          '<td class="r">' + full(c.charges) + '</td>' +
+          '<td class="r" style="font-weight:600">' + full(c.due) + '</td></tr>';
+      }).join('');
+
+      T.overview += '<div class="box" style="margin-bottom:13px"><h3>' +
+        'Each courier company' +
+        '<span class="aside">click a company to see only its parcels</span></h3>' +
+        '<table class="t"><tr><th>Courier</th><th class="r">Parcels</th>' +
+        '<th class="r">Delivered</th><th class="r">Returned</th><th class="r">Moving</th>' +
+        '<th class="r">Rate</th><th class="r">Collected</th><th class="r">Charges</th>' +
+        '<th class="r">To receive</th></tr>' + cRows + '</table>' +
+        '<div class="note">Parcels booked between ' + esc(d.from) + ' and ' + esc(d.to) +
+        '. "To receive" is what that company has collected and not paid out, ' +
+        'for these dates.</div></div>';
+    }
 
     // Where a parcel got to, and what stopped it. Every group the courier can
     // report appears in exactly one row, so the rows add up to what was booked
@@ -865,6 +1000,95 @@
              '<td>' + cprBadges(c) + '</td></tr>';
     }).join('');
 
+    /* --- the money chain, in full --- */
+
+    function chainTable(x, label){
+      return '<table class="t money">' +
+        '<tr class="click" data-due="0"><td>Delivered \u2014 collected at the door</td>' +
+          '<td class="r">' + n0(x.delivered || 0) + '</td>' +
+          '<td class="r">' + full(x.cod || 0) + '</td></tr>' +
+        '<tr><td>Courier charges and tax on those</td><td class="r">\u2014</td>' +
+          '<td class="r">\u2212 ' + full(x.charges || 0) + '</td></tr>' +
+        '<tr class="tot"><td>The courier owes</td><td class="r">\u2014</td>' +
+          '<td class="r">' + full(x.net || 0) + '</td></tr>' +
+        '<tr class="click" data-due="0"><td>Paid out so far</td>' +
+          '<td class="r">' + n0(x.paidOrders || 0) + '</td>' +
+          '<td class="r">\u2212 ' + full(x.paid || 0) + '</td></tr>' +
+        '<tr class="tot big2 click" data-due="1"><td>Still to receive</td>' +
+          '<td class="r">' + n0(x.dueOrders || 0) + '</td>' +
+          '<td class="r">' + full(x.due || 0) + '</td></tr>' +
+        '</table>' +
+        '<div class="note">' + label + '</div>';
+    }
+
+    T.payments += '<div class="box" style="margin-bottom:13px"><h3>' +
+      'What the courier still has to pay you' +
+      '<span class="aside">click a line to see those parcels</span></h3>' +
+      '<div class="two">' +
+        '<div>' + '<h4 class="sub3">Everything, whenever it was booked</h4>' +
+          chainTable(ever, 'Every delivered parcel this account has, paid or not.') +
+        '</div>' +
+        '<div>' + '<h4 class="sub3">Only ' + esc(d.from) + ' to ' + esc(d.to) + '</h4>' +
+          chainTable(inRange, 'Only parcels booked inside the dates on screen.') +
+        '</div>' +
+      '</div></div>';
+
+    if (rec && rec.receipts) {
+      T.payments += '<div class="box" style="margin-bottom:13px"><h3>' +
+        'Their receipts, and our books' +
+        '<a href="/receipts' + (account ? '?account=' + account : '') + '">Open receipts</a></h3>' +
+        '<table class="t">' +
+        '<tr><td>Receipts the courier has issued</td><td class="r">' + n0(rec.receipts) +
+          '</td><td class="r">' + full(rec.worth) + '</td></tr>' +
+        '<tr><td>Written into QuickBooks</td><td class="r">' + n0(rec.inBooks) +
+          '</td><td class="r">' + full(rec.inBooksAmount) + '</td></tr>' +
+        '<tr class="tot"><td>Paid by the courier, not in QuickBooks yet</td>' +
+          '<td class="r">' + n0(rec.notInBooks) + '</td>' +
+          '<td class="r">' + full(rec.notInBooksAmount) + '</td></tr>' +
+        '</table>' +
+        '<div class="note">The money is theirs to pay and ours to record. The ' +
+        'last line is money already received that the books do not know about.' +
+        '</div></div>';
+    }
+
+    if (cs.length) {
+      T.payments += '<div class="box" style="margin-bottom:13px"><h3>' +
+        'To receive, by courier company</h3>' +
+        '<table class="t"><tr><th>Courier</th><th class="r">Delivered</th>' +
+        '<th class="r">Collected</th><th class="r">Charges</th>' +
+        '<th class="r">Owed</th><th class="r">Paid</th>' +
+        '<th class="r">To receive</th></tr>' +
+        cs.map(function(c){
+          return '<tr class="click" data-courier="' + esc(c.courier) + '">' +
+            '<td><b>' + esc(courierName(c.courier)) + '</b></td>' +
+            '<td class="r">' + n0(c.delivered) + '</td>' +
+            '<td class="r">' + full(c.deliveredAmount) + '</td>' +
+            '<td class="r">' + full(c.charges) + '</td>' +
+            '<td class="r">' + full(c.net) + '</td>' +
+            '<td class="r">' + full(c.settledAmount) + '</td>' +
+            '<td class="r" style="font-weight:600">' + full(c.due) + '</td></tr>';
+        }).join('') + '</table>' +
+        '<div class="note">For parcels booked in the dates on screen.</div></div>';
+    }
+
+    var accs = d.accounts || [];
+    if (accs.length > 1) {
+      T.payments += '<div class="box" style="margin-bottom:13px"><h3>' +
+        'And by account</h3>' +
+        '<table class="t"><tr><th>Account</th><th>Courier</th>' +
+        '<th class="r">Parcels</th><th class="r">Delivered</th>' +
+        '<th class="r">Collected</th><th class="r">Charges</th></tr>' +
+        accs.map(function(a){
+          return '<tr class="click" data-account="' + a.id + '">' +
+            '<td><b>' + esc(a.label) + '</b></td>' +
+            '<td>' + esc(courierName(a.courier)) + '</td>' +
+            '<td class="r">' + n0(a.orders) + '</td>' +
+            '<td class="r">' + n0(a.delivered) + '</td>' +
+            '<td class="r">' + full(a.deliveredAmount) + '</td>' +
+            '<td class="r">' + full(a.fee + a.tax) + '</td></tr>';
+        }).join('') + '</table></div>';
+    }
+
     T.payments += '<div class="box" style="margin-bottom:13px"><h3>Cash payment receipts' +
       '<a href="/receipts' + (account ? '?account='+account : '') + '">Open receipts</a></h3>' +
       '<table class="t"><tr><th>CPR number</th><th>Created</th><th>Status</th>' +
@@ -1051,6 +1275,35 @@
           picked: tr.getAttribute('data-picked'),
           title: tr.cells[0] ? tr.cells[0].textContent : ''
         });
+      });
+    });
+    // The money lines. due=1 is what is still owed, due=0 what has been paid,
+    // late=1 the ones old enough to chase - the same three the figures above
+    // are made of, so every number on this page opens into its own parcels.
+    $('out').querySelectorAll('[data-due]').forEach(function(el){
+      el.addEventListener('click', function(){
+        var due = el.getAttribute('data-due');
+        openList({
+          due: due,
+          title: due === '1' ? 'Still to receive from the courier'
+                             : 'Already paid out by the courier'
+        });
+      });
+    });
+    $('out').querySelectorAll('[data-late]').forEach(function(el){
+      el.addEventListener('click', function(){
+        openList({ late: '1', title: 'Delivered over a fortnight ago, still not paid' });
+      });
+    });
+    // a courier company, or one account of it, becomes the whole page's scope
+    $('out').querySelectorAll('tr[data-courier]').forEach(function(tr){
+      tr.addEventListener('click', function(){
+        location.href = '/courier-dash?courier=' + encodeURIComponent(tr.getAttribute('data-courier'));
+      });
+    });
+    $('out').querySelectorAll('tr[data-account]').forEach(function(tr){
+      tr.addEventListener('click', function(){
+        location.href = '/courier-dash?account=' + encodeURIComponent(tr.getAttribute('data-account'));
       });
     });
     $('out').querySelectorAll('tr[data-city]').forEach(function(tr){

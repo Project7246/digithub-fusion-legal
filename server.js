@@ -383,6 +383,17 @@ app.get(/^\/$|^\/[A-Za-z0-9-]+$/, async (req, res, next) => {
   }
 });
 
+// CPRs and receipts were two pages for one thing. A cash payment receipt *is*
+// the receipt, and a merchant looking for "what has PostEx paid me" should not
+// have to know which of the two screens to open - so /cprs is now /receipts,
+// which carries both the list of every courier's receipts and the PostEx work
+// of writing them into QuickBooks. Kept as a redirect because the address is
+// in people's history and in old links.
+app.get(['/cprs', '/cprs.html'], (req, res) => {
+  const q = req.originalUrl.indexOf('?');
+  res.redirect(301, '/receipts' + (q > -1 ? req.originalUrl.slice(q) : ''));
+});
+
 // The portal's people screen is Fusion's own. Anybody else who reaches for it -
 // by typing the address, or from a link they kept - is sent back to the launcher,
 // so the page is never served rather than merely hidden in a menu.
@@ -8493,11 +8504,13 @@ app.get('/api/courier/rows', async (req, res) => {
   const realmId = await requireCompany(req, res);
   if (!realmId) return;
 
-  const { from, to, account, courier, status, group, city, cpr, picked } = req.query;
+  const { from, to, account, courier, status, group, city, cpr, picked,
+          due, late } = req.query;
 
   try {
     res.setHeader('Cache-Control', 'no-store');
-    res.json(await ordersBy(realmId, { from, to, account, courier, status, group, city, cpr, picked }));
+    res.json(await ordersBy(realmId, { from, to, account, courier, status, group,
+                                       city, cpr, picked, due, late }));
   } catch (e) {
     res.status(500).json({ error: e.message });
   }

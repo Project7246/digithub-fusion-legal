@@ -29,7 +29,7 @@
 // The {url} in the address is what tells Fusion to pass the target as a query
 // parameter rather than as a path - see relayed() in wire.js.
 
-$KEY = '';   // <- put a long random string here, the same one as COURIER_RELAY_KEY
+$KEY = 'RVJ5OHpYTDU2dHVxM3RZb2xDbmxxZDJid1BiekJrdEtIdGJEcFcwOVNuUG05VERwRHhhNXoyWnRJUGJO68fa0772657f4';   // <- put a long random string here, the same one as COURIER_RELAY_KEY
 
 // Only these hosts are ever forwarded to. A relay that forwards wherever it is
 // told is an open proxy with your domain's name on it.
