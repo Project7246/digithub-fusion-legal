@@ -31,15 +31,32 @@
   .pill.ok{background:#E7F6EE;color:#2F7A52}
   .pill.wait{background:#FFF4E5;color:#8A5A1B}
 
-  .bar{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:16px}
-  .bar input[type=date],.bar input[type=text],.bar input[type=email],
-  .bar input[type=password],.bar select{border:1px solid var(--line);border-radius:7px;
+  /* The row of controls. NOT called .bar: app.css keeps a 7px progress bar
+     under that name, with overflow:hidden, and borrowing the word clipped
+     every control on this page to seven pixels - a row of half boxes under
+     the tabs, which is exactly what it looked like. */
+  .cbar{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:16px;
+    height:auto;overflow:visible;background:none;border-radius:0}
+  .cbar input[type=date],.cbar input[type=text],.cbar input[type=email],
+  .cbar input[type=password],.cbar select{border:1px solid var(--line);border-radius:7px;
     padding:7px 9px;font:inherit;font-size:12.5px;background:#fff;height:auto;width:auto}
-  .bar button{border:1px solid var(--line);background:#fff;border-radius:7px;padding:7px 12px;
+  .cbar button{border:1px solid var(--line);background:#fff;border-radius:7px;padding:7px 12px;
     font:inherit;font-size:12.5px;cursor:pointer;width:auto;height:auto;color:var(--ink)}
-  .bar button:hover{border-color:var(--qbo)}
-  .bar button.on{background:var(--qbo);border-color:var(--qbo);color:#fff;font-weight:600}
-  .bar .right{margin-left:auto;display:flex;gap:6px;align-items:center}
+  .cbar button:hover{border-color:var(--qbo)}
+  .cbar button.on{background:var(--qbo);border-color:var(--qbo);color:#fff;font-weight:600}
+  .cbar .right{margin-left:auto;display:flex;gap:6px;align-items:center}
+
+  /* One tab per courier company. A receipt belongs to one courier and to one
+     account; showing PostEx's and M&P's in the same list was the whole
+     complaint, so the courier is picked first and everything under it - the
+     cards, the list, the portal half - is only that courier's. */
+  .ctabs{display:flex;gap:7px;flex-wrap:wrap;margin:0 0 14px}
+  .ctabs a{padding:6px 13px;border:1px solid var(--line);border-radius:20px;
+    font-size:12.5px;color:var(--muted);text-decoration:none;background:#fff;
+    white-space:nowrap}
+  .ctabs a:hover{border-color:var(--qbo);color:var(--ink)}
+  .ctabs a.on{background:var(--qbo);border-color:var(--qbo);color:#fff;font-weight:600}
+  .ctabs a .ct{font-family:var(--mono);font-size:11px;opacity:.75;margin-left:5px}
 
   .cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(168px,1fr));gap:12px;
     margin-bottom:16px}
@@ -214,7 +231,10 @@
 
         <div class="tabs" id="tabs"></div>
 
-        <div class="bar">
+        <!-- which courier company's receipts. Everything below answers to it. -->
+        <div class="ctabs" id="ctabs"></div>
+
+        <div class="cbar">
           <select id="acct"></select>
           <button data-days="29">30 days</button>
           <button data-days="89" class="on">3 months</button>
@@ -236,6 +256,10 @@
              to open. The list below is built from the parcels themselves, so a
              courier with no portal of ours to sign in to - M&P, Trax - shows
              up here exactly like PostEx does. -->
+        <!-- The figures first, then the list they are made of. The receipt
+             count leads, because a receipt is the thing this page is about. -->
+        <div id="cards"></div>
+
         <div id="ours"></div>
 
         <div id="out"><div class="loading">Reading…</div></div>
@@ -267,8 +291,11 @@
   "use strict";
   var $ = function(id){ return document.getElementById(id); };
 
-  var accounts = [];
-  var account = null;          // the chosen one
+  var allAccounts = [];        // every courier's, for the tabs
+  var accounts = [];           // PostEx's alone, for the portal half below
+  var account = null;          // the chosen PostEx one
+  var scopeAccount = null;     // the account this page is standing in, any courier
+  var courier = '';            // the courier tab: '' is every company
   var all = [];                // receipts in view
   var current = null;          // the receipt open in the drawer
   var detail = null;           // what is inside it
@@ -368,11 +395,11 @@
         });
         b.classList.add('on');
         setRange(Number(b.getAttribute('data-days')));
-        load();
+        loadOurs(); load();
       });
     });
 
-    $('go').addEventListener('click', function(){ checked = false; load(); });
+    $('go').addEventListener('click', function(){ checked = false; loadOurs(); load(); });
     $('q').addEventListener('input', draw);
     $('acct').addEventListener('change', function(){
       account = accounts.filter(function(a){ return String(a.id) === $('acct').value; })[0] || null;
@@ -386,19 +413,50 @@
       setTimeout(function(){ b.disabled = false; b.textContent = 'Check QuickBooks'; }, 3000);
     });
 
-    loadAccounts();
+    loadNames().then(loadAccounts);
   });
 
   // This page is the Receipts tab of the account's own section, so it shows
   // the same bar and leads back to the rest of it.
   function drawTabs(){
-    var back = '/courier-dash?account=' + account.id + '&tab=';
+    var a = scopeAccount || account;
+    if(!a){ $('tabs').innerHTML = ''; return; }
+    var back = '/courier-dash?account=' + a.id + '&tab=';
     $('tabs').innerHTML =
       ['overview','orders','payments','cities'].map(function(k){
         return '<a href="' + back + k + '">' +
                k.charAt(0).toUpperCase() + k.slice(1) + '</a>';
       }).join('') +
       '<a class="on" href="#">Receipts</a>';
+  }
+
+  // One tab per courier company that has an account here, plus "All" in
+  // front of them. A courier with no account is not offered: an empty tab is
+  // a question nobody asked.
+  function drawCourierTabs(){
+    var seen = [], count = {};
+    allAccounts.forEach(function(a){
+      if(seen.indexOf(a.courier) < 0) seen.push(a.courier);
+      count[a.courier] = (count[a.courier] || 0) + 1;
+    });
+
+    if(!seen.length){ $('ctabs').innerHTML = ''; return; }
+
+    function href(k){
+      var q = new URLSearchParams();
+      if(k) q.set('courier', k);
+      return '/receipts' + (q.toString() ? '?' + q.toString() : '');
+    }
+
+    $('ctabs').innerHTML =
+      '<a class="' + (courier || scopeAccount ? '' : 'on') + '" href="' + href('') +
+        '">All courier companies</a>' +
+      seen.map(function(k){
+        var on = !scopeAccount && courier === k;
+        return '<a class="' + (on ? 'on' : '') + '" href="' + href(k) + '">' +
+               esc(cname(k)) +
+               '<span class="ct">' + count[k] + '</span></a>';
+      }).join('');
   }
 
   /* ---------- every receipt we hold, whichever courier paid it ---------- */
@@ -410,16 +468,25 @@
   // belongs to the PostEx work below and has its own buttons.
 
   var COURIER_NAME = {};
-  fetch('/api/courier/kinds', { cache:'no-store' })
-    .then(function(r){ return r.json(); })
-    .then(function(d){ (d.kinds || []).forEach(function(k){ COURIER_NAME[k.key] = k.name; }); })
-    .catch(function(){});
+  function loadNames(){
+    return fetch('/api/courier/kinds', { cache:'no-store' })
+      .then(function(r){ return r.json(); })
+      .then(function(d){ (d.kinds || []).forEach(function(k){ COURIER_NAME[k.key] = k.name; }); })
+      .catch(function(){});
+  }
 
   function cname(k){ return COURIER_NAME[k] || String(k || ''); }
 
   function loadOurs(){
     var p = new URLSearchParams();
     p.set('limit', '300');
+    // The courier tab, or the one account the page was opened at. Without
+    // this the list was every courier at once - PostEx's receipts with M&P's
+    // mixed in, which is not a list anybody can use.
+    if(scopeAccount)   p.set('account', scopeAccount.id);
+    else if(courier)   p.set('courier', courier);
+    if(fromEl.value)   p.set('from', fromEl.value);
+    if(toEl.value)     p.set('to', toEl.value);
 
     fetch('/api/courier/receipts?' + p.toString(), { cache:'no-store' })
       .then(function(r){ return r.json(); })
@@ -427,17 +494,42 @@
         var list = d.cprs || [];
         if(d.error){ $('ours').innerHTML = ''; return; }
 
+        var mine = scopeAccount ? scopeAccount.label : (courier ? cname(courier) : '');
+
         if(!list.length){
+          $('cards').innerHTML = '';
           $('ours').innerHTML = '<div class="box" style="margin-bottom:14px">' +
-            '<h3>Receipts</h3><p style="font-size:12.5px;color:var(--muted);margin:0">' +
-            'None yet. A receipt appears here as soon as a courier says it has ' +
-            'paid for a parcel \u2014 PostEx on its receipt, M&amp;P with a payment ' +
-            'id, Trax on its payment webhook.</p></div>';
+            '<h3>Receipts' + (mine ? '<span class="aside">' + esc(mine) + '</span>' : '') +
+            '</h3><p style="font-size:12.5px;color:var(--muted);margin:0">' +
+            'None in these dates. A receipt appears here as soon as a courier ' +
+            'says it has paid for a parcel \u2014 PostEx on its receipt, M&amp;P ' +
+            'with a payment id, Trax on its payment webhook.</p></div>';
           return;
         }
 
         var waiting = list.filter(function(c){ return !c.inBooks; });
         var waitingAmount = waiting.reduce(function(a, c){ return a + c.net; }, 0);
+        var collected = list.reduce(function(a, c){ return a + c.amount; }, 0);
+        var kept      = list.reduce(function(a, c){ return a + c.charges; }, 0);
+        var net       = list.reduce(function(a, c){ return a + c.net; }, 0);
+
+        // Receipts first. The rest of the row reads left to right the way the
+        // money does: collected at the door, what the courier kept, what is
+        // left for us, and how much of that the books already know about.
+        $('cards').innerHTML = '<div class="cards">' +
+          '<div class="card"><div class="k">Receipts (CPR)</div><div class="v">' +
+            n0(list.length) + '</div><div class="n">' +
+            esc(mine || 'all couriers') + ', in these dates</div></div>' +
+          '<div class="card"><div class="k">COD collected</div><div class="v">' +
+            full(collected) + '</div><div class="n">taken from customers at the door</div></div>' +
+          '<div class="card"><div class="k">Courier kept</div><div class="v">' +
+            full(kept) + '</div><div class="n">charges and tax on these parcels</div></div>' +
+          '<div class="card"><div class="k">Paid to us</div><div class="v">' +
+            full(net) + '</div><div class="n">net of what they kept</div></div>' +
+          '<div class="card"><div class="k">Not in QuickBooks</div><div class="v">' +
+            full(waitingAmount) + '</div><div class="n">' + n0(waiting.length) + ' of ' +
+            n0(list.length) + ' receipts</div></div>' +
+          '</div>';
 
         var rows = list.map(function(c, i){
           return '<tr class="click rrow" data-i="' + i + '">' +
@@ -457,7 +549,8 @@
         }).join('');
 
         $('ours').innerHTML =
-          '<div class="box" style="margin-bottom:14px"><h3>Receipts' +
+          '<div class="box" style="margin-bottom:14px"><h3>' +
+            (mine ? esc(mine) + ' receipts' : 'Receipts, every courier') +
             '<span class="aside">' + n0(list.length) + ' receipt' +
             (list.length === 1 ? '' : 's') +
             (waiting.length ? ' \u00b7 ' + full(waitingAmount) + ' not in QuickBooks yet' : '') +
@@ -511,16 +604,48 @@
           });
         });
       })
-      .catch(function(){ $('ours').innerHTML = ''; });
+      .catch(function(){ $('ours').innerHTML = ''; $('cards').innerHTML = ''; });
   }
 
   function loadAccounts(){
-    loadOurs();
+    var q = new URLSearchParams(location.search);
+    var wantAcct = q.get('account');
+    courier = q.get('courier') || '';
 
     fetch('/api/courier/accounts', { cache:'no-store' })
       .then(function(r){ return r.json(); })
       .then(function(d){
-        accounts = (d.accounts || []).filter(function(a){ return a.courier === 'postex'; });
+        allAccounts = d.accounts || [];
+
+        // Opened at one account - from the rail, or from that account's own
+        // dashboard - and then the whole page is that account's. The courier
+        // tab is what is used when no single account was named.
+        scopeAccount = wantAcct
+          ? (allAccounts.filter(function(a){ return String(a.id) === wantAcct; })[0] || null)
+          : null;
+        if(scopeAccount) courier = scopeAccount.courier;
+
+        drawCourierTabs();
+        drawTabs();
+        $('sub').textContent = scopeAccount ? scopeAccount.label
+          : (courier ? cname(courier) + ' only' : 'Every courier company');
+
+        loadOurs();
+
+        // The PostEx portal is a second door, and only PostEx has one. On an
+        // M&P or Trax tab there is nothing to sign in to, so the half below
+        // is not shown at all rather than shown and refused.
+        accounts = allAccounts.filter(function(a){ return a.courier === 'postex'; });
+
+        if(courier && courier !== 'postex'){
+          $('out').innerHTML = '';
+          $('acct').classList.add('hide');
+          $('signout').classList.add('hide');
+          $('recheck').classList.add('hide');
+          return;
+        }
+
+        $('recheck').classList.remove('hide');
 
         if(!accounts.length){
           // Not an error any more, and not the whole page: the receipts above
@@ -533,18 +658,18 @@
             '<a href="/couriers">Couriers</a> page to use it. The other couriers ' +
             'need none of this \u2014 their receipts are in the list above.</p></div>';
           $('acct').classList.add('hide');
+          $('recheck').classList.add('hide');
           return;
         }
 
+        $('acct').classList.remove('hide');
         $('acct').innerHTML = accounts.map(function(a){
           return '<option value="'+a.id+'">'+esc(a.label)+'</option>';
         }).join('');
 
-        // ?account=N when arriving from somewhere that already knows which one
-        var want = new URLSearchParams(location.search).get('account');
-        account = accounts.filter(function(a){ return String(a.id) === want; })[0] || accounts[0];
+        account = (scopeAccount && scopeAccount.courier === 'postex')
+          ? scopeAccount : accounts[0];
         $('acct').value = account.id;
-        drawTabs();
 
         load();
       })
@@ -623,7 +748,7 @@
   function load(){
     if(!account) return;
 
-    $('sub').textContent = account.label;
+    if(scopeAccount) $('sub').textContent = account.label;
     $('out').innerHTML = '<div class="loading">Asking PostEx…</div>';
 
     var p = new URLSearchParams();
@@ -704,16 +829,10 @@
       html += '<div class="warn">Showing what we already had. PostEx said: '+esc(trouble)+'</div>';
     }
 
-    html += '<div class="cards">' +
-      '<div class="card"><div class="k">Receipts</div><div class="v">'+n0(list.length)+
-        '</div><div class="n">in this range</div></div>' +
-      '<div class="card"><div class="k">COD collected</div><div class="v">'+full(cod)+
-        '</div><div class="n">what the courier took from customers</div></div>' +
-      '<div class="card"><div class="k">Received in QB</div><div class="v">'+full(received)+
-        '</div><div class="n">'+n0(doneCount)+' of '+n0(list.length)+' receipts</div></div>' +
-      '<div class="card"><div class="k">Still to do</div><div class="v">'+full(cod-received)+
-        '</div><div class="n">not yet in QuickBooks</div></div>' +
-      '</div>';
+    // No second row of cards here. The row at the top of the page already
+    // counts the receipts, the COD and what is still to receive; repeating it
+    // for the portal's narrower list only put two sets of figures about one
+    // subject one above the other, looking like they ought to agree.
 
     // grouped by month, newest first
     var byMonth = {};
@@ -750,8 +869,10 @@
       });
     });
 
-    html += '<div class="box"><h3>Receipts' +
-            '<span class="aside">click one to see everything inside it</span></h3>' +
+    html += '<div class="box"><h3>PostEx\u2019s own receipt book' +
+            '<span class="aside">' + n0(list.length) + ' from the portal \u00b7 ' +
+            full(cod) + ' collected \u00b7 ' + full(cod - received) +
+            ' not in QuickBooks \u00b7 click one to open it</span></h3>' +
             '<div class="scroll"><table class="t">' +
             '<tr><th>CPR number</th><th>Created</th><th>Approved</th>' +
             '<th class="r">Status</th><th class="r">COD collected</th>' +

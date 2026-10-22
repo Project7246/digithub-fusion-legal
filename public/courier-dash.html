@@ -801,6 +801,26 @@
 
     T.overview += '<div class="mini">';
 
+    // Receipts lead. Everything else on this row says where parcels got to;
+    // this one is the courier's own written admission of what it has paid,
+    // which is what the figures above are chased with.
+    var newCprs = cprs.slice(0, 4).map(function(c){
+      var st = String(c.status || '').toUpperCase();
+      return '<div class="r1"><div><div class="a">' + esc(c.cpr) + '</div>' +
+             '<div class="b2">' + esc(c.createdOn || '') + ' · ' +
+             (c.qbPaymentId ? 'in QuickBooks' : 'not received') + '</div></div>' +
+             '<div><div class="c1">' + full(c.netAmount) + '</div>' +
+             '<div class="d1">' + esc(st || '') + '</div></div></div>';
+    }).join('');
+
+    T.overview += panel('Receipts (CPR)',
+      n0(cprs.filter(function(c){ return !c.qbPaymentId; }).length) + ' not received',
+      '<div class="rows">' + (newCprs ||
+        '<div class="sub2">No receipts yet. One appears as soon as a courier ' +
+        'says it has paid for a parcel.</div>') + '</div>' +
+      '<div class="sub2" style="margin-top:8px"><a href="/receipts' +
+      (account ? '?account=' + account : '') + '">Open the receipt book</a></div>');
+
     T.overview += panel('Booked', full(t.amount) + ' worth',
       '<div class="big">' + n0(t.orders) + '</div>' +
       '<div class="sub2">parcels handed to the courier</div>' +
@@ -868,22 +888,6 @@
       '<div class="rows">' + (recent4 ||
         '<div class="sub2">Nothing delivered yet.</div>') + '</div>' +
       more('orders', 'See detail'));
-
-    var newCprs = cprs.slice(0, 4).map(function(c){
-      var st = String(c.status || '').toUpperCase();
-      return '<div class="r1"><div><div class="a">' + esc(c.cpr) + '</div>' +
-             '<div class="b2">' + esc(c.createdOn || '') + ' · ' +
-             (c.qbPaymentId ? 'in QuickBooks' : 'not received') + '</div></div>' +
-             '<div><div class="c1">' + full(c.netAmount) + '</div>' +
-             '<div class="d1">' + esc(st || '') + '</div></div></div>';
-    }).join('');
-
-    T.overview += panel('Newest receipts',
-      n0(cprs.filter(function(c){ return !c.qbPaymentId; }).length) + ' not received',
-      '<div class="rows">' + (newCprs ||
-        '<div class="sub2">No receipts pulled in yet. Sign in to the courier ' +
-        'portal on the receipts page.</div>') + '</div>' +
-      more('payments', 'See detail'));
 
     var pickTotal = picks.reduce(function(a, p){ return a + p.parcels; }, 0);
     T.overview += panel('Handed over', picks.length + ' days',
