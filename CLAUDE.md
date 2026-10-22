@@ -707,6 +707,70 @@ a time, about 28 minutes to get through them"*. **Twenty an order a minute
 at once**, and nothing on the screen used to say that. Its count poll also
 stops while the tab is in the background, like every other poll here.
 
+## "SKU not on any item in QuickBooks" when the SKU was in QuickBooks
+
+A whole batch was held, each order naming a SKU - SP-1, SP-2, SP-11, SP-15,
+SP-16, SP-21-100, SP-24 - and every one of them was sitting in the books. The
+products export proved it.
+
+Three things made that possible, and all three are now shut.
+
+- **`qbQuery` turned a refusal into an empty answer.** QuickBooks answers some
+  refusals with a **200 and a `Fault` in the body**, and the line
+  `return json.QueryResponse || {}` handed that back as a result with nothing
+  in it. So a read that was refused and a company with no products looked
+  identical. `qbQuery` throws on a Fault now. No `QueryResponse` and no Fault
+  is still an empty result, because that is a real answer - an invoice number
+  nobody has used.
+- **An empty item shelf was believed.** `itemShelf()` would come back with
+  nothing and `writeOne` would hold every order in the batch against a SKU
+  that was there all along - a merchant sent looking for a problem that does
+  not exist, which is worse than no answer at all. A shelf with **no items on
+  it is a read that failed**: even untouched books carry Services and Hours.
+  It throws, `openBooks` fails, and the orders go back in the queue untouched
+  with the reason on the pulse.
+- **The shelf is a photograph.** It is read once at the start of a pass, so a
+  SKU put on an item five minutes ago is not in it. Before holding an order,
+  `itemFor()` now asks QuickBooks about **that one SKU** directly
+  (`WHERE Sku = '…'`), memoised per pass, and puts what comes back on the
+  shelf for the rest of the pass. It is only ever reached on the failure path,
+  so it costs one query where there would otherwise have been a wrong answer.
+  And when that ask cannot be made at all, the order is **failed, not held** -
+  "QuickBooks would not answer" is not "your SKU is missing", and must not be
+  written down as if it were.
+
+**One held order, one reason per reason.** The message put every missing name
+under the *first* reason's heading, so an order with one line missing a SKU in
+Shopify and another whose SKU is not in the books read as
+`no SKU in Shopify: A, B, SP-21-100 (Anti Acne Cleanser)` - naming a SKU under
+the words "no SKU". Each reason gets its own clause now.
+
+**And a failure always says something.** The log had rows reading only
+`FAIL #9324023` with an empty message. Where QuickBooks refuses and gives no
+reason, that is what gets written, with the status and the tid.
+
+## One order is written once at a time
+
+Shopify sends several webhooks for one order within seconds - created,
+updated, paid, fulfilled - and every one of them calls `nudgeOrder`, while the
+sweep may have picked the same order up a moment earlier. Nothing stopped them
+running over each other, and the log showed it plainly:
+
+```
+03:44:26 AM  WAIT  #9324024   (three times, same second)
+03:03:16 PM  OK    #9324031  written as invoice #9324031
+03:03:17 PM  FAIL  #9324031
+03:44:08 PM  OK    #9324032  written as invoice #9324032
+03:44:08 PM  OK    #9324032  already in QuickBooks, left alone
+```
+
+Two passes both looked for an existing invoice, both found none, and both
+posted one. `writeOne()` now holds an in-process lock on
+`realm:order_gid` and **turns the second caller away** rather than queueing
+it: whatever it was going to do, the one already inside is doing, and the
+sweep comes round again regardless. It returns `'busy'`, which is counted and
+written down as nothing, because it is not an event.
+
 ## What the database is allowed to keep
 
 47 MB in a fortnight, on a plan with about 1 GB, with three different reasons

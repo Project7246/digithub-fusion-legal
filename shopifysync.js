@@ -171,11 +171,13 @@ export async function openBooks(realmId, s) {
 async function itemShelf(realmId, token) {
   const ids = {}, desc = {}, skus = new Map();
   let start = 1;
+  let seen = 0;
   while (true) {
     const q = await qbQuery(realmId, token,
       'SELECT Id, Name, Sku, Description, Active FROM Item STARTPOSITION ' +
       start + ' MAXRESULTS 1000');
     const arr = q.Item || [];
+    seen += arr.length;
     arr.forEach(i => {
       const key = String(i.Name || '').toLowerCase();
       if (!key) return;
@@ -189,7 +191,61 @@ async function itemShelf(realmId, token) {
     start += 1000;
     if (start > 9000) break;
   }
-  return { ids, desc, skus };
+
+  // An empty shelf is a read that failed, not a company with nothing in it.
+  // Even a set of books nobody has touched has Services and Hours on it, and
+  // a shop writing invoices certainly has items. Believed, this is the worst
+  // kind of wrong: every order in the batch gets held, each one naming a SKU
+  // that is sitting in QuickBooks, and the merchant goes looking for a
+  // problem that is not there. Thrown, openBooks fails, the orders go back in
+  // the queue untouched and the reason is on the screen.
+  if (!seen) {
+    throw new Error('QuickBooks handed back no products at all. Nothing can be ' +
+      'matched against an empty list, so no order has been touched. This is ' +
+      'almost always the connection rather than the books - try again, and if ' +
+      'it lasts, reconnect QuickBooks on the Finance page.');
+  }
+
+  return { ids, desc, skus, seen };
+}
+
+// One SKU, asked of QuickBooks itself.
+//
+// Only ever reached when the shelf read at the start of the pass does not
+// have it, which makes it cheap - and it is the difference between "we could
+// not find it" and "it is not there". A shelf is a photograph taken at the
+// start of a pass: a SKU put on an item five minutes ago is not in it, and
+// neither is anything a refused or half-answered read left out. Holding an
+// order on a photograph, and telling somebody their SKU is missing when it is
+// not, is worse than one extra query.
+async function skuInBooks(books, sku) {
+  if (!books._asked) books._asked = new Map();
+  const key = String(sku || '').toLowerCase().trim();
+  if (!key) return null;
+  if (books._asked.has(key)) return books._asked.get(key);
+
+  let name = null;
+  try {
+    const safe = String(sku).replace(/'/g, "''");
+    const q = await qbQuery(books.realmId, books.token,
+      `SELECT Id, Name, Sku, Active FROM Item WHERE Sku = '${safe}' MAXRESULTS 5`);
+    const hit = (q.Item || []).filter(i => i.Active !== false)[0] || (q.Item || [])[0];
+    if (hit && hit.Name) {
+      name = hit.Name;
+      // put it on the shelf so the rest of this pass knows it too
+      books.skus.set(key, hit.Name);
+      books.ids[String(hit.Name).toLowerCase()] = hit.Id;
+    }
+  } catch (e) {
+    // A read that could not be made is not proof the SKU is missing, and the
+    // order must not be held as though it were. Said as unknown, and the
+    // caller leaves the order to be tried again.
+    books._asked.set(key, undefined);
+    return undefined;
+  }
+
+  books._asked.set(key, name);
+  return name;
 }
 
 // What QuickBooks itself says this item is. Blank where it says nothing, which
@@ -235,6 +291,22 @@ async function itemFor(books, line, s, ctx) {
   // what goes on the invoice: the two sides are allowed to call a thing by
   // different names, and the SKU is what says they are the same thing.
   if (books.skus.has(sku)) return { name: books.skus.get(sku) };
+
+  // Not on the shelf. Before holding the order, ask QuickBooks about this one
+  // SKU directly - the shelf was read at the start of the pass and a SKU put
+  // on an item since then is not in it.
+  const straight = await skuInBooks(books, sku);
+  if (straight) return { name: straight };
+
+  if (straight === undefined) {
+    // QuickBooks would not answer. That is not the same as the SKU being
+    // missing, and must not be written down as if it were.
+    return {
+      missing: line.sku + (title ? ' (' + title + ')' : ''),
+      why: 'QuickBooks would not say whether this SKU is there',
+      unsure: true
+    };
+  }
 
   // And where the SKU is on nothing in QuickBooks, we stop.
   //
@@ -333,7 +405,34 @@ function payloadOf(inv, customerId, items, terms) {
 
 // Write one order into the books. Everything it can decide for itself it
 // decides; everything it cannot it says plainly and leaves alone.
+// One order is written once at a time.
+//
+// Shopify sends several webhooks for one order within seconds - created,
+// updated, paid, fulfilled - and each one calls nudgeOrder, while the sweep
+// may have picked the same order up a moment earlier. Nothing stopped them
+// running over each other, and the log showed it plainly: the same order
+// held three times in the same second, a FAIL with no reason beside an OK for
+// the same number, and "written as invoice" followed by "already in
+// QuickBooks" one second later. Two passes both found no invoice, both posted
+// one, and one of them lost.
+//
+// The second caller is turned away rather than queued. Whatever it was going
+// to do, the one already inside is doing - and the sweep comes round again
+// anyway.
+const BUSY = new Set();
+
 export async function writeOne(books, row, s) {
+  const lock = String(row.realm_id || books.realmId) + ':' + row.order_gid;
+  if (BUSY.has(lock)) return 'busy';
+  BUSY.add(lock);
+  try {
+    return await writeOneNow(books, row, s);
+  } finally {
+    BUSY.delete(lock);
+  }
+}
+
+async function writeOneNow(books, row, s) {
   const realmId = books.realmId;
   const ctx = { shopId: row.shop_id };
 
@@ -370,15 +469,36 @@ export async function writeOne(books, row, s) {
   }
 
   if (missing.length) {
-    const names = missing.map(m => m.what);
-    const why = missing[0].why + ': ' + names.slice(0, 5).join(', ') +
-      (names.length > 5 ? ' and ' + (names.length - 5) + ' more' : '');
-    await setHeld(realmId, row.order_gid, why);
+    // Each reason gets its own clause. It used to put every name under the
+    // first reason's heading, so an order with one line missing a SKU in
+    // Shopify and another whose SKU is not in QuickBooks read as "no SKU in
+    // Shopify: A, B, SP-21-100 (Anti Acne Cleanser)" - naming a SKU under the
+    // words "no SKU", which sends somebody looking in the wrong place.
+    const byWhy = new Map();
+    missing.forEach(m => {
+      if (!byWhy.has(m.why)) byWhy.set(m.why, []);
+      byWhy.get(m.why).push(m.what);
+    });
+
+    const why = [...byWhy.entries()].map(([reason, names]) =>
+      reason + ': ' + names.slice(0, 5).join(', ') +
+      (names.length > 5 ? ' and ' + (names.length - 5) + ' more' : '')
+    ).join(' \u00b7 ');
+
+    // A line we could not get an answer about is not a line we know is wrong,
+    // so the order is put back in the queue rather than held against somebody.
+    const unsure = missing.some(m => m.unsure);
+    if (unsure) {
+      await setFailed(realmId, row.order_gid, why);
+    } else {
+      await setHeld(realmId, row.order_gid, why);
+    }
+
     await note(realmId, 'held', {
       shopId: row.shop_id, orderName: row.name, gid: row.order_gid, ok: false,
       note: why, detail: { missing }
     });
-    return 'held';
+    return unsure ? 'failed' : 'held';
   }
 
   // the invoice itself, in the shape the by-hand path builds too, so the two
@@ -487,15 +607,23 @@ export async function writeOne(books, row, s) {
     return 'done';
   }
 
+  // A failure with nothing written against it is not a record of anything.
+  // The log had rows reading only "FAIL #9324023" with an empty message, and
+  // no way to find out from here what had happened.
+  const said = String(out.error || '').trim() ||
+    ('QuickBooks refused it and gave no reason' +
+     (out.status ? ' (' + out.status + ')' : '') +
+     (out.tid ? ', tid=' + out.tid : ''));
+
   const retry = isRetryable(out.error, out.status);
   if (retry) {
-    await setFailed(realmId, row.order_gid, out.error);
+    await setFailed(realmId, row.order_gid, said);
   } else {
-    await setHeld(realmId, row.order_gid, 'QuickBooks refused it');
+    await setHeld(realmId, row.order_gid, said);
   }
   await note(realmId, 'error', {
     shopId: row.shop_id, orderName: row.name, gid: row.order_gid, ok: false,
-    note: out.error,
+    note: said,
     detail: { status: out.status, tid: out.tid, willRetry: !!retry }
   });
   return retry ? 'failed' : 'held';
@@ -527,7 +655,7 @@ export async function sweep() {
   state.running = true;
   state.startedAt = Date.now();
   state.doing = { step: 'looking', total: 0, done: 0, order: '' };
-  const did = { done: 0, held: 0, failed: 0, off: 0, items: 0, looked: 0 };
+  const did = { done: 0, held: 0, failed: 0, off: 0, items: 0, looked: 0, busy: 0 };
 
   try {
     const rows = await dueOrders(BATCH);

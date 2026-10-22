@@ -162,6 +162,22 @@ export async function qbQuery(realmId, token, sql) {
     throw new Error(`Query failed (${res.status}) tid=${tidOf(res)}: ${text.slice(0, 300)}`);
   }
   const json = await res.json();
+
+  // QuickBooks answers some refusals with a 200 and a Fault in the body. This
+  // used to fall through `json.QueryResponse || {}` and come back as an empty
+  // result - so a read that was refused looked exactly like a company with
+  // nothing in it. That is how every order in a batch came to be held for
+  // "SKU not on any item in QuickBooks" against SKUs that were plainly there:
+  // the item list came back empty and nothing above here could tell.
+  const fault = json && json.Fault && ((json.Fault.Error || [])[0] || null);
+  if (fault) {
+    throw new Error(`QuickBooks refused the read (tid=${tidOf(res)}): ` +
+      (fault.Message || 'no reason given') +
+      (fault.Detail ? ' - ' + String(fault.Detail).slice(0, 200) : ''));
+  }
+
+  // No QueryResponse and no Fault is a genuinely empty result, which is a
+  // real answer - an item nobody has made, an invoice number nobody has used.
   return json.QueryResponse || {};
 }
 
