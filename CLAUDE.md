@@ -707,6 +707,64 @@ a time, about 28 minutes to get through them"*. **Twenty an order a minute
 at once**, and nothing on the screen used to say that. Its count poll also
 stops while the tab is in the background, like every other poll here.
 
+## Two paths asked QuickBooks the same question two different ways
+
+The product pages have read items correctly for as long as they have existed -
+`readItems()` in `products.js`, the one that reads six thousand items for the
+big company and matches every SKU without being handed a file:
+
+```sql
+SELECT * FROM Item WHERE Active IN (true, false) STARTPOSITION 1 MAXRESULTS 1000
+```
+
+The connector wrote its own:
+
+```sql
+SELECT Id, Name, Sku, Description, Active FROM Item STARTPOSITION 1 MAXRESULTS 1000
+```
+
+**The Sku never came back from that one.** So the connector believed no
+product in the books had a SKU, while the product pages, in the same app,
+against the same company, listed every SKU correctly. That is the whole of it,
+and the answer to "it reads six thousand SKUs there and cannot read a hundred
+here".
+
+They ask it the same way now. **A second path asking QuickBooks the same
+question in its own words is how one of them is wrong for weeks and nobody
+can see why.** `Active IN (true, false)` comes with it: QuickBooks hands back
+only the live ones unless both are asked for, and an item somebody switched
+off has to be seen here so the order can be told *that* rather than that its
+SKU does not exist. An active item always wins the SKU; an inactive one is
+only ever used to explain itself, because QuickBooks will not put a
+switched-off item on an invoice.
+
+`previewItem()` says the same sentence as `writeOne()` for that case too - the
+orders page and the writer must never be two different answers.
+
+## The words on an invoice line are QuickBooks'
+
+Every line Fusion writes carries **QuickBooks' own description** for that item,
+or nothing at all where the item says nothing - the way QuickBooks leaves it
+when somebody picks that item by hand. Shopify's product title and Shopify's
+shipping-method name are never written into the books.
+
+This was wrong until 21 Oct 2026, and the invoices written before it show it:
+
+| On the invoice | What QuickBooks holds |
+|---|---|
+| `Anti Acne Cleanser - 100ml` | `Anti Acne Cleanser` |
+| `Nationwide Reliable Shipping Rs199, FREE Shipping above Rs1999 orders.` | `Default Shipping Product` |
+
+Both of those came from Shopify. Nothing re-writes them: an invoice already in
+the books is the merchant's, and **Put it back** (`/shopify-undo`) is where
+they choose to delete and have them written again.
+
+What reaches QuickBooks on an invoice, and nothing else: the item (matched on
+SKU), QuickBooks' own description, the quantity, **Shopify's price** - what
+the buyer was actually charged is a fact of that sale - the order number as
+the document number, the buyer's own name and address in the billing block,
+and the discount. The memo is deliberately empty.
+
 ## Fusion never changes anything in QuickBooks' product list
 
 Said by the owner, in as many words: **whatever is in QuickBooks stays as it

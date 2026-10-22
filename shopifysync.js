@@ -167,6 +167,7 @@ export async function openBooks(realmId, s) {
     token,
     items: shelf.ids,                            // name -> id
     desc: shelf.desc,                            // name -> QuickBooks' own words
+    asleep: shelf.asleep,                        // sku -> name, switched off
     terms: await loadTerms(realmId, token),
     customers: {},
     skus: shelf.skus,                            // sku -> name
@@ -189,23 +190,32 @@ export async function openBooks(realmId, s) {
 // and purchase orders, and the cost lands in QuickBooks when a PO is entered -
 // nothing on an invoice has any business touching either.
 async function itemShelf(realmId, token) {
-  const ids = {}, desc = {}, skus = new Map();
+  const ids = {}, desc = {}, skus = new Map(), asleep = new Map();
   let start = 1;
   let seen = 0;
   while (true) {
-    // SELECT *, not a list of columns.
+    // The same read the product pages have always used - readItems() in
+    // products.js, the one that reads six thousand items for the big company
+    // and matches every SKU without being handed a file.
     //
-    // This read asked for `Id, Name, Sku, Description, Active` and the Sku
-    // never came back - for weeks. Every pass therefore believed that not one
-    // product in the books had a SKU, which is why the log reads "QuickBooks
-    // already had X without a SKU - put SP-21-100 on it" over and over for
-    // the same four products, night after night, and why the pass after that
-    // behaviour was removed held every order for a SKU that was plainly
-    // there. A company's whole item list is small and this is read once a
-    // pass; there is nothing to save by naming columns and a working read is
-    // worth more than the bytes.
+    // This one used to ask for `Id, Name, Sku, Description, Active` instead,
+    // and **the Sku never came back**. Every pass therefore believed that not
+    // one product in the books had a SKU. That is the whole of the bug: the
+    // log reading "QuickBooks already had Anti Acne Cleanser without a SKU -
+    // put SP-21-100 on it" night after night for the same four products, and
+    // then, once that behaviour was removed, every order held for a SKU that
+    // was sitting in QuickBooks.
+    //
+    // Two paths asking QuickBooks the same question two different ways is how
+    // one of them is wrong for weeks. They ask it the same way now.
+    //
+    // `Active IN (true, false)` because QuickBooks hands back only the live
+    // ones unless both are asked for - and an item somebody switched off is
+    // exactly what has to be seen here, so the order can be told that is what
+    // happened rather than that its SKU does not exist.
     const q = await qbQuery(realmId, token,
-      'SELECT * FROM Item STARTPOSITION ' + start + ' MAXRESULTS 1000');
+      'SELECT * FROM Item WHERE Active IN (true, false) STARTPOSITION ' +
+      start + ' MAXRESULTS 1000');
     const arr = q.Item || [];
     seen += arr.length;
     arr.forEach(i => {
@@ -214,8 +224,15 @@ async function itemShelf(realmId, token) {
       ids[key] = i.Id;
       desc[key] = String(i.Description || '');
       if (!i.Sku) return;
+
       const k = String(i.Sku).toLowerCase().trim();
-      if (!skus.has(k) || i.Active !== false) skus.set(k, i.Name);
+      // An active item always wins. QuickBooks will not put a switched-off
+      // item on an invoice, so one is no use here except to explain itself.
+      if (i.Active === false) {
+        if (!asleep.has(k)) asleep.set(k, i.Name);
+      } else {
+        skus.set(k, i.Name);
+      }
     });
     if (arr.length < 1000) break;
     start += 1000;
@@ -248,7 +265,7 @@ async function itemShelf(realmId, token) {
       'read and not the books.');
   }
 
-  return { ids, desc, skus, seen };
+  return { ids, desc, skus, asleep, seen };
 }
 
 // The item list, read again, once.
@@ -272,6 +289,7 @@ async function freshShelf(books) {
       books.items = shelf.ids;
       books.desc = shelf.desc;
       books.skus = shelf.skus;
+      books.asleep = shelf.asleep;
       return true;
     } catch (e) {
       // Could not be read. That is not proof the SKU is missing, and the
@@ -342,6 +360,17 @@ async function itemFor(books, line, s, ctx) {
       why: 'QuickBooks would not hand over the product list, so this could ' +
            'not be checked',
       unsure: true
+    };
+  }
+
+  // The SKU is in QuickBooks, on an item that has been switched off. An
+  // invoice cannot carry one, and "not on any item" would send somebody
+  // looking for something they would never find.
+  const off = books.asleep && books.asleep.get(sku);
+  if (off) {
+    return {
+      missing: line.sku + ' (on "' + off + '", which is switched off in QuickBooks)',
+      why: 'the item carrying this SKU is inactive in QuickBooks'
     };
   }
 
@@ -1003,6 +1032,16 @@ export function previewItem(books, line, s) {
   }
   if (!sku) return { how: '', item: null, why: 'no SKU in Shopify' };
   if (books.skus.has(sku)) return { how: 'SKU', item: books.skus.get(sku) };
+
+  // the same sentence writeOne would use - the comment above says these two
+  // must never be different answers, and a switched-off item is one of them
+  const off = books.asleep && books.asleep.get(sku);
+  if (off) {
+    return { how: '', item: null,
+             why: 'the item carrying this SKU, "' + off + '", is switched off ' +
+                  'in QuickBooks' };
+  }
+
   return { how: '', item: null, why: 'SKU not on any item in QuickBooks' };
 }
 
