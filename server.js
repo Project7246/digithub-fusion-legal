@@ -7708,7 +7708,6 @@ app.post('/api/shopify/build', async (req, res) => {
     const opts = {
       match: () => 'placeholder',          // the lines are worked out below
       customer: req.body.customer || s.customer,
-      prefix: req.body.prefix !== undefined ? req.body.prefix : s.prefix,
       terms: s.terms || 'Net 30',
       descOf: name => descOf(books, name)
     };

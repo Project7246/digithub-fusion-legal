@@ -209,24 +209,19 @@
               waits for a person.
               <br><br>
               The number is <b>Shopify&rsquo;s own order name, character for
-              character</b> &mdash; its <code>#</code> if it has one, its letters if it
-              has those. It is not tidied, not stripped to digits and nothing is put
-              on the front of it. That is the whole point of it: one search finds the
-              same thing on both sides. QuickBooks counts <code>9323517</code> and
-              <code>#9323517</code> as two different invoices, so guessing at this is
-              how one order ends up as two.
+              character</b>. Nothing is added, nothing is taken off, nothing is
+              tidied:
+              <code>1001</code> stays <code>1001</code>,
+              <code>#8766878</code> stays <code>#8766878</code>,
+              <code>wt65689</code> stays <code>wt65689</code>.
+              That is the whole point of it &mdash; one search finds the same thing on
+              both sides. QuickBooks counts <code>9323517</code> and
+              <code>#9323517</code> as two different invoices, so there is nothing
+              here to set and nothing to get wrong.
             </div>
             <button class="cfgbtn" data-open="c1" type="button">Configure</button>
             <div class="cfg" id="c1">
               <div class="row">
-                <div class="fld">
-                  <label for="prefix">In front of it (leave empty)</label>
-                  <input id="prefix" type="text" placeholder="nothing" maxlength="6">
-                  <div class="hint" style="font-size:11px;margin-top:4px">
-                    Only for books where invoices were already uploaded under a
-                    different front. Empty means Shopify&rsquo;s name as it is.
-                  </div>
-                </div>
                 <div class="fld">
                   <label for="terms">Terms</label>
                   <input id="terms" type="text" placeholder="Net 30" list="termList">
@@ -456,11 +451,8 @@
   }
 
   function paint(){
-    // the same rule the writer uses, so the screen cannot promise one thing
-    // and the books get another
-    var sample = '#9323517';
-    $('sNum').textContent = (!S.prefix || sample.indexOf(S.prefix) === 0)
-      ? sample : S.prefix + sample;
+    // whatever Shopify calls it - there is nothing to work out
+    $('sNum').textContent = 'whatever Shopify calls it';
     $('sTerms').textContent = S.terms || 'whatever the customer has';
     $('sCust').textContent = String(S.customer || '')
       .replace('{mon}{yy}', monTag()).replace('{mon}', monTag().slice(0,3)) || '(not set)';
@@ -483,7 +475,6 @@
   }
 
   function fill(){
-    $('prefix').value = S.prefix || '';
     $('terms').value = S.terms || '';
     $('customer').value = S.customer || '';
     $('shippingItem').value = S.shippingItem || '';
@@ -508,7 +499,7 @@
     if(now) fire(); else PEND = setTimeout(fire, 700);
   }
 
-  [['prefix','prefix'],['terms','terms'],['customer','customer'],
+  [['terms','terms'],['customer','customer'],
    ['shippingItem','shippingItem']].forEach(function(p){
     $(p[0]).addEventListener('input', function(){
       var o = {}; o[p[1]] = $(p[0]).value.trim(); keep(o);

@@ -763,18 +763,23 @@ It used to be built: strip the order name to its digits, then put the
 right for a shop whose orders are called `#9323516`, and wrong for every shop
 whose numbers carry letters - `PC-1001` became `1001` and then `#1001`.
 
-`docNumberOf()` in `shopify.js` is the whole rule now: **whatever Shopify
-calls the order is what QuickBooks is told**, its `#` and its letters
-included. Not tidied, not stripped, nothing added. The point of the number is
-that one search finds the same thing on both sides.
+`docNumberOf()` in `shopify.js` is the whole rule now, and it is two lines:
 
-**And the prefix is never added twice.** This company's prefix is `#` and
-Shopify's own name is `#9323516`; put together blindly that is `##9323516` -
-a number QuickBooks has never seen, so every order already in the books would
-look unwritten and be written again. The prefix is skipped when the name
-already starts with it. It stays in the settings only for books where
-invoices were uploaded under a different front, and empty is the default and
-the right answer.
+| Shopify says | QuickBooks is told |
+|---|---|
+| `1001` | `1001` |
+| `#8766878` | `#8766878` |
+| `wt65689` | `wt65689` |
+
+Nothing added, nothing taken off, nothing tidied. The point of the number is
+that one search finds the same thing on both sides, and the only way to be
+sure of that is to change nothing.
+
+**The `prefix` setting is gone, not defaulted empty.** Left in, it would have
+put a `#` in front of a shop that numbers plainly at 1001, for no reason
+anybody asked for - and a box that can put a character in front of an invoice
+number is a box that will one day be filled in. It is off the Connector
+screen, off the by-hand page, out of `DEFAULTS` and out of `toInvoice`.
 
 ## One day, and the row that must not go
 

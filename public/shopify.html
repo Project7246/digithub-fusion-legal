@@ -266,8 +266,12 @@
             <input id="cust" type="text" placeholder="Shopify Sale - {mon}{yy}">
           </div>
           <div>
-            <label for="prefix">Put before the number</label>
-            <input id="prefix" type="text" placeholder="# &mdash; or leave empty">
+            <label>Invoice number</label>
+            <div class="hint" style="font-size:11.5px;padding:8px 0">
+              Shopify&rsquo;s own order name, character for character &mdash; nothing
+              added, nothing taken off. One search then finds the same thing on
+              both sides.
+            </div>
           </div>
           <div>
             <label for="terms">Terms</label>
@@ -467,7 +471,6 @@
         $('skVoid').checked = SET.skipRefunded !== false;
         $('skUnf').checked = !!SET.onlyFulfilled;
         if (SET.customer) $('cust').value = SET.customer;
-        $('prefix').value = SET.prefix || '';
         $('terms').value = SET.terms || 'Net 30';
         if (qbItems.length) $('shipItem').value = SET.shippingItem || '';
       })
@@ -478,14 +481,12 @@
     SET.skipRefunded = $('skVoid').checked;
     SET.onlyFulfilled = $('skUnf').checked;
     SET.customer = $('cust').value.trim();
-    SET.prefix = $('prefix').value.trim();
     SET.terms = $('terms').value.trim();
     SET.shippingItem = $('shipItem').value;
     return ask('/api/shopify/settings', {
       skipRefunded: SET.skipRefunded,
       onlyFulfilled: SET.onlyFulfilled,
       customer: SET.customer,
-      prefix: SET.prefix,
       terms: SET.terms,
       shippingItem: SET.shippingItem
     }).then(function(){
@@ -496,7 +497,7 @@
     }).catch(function(){});
   }
 
-  ['skVoid','skUnf','cust','prefix','terms','shipItem'].forEach(function(id){
+  ['skVoid','skUnf','cust','terms','shipItem'].forEach(function(id){
     $(id).addEventListener('change', saveSkips);
   });
 
@@ -622,7 +623,8 @@
 
         var found = [], pairs = [];
         orders.forEach(function(o){
-          var num = String((SET.prefix || '') + (o.number || '')).trim();
+          // the same rule the writer uses: Shopify's own name, as it is
+          var num = String(o.name || o.number || '').trim();
           o.inQb = !!have[num];
           if(o.inQb){ found.push(o); pairs.push({ gid: o.gid, docNumber: num }); }
         });
@@ -701,7 +703,7 @@
     saveSkips().then(function(){
       return ask('/api/shopify/build', {
         from: $('from').value, to: $('to').value, shop: $('whichShop').value || null,
-        customer: $('cust').value, prefix: $('prefix').value.trim(),
+        customer: $('cust').value,
         shippingItem: $('shipItem').value
       });
     })

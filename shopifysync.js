@@ -63,7 +63,6 @@ export const DEFAULTS = {
   // their say-so. The report page says plainly that it is off.
   on: false,
   customer: 'Shopify Sale - {mon}{yy}',
-  prefix: '',
   terms: '',
   shippingItem: '',
   // Nothing here makes an item, renames one, or puts a SKU on one. The books
@@ -586,7 +585,7 @@ async function writeOneNow(books, row, s) {
   // here or it would go on twice.
   const built = toInvoice(Object.assign({}, row, { lines: row.lines }), {
     match: () => 'placeholder',
-    customer: s.customer, prefix: s.prefix, terms: s.terms
+    customer: s.customer, terms: s.terms
   });
   if (built.skip === 'empty') {
     await setOff(realmId, row.order_gid, 'nothing to bill on it');
