@@ -9,7 +9,7 @@ import {
   pool, initDb, saveCompany, getCompany, renameCompany, logUpload,
   binCompany, unbinCompany, listBinnedCompanies, emptyOldBin, BIN_DAYS,
   getNegativeItems, setNegativeItems,
-  isWorkspace, createWorkspace, workspacesOwnedBy, graduateWorkspace
+  isWorkspace, createWorkspace, graduateWorkspace
 } from './db.js';
 
 import { initMappings, getMappings, saveMapping } from './mappings.js';
@@ -20,6 +20,7 @@ import {
 } from './hooks.js';
 import {
   initShopify, listShops, getShop, saveShop, removeShop, checkShop, cleanDomain,
+  shopElsewhere,
   pullOrders, listOrders as listShopOrders, productsSeen, markSynced, unmark,
   toInvoice, API_VERSION as SHOPIFY_VERSION,
   note as shopNote, events as shopifyEvents, tally as shopifyTally, forgetEvents,
@@ -1555,6 +1556,16 @@ app.get('/auth/connect', async (req, res) => {
   const state = crypto.randomBytes(16).toString('hex');
   res.cookie('oauth_state', state, { httpOnly: true, maxAge: 600000, sameSite: 'lax' });
 
+  // Which company this was pressed from. The books are about to be joined to a
+  // company, and the only honest answer to "which one" is the one that was open
+  // on the screen when the button was pressed - not whatever else this person
+  // happens to own. It travels in a cookie rather than in the URL for the same
+  // reason the Shopify flow does: the address comes back from Intuit, and
+  // whatever is in it is Intuit's word, not ours.
+  res.cookie('oauth_from', String(req.cookies.realm_id || ''), {
+    httpOnly: true, maxAge: 600000, sameSite: 'lax'
+  });
+
   const params = new URLSearchParams({
     client_id: process.env.QB_CLIENT_ID,
     response_type: 'code',
@@ -1994,26 +2005,38 @@ app.get('/auth/callback', async (req, res) => {
     // couriers, their Shopify orders, their people are all in it. Connecting
     // QuickBooks must not hand them a second company with the other half of their
     // work in it. So the one they have takes the realm number as its own id and
-    // goes on being the same company, with the books now in it. One of theirs,
-    // or none: two workspaces is a choice, and a choice is not made for somebody
-    // behind their back.
-    if (tokens.refresh_token && !(await getCompany(joinTo))) {
-      const mine = await workspacesOwnedBy(sub);
-      if (mine.length === 1) {
-        try {
-          const moved = await graduateWorkspace(mine[0].realmId, joinTo);
-          if (moved.taken) {
-            console.error('connect: realm ' + joinTo + ' is already a company here');
-          }
-          // The company these people work in has a different id from a second
-          // ago. Anything remembered about who is settled where, or which desk a
-          // user id belongs to, is about the old one - and the staff did not ask
-          // for this and are not here to be told. So all of it is dropped rather
-          // than waited out: the next page each of them opens asks again.
-          if (moved.ok) { settledCache.clear(); whoCache.clear(); }
-        } catch (e) {
-          console.error('graduate workspace:', e.message);
+    // goes on being the same company, with the books now in it.
+    //
+    // **Only the company that was open when Connect was pressed**, and this is
+    // the whole safety of it. It used to be "the one workspace this person
+    // owns", which is a different question with the same answer right up until
+    // somebody runs more than one company - and then it is a disaster with no
+    // warning: a consultant standing in one client's company connects another
+    // client's books, and the workspace they were not even looking at is
+    // swallowed whole. Its Shopify shop, its orders, its couriers, its people
+    // all come up under books they have nothing to do with, and the only sign
+    // of it is a shop name on a screen that should never have named it.
+    //
+    // Nothing open means nothing to join: the realm gets a company of its own,
+    // which is what connecting from the portal plainly asks for.
+    const from = String(req.cookies.oauth_from || '');
+    res.clearCookie('oauth_from');
+
+    if (tokens.refresh_token && from && isWorkspace(from) &&
+        !(await getCompany(joinTo)) && await runsCompany(sub, from)) {
+      try {
+        const moved = await graduateWorkspace(from, joinTo);
+        if (moved.taken) {
+          console.error('connect: realm ' + joinTo + ' is already a company here');
         }
+        // The company these people work in has a different id from a second
+        // ago. Anything remembered about who is settled where, or which desk a
+        // user id belongs to, is about the old one - and the staff did not ask
+        // for this and are not here to be told. So all of it is dropped rather
+        // than waited out: the next page each of them opens asks again.
+        if (moved.ok) { settledCache.clear(); whoCache.clear(); }
+      } catch (e) {
+        console.error('graduate workspace:', e.message);
       }
     }
 
@@ -7529,6 +7552,17 @@ app.post('/api/shopify/shops', async (req, res) => {
     const token = String(req.body.token || '').trim();
     if (!token) return res.status(400).json({ error: 'Paste the Admin API access token' });
 
+    // One shop, one set of books. Connected in two companies it would be
+    // invoiced twice, into two different QuickBooks, with nothing saying so.
+    const held = await shopElsewhere(realmId, domain);
+    if (held) {
+      return res.status(409).json({
+        error: domain + ' is already connected to another company here' +
+          (held.name ? ' (' + held.name + ')' : '') +
+          '. Take it off there first - one shop belongs to one set of books.'
+      });
+    }
+
     // asked before it is kept, so a wrong paste is caught now rather than at
     // the first pull three days from now
     const shop = await checkShop(domain, token);
@@ -8086,6 +8120,16 @@ app.get('/auth/shopify/callback', async (req, res) => {
     const domain = cleanDomain(req.query.shop);
     if (domain !== held.domain) {
       return say('That did not match', 'Shopify came back about a different shop.');
+    }
+
+    // One shop, one set of books - the same rule the typed-token door keeps.
+    const already = await shopElsewhere(held.realmId, domain);
+    if (already) {
+      return say('Already connected elsewhere',
+        domain + ' is connected to another company in Fusion' +
+        (already.name ? ' (' + already.name + ')' : '') +
+        '. Take it off there first: one shop belongs to one set of books, or the ' +
+        'same order is invoiced into two.');
     }
 
     const got = await exchangeCode(domain, req.query.code, keys);

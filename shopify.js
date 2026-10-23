@@ -790,6 +790,26 @@ export function cleanDomain(raw) {
   return s;
 }
 
+// Is this shop already connected somewhere else in Fusion?
+//
+// One Shopify shop belongs to one set of books. Connected twice, both companies
+// pull the same orders and both write them into their own QuickBooks - the same
+// sale invoiced in two different companies' books, with nothing on either screen
+// saying so. So it is asked before a shop is saved, and the answer names the
+// company holding it rather than refusing in the abstract.
+export async function shopElsewhere(realmId, domain) {
+  const r = await pool.query(
+    `SELECT s.realm_id, c.company_name
+       FROM shopify_shops s
+       LEFT JOIN companies c ON c.realm_id = s.realm_id AND c.deleted_at IS NULL
+      WHERE s.domain = $1 AND s.realm_id <> $2
+      ORDER BY s.id LIMIT 1`,
+    [String(domain || '').toLowerCase(), String(realmId)]
+  );
+  if (!r.rows.length) return null;
+  return { realmId: r.rows[0].realm_id, name: r.rows[0].company_name || '' };
+}
+
 export async function listShops(realmId) {
   const r = await pool.query(
     `SELECT id, domain, label, active, last_sync, last_error, created_at
