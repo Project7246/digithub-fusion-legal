@@ -29,6 +29,7 @@ import {
   editNewItem, dropNewItem, reopenNewItem, newItemList, newItemTally,
   shopHookKey, shopByHookKey,
   madeItems, madeInvoices, unsync,
+  pullProducts,
   appKeysFor, saveAppKeys, forgetAppKeys, installUrl, callbackIsReal,
   exchangeCode, SCOPES
 } from './shopify.js';
@@ -1409,6 +1410,7 @@ const RIGHT_GROUPS = [
             '/api/shopify/events/clear',
             '/api/shopify/new-items/edit', '/api/shopify/new-items/drop',
             '/api/shopify/new-items/reopen', '/api/shopify/new-items/make',
+            '/api/shopify/new-items/look',
             '/api/shopify/undo/merge', '/api/shopify/sync'] },
 
   { key: 'settings', area: 'items', label: 'SKU mappings',
@@ -8674,6 +8676,36 @@ app.post('/api/shopify/new-items/edit', async (req, res) => {
   try {
     const n = await editNewItem(realmId, req.body.id, req.body.fields || {});
     res.json({ ok: true, saved: n });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// Fill the list from Shopify's own product list.
+//
+// The webhook only covers what happens next, and this screen needs what
+// happened before it: the products a shop already had when it was connected,
+// and anything saved in the minutes before this existed. Nothing is written
+// to Shopify and nothing is written to QuickBooks - every variant read is
+// offered onto the waiting list, and the next read of the list takes out
+// whatever is already in the books.
+app.post('/api/shopify/new-items/look', async (req, res) => {
+  const realmId = await requireCompany(req, res);
+  if (!realmId) return;
+  try {
+    const shops = (await listShops(realmId)).filter(x => x.active);
+    const out = [];
+    for (const row of shops) {
+      const shop = row.token ? row : await getShop(realmId, row.id);
+      try {
+        const r = await pullProducts(realmId, shop, { pages: Number(req.body.pages) || 25 });
+        out.push({ shop: shop.label, seen: r.seen, offered: r.offered,
+                   pages: r.pages, more: r.more, error: r.trouble || '' });
+      } catch (e) {
+        out.push({ shop: shop.label, error: e.message });
+      }
+    }
+    res.json({ ok: true, shops: out, tally: await newItemTally(realmId) });
   } catch (e) {
     res.status(500).json({ error: e.message });
   }

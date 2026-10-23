@@ -207,8 +207,7 @@
           <button data-tab="held" class="on">Needs you <i id="cHeld"></i></button>
           <button data-tab="invoice">Invoices in <i id="cInv"></i></button>
           <button data-tab="error">QuickBooks said no <i id="cErr"></i></button>
-          <button data-tab="new">New products <i id="cNew"></i></button>
-          <button data-tab="item">Products made <i id="cItem"></i></button>
+          <button data-tab="new">Products <i id="cNew"></i></button>
           <button data-tab="off">Left out <i id="cOff"></i></button>
           <button data-tab="check">Check the invoices <i id="cWrong"></i></button>
           <button data-tab="setup">How it runs</button>
@@ -304,26 +303,35 @@
             nothing else, so a SKU on no item holds its order and says so &mdash;
             and the moment you add the product here, those orders go straight
             back in the queue.
+            <br><br>
+            <b>Where this list comes from.</b> Shopify calls us the moment a
+            product is saved, so from now on anything new lands here by itself.
+            A product saved <em>before</em> this screen existed got no such call
+            &mdash; <b>Look in Shopify</b> reads the shop&rsquo;s own product list
+            and brings those in. Either way, whatever is already in your
+            QuickBooks is taken off the list rather than asked about.
           </div>
           <div class="acts" style="margin-bottom:12px">
             <button class="go" id="btnMakeAll">Sync all ticked</button>
+            <button class="ghost" id="btnNewLook">Look in Shopify</button>
             <button class="ghost" id="btnNewAgain">Read again</button>
             <button class="ghost" id="btnNewPast">What I said no to</button>
             <span class="said" id="newSaid"></span>
           </div>
           <div id="newAcc" class="hint" style="margin-bottom:12px;display:none"></div>
           <div id="newBox"><div class="none">Loading&hellip;</div></div>
-        </div>
-        <div class="pane" id="p-item">
+
+          <h3 style="font:600 13px var(--head);margin:26px 0 6px">Added to QuickBooks</h3>
           <div class="hint">
-            Every product that was added to QuickBooks. From now on each line here
-            is one you approved yourself under <b>New products</b>; anything dated
-            before that is from when this app created products by itself, which it
-            no longer does.
+            A line here means a product was created in your books, by you, on this
+            screen. Nothing else writes one.
             <br><br>
-            Nothing here is renamed or given a SKU &mdash; a SKU is never written
-            onto an item that already exists, and a product is only ever added
-            because you pressed <b>Sync now</b> on it.
+            A product merely <em>noticed</em> in Shopify is not one of these
+            &mdash; it is a card above, waiting. Until 23 Oct 2026 a Shopify
+            notice was written into this list by mistake, which is why a product
+            could appear here and not be in QuickBooks at all. If you see such a
+            line, <b>Clear this list</b> takes it off; it changes nothing in
+            QuickBooks either way.
           </div>
           <div id="box-item"></div>
         </div>
@@ -573,8 +581,7 @@
         // A product waiting on her is an order held next week, so it goes on
         // the headline rather than only on its tab.
         card((d.tally && d.tally.newItems) ? 'warn' : '',
-             (d.tally && d.tally.newItems) || 0, 'New products', 'new') +
-        card('', k.item || 0, 'Products made', 'item');
+             (d.tally && d.tally.newItems) || 0, 'Products waiting', 'new');
       wireCards();
 
       $('cHeld').textContent  = st.held ? '(' + n0(st.held) + ')' : '';
@@ -586,7 +593,6 @@
       $('cInv').textContent   = st.done ? '(' + n0(st.done) + ')' : '';
       $('cOff').textContent   = st.off ? '(' + n0(st.off) + ')' : '';
       $('cErr').textContent   = k.error ? '(' + n0(k.error) + ')' : '';
-      $('cItem').textContent  = k.item ? '(' + n0(k.item) + ')' : '';
       var waitingNew = (d.tally && d.tally.newItems) || 0;
       $('cNew').textContent   = waitingNew ? '(' + n0(waitingNew) + ')' : '';
 
@@ -1083,6 +1089,7 @@
   function loadNew(){
     $('newBox').innerHTML = '<div class="none">Reading Shopify and your QuickBooks product list&hellip;</div>';
     say($('newSaid'), '', '');
+    loadEvents('item');          // the half underneath: what was really created
     get('/api/shopify/new-items', 60).then(function(d){
       if(d.error) throw new Error(d.error);
       NEWROWS = d.rows || [];
@@ -1180,6 +1187,34 @@
   }
 
   $('btnNewAgain').addEventListener('click', loadNew);
+
+  // For everything Shopify never called us about - products that were already
+  // there when the shop was connected, and anything saved before this screen
+  // existed. One read per hundred products, nothing written to Shopify.
+  $('btnNewLook').addEventListener('click', function(){
+    var b = $('btnNewLook');
+    b.disabled = true;
+    say($('newSaid'), '', 'Reading the product list out of Shopify\u2026');
+    post('/api/shopify/new-items/look', {}).then(function(d){
+      b.disabled = false;
+      var bits = [];
+      var bad = false;
+      (d.shops || []).forEach(function(x){
+        var line = x.shop + ': ' + n0(x.seen || 0) + ' variants looked at, ' +
+          n0(x.offered || 0) + ' new';
+        if(x.more) line += ' \u2014 there are more, press it again';
+        if(x.error){ line += ' \u2014 ' + x.error; bad = true; }
+        bits.push(line);
+      });
+      say($('newSaid'), bad ? 'bad' : '',
+          bits.join(' \u00b7 ') || 'No shop is connected.');
+      loadNew();
+      loadTally();
+    }).catch(function(e){
+      b.disabled = false;
+      say($('newSaid'), 'bad', e.message);
+    });
+  });
 
   $('btnMakeAll').addEventListener('click', function(){
     var picked = [];

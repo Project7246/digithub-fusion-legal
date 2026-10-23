@@ -509,6 +509,83 @@ export async function offerNewItem(realmId, shopId, p, v) {
   return { fresh: !!row.fresh, state: row.state || 'new' };
 }
 
+
+// Every product in the shop, page by page.
+//
+// The webhook only ever covers what happens next. A shop connected this
+// morning has years of products behind it, and a product saved five minutes
+// before this screen existed got no webhook it could act on - which is
+// exactly what happened the first time: the product was made in Shopify, the
+// old code wrote a line in the log about it, and there was no list for it to
+// land on. "Read again" then had nothing to read.
+//
+// So the list can be filled from Shopify on demand as well. Nothing is
+// written to Shopify, and reviewNewItems takes out whatever is already in
+// QuickBooks afterwards.
+//
+// **Twenty products a page, forty variants each, and both numbers matter.**
+// Shopify prices a GraphQL query before it runs it and refuses one over 1000
+// points, and a nested connection is charged at the parent's `first` times
+// its own: `products(first:100)` with `variants(first:100)` is ten thousand
+// points and would be refused every time. 20 + 20x40 is 820, which leaves
+// room. Newest first, because the product somebody just made is the one they
+// are looking for.
+const PRODUCTS_QUERY = `
+query FusionProducts($cursor: String) {
+  products(first: 20, after: $cursor, sortKey: UPDATED_AT, reverse: true) {
+    pageInfo { hasNextPage endCursor }
+    nodes {
+      id title status
+      variants(first: 40) {
+        nodes {
+          id sku title price
+          inventoryItem { tracked unitCost { amount } }
+        }
+      }
+    }
+  }
+}`;
+
+export async function pullProducts(realmId, shop, opts) {
+  const o = opts || {};
+  const token = decrypt(shop.token);
+  const cap = Math.min(Math.max(Number(o.pages) || 25, 1), 100);
+
+  let cursor = null, pages = 0, seen = 0, offered = 0, trouble = '';
+
+  while (true) {
+    let page;
+    try {
+      const d = await ask(shop.domain, token, PRODUCTS_QUERY, { cursor });
+      page = (d && d.products) || { nodes: [], pageInfo: {} };
+    } catch (e) {
+      // Five hundred products read and the sixth page refused is five hundred
+      // products on the list, not nothing. What went wrong is handed back
+      // beside the count rather than thrown over it.
+      trouble = e.message;
+      break;
+    }
+
+    const rows = page.nodes || [];
+    for (const p of rows) {
+      for (const v of ((p.variants && p.variants.nodes) || [])) {
+        seen++;
+        try {
+          const off = await offerNewItem(realmId, shop.id, p, v);
+          if (off.fresh) offered++;
+        } catch (e) { /* one variant is not worth stopping the read */ }
+      }
+    }
+
+    pages++;
+    if (!page.pageInfo || !page.pageInfo.hasNextPage) break;
+    cursor = page.pageInfo.endCursor;
+    if (pages >= cap) break;
+  }
+
+  return { pages, seen, offered, trouble, more: !!cursor && pages >= cap };
+}
+
 export async function newItemList(realmId, opts) {
   const o = opts || {};
   const args = [realmId];

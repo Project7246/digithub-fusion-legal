@@ -1286,14 +1286,61 @@ or says no.
 `off` (she said no), and **only a person moves it**. Shopify saving the product
 again does not re-open a decision.
 
+### One tab, called Products
+
+**New products** and **Products made** were two tabs about one thing, and the
+owner said so the first time she saw them. They are one tab now: the cards
+waiting on her, and underneath, **Added to QuickBooks**. The headline card is
+**Products waiting**.
+
+### An `item` event means a product was created, and nothing else
+
+The first product she made went like this: Shopify called, the log wrote
+`ITEM  Test order by Rani  new on Shopify at 2000`, that line appeared under
+**Products made**, she opened QuickBooks, and there was no such product. She
+was right, and the screen was lying.
+
+`nudgeProduct` was writing kind `item` for a product merely **noticed** in
+Shopify, and `item` is the kind the made-list is built from. So a notice read
+as a creation. **It writes no event at all now** - the row on the Products list
+is the record that we noticed it, and an `item` event means one thing: a
+product was created in QuickBooks, by her, on purpose.
+
+The one historical line of that kind is still there, and **Clear this list**
+takes it off; it changes nothing in QuickBooks either way, which the tab says.
+
+### Look in Shopify, for everything the webhook never mentioned
+
+The other half of the same evening: the product was saved **before this screen
+existed**, so the webhook that announced it had nowhere to put it, and
+pressing **Read again** found nothing. A webhook only ever covers what happens
+next, and a shop connected this morning has years of products behind it.
+
+`pullProducts()` reads the shop's own product list and offers every variant,
+behind **Look in Shopify**. Nothing is written to Shopify and nothing to
+QuickBooks; `reviewNewItems` takes out whatever is already in the books on the
+next read, so pressing it on a shop with two thousand products does not
+produce two thousand questions.
+
+**Twenty products a page, forty variants each, and both numbers matter.**
+Shopify prices a GraphQL query before running it and refuses one over 1000
+points, charging a nested connection at the parent's `first` times its own -
+so `products(first:100)` with `variants(first:100)` is ten thousand points and
+would have been refused every single time. 20 + 20x40 is 820. A page that is
+refused anyway breaks the loop and hands back the count so far with the reason
+beside it: five hundred products read and the sixth page refused is five
+hundred products on the list, not nothing.
+
 ### The webhook offers, it does not enter
 
 `nudgeProduct` already ran on `products/create` and `products/update`. It now
 calls `offerNewItem` for a variant it has never seen before - which includes a
 variant added to a product that already existed, because that is just as new.
-Nothing reaches QuickBooks; all it does is put a row on a list, within seconds
-of the product being saved. That is the "foran webhook ke through show ho jaye"
-half, and it is as immediate as an order.
+Nothing reaches QuickBooks and nothing is written in the log; all it does is
+put a row on a list, within seconds of the product being saved. That is the
+"foran webhook ke through show ho jaye" half, and it is as immediate as an
+order. **Look in Shopify** is the other way in, for everything that happened
+before the webhook could.
 
 **The flood this would otherwise cause is settled by itself.** The first
 webhook after a shop is connected offers every variant, and a shop has years of

@@ -1547,21 +1547,22 @@ export async function nudgeProduct(realmId, shop, gid, topic) {
       // does is put a row on a list. The first webhook after a shop is
       // connected therefore offers everything, and reviewNewItems() settles
       // whatever is already in the books by itself - see there.
-      let fresh = false;
+      // No log line for this, and that is deliberate.
+      //
+      // It used to write an `item` event saying "new on Shopify at 2000" -
+      // and `item` is the kind the **Products** list is built from, so a
+      // product merely noticed in Shopify appeared under products added to
+      // QuickBooks. Somebody then opened QuickBooks, found nothing there,
+      // and was right to. A screen that says a thing was made when nothing
+      // was made is worse than a screen that says nothing.
+      //
+      // The row on the Products list IS the record that we noticed it. An
+      // `item` event now means one thing only: a product was created in
+      // QuickBooks, by her, on purpose.
       try {
         const off = await offerNewItem(realmId, shop.id, p, v);
-        fresh = off.fresh;
-        if (fresh) offered++;
-      } catch (e) { /* a note is still worth making */ }
-
-      if (topic === 'products/create' || fresh) {
-        await note(realmId, 'item', {
-          shopId: shop.id, sku: v.sku, title: p.title + (v.title && v.title !== 'Default Title' ? ' · ' + v.title : ''),
-          note: 'new on Shopify at ' + price + (cost ? ', cost ' + cost : '') +
-                ' - waiting on New products',
-          detail: { price, cost, status: p.status, offered: fresh }
-        });
-      }
+        if (off.fresh) offered++;
+      } catch (e) { /* the Look in Shopify button is the other way in */ }
     } else if (was.price !== price || was.cost !== cost) {
       moved++;
       await note(realmId, 'price', {
