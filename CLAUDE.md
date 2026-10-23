@@ -707,6 +707,34 @@ a time, about 28 minutes to get through them"*. **Twenty an order a minute
 at once**, and nothing on the screen used to say that. Its count poll also
 stops while the tab is in the background, like every other poll here.
 
+## Catch up first, in date order, then go live
+
+The owner's rule, and it is the right one: **start at the date I chose, work
+forward, and when you reach today carry on live.** One direction, one order.
+
+What was happening instead was two writers at once. The sweep worked forward
+from 19 August while the webhook wrote each new order the moment it arrived,
+so the books filled from both ends - today's invoices in, August's untouched -
+and for a while both were in QuickBooks against the same company at the same
+moment, each with its own open books and its own customer lookup, neither
+aware of the other.
+
+So `nudgeOrder()` now asks one question before writing: **is anything older
+than this still waiting?** If it is, the order stays in the queue, the sweep
+is told to come round at once, and it will reach this one in its turn. The
+moment nothing older is waiting, a webhook writes live again - which is the
+whole point of a webhook, kept for when it is the right thing to do.
+
+`olderWaiting()` counts **`waiting` only**, and that distinction is the whole
+safety of it: a **held** order is waiting on a person, not on its turn, and
+the sweep never picks one up by itself. Counting those would mean one order
+stuck on a missing SKU in August stops every order after it, for ever.
+
+The screens say which it is doing. While there is a queue the live line reads
+**Catching up · working through 2026-08-21 · 7 of 20 in this batch · #9323540**,
+and it goes back to **Writing now** once it is live. A date, rather than a
+feeling.
+
 ## The queue was read for every company at once
 
 539 orders ready to go, 25 written, and the ones that *were* going in were

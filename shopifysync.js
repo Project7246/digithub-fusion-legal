@@ -27,7 +27,7 @@ import { pool } from './db.js';
 import { getSetting, setSetting } from './settings.js';
 import { getMappings } from './mappings.js';
 import {
-  fetchOne, fetchProduct, saveOne, dueOrders,
+  fetchOne, fetchProduct, saveOne, dueOrders, olderWaiting,
   setDone, setHeld, setFailed, setOff, failAll, releaseHeld, note, toInvoice, ask
 } from './shopify.js';
 import { decrypt } from './secrets.js';
@@ -812,7 +812,13 @@ export async function sweep() {
       for (const r of list) {
         // named before the attempt, not after: the point is to say which one
         // it is on while it is on it
-        if (state.doing) state.doing.order = r.name || r.order_gid || '';
+        if (state.doing) {
+          state.doing.order = r.name || r.order_gid || '';
+          // the day it is working through, so "catching up" is a date and not
+          // a feeling
+          state.doing.on = r.placed_at
+            ? String(r.placed_at).slice(0, 10) : '';
+        }
         try {
           const how = await writeOne(books, r, s);
           did[how] = (did[how] || 0) + 1;
@@ -955,9 +961,32 @@ export async function nudgeOrder(realmId, shop, gid, topic) {
     return 'done';
   }
 
-  // not written yet: push it through now
+  // not written yet
   const s = await settingsOf(realmId);
   if (!s.on) return 'waiting';   // kept for whenever it is turned on
+
+  // In order, oldest first, and only then live.
+  //
+  // A webhook writing today's order the moment it arrives is right once the
+  // books are caught up and wrong while they are not: the sweep is working
+  // forward from the start date somebody chose, and an order from this
+  // afternoon jumping the queue means the books fill up in two directions at
+  // once. Today's invoice goes in, August's does not, and the two writers are
+  // in QuickBooks at the same time against the same company - each with its
+  // own open books, its own customer lookup, and no idea the other is there.
+  //
+  // So while anything older is still waiting, this one simply stays in the
+  // queue and the sweep is told to come round now. The sweep takes them in
+  // date order, reaches this one last, and from the moment the queue is
+  // empty a webhook writes live again - which is the whole point of a
+  // webhook, kept for when it is the right thing to do.
+  if (row.placed_at) {
+    const behind = await olderWaiting(realmId, row.placed_at);
+    if (behind.n > 0) {
+      wakeSoon();
+      return 'queued';
+    }
+  }
 
   try {
     const books = await openBooks(realmId);

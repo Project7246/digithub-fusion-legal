@@ -917,6 +917,29 @@ export async function dueOrders(perCompany) {
   return r.rows;
 }
 
+// Is anything older than this still waiting to be written?
+//
+// The one question that decides whether a brand new order goes in now or
+// takes its place in the queue.
+//
+// `waiting` only, and that matters: a **held** order is waiting on a person,
+// not on its turn, and the sweep never picks one up on its own. Counting
+// those would mean one order stuck on a missing SKU in August stops every
+// order after it, for ever - the queue would never move again.
+export async function olderWaiting(realmId, placedAt) {
+  const r = await pool.query(
+    `SELECT COUNT(*)::int AS n, MIN(placed_at) AS oldest
+       FROM shopify_orders
+      WHERE realm_id = $1
+        AND state = 'waiting'
+        AND cancelled = FALSE
+        AND placed_at IS NOT NULL
+        AND placed_at < $2`,
+    [realmId, placedAt]
+  );
+  return { n: r.rows[0].n, oldest: r.rows[0].oldest || null };
+}
+
 export async function setDone(realmId, gid, qbId, docNumber) {
   await pool.query(
     `UPDATE shopify_orders

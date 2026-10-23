@@ -627,10 +627,12 @@
         box.style.display = '';
         var pct = doing.total ? Math.round(100 * doing.done / doing.total) : 0;
         box.innerHTML =
-          '<div class="nowline"><b>Writing now</b><span>' +
+          '<div class="nowline"><b>' +
+          (doing.on ? 'Catching up' : 'Writing now') + '</b><span>' +
           (doing.step === 'looking'
             ? 'looking for what is due\u2026'
-            : n0(doing.done) + ' of ' + n0(doing.total) + ' in this batch' +
+            : (doing.on ? 'working through ' + esc(doing.on) + ' \u00b7 ' : '') +
+              n0(doing.done) + ' of ' + n0(doing.total) + ' in this batch' +
               (doing.order ? ' \u00b7 ' + esc(doing.order) : '')) +
           '</span></div><div class="nowbar"><i style="width:' + pct + '%"></i></div>';
       })
