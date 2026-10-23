@@ -33,7 +33,7 @@ import {
   settingsOf as shopifySettings, saveSettings as saveShopifySettings,
   itemsPossible, standingAccounts, openBooks, itemFor, previewItem, whyNot,
   shelfSeen,
-  shippingItemFor, descOf, FREE_DELIVERY, checkWritten,
+  shippingItemFor, descOf, FREE_DELIVERY, checkWritten, stuckItems,
   sweep as shopifySweep, syncState, startShopifySync, wakeSoon,
   nudgeOrder, nudgeProduct, wireHooks
 } from './shopifysync.js';
@@ -8500,6 +8500,19 @@ app.post('/api/shopify/sync', async (req, res) => {
     if (freed > (did && did.done ? did.done : 0)) wakeSoon();
 
     res.json({ from, to, read, freed, did, tally: await shopifyTally(realmId) });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// What is holding the held orders, grouped by the thing that is holding it,
+// with the company's own QuickBooks item list to answer with. Reading only.
+app.get('/api/shopify/stuck-items', async (req, res) => {
+  const realmId = await requireCompany(req, res);
+  if (!realmId) return;
+  try {
+    res.setHeader('Cache-Control', 'no-store');
+    res.json(await stuckItems(realmId));
   } catch (e) {
     res.status(500).json({ error: e.message });
   }

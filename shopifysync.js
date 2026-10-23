@@ -889,6 +889,90 @@ export function startShopifySync() {
   tick();
 }
 
+/* ================= what is holding the held orders ================= */
+//
+// An order placed in August carries the lines **as they were in August**.
+// Putting a SKU on the product in Shopify today does not reach back into it,
+// and it never will - so "no SKU in Shopify" on a three-month-old order is a
+// true statement about a thing that can no longer be changed at the source.
+// The only place it can be answered is here.
+//
+// So: the things that are actually blocking, grouped - this product, that
+// SKU - each with how many orders are waiting on it, and the company's own
+// QuickBooks item list to answer with. One answer per product, not per
+// order: twenty-three orders waiting on Radiance Sun Veil Sunblock are one
+// decision, and asking for it twenty-three times would be the same decision
+// typed out twenty-three times.
+//
+// The answer is saved as a mapping, which is what itemFor() consults first -
+// nothing in QuickBooks is touched by it.
+
+export async function stuckItems(realmId) {
+  const books = await openBooks(realmId);
+  const saved = books.saved || {};
+
+  const rows = await pool.query(
+    `SELECT order_gid, name, placed_at, total, lines, held_why
+       FROM shopify_orders
+      WHERE realm_id = $1 AND state = 'held' AND cancelled = FALSE
+      ORDER BY placed_at ASC NULLS LAST
+      LIMIT 2000`, [realmId]);
+
+  const groups = new Map();
+
+  rows.rows.forEach(o => {
+    (o.lines || []).forEach(L => {
+      if (!L.qty) return;
+      const sku = String(L.sku || '').toLowerCase().trim();
+      const title = String(L.title || '').trim();
+      const key = sku || title.toLowerCase();
+      if (!key) return;
+
+      // already answered by hand, and the answer still points at something
+      const hand = saved[key];
+      if (hand && (hand.skip || (hand.qbItem && books.items[hand.qbItem.toLowerCase()]))) {
+        return;
+      }
+      if (sku && books.skus.has(sku)) return;     // nothing wrong with this one
+
+      if (!groups.has(key)) {
+        groups.set(key, {
+          key,
+          kind: sku ? 'nomatch' : 'nosku',
+          sku: L.sku || '',
+          title: title,
+          orders: 0,
+          worth: 0,
+          oldest: null,
+          examples: []
+        });
+      }
+      const g = groups.get(key);
+      g.orders++;
+      g.worth += Number(L.amt) || 0;
+      if (!g.oldest && o.placed_at) g.oldest = String(o.placed_at).slice(0, 10);
+      if (g.examples.length < 4) g.examples.push(o.name);
+    });
+  });
+
+  // and the list to answer with: every item in the books that an invoice
+  // could actually carry
+  const items = [];
+  books.skus.forEach((name, sku) => items.push({ name, sku }));
+  Object.keys(books.items).forEach(lower => {
+    if (!items.some(i => i.name.toLowerCase() === lower)) {
+      items.push({ name: lower, sku: '' });
+    }
+  });
+  items.sort((a, b) => a.name.localeCompare(b.name));
+
+  return {
+    groups: [...groups.values()].sort((a, b) => b.orders - a.orders),
+    items,
+    held: rows.rows.length
+  };
+}
+
 /* ============ which invoices got the wrong product on them ============ */
 //
 // Written because one of them did, and nobody could have found out.

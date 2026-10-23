@@ -707,6 +707,72 @@ a time, about 28 minutes to get through them"*. **Twenty an order a minute
 at once**, and nothing on the screen used to say that. Its count poll also
 stops while the tab is in the background, like every other poll here.
 
+## The connector is a system, not a pile of restrictions
+
+Said by the owner, and it is the right criticism: *"itni choti choti
+instructions mein app ko bound kiya hua hai... ap is ko ek general connector
+ki tarah banao... main chahti hoon is ka ek poora system ho, app ko lage ye
+system hai, restriction nahi."*
+
+Every rule in this file arrived as a correction - do not write a #, do not
+void, do not create a product, delivery must be a line, free delivery at 0,
+discount yes, memo no. Each was right on its own and together they read as a
+list of things not to do, which is a hard thing to hold in one head and an
+easy thing to contradict.
+
+**The Connector screen is the statement of the system.** Five numbered rules
+in plain English, each either configurable there or stated with its reason -
+what is picked from Shopify, when, and in the shape QuickBooks needs. That
+page, not this file and not a conversation, is where the rules live and where
+they are read. A new rule belongs on it; a rule that cannot be put on it in
+one sentence is probably not a rule but a special case, and special cases are
+what made the item matching dangerous in the first place.
+
+The rules, as the screen states them:
+
+1. an order in Shopify becomes an invoice in QuickBooks, numbered by the
+   order number, on the customer's terms
+2. one customer for the shop; the buyer's own name and address go in the
+   billing block, and nothing goes in the memo
+3. products match on **the SKU and nothing else**, and nothing is ever made,
+   renamed or given a SKU in QuickBooks
+4. delivery is a line on **every** order, free ones at 0; the discount goes
+   in the discount box, in rupees
+5. cancelled and void orders are left out
+
+## What an old order cannot be told
+
+An order placed in August carries the lines **as they were in August**. A SKU
+put on the product in Shopify today does not reach back into it and never
+will - so "no SKU in Shopify" on a three-month-old order is a true statement
+about a thing that can no longer be fixed at the source. The only place it
+can be answered is in Fusion.
+
+**Needs you** now asks for that answer, grouped by the thing that is actually
+blocking rather than by order: this product, that SKU, how many orders are
+waiting on it and what they are worth, with the company's own QuickBooks item
+list to answer from - searchable by SKU or by name, because the two sides call
+things different things. Twenty-three orders waiting on Radiance Sun Veil
+Sunblock are **one decision**, and asking for it twenty-three times would be
+the same decision typed out twenty-three times.
+
+The answer is saved as a mapping, which `itemFor()` consults first. **Nothing
+in QuickBooks is touched by it** - it is a note on our side saying "when
+Shopify says this, the books mean that". **Leave out** is the other answer,
+for a line that should not be billed at all.
+
+`stuckItems()` works the groups out from the orders' own lines against today's
+item shelf, not from the stored reason, so an answer already given or a SKU
+since added simply is not in the list.
+
+## Fewer tabs on the report
+
+**Price and cost** and **Paid, refunded, cancelled** are gone. Neither was a
+thing anybody did anything about from there - a price moving in Shopify is not
+a decision for the books, and a refund is dealt with in QuickBooks. A tab
+nobody acts on makes the ones that matter harder to find. **Items made** is
+**Products made**, which is the word the rest of the app uses.
+
 ## The worst thing this app has done, and how to find it
 
 A Shopify line carrying SKU **SP-21** went onto the QuickBooks item whose own

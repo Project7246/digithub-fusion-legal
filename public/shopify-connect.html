@@ -302,13 +302,22 @@
             stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M5 13l4 4 10-11"/></svg></div>
           <div class="body">
             <div class="line">
-              Put the order&rsquo;s shipping on the item <em id="sShip">&hellip;</em>,
-              and the discount in the discount box, in rupees
+              Put the order&rsquo;s delivery on the item <em id="sShip">&hellip;</em>
+              &mdash; <em>every order, free ones at 0</em> &mdash; and the discount
+              in the discount box, in rupees
             </div>
             <div class="note">
-              The delivery line reads its description out of QuickBooks too, by the same rule
-              as every other line. Left blank, Fusion looks for Shipping, Delivery, Shipping
-              Charges or Freight and uses whichever it finds &mdash; it does not make one.
+              Delivery goes on whatever it came to. Free delivery was promised and
+              given, so it is a line at 0 reading <b>Free Shipping</b>, which is the
+              one description Fusion writes for itself &mdash; the QuickBooks item is
+              called the same thing whether the buyer paid or not. A delivery that
+              <em>was</em> charged keeps QuickBooks&rsquo; own description, by the same
+              rule as every other line.
+              <br><br>
+              Left blank, Fusion looks for Shipping, Delivery, Shipping Charges or
+              Freight and uses whichever it finds &mdash; it does not make one. A
+              delivery to charge with nothing to put it on stops that order rather
+              than quietly leaving the money off.
             </div>
             <button class="cfgbtn" data-open="c4" type="button">Configure</button>
             <div class="cfg" id="c4">
