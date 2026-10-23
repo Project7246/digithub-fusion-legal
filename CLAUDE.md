@@ -238,6 +238,21 @@ per person, each holding half their work, and a chooser asking which half they
 wanted today. Because the id ends up being the realm, the ~31 places that build
 `/v3/company/<realmId>/...` never had to learn anything.
 
+**Which company graduates is the one that was open when Connect was pressed**,
+carried from `/auth/connect` in an `oauth_from` cookie - never "the one
+workspace this person owns", which is what it used to be. The two questions
+have the same answer right up until somebody runs more than one company, and
+then they differ silently and catastrophically: standing in one client's
+company and connecting another client's books swallowed the workspace nobody
+was looking at, and its Shopify shop, orders, couriers and people all came up
+under books they had nothing to do with. Nothing open (connecting from the
+portal) means nothing to join: the realm gets a company of its own.
+
+**One Shopify shop belongs to one set of books.** Both doors - the typed token
+and the OAuth callback - refuse a domain already connected to another company
+here (`shopElsewhere()`) and name that company. Connected twice, both companies
+pull the same orders and both write them into their own QuickBooks.
+
 - `/auth/status` carries both: **`connected`** = there is a company open, which is
   true from sign-up, and **`qb`** = these books are joined to QuickBooks. Anything
   that asks Intuit something gates on `qb` (see `finance.html`), never `connected`.
