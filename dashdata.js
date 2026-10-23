@@ -353,6 +353,17 @@ export async function dashboard(realmId, opts) {
 // this one out" - PostEx says so on its payment call, Trax on its payment
 // webhook, M&P by handing back a PaymentID - and a receipt number on the row
 // says the same thing a second way, so either counts.
+// One ageing bucket: how many parcels are in it and what is still receivable
+// on them. The amount is the COD less that parcel's own charges, which is the
+// same arithmetic as the statement above it - so the buckets add up to the net
+// receivable exactly, and a column of figures that does not tie out is a
+// column nobody trusts.
+function agePair(name, when, paid) {
+  const open = `o.status_group = 'delivered' AND NOT ${paid}`;
+  return `COUNT(*) FILTER (WHERE ${open} AND ${when}) AS ${name}_n,
+          COALESCE(SUM(o.amount - o.fee - o.tax) FILTER (WHERE ${open} AND ${when}),0) AS ${name}_v`;
+}
+
 async function owedQuery(realmId, opts, dates) {
   const base = scope(realmId, opts);
   const args = base.args.slice();
@@ -384,7 +395,20 @@ async function owedQuery(realmId, opts, dates) {
             COALESCE(SUM(o.amount) FILTER (WHERE o.status_group = 'delivered' AND NOT ${paid}
               AND o.delivered_on < CURRENT_DATE - 14),0) AS late_cod,
             COUNT(*) FILTER (WHERE o.status_group = 'delivered' AND NOT ${paid}
-              AND o.delivered_on < CURRENT_DATE - 14) AS late_n
+              AND o.delivered_on < CURRENT_DATE - 14) AS late_n,
+
+            -- The ageing of what is still receivable, by how long ago the
+            -- parcel was delivered. This is how a receivable is read in any
+            -- set of books: not one figure but five, because money a week old
+            -- and money three months old are not the same money. The buckets
+            -- are cut on the delivery date, since that is the day the courier
+            -- took our cash and the debt began.
+            ${agePair('a1', `o.delivered_on >= CURRENT_DATE - 7`, paid)},
+            ${agePair('a2', `o.delivered_on < CURRENT_DATE - 7 AND o.delivered_on >= CURRENT_DATE - 14`, paid)},
+            ${agePair('a3', `o.delivered_on < CURRENT_DATE - 14 AND o.delivered_on >= CURRENT_DATE - 30`, paid)},
+            ${agePair('a4', `o.delivered_on < CURRENT_DATE - 30 AND o.delivered_on >= CURRENT_DATE - 60`, paid)},
+            ${agePair('a5', `o.delivered_on < CURRENT_DATE - 60`, paid)},
+            ${agePair('a0', `o.delivered_on IS NULL`, paid)}
        FROM courier_orders o
       WHERE ${where}`, args);
 
@@ -406,7 +430,15 @@ async function owedQuery(realmId, opts, dates) {
     due: r2(dueCod - dueCharges),
     oldestDue: day(x.oldest_due),
     lateOrders: Number(x.late_n || 0),
-    lateCod: r2(x.late_cod)
+    lateCod: r2(x.late_cod),
+    ageing: [
+      { label: '0 – 7 days',    n: Number(x.a1_n || 0), amount: r2(x.a1_v) },
+      { label: '8 – 14 days',   n: Number(x.a2_n || 0), amount: r2(x.a2_v) },
+      { label: '15 – 30 days',  n: Number(x.a3_n || 0), amount: r2(x.a3_v) },
+      { label: '31 – 60 days',  n: Number(x.a4_n || 0), amount: r2(x.a4_v) },
+      { label: 'Over 60 days',  n: Number(x.a5_n || 0), amount: r2(x.a5_v), old: true },
+      { label: 'Delivery date not given', n: Number(x.a0_n || 0), amount: r2(x.a0_v), unknown: true }
+    ]
   };
 }
 
@@ -776,6 +808,51 @@ export async function pickupOrders(realmId, opts) {
 
 /* ==================== the orders behind one number ==================== */
 
+// The money filters, in one place.
+//
+// They were written out inside eachOrder (the download) and left out of
+// ordersBy (the drawer) altogether - so every "click a line to see those
+// parcels" on the statement opened **every** parcel in the range instead of
+// the handful the figure was made of. The number said 254 and the drawer
+// showed 3,000, which is worse than not opening at all: it teaches somebody
+// that the figures on the page are not to be trusted.
+//
+// `due=1` is still receivable, `due=0` is remitted, `late=1` is the chase
+// list, and `age` is one bucket of the ageing table.
+const AGE_WHERE = {
+  a1: `o.delivered_on >= CURRENT_DATE - 7`,
+  a2: `o.delivered_on < CURRENT_DATE - 7 AND o.delivered_on >= CURRENT_DATE - 14`,
+  a3: `o.delivered_on < CURRENT_DATE - 14 AND o.delivered_on >= CURRENT_DATE - 30`,
+  a4: `o.delivered_on < CURRENT_DATE - 30 AND o.delivered_on >= CURRENT_DATE - 60`,
+  a5: `o.delivered_on < CURRENT_DATE - 60`,
+  a0: `o.delivered_on IS NULL`
+};
+
+function moneyWhere(opts, where) {
+  let opened = false;
+  const open = () => {
+    if (opened) return;
+    opened = true;
+    where.push(`o.status_group = 'delivered'`);
+    where.push(`o.settled IS NOT TRUE`);
+    where.push(`(o.cpr_number IS NULL OR o.cpr_number = '')`);
+  };
+
+  if (opts.due === '1' || opts.due === 1) open();
+  if (opts.due === '0' || opts.due === 0) {
+    where.push(`o.status_group = 'delivered'`);
+    where.push(`(o.settled IS TRUE OR (o.cpr_number IS NOT NULL AND o.cpr_number <> ''))`);
+  }
+  if (opts.late === '1' || opts.late === 1) {
+    open();
+    where.push(`o.delivered_on < CURRENT_DATE - 14`);
+  }
+  if (opts.age && AGE_WHERE[String(opts.age)]) {
+    open();
+    where.push(AGE_WHERE[String(opts.age)]);
+  }
+}
+
 // The same rows as ordersBy but without its ceiling, handed over a page at a
 // time so a month of parcels never sits in memory all at once. ordersBy stops
 // at two thousand because a drawer cannot show more than that; a download is
@@ -796,26 +873,7 @@ export async function eachOrder(realmId, opts, onBatch) {
     if (opts.city)   { args.push(opts.city);   where.push(`o.city = $${args.length}`); }
     if (opts.cpr)    { args.push(opts.cpr);    where.push(`o.cpr_number = $${args.length}`); }
 
-  // The parcels behind "still to receive": delivered, and the courier has not
-  // said it paid for them. `due=0` is the other half - the ones it has paid.
-  // Without this the big figure on the dashboard would be a number nobody
-  // could open, and a number nobody can open is a number nobody believes.
-  if (opts.due === '1' || opts.due === 1) {
-    where.push(`o.status_group = 'delivered'`);
-    where.push(`o.settled IS NOT TRUE`);
-    where.push(`(o.cpr_number IS NULL OR o.cpr_number = '')`);
-  }
-  if (opts.due === '0' || opts.due === 0) {
-    where.push(`o.status_group = 'delivered'`);
-    where.push(`(o.settled IS TRUE OR (o.cpr_number IS NOT NULL AND o.cpr_number <> ''))`);
-  }
-  // delivered a fortnight ago and still not paid for - the chase list
-  if (opts.late === '1' || opts.late === 1) {
-    where.push(`o.status_group = 'delivered'`);
-    where.push(`o.settled IS NOT TRUE`);
-    where.push(`(o.cpr_number IS NULL OR o.cpr_number = '')`);
-    where.push(`o.delivered_on < CURRENT_DATE - 14`);
-  }
+    moneyWhere(opts, where);
     if (opts.picked === '1' || opts.picked === 1) where.push(`o.picked_on IS NOT NULL`);
     if (opts.picked === '0' || opts.picked === 0) where.push(`o.picked_on IS NULL`);
 
@@ -898,6 +956,8 @@ export async function ordersBy(realmId, opts) {
   if (opts.picked === '1' || opts.picked === 1) where.push(`o.picked_on IS NOT NULL`);
   if (opts.picked === '0' || opts.picked === 0) where.push(`o.picked_on IS NULL`);
   if (opts.cpr)    { args.push(opts.cpr);    where.push(`o.cpr_number = $${args.length}`); }
+  // and the money ones, the same as the download uses
+  moneyWhere(opts, where);
 
   const r = await pool.query(
     `SELECT o.tracking, o.order_ref, o.amount, o.fee, o.tax, o.status, o.status_group,
