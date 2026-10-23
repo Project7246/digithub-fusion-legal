@@ -23,6 +23,7 @@ import {
   pullOrders, listOrders as listShopOrders, productsSeen, markSynced, unmark,
   toInvoice, API_VERSION as SHOPIFY_VERSION,
   note as shopNote, events as shopifyEvents, tally as shopifyTally, forgetEvents,
+  offList as shopifyOff,
   fetchOne as shopifyFetchOne, saveOne as shopifySaveOne,
   heldList as shopifyHeld, releaseHeld, wakeAll, shopHookKey, shopByHookKey,
   madeItems, madeInvoices, unsync,
@@ -8559,6 +8560,27 @@ app.get('/api/shopify/check-items', async (req, res) => {
     res.json(await checkWritten(realmId, {
       from: req.query.from, to: req.query.to, limit: req.query.limit
     }));
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// The orders that were left out, and why. Behind the card that says how
+// many - a figure nobody can open is a figure nobody believes.
+app.get('/api/shopify/left-out', async (req, res) => {
+  const realmId = await requireCompany(req, res);
+  if (!realmId) return;
+  try {
+    res.setHeader('Cache-Control', 'no-store');
+    const rows = await shopifyOff(realmId, req.query.limit);
+    res.json({
+      off: rows.map(r => ({
+        gid: r.order_gid, name: r.name, placedAt: r.placed_at,
+        total: Number(r.total), shop: r.shop_label,
+        cancelled: !!r.cancelled,
+        why: r.held_why || (r.cancelled ? 'cancelled in Shopify' : 'left out')
+      }))
+    });
   } catch (e) {
     res.status(500).json({ error: e.message });
   }

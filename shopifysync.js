@@ -1036,7 +1036,7 @@ export async function checkWritten(realmId, { from, to, limit } = {}) {
     }
   }
 
-  const wrong = [], missing = [];
+  const wrong = [], missing = [], noLines = [];
   let checked = 0;
 
   for (const row of ours.rows) {
@@ -1044,6 +1044,15 @@ export async function checkWritten(realmId, { from, to, limit } = {}) {
     const inv = byDoc.get(doc) || byDoc.get(doc.replace(/^#/, '')) ||
                 byDoc.get('#' + doc);
     if (!inv) { missing.push({ order: row.name, doc }); continue; }
+
+    // The invoice comes from QuickBooks; the Shopify side of the comparison
+    // comes from our own table, and housekeeping strips an order's lines a
+    // while after it has been written. Without them there is nothing to
+    // check it against, and saying so is better than counting it as checked.
+    if (!row.lines || !row.lines.length) {
+      noLines.push({ order: row.name, doc });
+      continue;
+    }
     checked++;
 
     // what the invoice actually carries, by item name
@@ -1094,6 +1103,7 @@ export async function checkWritten(realmId, { from, to, limit } = {}) {
     checked,
     wrong,
     missing,
+    noLines,
     from: first, to: last
   };
 }

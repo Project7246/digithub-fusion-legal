@@ -28,6 +28,9 @@
   .tot .c span{display:block;font-size:10.5px;letter-spacing:.08em;text-transform:uppercase;
     color:var(--faint);margin-top:5px}
   .tot .c.good b{color:var(--qbo)}
+  /* a card that opens something says so before it is pressed */
+  .tot .c.click{cursor:pointer;transition:border-color .12s,background .12s}
+  .tot .c.click:hover{border-color:var(--qbo);background:#F7FDFC}
   .tot .c.warn b{color:#C9872B}
   .tot .c.bad  b{color:var(--bad,#9A2E24)}
 
@@ -178,6 +181,7 @@
           <button data-tab="invoice">Invoices in <i id="cInv"></i></button>
           <button data-tab="error">QuickBooks said no <i id="cErr"></i></button>
           <button data-tab="item">Products made <i id="cItem"></i></button>
+          <button data-tab="off">Left out <i id="cOff"></i></button>
           <button data-tab="check">Check the invoices <i id="cWrong"></i></button>
           <button data-tab="setup">How it runs</button>
           <span style="flex:1"></span>
@@ -214,9 +218,39 @@
         </div>
 
         <!-- ============ the event tabs ============ -->
-        <div class="pane" id="p-invoice"><div id="box-invoice"></div></div>
+        <div class="pane" id="p-invoice">
+          <div class="hint">
+            Every line written about an invoice, newest first &mdash; which can be
+            more than one for an order, when it was written and then found
+            again later. The card above counts <b>orders</b> in QuickBooks.
+            <br><br>
+            This log is kept for <b>three days</b> and then cleared, so the
+            database stays small. What lasts is on the order itself &mdash; its
+            invoice number and the day it went in &mdash; and that is never
+            thrown away.
+          </div>
+          <div id="box-invoice"></div>
+        </div>
         <div class="pane" id="p-error"><div id="box-error"></div></div>
-        <div class="pane" id="p-item"><div id="box-item"></div></div>
+        <div class="pane" id="p-item">
+          <div class="hint">
+            Products this app once made in QuickBooks, back when it did that.
+            It does not any more &mdash; nothing is created, renamed or given a
+            SKU in your books.
+          </div>
+          <div id="box-item"></div>
+        </div>
+
+        <!-- ============ left out ============ -->
+        <div class="pane" id="p-off">
+          <div class="hint">
+            Orders that will <b>not</b> be invoiced: cancelled in Shopify, or
+            nothing on them left to bill. Nothing is wrong with these and
+            nothing is waiting on you &mdash; they are here so the number on the
+            card can be opened.
+          </div>
+          <div id="offBox"><div class="none">Loading&hellip;</div></div>
+        </div>
 
         <!-- ============ check the invoices ============ -->
         <div class="pane" id="p-check">
@@ -243,6 +277,14 @@
             list is not something to do every half minute. The invoices are fetched
             by date range, so a few hundred of them are a few calls rather than a
             few hundred.
+            <br><br>
+            <b>Where each side comes from.</b> The invoice &mdash; what is actually
+            on the line &mdash; is read live out of <b>QuickBooks</b>, not from
+            anything kept here. What it <em>should</em> have been comes from two
+            places: the order&rsquo;s Shopify lines in Fusion&rsquo;s own table, and
+            your QuickBooks product list as it is today. So an order whose Shopify
+            lines have since been cleared out cannot be checked, and is counted
+            separately below rather than passed.
           </div>
           <div class="acts" style="margin-bottom:12px">
             <button class="go" id="btnCheck">Check every invoice Fusion wrote</button>
@@ -412,6 +454,7 @@
       p.classList.toggle('on', p.id === 'p-' + name);
     });
     if(name === 'held'){ loadHeld(); loadMatch(); }
+    else if(name === 'off') loadOff();
     else if(name === 'setup') loadSetup();
     else if(name === 'check') { /* only when asked: it reads QuickBooks */ }
     else loadEvents(name);
@@ -427,14 +470,21 @@
     get('/api/shopify/report').then(function(d){
       var st = (d.tally && d.tally.states) || {}, k = (d.tally && d.tally.kinds) || {};
       $('tot').innerHTML =
-        card('good', st.done || 0, 'Invoices in') +
-        card('warn', (st.waiting || 0), 'Waiting') +
-        card('bad',  (st.held || 0), 'Needs you') +
-        card('', (st.off || 0), 'Left out') +
-        card('', k.item || 0, 'Products made · 30d');
+        card('good', st.done || 0, 'Invoices in', 'invoice') +
+        card('warn', (st.waiting || 0), 'Waiting', 'held') +
+        card('bad',  (st.held || 0), 'Needs you', 'held') +
+        card('', (st.off || 0), 'Left out', 'off') +
+        card('', k.item || 0, 'Products made', 'item');
+      wireCards();
 
       $('cHeld').textContent  = st.held ? '(' + n0(st.held) + ')' : '';
-      $('cInv').textContent   = k.invoice ? '(' + n0(k.invoice) + ')' : '';
+      // The card counts orders in QuickBooks; this used to count log lines,
+      // which is a different number - an order written and then found again
+      // writes two - and the two sitting on one screen disagreeing is how a
+      // page loses somebody's trust. Both say orders now; the list below is
+      // every line written about them, which the tab itself says.
+      $('cInv').textContent   = st.done ? '(' + n0(st.done) + ')' : '';
+      $('cOff').textContent   = st.off ? '(' + n0(st.off) + ')' : '';
       $('cErr').textContent   = k.error ? '(' + n0(k.error) + ')' : '';
       $('cItem').textContent  = k.item ? '(' + n0(k.item) + ')' : '';
 
@@ -563,9 +613,20 @@
     });
   }
 
-  function card(cls, n, what){
-    return '<div class="c' + (cls ? ' ' + cls : '') + '"><b>' + n0(n) + '</b><span>' +
+  // A card is a door. Six left out, and nothing happened when it was
+  // clicked - a figure nobody can open is a figure nobody believes, and that
+  // one is about orders that will never be invoiced unless somebody changes
+  // their mind about them.
+  function card(cls, n, what, go){
+    return '<div class="c' + (cls ? ' ' + cls : '') +
+      (go ? ' click" data-go="' + go : '') + '"><b>' + n0(n) + '</b><span>' +
       esc(what) + '</span></div>';
+  }
+
+  function wireCards(){
+    $('tot').querySelectorAll('[data-go]').forEach(function(c){
+      c.addEventListener('click', function(){ show(c.getAttribute('data-go')); });
+    });
   }
 
   /* ---------- needs you ---------- */
@@ -790,13 +851,50 @@
   });
 
   function unreadNote(d){
-    var miss = d.missing || [];
-    if(!miss.length) return '';
-    return '<div class="hint" style="margin-top:12px"><b>' + n0(miss.length) +
-      '</b> of them could not be found in QuickBooks at all \u2014 deleted there, ' +
-      'or written under a different number: ' +
-      esc(miss.slice(0, 8).map(function(m){ return m.order; }).join(', ')) +
-      (miss.length > 8 ? ' and more' : '') + '.</div>';
+    var bits = [];
+    var miss = d.missing || [], bare = d.noLines || [];
+
+    if(miss.length){
+      bits.push('<b>' + n0(miss.length) + '</b> could not be found in ' +
+        'QuickBooks at all \u2014 deleted there, or written under a different ' +
+        'number: ' +
+        esc(miss.slice(0, 8).map(function(m){ return m.order; }).join(', ')) +
+        (miss.length > 8 ? ' and more' : '') + '.');
+    }
+    if(bare.length){
+      bits.push('<b>' + n0(bare.length) + '</b> could not be checked because ' +
+        'their Shopify lines are no longer kept here \u2014 those are cleared a ' +
+        'while after an order is written, to keep the database small. The ' +
+        'invoices themselves are untouched in QuickBooks.');
+    }
+    if(!bits.length) return '';
+    return '<div class="hint" style="margin-top:12px">' +
+      bits.join('<br><br>') + '</div>';
+  }
+
+  /* ---------- what was left out ---------- */
+
+  function loadOff(){
+    $('offBox').innerHTML = '<div class="none">Loading&hellip;</div>';
+    get('/api/shopify/left-out?limit=500').then(function(d){
+      var rows = d.off || [];
+      if(!rows.length){
+        $('offBox').innerHTML = '<div class="none">Nothing has been left out.</div>';
+        return;
+      }
+      $('offBox').innerHTML = '<div class="scroll"><table class="t">' +
+        '<tr><th>Order</th><th>Placed</th><th>Shop</th><th class="num">Total</th>' +
+        '<th>Why it was left out</th></tr>' +
+        rows.map(function(r){
+          return '<tr><td class="mono">' + esc(r.name) + '</td>' +
+            '<td class="mono">' + esc(String(r.placedAt||'').slice(0,10)) + '</td>' +
+            '<td>' + esc(r.shop || '') + '</td>' +
+            '<td class="num">' + money(r.total) + '</td>' +
+            '<td>' + esc(r.why) + '</td></tr>';
+        }).join('') + '</table></div>';
+    }).catch(function(e){
+      $('offBox').innerHTML = '<div class="none">' + esc(e.message) + '</div>';
+    });
   }
 
   /* ---------- the event tabs ---------- */
@@ -1059,7 +1157,8 @@
       return;
     }
 
-    var kinds = (tab === 'held' || tab === 'setup') ? null : [tab];
+    var kinds = (tab === 'held' || tab === 'setup' || tab === 'off')
+      ? null : [tab];
 
     var job = kinds
       ? Promise.all(kinds.map(function(k){

@@ -1066,6 +1066,26 @@ export async function heldList(realmId, limit) {
 
 // The address Shopify will call us on. Made once per shop and kept, because it
 // is registered with Shopify and must not move underneath them.
+// What was left out, and why it was.
+//
+// "6 left out" was a number on a card with nothing behind it - no tab, no
+// list, and nothing happened when it was clicked. A figure nobody can open
+// is a figure nobody believes, and this one is about orders that will never
+// be invoiced unless somebody changes their mind about them.
+export async function offList(realmId, limit) {
+  const r = await pool.query(
+    `SELECT o.order_gid, o.name, o.placed_at, o.total, o.held_why, o.cancelled,
+            s.label AS shop_label
+       FROM shopify_orders o
+       LEFT JOIN shopify_shops s ON s.id = o.shop_id
+      WHERE o.realm_id = $1 AND o.state = 'off'
+      ORDER BY o.placed_at DESC NULLS LAST
+      LIMIT $2`,
+    [realmId, Math.min(Number(limit) || 300, 1000)]
+  );
+  return r.rows;
+}
+
 export async function shopHookKey(realmId, shopId) {
   const r = await pool.query(
     'SELECT hook_key FROM shopify_shops WHERE realm_id = $1 AND id = $2',

@@ -32,8 +32,15 @@ const DAY = 24 * 3600 * 1000;
 const RAW_DAYS = Math.max(1, Number(process.env.COURIER_RAW_DAYS) || 3);
 // how long a written-up Shopify order keeps its line items, for undo
 const LINES_DAYS = Math.max(1, Number(process.env.SHOPIFY_LINES_DAYS) || 10);
-// how long the Shopify log is kept
-const EVENT_DAYS = Math.max(3, Number(process.env.SHOPIFY_EVENT_DAYS) || 21);
+// How long the Shopify log is kept.
+//
+// Three days, not three weeks. It is a log of what happened, watched while
+// it happens and read the morning after - nobody opens it to look at the
+// 14th of last month, and the thing that actually has to last is on the
+// order row itself (`qb_doc_number`, `synced_at`), which is never trimmed.
+// A log that keeps three weeks of five hundred orders a day is most of what
+// this database is, for no reading anybody does.
+const EVENT_DAYS = Math.max(1, Number(process.env.SHOPIFY_EVENT_DAYS) || 3);
 
 async function bytes() {
   const r = await pool.query('SELECT pg_database_size(current_database())::bigint AS b');

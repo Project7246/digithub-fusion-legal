@@ -740,6 +740,47 @@ The rules, as the screen states them:
    in the discount box, in rupees
 5. cancelled and void orders are left out
 
+## Every card on that page opens
+
+"6 left out" sat on a card with nothing behind it - no tab, no list, and
+nothing happened when it was clicked. A figure nobody can open is a figure
+nobody believes, and that one is about orders that will **never** be invoiced
+unless somebody changes their mind about them. Every card is a door now, and
+**Left out** is a tab of its own: the order, the day, what it was worth and
+why it was set aside - cancelled in Shopify, or nothing left on it to bill.
+
+**And the two numbers on the screen now agree.** The card said 570 and the
+tab said 586, because one counted **orders in QuickBooks** (`state = 'done'`)
+and the other counted **log lines** - an order written and then found again
+later writes two. Two numbers for one thing, disagreeing, on one screen, is
+how a page loses somebody's trust. Both count orders now, and the tab says in
+its own words that the list below is every line written about them.
+
+## Three days of log, not three weeks
+
+`SHOPIFY_EVENT_DAYS` is **3**. It was 21.
+
+The log is watched while it happens and read the morning after; nobody opens
+it to look at the 14th of last month. The thing that actually has to last is
+on the order row - `qb_doc_number`, `synced_at` - and that is never trimmed.
+Three weeks of five hundred orders a day was most of what this database held,
+for no reading anybody does. The page says the three days out loud, so it is
+not a surprise when last week is not there.
+
+## Where "Check the invoices" reads from
+
+Worth being exact about, because the two halves come from different places:
+
+| | from |
+|---|---|
+| what is **actually** on the invoice line | **QuickBooks**, read live, not from anything kept here |
+| what it **should** have been | the order's Shopify lines in Fusion's table, against the QuickBooks product list as it is today |
+
+So an order whose Shopify lines have since been cleared (`SHOPIFY_LINES_DAYS`,
+10 days after it is written) **cannot be checked**. It is counted and named
+separately rather than passed as if it were fine - a check that quietly skips
+what it cannot see is worse than no check.
+
 ## A refusal is only news while it is still true
 
 "QuickBooks said no" listed every refusal there had ever been, so an order
