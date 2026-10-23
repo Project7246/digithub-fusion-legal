@@ -627,7 +627,11 @@ async function writeOneNow(books, row, s) {
       return 'held';
     }
     if (item) {
-      inv.lines.push({ item, desc: descOf(books, item), qty: 1, rate: ship, amt: ship });
+      inv.lines.push({
+        item,
+        desc: ship > 0 ? descOf(books, item) : FREE_DELIVERY,
+        qty: 1, rate: ship, amt: ship
+      });
     }
   }
 
@@ -709,6 +713,18 @@ async function writeOneNow(books, row, s) {
   });
   return retry ? 'failed' : 'held';
 }
+
+// What a delivery line that cost nothing says.
+//
+// The one line of text Fusion is asked to write for itself, and it is asked
+// for on purpose: the item in QuickBooks is called "Default Shipping Product"
+// whether the buyer paid for delivery or not, so a free delivery read the
+// same as a charged one at a glance. Everything else on an invoice line is
+// still QuickBooks' own words.
+//
+// Only when it came to nothing. A delivery that was charged keeps the
+// description QuickBooks holds against the item.
+export const FREE_DELIVERY = 'Free Shipping';
 
 /* ==================== the sweep ==================== */
 

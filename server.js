@@ -33,7 +33,7 @@ import {
   settingsOf as shopifySettings, saveSettings as saveShopifySettings,
   itemsPossible, standingAccounts, openBooks, itemFor, previewItem, whyNot,
   shelfSeen,
-  shippingItemFor, descOf,
+  shippingItemFor, descOf, FREE_DELIVERY,
   sweep as shopifySweep, syncState, startShopifySync, wakeSoon,
   nudgeOrder, nudgeProduct, wireHooks
 } from './shopifysync.js';
@@ -7751,19 +7751,34 @@ app.post('/api/shopify/build', async (req, res) => {
       const inv = built.invoice;
       inv.lines = lines;
 
-      // Delivery the buyer paid for goes on, worked out the same way the live
-      // writing works it out - whatever was chosen, else an item the books
-      // already have, else a Service item made once and used from then on.
+      // Nothing left to bill, asked before delivery is added - or an order
+      // whose every product was set aside would go in carrying nothing but a
+      // free-delivery line at nought.
+      if (!inv.lines.length) {
+        skipped.push({ name: r.name, why: 'every line was set aside' });
+        continue;
+      }
+
+      // Delivery goes on whatever it came to, nought included, worked out the
+      // same way the live writing works it out. Free delivery was promised
+      // and given, so the invoice says so; only the money case can stop the
+      // order, because an invoice that quietly leaves money off is worse than
+      // one not yet written.
       const ship = Number(r.shipping) || 0;
-      if (ship > 0) {
+      {
         const item = await shippingItemFor(books, shipSetting, { shopId: r.shop_id });
-        if (!item) {
+        if (!item && ship > 0) {
           skipped.push({ name: r.name, why: 'nothing in QuickBooks to put delivery on' });
           continue;
         }
-        inv.lines.push({ item, desc: descOf(books, item), qty: 1, rate: ship, amt: ship });
+        if (item) {
+          inv.lines.push({
+            item,
+            desc: ship > 0 ? descOf(books, item) : FREE_DELIVERY,
+            qty: 1, rate: ship, amt: ship
+          });
+        }
       }
-      if (!inv.lines.length) { skipped.push({ name: r.name, why: 'every line was set aside' }); continue; }
 
       if (already.has(String(inv.docNumber).trim())) {
         skipped.push({ name: r.name, why: 'already in QuickBooks' });

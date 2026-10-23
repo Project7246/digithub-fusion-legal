@@ -774,8 +774,14 @@ export function toInvoice(order, opts) {
   // than guessed at.
   const ship = money(order.shipping);
   if (o.shippingItem) {
+    // The one description Fusion writes for itself, and only where delivery
+    // came to nothing - the QuickBooks item is called the same thing whether
+    // the buyer paid for delivery or not. o.freeText is handed in by the
+    // caller so this path and the writer cannot drift apart.
     lines.push({ item: o.shippingItem, qty: 1, rate: ship, amt: ship,
-                 desc: o.descOf ? o.descOf(o.shippingItem) : '' });
+                 desc: ship > 0
+                   ? (o.descOf ? o.descOf(o.shippingItem) : '')
+                   : (o.freeText || '') });
   }
 
   if (missing.length) return { skip: 'unmatched', missing, order };

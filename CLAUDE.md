@@ -740,6 +740,16 @@ order, so the two read the same line for line.
   whose every product was set aside would go in as an invoice carrying nothing
   but a free-delivery line at nought.
 
+**The one line of text Fusion writes for itself** is the description on a
+delivery line that came to nothing: `FREE_DELIVERY` in `shopifysync.js`, which
+reads **Free Shipping**. It is asked for on purpose - the QuickBooks item is
+called "Default Shipping Product" whether the buyer paid for delivery or not,
+so a free delivery and a charged one read the same at a glance. A delivery
+that *was* charged keeps QuickBooks' own description, and every other line on
+every invoice still carries QuickBooks' own words. The constant is exported
+and used by all three writers - the sweep, the by-hand build and
+`toInvoice()` - so they cannot drift apart.
+
 The discount is a `DiscountLineDetail` on the invoice, in rupees, and has been
 all along; what stopped it was QuickBooks' own **Discount** box being off
 (`SalesFormsPrefs.AllowDiscount`), which `salesPrefs()` reads every pass. The
