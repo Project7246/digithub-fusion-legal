@@ -28,6 +28,8 @@
   .end h3{margin:0;font-size:13px;font-weight:600;letter-spacing:.01em}
   .end .who{font-size:12px;color:var(--muted);margin-top:2px;overflow:hidden;
     text-overflow:ellipsis;white-space:nowrap}
+  .end .who a{color:inherit;text-decoration:none;border-bottom:1px dotted var(--line-2)}
+  .end .who a:hover{color:var(--accent-deep);border-bottom-color:var(--accent)}
   .end .st{font-size:11px;margin-top:4px;font-weight:500;display:flex;gap:5px;
     align-items:center}
   .end .st.yes{color:var(--qbo)}
@@ -686,8 +688,12 @@
 
       var list = ((shops && shops.shops) || []).filter(function(x){ return x.active; });
       if(list.length){
-        $('shopWho').textContent = list.length === 1
-          ? list[0].domain : list.length + ' shops';
+        // The shop's name is the way to the page that holds it. It was plain
+        // text, so from here there was no way to the one screen where a shop is
+        // taken off - and a shop on the wrong company's books is exactly when
+        // somebody goes looking for it.
+        $('shopWho').innerHTML = '<a href="/shopify">' + esc(list.length === 1
+          ? list[0].domain : list.length + ' shops') + '</a>';
         $('shopWho').title = list.map(function(x){ return x.domain; }).join(', ');
         mark('shopSt', true, 'Connected');
       } else {
