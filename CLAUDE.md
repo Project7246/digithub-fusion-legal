@@ -447,6 +447,78 @@ decide and the hint is ignored.
   `+ add an account`, which opens `/couriers?add=<key>` with that courier already
   picked.
 
+## Two tabs, and the line between them is parcels or money
+
+Asked for in as many words: *"courier ke dashboard par do tab hon - ek tab
+mein logistics ka hisab ho, kitne parcels aaye kitne gaye... payments ya
+finance ka nahi. Dusre tab mein finance ka hisab ho... finance ka structure
+hota hai usi base par banao."*
+
+There were four - Overview, Orders, Money, Cities - and every one of them
+carried both questions. The stage table had a **Worth** column, the day chart
+put the day's takings in its tooltip, the city table ended in **Collected**
+and **Charges**, and the Money tab counted parcels. So "where are my parcels"
+and "what am I owed" were each half-answered four times over.
+
+| tab | what is on it |
+|---|---|
+| **Parcels** | where every parcel got to, and nothing else. **No money anywhere on it** - not a column, not a tile, not a tooltip |
+| **Finance** | what the parcels are worth, what has been paid, what is still receivable |
+
+The split is enforced by absence, not by a label: there is no `full()` or
+`money()` call left in anything that builds `T.parcels`. That is the test to
+run before adding anything to that tab.
+
+### The Finance tab opens with a statement
+
+Because that is what was asked for, and because the money chain alone does
+not answer "how many delivered parcels are still unpaid". It reads top down:
+
+```
+  Booked and handed to the courier        N parcels   Rs X
+    Delivered - collected at the door     N parcels   Rs X
+      paid out to you by the courier      N parcels   Rs X
+      still owed to you                   N parcels   Rs X
+    Returned - nothing to collect         N parcels   Rs X
+    Still moving - not due yet            N parcels     -
+    Lost or damaged - to claim for        N parcels   Rs X
+```
+
+Parcel counts belong on this tab because **money is counted per parcel**:
+"how many delivered parcels are still unpaid" is a finance question. Where a
+parcel physically is, is not.
+
+Every line opens into its parcels through the handlers that were already
+there (`data-group`, `data-due`), so nothing new had to be wired. The two
+payment lines are all-time while the rest is the chosen dates, and the note
+under the table says so rather than leaving it to be noticed.
+
+The money chain is still underneath it, and still the arithmetic:
+COD less charges is what the courier owes, less what it has paid is what is
+still to receive.
+
+### The same table twice, with different columns
+
+**Each courier company** and **Accounts side by side** appear on both tabs,
+and that is deliberate rather than lazy. On Parcels they carry parcels,
+delivered, returned, moving, rate. On Finance they carry parcels, collected,
+charges, to receive. One table trying to be both is what made the old
+Overview unreadable. The city table split the same way: the parcel columns
+stay under **Every city** on Parcels, and **By city** on Finance carries
+worth, charges and net, biggest first.
+
+### The arrow on a tile scrolls, it no longer switches tabs
+
+With four tabs a tile's arrow carried you to the tab holding the full table.
+With two, the tile and its table are on the same tab, so every one of those
+buttons would have done nothing. `more()` emits `data-jump` now and scrolls
+to the section - `cd-days`, `cd-status`, `cd-cities`, `cd-recent`,
+`cd-picked`, `cd-notin`, `cd-receipts`.
+
+A tab name saved by the old page (`overview`, `orders`, `payments`,
+`cities`) is not one of the two, so it falls through to Parcels rather than
+opening nothing. `/receipts` names the same two in its way-back strip.
+
 ## The courier dashboard answers the money question first
 
 The page used to say where every parcel got to and leave the only question

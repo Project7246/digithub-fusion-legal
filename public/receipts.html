@@ -422,10 +422,12 @@
     var a = scopeAccount || account;
     if(!a){ $('tabs').innerHTML = ''; return; }
     var back = '/courier-dash?account=' + a.id + '&tab=';
+    // The dashboard has two tabs now - Parcels and Finance - and this strip
+    // is the way back to it, so it has to name the same two. It listed the
+    // old four, every one of which now falls through to Parcels.
     $('tabs').innerHTML =
-      ['overview','orders','payments','cities'].map(function(k){
-        return '<a href="' + back + k + '">' +
-               k.charAt(0).toUpperCase() + k.slice(1) + '</a>';
+      [['parcels','Parcels'],['finance','Finance']].map(function(k){
+        return '<a href="' + back + k[0] + '">' + k[1] + '</a>';
       }).join('') +
       '<a class="on" href="#">Receipts</a>';
   }
