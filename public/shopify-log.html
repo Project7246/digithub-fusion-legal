@@ -1608,7 +1608,10 @@
   };
   var KIND_WORD = {
     invoice: 'OK  ', item: 'ITEM', price: 'PRICE', paid: 'PAID',
-    held: 'WAIT', error: 'FAIL', refund: 'RFND', cancelled: 'CANC', edited: 'EDIT'
+    held: 'WAIT', error: 'FAIL', refund: 'RFND', cancelled: 'CANC', edited: 'EDIT',
+    // a product new in Shopify, waiting on her. Never a creation - ITEM is
+    // the one that means something was made in QuickBooks.
+    newprod: 'NEW '
   };
 
   function clock(t){

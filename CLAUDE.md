@@ -1293,6 +1293,23 @@ owner said so the first time she saw them. They are one tab now: the cards
 waiting on her, and underneath, **Added to QuickBooks**. The headline card is
 **Products waiting**.
 
+### `books.items`, not `books.ids`
+
+The Products tab said **Could not read the list: Cannot read properties of
+undefined** over a tab whose own counter said **36**. `openBooks()` returns the
+name-to-id map as `items` (`shelf.ids` goes in under that name) and every other
+reader in `shopifysync.js` says `items`; two new lines said `books.ids`, which
+is `undefined`, so the read threw on the first row that had a name.
+
+The count was right because it comes from `tally()`, a different query. **One
+number on the screen being right is what made a broken list look like an empty
+one** - and an empty list, on this tab, reads as "Shopify has told us nothing",
+which was the opposite of true.
+
+The loop in `reviewNewItems` is wrapped per row now as well. One row that
+cannot be worked out shows as itself, with its reason, rather than taking the
+other thirty-five with it.
+
 ### An `item` event means a product was created, and nothing else
 
 The first product she made went like this: Shopify called, the log wrote
@@ -1302,9 +1319,19 @@ was right, and the screen was lying.
 
 `nudgeProduct` was writing kind `item` for a product merely **noticed** in
 Shopify, and `item` is the kind the made-list is built from. So a notice read
-as a creation. **It writes no event at all now** - the row on the Products list
-is the record that we noticed it, and an `item` event means one thing: a
-product was created in QuickBooks, by her, on purpose.
+as a creation.
+
+The first fix dropped the line entirely, and that was wrong too: the owner
+wanted it - *"upar log mein us waqt bilkul sahi aaya tha... Shopify mein new
+product hai lekin QB mein nahi bana, aisa hona chahiye tha, uske liye meri
+permission chahiye."* A new product arriving **is** news, and the point of the
+line is that it is waiting on her.
+
+So it is **kind `newprod`**, which shows in the live log as `NEW` and is never
+in the made-list, and the sentence says in words that nothing has been created:
+*"new in Shopify at 2000, cost 1200 - nothing made in QuickBooks, it is waiting
+for you on Products"*. `item` now means one thing only: a product was created
+in QuickBooks, by her, on purpose.
 
 The one historical line of that kind is still there, and **Clear this list**
 takes it off; it changes nothing in QuickBooks either way, which the tab says.

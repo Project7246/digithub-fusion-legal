@@ -238,7 +238,9 @@ export const EVENT_KINDS = [
   'invoice',      // an invoice written into QuickBooks
   'held',         // waiting on a person - a product with no item, mostly
   'error',        // QuickBooks or Shopify refused something
-  'item',         // an item made in QuickBooks for a new product
+  'item',         // an item MADE in QuickBooks, by a person, on purpose
+  'newprod',      // a product new in Shopify, waiting to be allowed in -
+                  // never a creation, which is why it is not 'item'
   'price',        // a product's price moved
   'paid',         // money taken against an order
   'refund',       // money given back

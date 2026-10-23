@@ -1252,6 +1252,12 @@ export async function reviewNewItems(realmId) {
   out.accounts = books.accounts;
 
   for (const r of rows) {
+   // One row that cannot be worked out must not take the other thirty-five
+   // with it. This whole loop used to be bare, so a single bad row threw,
+   // the route answered 500, and the page said "Could not read the list"
+   // over a tab whose own counter said 36 - the list looked empty when it
+   // was full. A row that goes wrong is shown as it is, unjudged.
+   try {
     const sku = String(r.sku || '').trim().toLowerCase();
     const name = String(r.qb_name || r.shop_title || '').trim();
     const onSku = sku ? books.skus.get(sku) : null;
@@ -1265,7 +1271,14 @@ export async function reviewNewItems(realmId) {
 
     // the same name, a different SKU. Not settled - named.
     let clash = '';
-    const byName = name ? books.ids[name.toLowerCase()] : null;
+    // `items`, not `ids`. openBooks names it `items` (shelf.ids goes in under
+    // that name) and every other reader in this file says `items` - this one
+    // line said `ids`, so it was reading a property off `undefined` and the
+    // whole list came back as "Could not read the list: Cannot read
+    // properties of undefined". The count on the tab was right, because that
+    // comes from a different query, which is what made it look like the list
+    // was empty rather than broken.
+    const byName = name ? books.items[name.toLowerCase()] : null;
     if (byName) {
       const other = (books.live.find(x => x.name.toLowerCase() === name.toLowerCase()) || {});
       clash = 'QuickBooks already has a product called "' + name + '"' +
@@ -1277,6 +1290,10 @@ export async function reviewNewItems(realmId) {
     }
 
     out.rows.push(Object.assign({}, r, { already: '', clash }));
+   } catch (e) {
+    out.rows.push(Object.assign({}, r, { already: '', clash: '',
+      why: 'Fusion could not check this one against QuickBooks: ' + e.message }));
+   }
   }
 
   return out;
@@ -1334,7 +1351,7 @@ export async function makeNewItems(realmId, ids) {
     // The same name under a different SKU. This is the exact shape of the
     // worst thing this app has done, so it is refused and named - never
     // quietly used.
-    if (books.ids[name.toLowerCase()]) {
+    if (books.items[name.toLowerCase()]) {
       const other = books.live.find(x => x.name.toLowerCase() === name.toLowerCase()) || {};
       await refuse(row, 'QuickBooks already has a product called "' + name + '"' +
         (other.sku ? ' and its SKU is ' + other.sku : ' with no SKU on it') +
@@ -1547,22 +1564,35 @@ export async function nudgeProduct(realmId, shop, gid, topic) {
       // does is put a row on a list. The first webhook after a shop is
       // connected therefore offers everything, and reviewNewItems() settles
       // whatever is already in the books by itself - see there.
-      // No log line for this, and that is deliberate.
+      // The live log says so, and it says the true thing.
       //
-      // It used to write an `item` event saying "new on Shopify at 2000" -
-      // and `item` is the kind the **Products** list is built from, so a
-      // product merely noticed in Shopify appeared under products added to
-      // QuickBooks. Somebody then opened QuickBooks, found nothing there,
-      // and was right to. A screen that says a thing was made when nothing
-      // was made is worse than a screen that says nothing.
+      // This used to be written as kind `item` - and `item` is the kind the
+      // **Added to QuickBooks** list is built from, so a product merely
+      // NOTICED in Shopify appeared under products created in the books.
+      // Somebody then opened QuickBooks, found nothing there, and was right
+      // to. A screen that says a thing was made when nothing was made is
+      // worse than a screen that says nothing.
       //
-      // The row on the Products list IS the record that we noticed it. An
-      // `item` event now means one thing only: a product was created in
-      // QuickBooks, by her, on purpose.
+      // The answer is not to say nothing - the owner wanted this line, and
+      // she is right to: a new product arriving is news, and the whole point
+      // is that it is waiting on her. It is kind `newprod` now. It shows in
+      // the live log as NEW, it is never in the made-list, and the sentence
+      // says in words that nothing has been created.
+      let fresh = false;
       try {
         const off = await offerNewItem(realmId, shop.id, p, v);
-        if (off.fresh) offered++;
+        fresh = off.fresh;
+        if (fresh) offered++;
       } catch (e) { /* the Look in Shopify button is the other way in */ }
+
+      if (fresh) {
+        await note(realmId, 'newprod', {
+          shopId: shop.id, sku: v.sku,
+          title: p.title + (v.title && v.title !== 'Default Title' ? ' · ' + v.title : ''),
+          note: 'new in Shopify at ' + price + (cost ? ', cost ' + cost : '') +
+                ' - nothing made in QuickBooks, it is waiting for you on Products'
+        });
+      }
     } else if (was.price !== price || was.cost !== cost) {
       moved++;
       await note(realmId, 'price', {
