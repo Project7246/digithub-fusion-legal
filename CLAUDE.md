@@ -781,6 +781,68 @@ anybody asked for - and a box that can put a character in front of an invoice
 number is a box that will one day be filled in. It is off the Connector
 screen, off the by-hand page, out of `DEFAULTS` and out of `toInvoice`.
 
+## Needs you is pending until she says it is not
+
+Asked for in as many words: *"jo invoices Needs you mein pending hain, woh
+pending us time tak rahein jab tak main sort out na kar loon - jaise ke SKU
+match karna, ya jo bhi masla ho."*
+
+So an order in state `waiting` or `held` **keeps everything, for ever,
+however old it is**. That is the rule, not a side effect of the retention
+days: a held order is a question waiting on a person - this SKU is on no
+item, turn the discount box on - and the order's **lines are the question**.
+Throw them away and Needs you loses the thing it is asking about.
+
+`trimShopifyLines` only ever touches `state IN ('done', 'off')` - in
+QuickBooks, or set aside on purpose - and nothing may be added to that list
+that is not finished with. Nothing else expires a held order either: there is
+no give-up after N tries, `saveOrder` never writes `state`, and the only
+things that free a held order are a person pressing **Try all of them again
+now** or saving the mapping that answers it (`releaseHeld` after
+`POST /api/shopify/mappings`). If it is still not answered it is held again.
+
+### An order with no lines is read back from Shopify, not filed away
+
+The one way a pending order could have gone quiet, and it was real.
+Housekeeping clears the lines of an order that is **in the books**; `unsync`
+- **Put it back**, after its invoice was deleted in QuickBooks - then puts
+that same order back in the queue as `waiting`. The row is intact and the
+lines are gone, so `writeOneNow` found nothing to bill and set it **off** as
+*"nothing to bill on it"*: an invoice deleted on purpose so it could be
+written again, moved to the one list that says nobody need look at it.
+
+`relines()` reads the order back from Shopify before anything is decided, and
+the two outcomes are told apart - which is the whole point of it:
+
+| | |
+|---|---|
+| Shopify answered, still no lines | set aside, and the reason says we asked Shopify |
+| could not look at all | **failed** - back in the queue to try again |
+
+"We could not look" is not "there is nothing on it", and must never be
+written down as if it were.
+
+## Ten days while the system settles
+
+`SHOPIFY_LINES_DAYS` and `SHOPIFY_EVENT_DAYS` are **10**, asked for on
+23 Oct 2026: *"ek din wala data abhi filhaal 10 din ki range par le jayen jab
+tak system theek na ban jaye."*
+
+The one-day argument below is still right about a **finished** order, and it
+is still the destination. It is only right once the writing can be trusted,
+and until then:
+
+- **Check the invoices** can look back over a fortnight's work rather than
+  yesterday's, because it reads the lines kept here and nothing else.
+- **Put it back** can write an order again ten days after its invoice was
+  deleted.
+- *"Why was this one held on Tuesday"* is a question that gets asked on
+  Friday, and the log has to still have the answer.
+
+Both are dials, not decisions - the env vars move them without a deploy, and
+they come back down to 1 when the owner says the system is right. The log
+page says the number out loud, so it is not a surprise.
+
 ## One day, and the row that must not go
 
 The owner's argument, and it is right: this connector exists to move an order
@@ -789,7 +851,8 @@ somewhere better than here** - the invoice is in the books, the order is
 still in Shopify, and that is where anybody would go to look at it. A second
 copy of the lines sitting here for ten days is a copy nobody reads.
 
-So `SHOPIFY_LINES_DAYS` is **1** and `SHOPIFY_EVENT_DAYS` is **1**.
+That is where both land once the connector is trusted. For now they are
+10 - see above.
 
 **What does not go is the order's own row.** It is what stops an order being
 invoiced twice. Shopify goes on sending webhooks about an order for weeks -

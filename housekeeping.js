@@ -30,29 +30,45 @@ const DAY = 24 * 3600 * 1000;
 
 // how long the courier's own JSON is worth keeping
 const RAW_DAYS = Math.max(1, Number(process.env.COURIER_RAW_DAYS) || 3);
-// How long a written-up Shopify order keeps its line items.
+// How long a WRITTEN-UP Shopify order keeps its line items.
 //
-// One day. The owner's argument, and it is right: this connector exists to
-// move an order from Shopify into QuickBooks, and once it is there both
-// copies are somewhere better than here - the invoice is in the books and
-// the order is still in Shopify, which is where anybody would go to look at
-// it anyway. Keeping a second copy of the lines for ten days is a second
-// copy nobody reads.
+// Ten days while the connector is still settling in, asked for by the owner
+// in as many words: "ek din wala data abhi filhaal 10 din ki range par le
+// jayen jab tak system theek na ban jaye."
 //
-// What is NOT thrown away is the order's own row: its Shopify id, its
-// number, the invoice number and the day it went in. That row is a couple of
-// hundred bytes against a couple of kilobytes of lines, and it is the one
-// thing that cannot be got back - see the note on trimShopifyLines below.
-const LINES_DAYS = Math.max(1, Number(process.env.SHOPIFY_LINES_DAYS) || 1);
+// The one-day argument is still right about a finished order - the invoice is
+// in the books and the order is still in Shopify, so a second copy of the
+// lines here is a copy nobody reads. But it is only right once the writing
+// can be trusted, and until then ten days is what makes **Check the
+// invoices** able to look back over a fortnight's work, and what makes
+// **Put it back** able to write an order again after its invoice has been
+// deleted. Both of those read the lines kept here and nothing else.
+//
+// It is a dial, not a decision: `SHOPIFY_LINES_DAYS` moves it without a
+// deploy, and it comes back down to 1 when she says the system is right.
+//
+// Two things this number can never reach, whatever it is set to:
+//
+//   - an order still `waiting` or `held` keeps its lines for ever. A held
+//     order is a question waiting on a person, and the lines are the question.
+//     See trimShopifyLines below.
+//   - the order's own row. That row is its Shopify id, its number, the
+//     invoice number and the day it went in - a couple of hundred bytes
+//     against a couple of kilobytes of lines, and the only thing that cannot
+//     be got back from anywhere else.
+const LINES_DAYS = Math.max(1, Number(process.env.SHOPIFY_LINES_DAYS) || 10);
 // How long the Shopify log is kept.
 //
-// Three days, not three weeks. It is a log of what happened, watched while
-// it happens and read the morning after - nobody opens it to look at the
-// 14th of last month, and the thing that actually has to last is on the
-// order row itself (`qb_doc_number`, `synced_at`), which is never trimmed.
-// A log that keeps three weeks of five hundred orders a day is most of what
-// this database is, for no reading anybody does.
-const EVENT_DAYS = Math.max(1, Number(process.env.SHOPIFY_EVENT_DAYS) || 1);
+// Ten days, not three weeks and not one day. One day is the right length for
+// a log of a connector that is working - it is watched while it happens and
+// read the morning after, and the thing that has to last is on the order row
+// itself (`qb_doc_number`, `synced_at`), which is never trimmed. It is the
+// wrong length for a connector still being argued with: "why was this one
+// held on Tuesday" is a question that gets asked on Friday, and the answer
+// has to still be there.
+//
+// Ten days of it, while the system settles. `SHOPIFY_EVENT_DAYS` moves it.
+const EVENT_DAYS = Math.max(1, Number(process.env.SHOPIFY_EVENT_DAYS) || 10);
 
 async function bytes() {
   const r = await pool.query('SELECT pg_database_size(current_database())::bigint AS b');
@@ -105,9 +121,21 @@ export async function trimCourierRaw(days) {
 }
 
 // An order that is in the books keeps its row - the row is the record that it
-// was - but not the shop's own line items. An order still waiting or held
-// keeps everything: that is the one the lines are still needed for.
-// The lines go, the row stays.
+// was - but not the shop's own line items. The lines go, the row stays.
+//
+// **An order still `waiting` or `held` keeps everything, for ever, however
+// old it is.** That is not a side effect of the days above, it is the rule:
+// a held order is a question waiting on a person - this SKU is on no item,
+// turn the discount box on - and the order's lines ARE the question. Throw
+// them away and **Needs you** loses the thing it is asking about, and an
+// order the owner was about to sort out is gone. She asked for this in as
+// many words: "jo invoices Needs you mein pending hain, woh pending us time
+// tak rahein jab tak main sort out na kar loon."
+//
+// Which is why the `state IN ('done', 'off')` below is the whole of the
+// safety, and why nothing may be added to that list that is not finished
+// with: 'done' is in QuickBooks, 'off' was set aside on purpose. Any other
+// state is somebody's open question.
 //
 // The row is what stops an order being invoiced twice. Shopify goes on
 // sending webhooks about an order for weeks - updated, paid, fulfilled - and
@@ -125,7 +153,7 @@ export async function trimShopifyLines(days) {
     return await count(
       `UPDATE shopify_orders
           SET lines = '[]'::jsonb, bill_to = NULL
-        WHERE state IN ('done', 'off')
+        WHERE state IN ('done', 'off')   -- never 'waiting', never 'held'
           AND COALESCE(synced_at, seen_at) < NOW() - ($1 || ' days')::interval
           AND (lines IS NOT NULL AND lines <> '[]'::jsonb
                OR bill_to IS NOT NULL)`,

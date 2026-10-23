@@ -224,11 +224,17 @@
             more than one for an order, when it was written and then found
             again later. The card above counts <b>orders</b> in QuickBooks.
             <br><br>
-            This log is kept for <b>one day</b> and then cleared, and an
-            order&rsquo;s Shopify lines go the same way one day after it has been
-            written. Once an invoice is in QuickBooks both copies are somewhere
-            better than here: the invoice is in the books, and the order is
-            still in Shopify.
+            This log is kept for <b>ten days</b> and then cleared, and an
+            order&rsquo;s Shopify lines go the same way ten days after it has
+            been written. Ten rather than one while the connector is settling
+            in: &ldquo;why was this one held on Tuesday&rdquo; gets asked on
+            Friday, and <b>Check the invoices</b> and <b>Put it back</b> both
+            read those lines.
+            <br><br>
+            <b>An order under Needs you keeps everything, for ever</b> &mdash;
+            however old it is, until you have sorted it out. The days above are
+            only about orders that are finished with: in QuickBooks, or set
+            aside on purpose.
             <br><br>
             What is never thrown away is the order&rsquo;s own row &mdash; its
             Shopify id, its number, its invoice number and the day it went in.
@@ -869,8 +875,8 @@
     }
     if(bare.length){
       bits.push('<b>' + n0(bare.length) + '</b> could not be checked because ' +
-        'their Shopify lines are no longer kept here \u2014 those are cleared a ' +
-        'day after an order is written, to keep the database small. The ' +
+        'their Shopify lines are no longer kept here \u2014 those are cleared ' +
+        'ten days after an order is written, to keep the database small. The ' +
         'invoices themselves are untouched in QuickBooks.');
     }
     if(!bits.length) return '';

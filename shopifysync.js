@@ -27,7 +27,7 @@ import { pool } from './db.js';
 import { getSetting, setSetting } from './settings.js';
 import { getMappings } from './mappings.js';
 import {
-  fetchOne, fetchProduct, saveOne, dueOrders, olderWaiting,
+  fetchOne, fetchProduct, saveOne, getShop, dueOrders, olderWaiting,
   setDone, setHeld, setFailed, setOff, failAll, releaseHeld, note, toInvoice, ask
 } from './shopify.js';
 import { decrypt } from './secrets.js';
@@ -503,9 +503,75 @@ export async function writeOne(books, row, s) {
   }
 }
 
+// An order with no lines at all is read back from Shopify before anything is
+// decided about it.
+//
+// It is not a hypothetical. Housekeeping clears the lines of an order that is
+// in the books (SHOPIFY_LINES_DAYS), and `unsync` - "Put it back", after the
+// invoice has been deleted in QuickBooks - puts that same order back in the
+// queue as `waiting`. The row is intact, the lines are gone, and everything
+// below would then find nothing to bill and quietly file it under **Left
+// out**: an order whose invoice was deleted on purpose so it could be written
+// again, moved to the one list that says nobody needs to look at it.
+//
+// So: no lines is treated as a thing we cannot see rather than a thing that
+// is empty, and the two are answered differently. `looked` says whether
+// Shopify actually answered:
+//
+//   looked, and still nothing  ->  the order really is empty. Set aside, and
+//                                  the reason says we asked Shopify.
+//   could not look             ->  FAILED, back in the queue to try again.
+//                                  "We could not look" is not "there is
+//                                  nothing on it", and must never be written
+//                                  down as if it were.
+async function relines(row, realmId) {
+  const out = { row, looked: false };
+
+  const shop = await getShop(row.realm_id || realmId, row.shop_id);
+  if (!shop) return out;
+
+  const fresh = await fetchOne(shop, row.order_gid);
+  if (!fresh) return out;
+  out.looked = true;
+
+  const again = await saveOne(row.realm_id || realmId, row.shop_id, fresh);
+  // keep whatever dueOrders joined on (shop_label, shop_domain): the fresh row
+  // is straight out of the table and has none of it
+  if (again) out.row = Object.assign({}, row, again);
+  return out;
+}
+
 async function writeOneNow(books, row, s) {
   const realmId = books.realmId;
   const ctx = { shopId: row.shop_id };
+
+  if (!Array.isArray(row.lines) || !row.lines.length) {
+    let got;
+    try {
+      got = await relines(row, realmId);
+    } catch (e) {
+      await setFailed(realmId, row.order_gid,
+        'its line items are not kept here any more and Shopify would not hand ' +
+        'them back: ' + e.message);
+      return 'failed';
+    }
+    row = got.row;
+    if (!Array.isArray(row.lines) || !row.lines.length) {
+      if (!got.looked) {
+        await setFailed(realmId, row.order_gid,
+          'its line items are not kept here any more and Shopify did not hand ' +
+          'the order back, so there is nothing to build an invoice from yet');
+        return 'failed';
+      }
+      // We did look, and Shopify says there is nothing on it. That is an
+      // answer, so it is set aside rather than retried for ever - and the
+      // reason says we asked, so it reads differently from an order that
+      // simply had its lines cleared here.
+      await setOff(realmId, row.order_gid,
+        'Shopify has no line items on it');
+      return 'off';
+    }
+  }
 
   const no = whyNot(row, s);
   if (no) {
