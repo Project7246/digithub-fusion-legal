@@ -30,8 +30,20 @@ const DAY = 24 * 3600 * 1000;
 
 // how long the courier's own JSON is worth keeping
 const RAW_DAYS = Math.max(1, Number(process.env.COURIER_RAW_DAYS) || 3);
-// how long a written-up Shopify order keeps its line items, for undo
-const LINES_DAYS = Math.max(1, Number(process.env.SHOPIFY_LINES_DAYS) || 10);
+// How long a written-up Shopify order keeps its line items.
+//
+// One day. The owner's argument, and it is right: this connector exists to
+// move an order from Shopify into QuickBooks, and once it is there both
+// copies are somewhere better than here - the invoice is in the books and
+// the order is still in Shopify, which is where anybody would go to look at
+// it anyway. Keeping a second copy of the lines for ten days is a second
+// copy nobody reads.
+//
+// What is NOT thrown away is the order's own row: its Shopify id, its
+// number, the invoice number and the day it went in. That row is a couple of
+// hundred bytes against a couple of kilobytes of lines, and it is the one
+// thing that cannot be got back - see the note on trimShopifyLines below.
+const LINES_DAYS = Math.max(1, Number(process.env.SHOPIFY_LINES_DAYS) || 1);
 // How long the Shopify log is kept.
 //
 // Three days, not three weeks. It is a log of what happened, watched while
@@ -40,7 +52,7 @@ const LINES_DAYS = Math.max(1, Number(process.env.SHOPIFY_LINES_DAYS) || 10);
 // order row itself (`qb_doc_number`, `synced_at`), which is never trimmed.
 // A log that keeps three weeks of five hundred orders a day is most of what
 // this database is, for no reading anybody does.
-const EVENT_DAYS = Math.max(1, Number(process.env.SHOPIFY_EVENT_DAYS) || 3);
+const EVENT_DAYS = Math.max(1, Number(process.env.SHOPIFY_EVENT_DAYS) || 1);
 
 async function bytes() {
   const r = await pool.query('SELECT pg_database_size(current_database())::bigint AS b');
@@ -95,6 +107,19 @@ export async function trimCourierRaw(days) {
 // An order that is in the books keeps its row - the row is the record that it
 // was - but not the shop's own line items. An order still waiting or held
 // keeps everything: that is the one the lines are still needed for.
+// The lines go, the row stays.
+//
+// The row is what stops an order being invoiced twice. Shopify goes on
+// sending webhooks about an order for weeks - updated, paid, fulfilled - and
+// each one asks "has this been written?". The answer is that row, and it is
+// the only copy of the answer we have: Shopify does not know our invoice
+// number, and QuickBooks does not know Shopify's order id.
+//
+// Without it the connector would have to ask QuickBooks, by invoice number,
+// on every webhook - which works right up until somebody changes what the
+// number looks like, and then writes a second invoice for an order that was
+// already in the books. A couple of hundred bytes an order is the cheapest
+// insurance in this app.
 export async function trimShopifyLines(days) {
   try {
     return await count(

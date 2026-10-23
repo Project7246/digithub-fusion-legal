@@ -785,6 +785,39 @@ function localDay(ts) {
 // `match(sku, title)` hands back the QuickBooks item name, or null if there is
 // none yet - an order with any unmatched line is not built, because half an
 // invoice in real books is worse than no invoice.
+// The invoice number is Shopify's order name, exactly as Shopify writes it.
+//
+// It used to be built: strip the name down to its digits, then put whatever
+// the prefix setting said back on the front. With the prefix set to "#" that
+// happened to come out right for a shop whose orders are called #9323516 -
+// and wrong for every shop whose numbers carry letters, because PC-1001
+// became 1001 and then #1001.
+//
+// The point of the number is that one search finds the same thing on both
+// sides. So it is not derived, not tidied and not prefixed: whatever Shopify
+// calls the order is what QuickBooks is told, # and letters and all.
+//
+// `prefix` stays for the one company that had set it before this, and is
+// put in front of Shopify's own name rather than in front of a number this
+// pulled apart. Left empty - which is the default, and what it should be -
+// nothing is added at all.
+export function docNumberOf(order, prefix) {
+  const name = String(order.name || '').trim();
+  const fallback = String(order.number || '').trim();
+  const base = name || fallback;
+  const front = String(prefix || '');
+
+  // And it is never added twice.
+  //
+  // This company's prefix is "#", from back when the number was stripped to
+  // its digits first - and Shopify's own name for the order is "#9323516".
+  // Put together blindly that is "##9323516": a number QuickBooks has never
+  // seen, so every order already in the books would look unwritten and be
+  // written again. In real books that is the worst thing in this file.
+  if (!front || base.startsWith(front)) return base;
+  return front + base;
+}
+
 export function toInvoice(order, opts) {
   const o = opts || {};
   const date = localDay(order.placed_at);
@@ -831,7 +864,7 @@ export function toInvoice(order, opts) {
 
   return {
     invoice: {
-      docNumber: (o.prefix || '') + (order.number || String(order.name || '').replace(/[^0-9]/g, '')),
+      docNumber: docNumberOf(order, o.prefix),
       customer: customerName(o.customer, order.placed_at),
       txnDate: date,
       dueDate: date,

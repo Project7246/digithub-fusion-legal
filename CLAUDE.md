@@ -756,16 +756,63 @@ later writes two. Two numbers for one thing, disagreeing, on one screen, is
 how a page loses somebody's trust. Both count orders now, and the tab says in
 its own words that the list below is every line written about them.
 
-## Three days of log, not three weeks
+## The invoice number is Shopify's name, character for character
 
-`SHOPIFY_EVENT_DAYS` is **3**. It was 21.
+It used to be built: strip the order name to its digits, then put the
+`prefix` setting back on the front. With the prefix set to `#` that came out
+right for a shop whose orders are called `#9323516`, and wrong for every shop
+whose numbers carry letters - `PC-1001` became `1001` and then `#1001`.
+
+`docNumberOf()` in `shopify.js` is the whole rule now: **whatever Shopify
+calls the order is what QuickBooks is told**, its `#` and its letters
+included. Not tidied, not stripped, nothing added. The point of the number is
+that one search finds the same thing on both sides.
+
+**And the prefix is never added twice.** This company's prefix is `#` and
+Shopify's own name is `#9323516`; put together blindly that is `##9323516` -
+a number QuickBooks has never seen, so every order already in the books would
+look unwritten and be written again. The prefix is skipped when the name
+already starts with it. It stays in the settings only for books where
+invoices were uploaded under a different front, and empty is the default and
+the right answer.
+
+## One day, and the row that must not go
+
+The owner's argument, and it is right: this connector exists to move an order
+from Shopify into QuickBooks, and once it is there **both copies are
+somewhere better than here** - the invoice is in the books, the order is
+still in Shopify, and that is where anybody would go to look at it. A second
+copy of the lines sitting here for ten days is a copy nobody reads.
+
+So `SHOPIFY_LINES_DAYS` is **1** and `SHOPIFY_EVENT_DAYS` is **1**.
+
+**What does not go is the order's own row.** It is what stops an order being
+invoiced twice. Shopify goes on sending webhooks about an order for weeks -
+updated, paid, fulfilled - and each one asks "has this been written?". That
+row is the answer and the only copy of it: **Shopify does not know our
+invoice number, and QuickBooks does not know Shopify's order id.** Nothing
+else holds both.
+
+Without it the connector would have to ask QuickBooks by invoice number on
+every webhook - which works right up until the number's shape changes, and
+then writes a second invoice for an order already in the books. A couple of
+hundred bytes an order against a couple of kilobytes of lines: the row is
+three per cent of the size and all of the safety.
+
+The one thing given up is reach: **Check the invoices** can only check an
+order whose Shopify lines are still here, so from now on that is the last
+day's worth. It says so, and names what it could not check.
+
+## A log is for watching, not for keeping
+
+`SHOPIFY_EVENT_DAYS` is **1**. It was 21.
 
 The log is watched while it happens and read the morning after; nobody opens
 it to look at the 14th of last month. The thing that actually has to last is
 on the order row - `qb_doc_number`, `synced_at` - and that is never trimmed.
 Three weeks of five hundred orders a day was most of what this database held,
-for no reading anybody does. The page says the three days out loud, so it is
-not a surprise when last week is not there.
+for no reading anybody does. The page says the day out loud, so it is not a
+surprise when yesterday is not there.
 
 ## Where "Check the invoices" reads from
 

@@ -224,10 +224,16 @@
             more than one for an order, when it was written and then found
             again later. The card above counts <b>orders</b> in QuickBooks.
             <br><br>
-            This log is kept for <b>three days</b> and then cleared, so the
-            database stays small. What lasts is on the order itself &mdash; its
-            invoice number and the day it went in &mdash; and that is never
-            thrown away.
+            This log is kept for <b>one day</b> and then cleared, and an
+            order&rsquo;s Shopify lines go the same way one day after it has been
+            written. Once an invoice is in QuickBooks both copies are somewhere
+            better than here: the invoice is in the books, and the order is
+            still in Shopify.
+            <br><br>
+            What is never thrown away is the order&rsquo;s own row &mdash; its
+            Shopify id, its number, its invoice number and the day it went in.
+            That is a couple of hundred bytes, and it is the only thing that
+            knows a Shopify order has already been invoiced.
           </div>
           <div id="box-invoice"></div>
         </div>
@@ -864,7 +870,7 @@
     if(bare.length){
       bits.push('<b>' + n0(bare.length) + '</b> could not be checked because ' +
         'their Shopify lines are no longer kept here \u2014 those are cleared a ' +
-        'while after an order is written, to keep the database small. The ' +
+        'day after an order is written, to keep the database small. The ' +
         'invoices themselves are untouched in QuickBooks.');
     }
     if(!bits.length) return '';

@@ -200,21 +200,32 @@
           <div class="body">
             <div class="line">
               When an <b>order</b> is created in Shopify, create an
-              <b>invoice</b> in QuickBooks Online, numbered <em id="sNum">&hellip;</em>
-              on terms <em id="sTerms">&hellip;</em>
+              <b>invoice</b> in QuickBooks Online numbered
+              <em id="sNum">&hellip;</em> &mdash; <em>exactly what Shopify calls
+              it</em> &mdash; on terms <em id="sTerms">&hellip;</em>
             </div>
             <div class="note">
-              Shopify tells us the moment it happens, so nothing is polled and nothing waits
-              for a person. A number keeps its <code>#</code> if you give it one &mdash;
-              QuickBooks counts <code>9323517</code> and <code>#9323517</code> as two
-              different invoices, so this must match what was uploaded before.
+              Shopify tells us the moment it happens, so nothing is polled and nothing
+              waits for a person.
+              <br><br>
+              The number is <b>Shopify&rsquo;s own order name, character for
+              character</b> &mdash; its <code>#</code> if it has one, its letters if it
+              has those. It is not tidied, not stripped to digits and nothing is put
+              on the front of it. That is the whole point of it: one search finds the
+              same thing on both sides. QuickBooks counts <code>9323517</code> and
+              <code>#9323517</code> as two different invoices, so guessing at this is
+              how one order ends up as two.
             </div>
             <button class="cfgbtn" data-open="c1" type="button">Configure</button>
             <div class="cfg" id="c1">
               <div class="row">
                 <div class="fld">
-                  <label for="prefix">In front of the number</label>
-                  <input id="prefix" type="text" placeholder="#" maxlength="6">
+                  <label for="prefix">In front of it (leave empty)</label>
+                  <input id="prefix" type="text" placeholder="nothing" maxlength="6">
+                  <div class="hint" style="font-size:11px;margin-top:4px">
+                    Only for books where invoices were already uploaded under a
+                    different front. Empty means Shopify&rsquo;s name as it is.
+                  </div>
                 </div>
                 <div class="fld">
                   <label for="terms">Terms</label>
@@ -445,7 +456,11 @@
   }
 
   function paint(){
-    $('sNum').textContent = (S.prefix || '') + '9323517';
+    // the same rule the writer uses, so the screen cannot promise one thing
+    // and the books get another
+    var sample = '#9323517';
+    $('sNum').textContent = (!S.prefix || sample.indexOf(S.prefix) === 0)
+      ? sample : S.prefix + sample;
     $('sTerms').textContent = S.terms || 'whatever the customer has';
     $('sCust').textContent = String(S.customer || '')
       .replace('{mon}{yy}', monTag()).replace('{mon}', monTag().slice(0,3)) || '(not set)';
