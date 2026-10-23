@@ -810,6 +810,23 @@ export async function shopElsewhere(realmId, domain) {
   return { realmId: r.rows[0].realm_id, name: r.rows[0].company_name || '' };
 }
 
+// Which shop is connected where, across the companies this person holds.
+//
+// The portal's own question. "Is my client's shop attached to my client's
+// books" cannot be answered by opening each company in turn and remembering
+// what the last one said - and a shop on the wrong books is the one mistake
+// here that writes somebody's sales into somebody else's QuickBooks.
+export async function shopsPerCompany() {
+  const r = await pool.query(
+    `SELECT realm_id, domain, active FROM shopify_shops ORDER BY realm_id, id`);
+  const out = new Map();
+  for (const row of r.rows) {
+    if (!out.has(row.realm_id)) out.set(row.realm_id, []);
+    out.get(row.realm_id).push({ domain: row.domain, active: row.active !== false });
+  }
+  return out;
+}
+
 export async function listShops(realmId) {
   const r = await pool.query(
     `SELECT id, domain, label, active, last_sync, last_error, created_at

@@ -66,6 +66,10 @@
   .fxtag{font-size:10.5px;letter-spacing:.06em;text-transform:uppercase;padding:3px 9px;
     border-radius:20px;border:1px solid var(--line-2);color:var(--muted);white-space:nowrap}
   .fxtag.fxqb{border-color:var(--qbo);color:var(--qbo)}
+  /* which Shopify shop is on these books - the one thing that cannot be seen
+     from inside a single company, and the one that must not be wrong */
+  .fxtag.fxshop{border-color:var(--shop);color:#5E7A24;text-transform:none;
+    letter-spacing:0;font-family:var(--mono);font-size:10.5px}
   .fxtag.fxon{border-color:var(--accent);color:var(--accent-deep);font-weight:600}
   .fxco .fxdo{display:flex;gap:8px;margin:16px 0 0;flex-wrap:wrap}
   .fxco .fxdo button{font-size:12.5px;padding:8px 14px;border-radius:8px;
@@ -192,6 +196,9 @@
           '<span class="fxtag' + (c.qb ? ' fxqb' : '') + '">' +
             (c.qb ? 'QuickBooks' : 'No QuickBooks yet') + '</span>' +
           '<span class="fxtag">' + esc(people) + '</span>' +
+          ((c.shops || []).length
+            ? '<span class="fxtag fxshop">' + esc((c.shops || []).join(', ')) + '</span>'
+            : '') +
         '</div>' +
         '<div class="fxdo">' +
           '<button class="fxopen" data-do="open">' +

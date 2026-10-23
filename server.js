@@ -20,7 +20,7 @@ import {
 } from './hooks.js';
 import {
   initShopify, listShops, getShop, saveShop, removeShop, checkShop, cleanDomain,
-  shopElsewhere,
+  shopElsewhere, shopsPerCompany,
   pullOrders, listOrders as listShopOrders, productsSeen, markSynced, unmark,
   toInvoice, API_VERSION as SHOPIFY_VERSION,
   note as shopNote, events as shopifyEvents, tally as shopifyTally, forgetEvents,
@@ -2394,6 +2394,12 @@ app.get('/api/portal/companies', async (req, res) => {
     const list = await companiesFor(sub);
     const people = await peoplePerCompany();
     const runs = await Promise.all(list.map(c => runsCompany(sub, c.realmId)));
+    // which Shopify shop is attached to which of them, side by side. A shop on
+    // the wrong books is the one mistake here that writes one client's sales
+    // into another client's QuickBooks, and it cannot be seen from inside a
+    // single company.
+    let shops = new Map();
+    try { shops = await shopsPerCompany(); } catch (e) { shops = new Map(); }
     res.setHeader('Cache-Control', 'no-store');
     res.json({
       // Only whoever runs Fusion starts a company from nothing. A client's own
@@ -2407,6 +2413,7 @@ app.get('/api/portal/companies', async (req, res) => {
         qb: !!c.connected,
         mine: runs[i],
         people: people.get(c.realmId) || 0,
+        shops: (shops.get(c.realmId) || []).map(x => x.domain),
         updatedAt: c.updatedAt
       }))
     });
