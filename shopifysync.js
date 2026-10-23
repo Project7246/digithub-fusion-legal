@@ -1679,6 +1679,46 @@ export async function wireHooks(realmId, shop, baseUrl) {
   return { url, done, failed };
 }
 
+// Taking a shop off these books takes its webhooks off Shopify too.
+//
+// Each shop row has its own hook key, so its callback URL is its own - which is
+// what makes this safe: the same shop connected to another company here answers
+// on a different address, and only the subscriptions pointing at THIS one are
+// taken off. Left behind, Shopify would go on calling an address that answers
+// to nothing, for weeks, and eventually switch the subscription off by itself
+// with nobody any the wiser.
+const UNSUB = `
+mutation FusionUnhook($id: ID!) {
+  webhookSubscriptionDelete(id: $id) {
+    deletedWebhookSubscriptionId
+    userErrors { field message }
+  }
+}`;
+
+export async function unwireHooks(shop, baseUrl) {
+  if (!shop || !shop.hook_key || !shop.token) return { done: 0, failed: [] };
+  const url = baseUrl.replace(/\/+$/, '') + '/hooks/shopify/' + shop.hook_key;
+  const token = decrypt(shop.token);
+
+  const now = await ask(shop.domain, token, LIST);
+  const mine = ((now && now.webhookSubscriptions && now.webhookSubscriptions.nodes) || [])
+    .filter(n => n.endpoint && n.endpoint.callbackUrl === url);
+
+  let done = 0;
+  const failed = [];
+  for (const n of mine) {
+    try {
+      const r = await ask(shop.domain, token, UNSUB, { id: n.id });
+      const errs = (r && r.webhookSubscriptionDelete && r.webhookSubscriptionDelete.userErrors) || [];
+      if (errs.length) failed.push(n.topic + ': ' + errs[0].message);
+      else done++;
+    } catch (e) {
+      failed.push(n.topic + ': ' + e.message);
+    }
+  }
+  return { url, done, failed };
+}
+
 export { releaseHeld };
 
 // The same rule as itemFor, asked without doing anything about it - what the

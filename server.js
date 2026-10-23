@@ -40,7 +40,7 @@ import {
   shelfSeen,
   shippingItemFor, descOf, FREE_DELIVERY, checkWritten, stuckItems,
   sweep as shopifySweep, syncState, startShopifySync, wakeSoon,
-  nudgeOrder, nudgeProduct, wireHooks,
+  nudgeOrder, nudgeProduct, wireHooks, unwireHooks,
   reviewNewItems, makeNewItems
 } from './shopifysync.js';
 import { listCompanies } from './companies.js';
@@ -7601,8 +7601,23 @@ app.post('/api/shopify/shops/remove', async (req, res) => {
   const realmId = await requireCompany(req, res);
   if (!realmId) return;
   try {
+    // Shopify is told first, while the token and the hook key are still here
+    // to tell it with. Only the subscriptions pointing at this row's own
+    // address go, so the same shop on another company's books is untouched.
+    let unwired = null;
+    try {
+      const shop = await getShop(realmId, req.body.id);
+      if (shop) {
+        const base = (process.env.BASE_URL || '').replace(/\/+$/, '') ||
+                     (req.protocol + '://' + req.get('host'));
+        unwired = await unwireHooks(shop, base);
+      }
+    } catch (e) {
+      unwired = { failed: ['Shopify would not take the live updates off: ' + e.message] };
+    }
+
     const gone = await removeShop(realmId, req.body.id);
-    res.json({ ok: true, cleared: !!(gone && gone.cleared) });
+    res.json({ ok: true, cleared: !!(gone && gone.cleared), unwired });
   } catch (e) {
     res.status(500).json({ error: e.message });
   }
