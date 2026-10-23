@@ -801,6 +801,26 @@ things that free a held order are a person pressing **Try all of them again
 now** or saving the mapping that answers it (`releaseHeld` after
 `POST /api/shopify/mappings`). If it is still not answered it is held again.
 
+### Pressing Sync emptied Needs you
+
+`POST /api/shopify/sync` is "read these days out of Shopify and run a pass
+now". It called **`wakeAll`**, which releases every held order and wipes its
+`held_why` - so one press of Sync emptied the whole of Needs you. The orders
+went to the back of a five-hundred-order queue and came back held hours
+later, once the sweep reached them again. Nothing was lost and nothing said
+why; the list that is the point of that page simply went blank.
+
+There are two different jobs and now two functions:
+
+| | what it touches | who calls it |
+|---|---|---|
+| `wakeAll` | **held and waiting** - clears `held_why` too | the **Try all of them again now** button, and nothing else. A person saying "I have fixed it, try everything" |
+| `wakeWaiting` | **waiting only** - clears `next_try` and `tries` | anything where waking the queue is a side effect, `/api/shopify/sync` being the one that caught us out |
+
+A held order is not waiting on time, so time passing is no reason to touch
+it. **Waking the queue is not an answer to a question.** Anything new that
+wants to get the queue moving calls `wakeWaiting`.
+
 ### An order with no lines is read back from Shopify, not filed away
 
 The one way a pending order could have gone quiet, and it was real.

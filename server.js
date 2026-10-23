@@ -25,7 +25,8 @@ import {
   note as shopNote, events as shopifyEvents, tally as shopifyTally, forgetEvents,
   offList as shopifyOff,
   fetchOne as shopifyFetchOne, saveOne as shopifySaveOne,
-  heldList as shopifyHeld, releaseHeld, wakeAll, shopHookKey, shopByHookKey,
+  heldList as shopifyHeld, releaseHeld, wakeAll, wakeWaiting,
+  shopHookKey, shopByHookKey,
   madeItems, madeInvoices, unsync,
   appKeysFor, saveAppKeys, forgetAppKeys, installUrl, callbackIsReal,
   exchangeCode, SCOPES
@@ -8497,7 +8498,15 @@ app.post('/api/shopify/sync', async (req, res) => {
       }
     }
 
-    const freed = req.body.wake === false ? 0 : await wakeAll(realmId);
+    // Only what is sitting out a doubling wait - NOT what is held.
+    //
+    // This used to be `wakeAll`, which releases every held order and wipes its
+    // reason. So pressing Sync emptied Needs you: every question waiting on a
+    // person went back to the end of the queue and off the screen, and came
+    // back held hours later once the sweep reached it again. An order held on
+    // a missing SKU stays held on a missing SKU until somebody answers it -
+    // reading a date range is not an answer.
+    const freed = req.body.wake === false ? 0 : await wakeWaiting(realmId);
     const did = await shopifySweep();
     // a batch bigger than one pass goes back to the fast cadence rather than
     // waiting ten minutes for the rest

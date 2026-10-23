@@ -347,12 +347,43 @@ export async function tally(realmId) {
 // everything backing off has its wait cleared - which is what somebody means
 // when they have fixed the thing and do not want to sit through an hour of
 // doubling to find out.
+//
+// **This is a button, and only ever a button.** It wipes `held_why` on every
+// held order, so the whole of Needs you empties in one call - which is right
+// when a person has just pressed "Try all of them again now" and wrong
+// absolutely everywhere else. Anything that happens as a side effect of
+// something else wants `wakeWaiting` below.
 export async function wakeAll(realmId) {
   const r = await pool.query(
     `UPDATE shopify_orders
         SET state = 'waiting', next_try = NULL, tries = 0,
             held_why = NULL, sync_error = NULL
       WHERE realm_id = $1 AND state IN ('held', 'waiting') AND cancelled = FALSE`,
+    [realmId]
+  );
+  return r.rowCount;
+}
+
+// The same thing for what is only sitting out a doubling wait: a `waiting`
+// order whose `next_try` is an hour away is tried now instead.
+//
+// This is the one to call when waking the queue is a side effect rather than
+// the thing somebody asked for - "read these days and run a pass" being the
+// case that caught us out. That route called `wakeAll`, which released every
+// held order and wiped its reason, so pressing Sync emptied Needs you: the
+// orders went to the back of a five-hundred-order queue and the questions
+// waiting on a person simply were not on the screen any more. Nothing was
+// lost, but a list that is the whole point of the page went blank for hours
+// and nothing said why.
+//
+// A held order is not waiting on time, so time passing is no reason to touch
+// it. It stays held, with its reason, until it is answered.
+export async function wakeWaiting(realmId) {
+  const r = await pool.query(
+    `UPDATE shopify_orders
+        SET next_try = NULL, tries = 0
+      WHERE realm_id = $1 AND state = 'waiting' AND cancelled = FALSE
+        AND (next_try IS NOT NULL OR COALESCE(tries, 0) > 0)`,
     [realmId]
   );
   return r.rowCount;
