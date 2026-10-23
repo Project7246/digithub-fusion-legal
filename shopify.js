@@ -866,6 +866,26 @@ export async function removeShop(realmId, id) {
     [realmId, Number(id)]);
   await pool.query('DELETE FROM shopify_shops WHERE realm_id = $1 AND id = $2',
     [realmId, Number(id)]);
+
+  // The last shop off these books takes the rest of Shopify with it.
+  //
+  // Taking a shop off is usually taking it off the wrong company - it was
+  // attached to one client's books and belongs on another's. What was left
+  // behind read as if it were still there: the log still named that shop's
+  // orders, products were still waiting to be approved into these books, and
+  // auto sync was still ticked, so connecting any shop here later would have
+  // started writing at once. And the app keys are the shop's own: a client's
+  // Shopify secret has no business sitting in another client's company.
+  const left = await pool.query(
+    'SELECT 1 FROM shopify_shops WHERE realm_id = $1 LIMIT 1', [realmId]);
+  if (left.rowCount) return { cleared: false };
+
+  await pool.query('DELETE FROM shopify_events    WHERE realm_id = $1', [realmId]);
+  await pool.query('DELETE FROM shopify_new_items WHERE realm_id = $1', [realmId]);
+  const kept = await getSetting(realmId, 'shopify', null);
+  if (kept && kept.on) await setSetting(realmId, 'shopify', Object.assign({}, kept, { on: false }));
+  await setSetting(realmId, 'shopify:app', null);
+  return { cleared: true };
 }
 
 /* ==================== talking to Shopify ==================== */

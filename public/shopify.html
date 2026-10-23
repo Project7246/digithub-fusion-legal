@@ -369,7 +369,10 @@
 
     $('shops').querySelectorAll('[data-off]').forEach(function(b){
       b.addEventListener('click', function(){
-        if(!confirm('Remove this shop? Its orders held here go with it. Nothing in Shopify or QuickBooks is touched.')) return;
+        if(!confirm('Remove this shop? Its orders held here go with it, and if it is the ' +
+                    'last shop on these books the Shopify log, the products waiting and the ' +
+                    'app keys go too, with auto sync switched off. ' +
+                    'Nothing in Shopify or QuickBooks is touched.')) return;
         b.textContent = 'Removing…';
         ask('/api/shopify/shops/remove', { id: b.getAttribute('data-off') })
           .then(loadShops)

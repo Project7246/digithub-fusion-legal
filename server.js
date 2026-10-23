@@ -7601,8 +7601,8 @@ app.post('/api/shopify/shops/remove', async (req, res) => {
   const realmId = await requireCompany(req, res);
   if (!realmId) return;
   try {
-    await removeShop(realmId, req.body.id);
-    res.json({ ok: true });
+    const gone = await removeShop(realmId, req.body.id);
+    res.json({ ok: true, cleared: !!(gone && gone.cleared) });
   } catch (e) {
     res.status(500).json({ error: e.message });
   }
