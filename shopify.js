@@ -874,17 +874,45 @@ export async function fetchProduct(shop, gid) {
 
 // What is due to be tried. Ordered oldest first so a backlog is cleared in the
 // order it happened, which is the order the books want it in.
-export async function dueOrders(limit) {
+// What to write next, and whose.
+//
+// This used to take the oldest N waiting orders **across every company in
+// Fusion**, and the sweep then threw away the ones whose company had sync
+// switched off. One company with older orders and its switch off therefore
+// filled the whole batch, every pass, for ever - the sweep looked, did
+// nothing, saw it had done nothing, and went back to sleep for ten minutes.
+// Another company could sit on five hundred ready-to-go orders and never get
+// a turn, while brand new ones still went in because a webhook writes those
+// itself and never comes through here. Which is exactly how it looked:
+// today's orders in the books, August's untouched.
+//
+// Two things fix it, and both belong in the query rather than after it:
+//
+//   - **only companies whose sync is on.** A company with no settings row at
+//     all is off (DEFAULTS.on is false), so an inner join is the whole test.
+//   - **a batch each, not a batch between them.** ROW_NUMBER per company
+//     means one company's backlog cannot starve another's, however old it is.
+export async function dueOrders(perCompany) {
+  const n = Math.min(Math.max(Number(perCompany) || 20, 1), 200);
   const r = await pool.query(
-    `SELECT o.*, s.label AS shop_label, s.domain AS shop_domain
-       FROM shopify_orders o
-       LEFT JOIN shopify_shops s ON s.id = o.shop_id
-      WHERE o.state = 'waiting'
-        AND o.cancelled = FALSE
-        AND (o.next_try IS NULL OR o.next_try <= NOW())
-      ORDER BY o.placed_at ASC NULLS LAST
-      LIMIT $1`,
-    [Math.min(Number(limit) || 25, 200)]
+    `WITH live AS (
+       SELECT realm_id FROM app_settings
+        WHERE key = 'shopify'
+          AND COALESCE((value->>'on')::boolean, FALSE) = TRUE
+     ),
+     ranked AS (
+       SELECT o.*, s.label AS shop_label, s.domain AS shop_domain,
+              ROW_NUMBER() OVER (PARTITION BY o.realm_id
+                                 ORDER BY o.placed_at ASC NULLS LAST) AS rn
+         FROM shopify_orders o
+         JOIN live l ON l.realm_id = o.realm_id
+         LEFT JOIN shopify_shops s ON s.id = o.shop_id
+        WHERE o.state = 'waiting'
+          AND o.cancelled = FALSE
+          AND (o.next_try IS NULL OR o.next_try <= NOW())
+     )
+     SELECT * FROM ranked WHERE rn <= $1 ORDER BY realm_id, rn`,
+    [n]
   );
   return r.rows;
 }

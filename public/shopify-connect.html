@@ -573,9 +573,16 @@
     var bits = [];
 
     if(t.due){
-      var mins = Math.max(1, Math.ceil(t.due / (NOW.batch || 20)));
-      bits.push(n0(t.due) + ' ready to go — ' + (NOW.batch || 20) +
-                ' at a time, about ' + mins + ' minute' + (mins === 1 ? '' : 's') +
+      // Worked out from the batch size and the gap the writer is actually
+      // using, not a guess: while there is a backlog it comes straight back
+      // for the next batch instead of resting a minute between them, so the
+      // honest number is much smaller than it used to be.
+      var batch = NOW.batch || 20;
+      var passes = Math.ceil(t.due / batch);
+      var gap = Math.max(4, Math.round((NOW.everyMs || 60000) / 1000));
+      var mins = Math.max(1, Math.round(passes * (gap + 30) / 60));
+      bits.push(n0(t.due) + ' ready to go — ' + batch +
+                ' at a time, roughly ' + mins + ' minute' + (mins === 1 ? '' : 's') +
                 ' to get through them');
     }
     if(t.nextTry) bits.push('next turn at ' + clock(t.nextTry));
@@ -612,6 +619,7 @@
       .then(function(d){
         var st = d.state || {}, doing = st.doing;
         NOW.batch = st.batch || NOW.batch;
+        NOW.everyMs = st.everyMs || NOW.everyMs;
 
         var box = $('nowBox');
         if(!st.running || !doing){ box.style.display = 'none'; return; }

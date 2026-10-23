@@ -707,6 +707,65 @@ a time, about 28 minutes to get through them"*. **Twenty an order a minute
 at once**, and nothing on the screen used to say that. Its count poll also
 stops while the tab is in the background, like every other poll here.
 
+## The queue was read for every company at once
+
+539 orders ready to go, 25 written, and the ones that *were* going in were
+all **today's**. That shape is the whole diagnosis: new orders go in from the
+webhook, which writes them itself and never touches the queue, while the
+backlog never moved at all.
+
+`dueOrders()` took the oldest N waiting orders **across every company in
+Fusion**, and `sweep()` then threw away the ones whose company had sync
+switched off:
+
+```js
+const rows = await dueOrders(BATCH);        // oldest 20, any company
+for (const [realmId, list] of byRealm) {
+  const s = await settingsOf(realmId);
+  if (!s.on) continue;                      // ...and there goes the batch
+```
+
+One company with older orders and its switch off fills the whole batch, every
+pass, for ever. The sweep looks, does nothing, sees it has done nothing -
+`const busy = did.done || did.held || ...` - and books the **idle** gap, ten
+minutes. Then does it again. Meanwhile another company sits on five hundred
+ready-to-go orders and never gets a turn.
+
+Both halves belong in the query, not after it:
+
+- **only companies whose sync is on**, as an inner join against
+  `app_settings` where `key = 'shopify'` and `value->>'on'` is true. A company
+  with no settings row at all is off, because `DEFAULTS.on` is false, so the
+  join is the whole test.
+- **a batch each, not a batch between them.** `ROW_NUMBER() OVER (PARTITION BY
+  realm_id ...)` means one company's backlog cannot starve another's, however
+  old it is.
+
+### A backlog is worked through, not slept through
+
+Twenty a pass with a minute between passes is, for five hundred orders, half
+an hour of mostly sleeping - and somebody watching it reasonably asks why the
+file upload is quicker. When a company's slice comes back full there is more
+behind it (`did.more`), so the next pass goes almost at once
+(`SHOPIFY_BACKLOG_SECONDS`, 4). The resting cadence comes back the moment the
+queue is shorter than a batch.
+
+| Setting | What it is |
+|---|---|
+| `SHOPIFY_BATCH` | orders per company per pass (20) |
+| `SHOPIFY_BACKLOG_SECONDS` | gap between passes while clearing a backlog (4) |
+| `SHOPIFY_SWEEP_SECONDS` | the resting gap when something is still moving (60) |
+| `SHOPIFY_IDLE_SECONDS` | the gap when nothing is waiting (600) |
+
+Invoices are still written **one at a time**. QuickBooks throttles, and two
+passes posting at once is how one order gets two invoices - the writing is not
+where the half hour went.
+
+**And the same held reason is not written down twice.** An order held again
+for the same reason a second later by the next webhook used to add a second
+identical log line, so the log was pages of the same five orders repeating and
+everything that actually happened was buried under them.
+
 ## "Try all of them again now" reads them back from Shopify first
 
 The button is pressed straight after somebody has fixed the thing the orders

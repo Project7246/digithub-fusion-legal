@@ -50,6 +50,11 @@ const BUSY_EVERY = Math.max(20, Number(process.env.SHOPIFY_SWEEP_SECONDS) || 60)
 const IDLE_EVERY = Math.max(BUSY_EVERY,
   (Number(process.env.SHOPIFY_IDLE_SECONDS) || 600) * 1000);
 const BATCH = Math.max(1, Number(process.env.SHOPIFY_BATCH) || 20);
+// How long to wait when the last pass filled its batch - there is more behind
+// it, so this is the gap between one batch and the next while a backlog is
+// being cleared, not a resting cadence.
+const BACKLOG_EVERY = Math.max(1000,
+  (Number(process.env.SHOPIFY_BACKLOG_SECONDS) || 4) * 1000);
 
 export const DEFAULTS = {
   // Off until somebody turns it on. These are real books: a switch that starts
@@ -560,10 +565,16 @@ async function writeOneNow(books, row, s) {
       await setHeld(realmId, row.order_gid, why);
     }
 
-    await note(realmId, 'held', {
-      shopId: row.shop_id, orderName: row.name, gid: row.order_gid, ok: false,
-      note: why, detail: { missing }
-    });
+    // Said once. The same order, held again for the same reason a second
+    // later by the next webhook, wrote a second identical line - the log was
+    // pages of the same five orders repeating, which buries everything that
+    // did happen.
+    if (String(row.held_why || '') !== why) {
+      await note(realmId, 'held', {
+        shopId: row.shop_id, orderName: row.name, gid: row.order_gid, ok: false,
+        note: why, detail: { missing }
+      });
+    }
     return unsure ? 'failed' : 'held';
   }
 
@@ -752,7 +763,8 @@ export async function sweep() {
   state.running = true;
   state.startedAt = Date.now();
   state.doing = { step: 'looking', total: 0, done: 0, order: '' };
-  const did = { done: 0, held: 0, failed: 0, off: 0, items: 0, looked: 0, busy: 0 };
+  const did = { done: 0, held: 0, failed: 0, off: 0, items: 0, looked: 0,
+                busy: 0, more: false };
 
   try {
     const rows = await dueOrders(BATCH);
@@ -765,6 +777,11 @@ export async function sweep() {
     });
 
     for (const [realmId, list] of byRealm) {
+      // A company whose slice came back full has more behind it, and the
+      // scheduler uses that to come straight back instead of sleeping a
+      // minute between every twenty.
+      if (list.length >= BATCH) did.more = true;
+
       const s = await settingsOf(realmId);
       if (!s.on) continue;
 
@@ -842,7 +859,16 @@ async function tick() {
     // it does not stop for a failure, a deploy, a page being closed or anything
     // else - only for somebody switching it off.
     const busy = did && (did.done || did.held || did.failed || did.off);
-    schedule(busy ? BUSY_EVERY : IDLE_EVERY);
+
+    // A backlog is worked through, not slept through. Five hundred orders at
+    // twenty a pass with a minute between passes is half an hour of mostly
+    // sleeping, and somebody watching it reasonably asks why the file upload
+    // is quicker. When the last pass filled its batch there is more waiting,
+    // so the next one goes almost at once; the gap comes back the moment the
+    // queue is shorter than a batch.
+    schedule(busy && did.more ? BACKLOG_EVERY
+           : busy ? BUSY_EVERY
+           : IDLE_EVERY);
   }
 }
 
