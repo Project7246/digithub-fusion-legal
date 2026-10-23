@@ -26,7 +26,7 @@ import {
   offList as shopifyOff,
   fetchOne as shopifyFetchOne, saveOne as shopifySaveOne,
   heldList as shopifyHeld, releaseHeld, wakeAll, wakeWaiting,
-  editNewItem, dropNewItem, reopenNewItem, newItemList, newItemTally,
+  editNewItem, dropNewItem, reopenNewItem, newItemList, newItemTally, todayText,
   shopHookKey, shopByHookKey,
   madeItems, madeInvoices, unsync,
   pullProducts,
@@ -8647,7 +8647,7 @@ app.get('/api/shopify/new-items', async (req, res) => {
       // where the money will land, in words, so it is not a surprise
       why: r.why || '',
       tally: await newItemTally(realmId),
-      today: new Date().toISOString().slice(0, 10)
+      today: todayText()      // where the server stands, not UTC
     });
   } catch (e) {
     res.status(500).json({ error: e.message });

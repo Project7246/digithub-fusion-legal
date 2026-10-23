@@ -1414,6 +1414,38 @@ should have to read. The type still starts from Shopify - a variant Shopify
 tracks arrives as Inventory, one it does not as Non-inventory - which is why
 `ONE_PRODUCT` now reads `inventoryItem { tracked }`.
 
+### The as-of date, and a date that is not a moment
+
+QuickBooks refused the first Inventory product with *"Specify a date between
+1/1/1900 and 12/31/2100"* over a card showing **11/11/2025**, which is plainly
+a date between those two.
+
+`qb_start` was a **DATE** column, and a DATE is the wrong type for it. What
+that box holds is a calendar date somebody typed on a form - the 11th of
+November, which is the 11th of November everywhere. Postgres hands a DATE back
+to node as a **Date object at local midnight**, and from there it went wrong
+twice over:
+
+| | |
+|---|---|
+| into QuickBooks | `String(d).slice(0, 10)` is **`"Tue Nov 11"`**. QuickBooks answered exactly what it should have |
+| out to the browser | `JSON.stringify` gives `"2025-11-10T19:00:00.000Z"` in Pakistan, so the card redrew **a day earlier** every time it was read back |
+
+This is the same lesson `day()` in `statuses.js` already carries, taught by the
+couriers: **a date is not a moment.** The column is **TEXT** now (migrated in
+`initShopify` by `data_type`, so it runs once), and it holds the characters
+that were typed. Nothing converts it on the way in or on the way out.
+
+- **`dayText(v)`** is the only gate: ten characters matching `YYYY-MM-DD`, with
+  the year inside 1900-2100, or `null`. Not sliced, not parsed, not guessed.
+  A year QuickBooks would refuse is caught here with a reason on the card
+  rather than there with a validation fault.
+- **`todayText()`** replaces `new Date().toISOString().slice(0, 10)`, which is
+  **yesterday for five hours every night in Pakistan**. Yesterday is not a
+  thing to put on books.
+- `createItem` sends `InvStartDate` only when it matches the shape, and
+  otherwise sends nothing and lets QuickBooks use its own day.
+
 ### An item with no SKU is refused
 
 Matching is the SKU and nothing else, so an item made without one could never

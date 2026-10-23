@@ -205,7 +205,7 @@ export async function initShopify() {
       qb_cost     NUMERIC(14,2) DEFAULT 0,
       qb_track    BOOLEAN DEFAULT FALSE,
       qb_qty      NUMERIC(14,2) DEFAULT 0,
-      qb_start    DATE,
+      qb_start    TEXT,
       state       TEXT DEFAULT 'new',
       why         TEXT,
       qb_item_id  TEXT,
@@ -223,6 +223,35 @@ export async function initShopify() {
     CREATE INDEX IF NOT EXISTS shopify_new_items_look
       ON shopify_new_items (realm_id, state, id DESC)
   `);
+
+  // `qb_start` was a DATE, and a DATE is the wrong type for it.
+  //
+  // What that box holds is a calendar date somebody typed on a form - the
+  // 11th of November, which is the 11th of November everywhere. Postgres
+  // hands a DATE back to node as a **Date object at local midnight**, and
+  // from there it went wrong twice over:
+  //
+  //   - `String(d).slice(0, 10)` - which is what the writer did - gives
+  //     "Tue Nov 11", and QuickBooks answered exactly what it should have:
+  //     *Specify a date between 1/1/1900 and 12/31/2100.*
+  //   - `JSON.stringify` on the way to the browser gives
+  //     "2025-11-10T19:00:00.000Z" in Pakistan, so the card redrew a day
+  //     earlier every time it was read back.
+  //
+  // This is the same lesson as `day()` in statuses.js, which exists because
+  // the couriers taught it: **a date is not a moment.** Held as text it is
+  // the characters that were typed, and nothing converts it on the way in or
+  // on the way out.
+  try {
+    const col = await pool.query(
+      `SELECT data_type FROM information_schema.columns
+        WHERE table_name = 'shopify_new_items' AND column_name = 'qb_start'`);
+    if (col.rows[0] && col.rows[0].data_type === 'date') {
+      await pool.query(
+        `ALTER TABLE shopify_new_items
+           ALTER COLUMN qb_start TYPE TEXT USING TO_CHAR(qb_start, 'YYYY-MM-DD')`);
+    }
+  } catch (e) { /* a table made after this is already text */ }
 }
 
 /* ==================== what happened, in words ==================== */
@@ -619,6 +648,31 @@ const MINE = {
   sku: 'text'
 };
 
+// A calendar date, as the ten characters it is, or nothing.
+//
+// Everything that reaches here is already a string - the browser's date input
+// hands over "2025-11-11" - so there is nothing to convert, and converting is
+// the whole of what used to go wrong. Anything that is not that shape is not a
+// date and is refused rather than guessed at. QuickBooks itself will only take
+// 1900 to 2100, so a year outside that is caught here with a reason instead of
+// there with a validation fault.
+export function dayText(v) {
+  const t = String(v == null ? '' : v).trim().slice(0, 10);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(t)) return null;
+  const y = Number(t.slice(0, 4));
+  if (y < 1900 || y > 2100) return null;
+  return t;
+}
+
+// Today, as a calendar date, worked out where the server stands rather than
+// in UTC. `new Date().toISOString().slice(0, 10)` is yesterday for five hours
+// every night in Pakistan, and "yesterday" is not a thing to put on books.
+export function todayText() {
+  const d = new Date();
+  const p = n => String(n).padStart(2, '0');
+  return d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate());
+}
+
 export async function editNewItem(realmId, id, patch) {
   const sets = [];
   const args = [realmId, Number(id)];
@@ -631,7 +685,7 @@ export async function editNewItem(realmId, id, patch) {
     else if (how === 'kind') {
       v = ['Inventory', 'NonInventory', 'Service'].indexOf(String(v)) >= 0
         ? String(v) : 'NonInventory';
-    } else if (how === 'date') v = v ? String(v).slice(0, 10) : null;
+    } else if (how === 'date') v = dayText(v);
     else v = String(v == null ? '' : v).slice(0, 4000);
     args.push(v);
     sets.push(k + ' = $' + args.length);

@@ -29,7 +29,8 @@ import { getMappings } from './mappings.js';
 import {
   fetchOne, fetchProduct, saveOne, getShop, dueOrders, olderWaiting,
   setDone, setHeld, setFailed, setOff, failAll, releaseHeld, note, toInvoice, ask,
-  offerNewItem, newItemList, newItemsToMake, newItemDone, newItemStuck
+  offerNewItem, newItemList, newItemsToMake, newItemDone, newItemStuck,
+  dayText, todayText
 } from './shopify.js';
 import { decrypt } from './secrets.js';
 import {
@@ -1365,6 +1366,11 @@ export async function makeNewItems(realmId, ids) {
       await refuse(row, 'these books have no income account to sell it through');
       continue;
     }
+    if (kind === 'Inventory' && !dayText(row.qb_start) && row.qb_start) {
+      await refuse(row, 'the as-of date is not a date QuickBooks will take. It ' +
+        'wants a day between 1900 and 2100, written as year-month-day');
+      continue;
+    }
     if (kind === 'Inventory' && !acc.asset) {
       await refuse(row, 'Inventory needs an Other Current Asset account for the ' +
         'stock to sit in and these books have none - turn the quantity tick off ' +
@@ -1382,7 +1388,9 @@ export async function makeNewItems(realmId, ids) {
       price: Number(row.qb_price) || 0,
       cost: Number(row.qb_cost) || 0,
       qty: Number(row.qb_qty) || 0,
-      startDate: row.qb_start ? String(row.qb_start).slice(0, 10) : null,
+      // The ten characters, checked - never String(aDateObject).slice(0, 10),
+      // which is "Tue Nov 11" and is what QuickBooks refused.
+      startDate: dayText(row.qb_start) || todayText(),
       incomeAccount: acc.income,
       assetAccount: acc.asset,
       cogsAccount: acc.cogs

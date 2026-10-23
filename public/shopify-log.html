@@ -1047,7 +1047,7 @@
             '<div><label>Quantity on hand</label>' +
               '<input data-f="qb_qty" type="number" step="1" value="' + (Number(r.qb_qty) || 0) + '"></div>' +
             '<div><label>As of</label>' +
-              '<input data-f="qb_start" type="date" value="' + esc((r.qb_start || TODAY || '').slice(0,10)) + '"></div>' +
+              '<input data-f="qb_start" type="date" value="' + esc(dayOf(r.qb_start) || TODAY) + '"></div>' +
           '</div>' +
           '<div class="acts">' +
             '<button class="go" data-make="' + id + '">Sync now</button>' +
@@ -1062,6 +1062,14 @@
   }
 
   var TODAY = '';
+
+  // The ten characters a date input wants, and nothing else. The server keeps
+  // this as text for exactly this reason - anything that is not a plain
+  // year-month-day is not shown as one.
+  function dayOf(v){
+    var t = String(v == null ? '' : v).trim().slice(0, 10);
+    return /^\d{4}-\d{2}-\d{2}$/.test(t) ? t : '';
+  }
 
   function cardOf(id){ return document.querySelector('[data-ask="' + id + '"]'); }
 

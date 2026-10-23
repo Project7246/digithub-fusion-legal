@@ -478,7 +478,11 @@ export async function createItem(realmId, token, item) {
     // that into Non-inventory before it gets here.
     body.TrackQtyOnHand = true;
     body.QtyOnHand = Number(item.qty) || 0;
-    body.InvStartDate = item.startDate || new Date().toISOString().slice(0, 10);
+    // Ten characters, or nothing is sent and QuickBooks uses its own day.
+    // Never built here from a Date: see the note on qb_start in shopify.js.
+    if (/^\d{4}-\d{2}-\d{2}$/.test(String(item.startDate || ''))) {
+      body.InvStartDate = String(item.startDate);
+    }
     body.AssetAccountRef = { value: String(item.assetAccount) };
   }
 
