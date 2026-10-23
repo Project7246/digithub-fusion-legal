@@ -740,6 +740,35 @@ The rules, as the screen states them:
    in the discount box, in rupees
 5. cancelled and void orders are left out
 
+## A deleted item is not there
+
+An item merged away or switched off in QuickBooks is finished with. It must
+not be offered in a list, must not be named in a reason, and must never reach
+an invoice - QuickBooks would refuse it, and before that it is simply not an
+answer to anything.
+
+`itemShelf()` tells the two apart once, so nothing below it has to:
+
+| | what is in it |
+|---|---|
+| `ids`, `skus`, `live` | **active items only** - what may be matched, offered and put on an invoice |
+| `everyName` | id to name over **every** item, active or not |
+
+`everyName` exists for one job: reading an old invoice back and saying what is
+on it. An invoice written last month may well point at an item deleted since,
+and **Check the invoices** has to be able to name it.
+
+This also closed a quiet hole: a hand mapping pointing at an item deleted
+afterwards used to pass `books.items[...]` and go on an invoice.
+
+The "the item carrying this SKU is inactive in QuickBooks" message is gone with
+it. It named a product the owner had already merged and deleted on purpose,
+which is noise - the plain answer, *this SKU is on no item in QuickBooks*, is
+the true one.
+
+The "off" tag beside a twin on Product health stays: that page's job is to show
+what was merged, and a label saying so is not an offer to use it.
+
 ## What an old order cannot be told
 
 An order placed in August carries the lines **as they were in August**. A SKU

@@ -170,9 +170,10 @@ export async function openBooks(realmId, s) {
   return {
     realmId,
     token,
-    items: shelf.ids,                            // name -> id
+    items: shelf.ids,                            // name -> id, live ones only
     desc: shelf.desc,                            // name -> QuickBooks' own words
-    asleep: shelf.asleep,                        // sku -> name, switched off
+    everyName: shelf.everyName,                  // id -> name, including deleted
+    live: shelf.live,                            // {name, sku} to choose from
     terms: await loadTerms(realmId, token),
     customers: {},
     skus: shelf.skus,                            // sku -> name
@@ -195,7 +196,17 @@ export async function openBooks(realmId, s) {
 // and purchase orders, and the cost lands in QuickBooks when a PO is entered -
 // nothing on an invoice has any business touching either.
 async function itemShelf(realmId, token) {
-  const ids = {}, desc = {}, skus = new Map(), asleep = new Map();
+  // `ids` and `skus` are what an invoice may carry, and they hold **active
+  // items only**. An item somebody deleted or merged away is not a thing to
+  // put on an invoice, not a thing to offer in a list, and not a thing to
+  // name in a reason - as far as the books are concerned it is not there.
+  //
+  // `everyName` is id -> name over all of them, active or not, and exists
+  // for one job: reading an old invoice back and saying what is on it. An
+  // invoice written last month may well point at an item deleted since.
+  const ids = {}, desc = {}, skus = new Map();
+  const everyName = new Map();
+  const live = [];
   let start = 1;
   let seen = 0;
   while (true) {
@@ -224,20 +235,19 @@ async function itemShelf(realmId, token) {
     const arr = q.Item || [];
     seen += arr.length;
     arr.forEach(i => {
-      const key = String(i.Name || '').toLowerCase();
+      const name = String(i.Name || '');
+      const key = name.toLowerCase();
       if (!key) return;
+
+      everyName.set(String(i.Id), name);
+      if (i.Active === false) return;       // gone is gone
+
       ids[key] = i.Id;
       desc[key] = String(i.Description || '');
-      if (!i.Sku) return;
 
-      const k = String(i.Sku).toLowerCase().trim();
-      // An active item always wins. QuickBooks will not put a switched-off
-      // item on an invoice, so one is no use here except to explain itself.
-      if (i.Active === false) {
-        if (!asleep.has(k)) asleep.set(k, i.Name);
-      } else {
-        skus.set(k, i.Name);
-      }
+      const sku = String(i.Sku || '').toLowerCase().trim();
+      if (sku) skus.set(sku, name);
+      live.push({ name, sku: String(i.Sku || '').trim() });
     });
     if (arr.length < 1000) break;
     start += 1000;
@@ -270,7 +280,8 @@ async function itemShelf(realmId, token) {
       'read and not the books.');
   }
 
-  return { ids, desc, skus, asleep, seen };
+  live.sort((a, b) => a.name.localeCompare(b.name));
+  return { ids, desc, skus, everyName, live, seen };
 }
 
 // The item list, read again, once.
@@ -294,7 +305,8 @@ async function freshShelf(books) {
       books.items = shelf.ids;
       books.desc = shelf.desc;
       books.skus = shelf.skus;
-      books.asleep = shelf.asleep;
+      books.everyName = shelf.everyName;
+      books.live = shelf.live;
       return true;
     } catch (e) {
       // Could not be read. That is not proof the SKU is missing, and the
@@ -365,17 +377,6 @@ async function itemFor(books, line, s, ctx) {
       why: 'QuickBooks would not hand over the product list, so this could ' +
            'not be checked',
       unsure: true
-    };
-  }
-
-  // The SKU is in QuickBooks, on an item that has been switched off. An
-  // invoice cannot carry one, and "not on any item" would send somebody
-  // looking for something they would never find.
-  const off = books.asleep && books.asleep.get(sku);
-  if (off) {
-    return {
-      missing: line.sku + ' (on "' + off + '", which is switched off in QuickBooks)',
-      why: 'the item carrying this SKU is inactive in QuickBooks'
     };
   }
 
@@ -955,16 +956,12 @@ export async function stuckItems(realmId) {
     });
   });
 
-  // and the list to answer with: every item in the books that an invoice
-  // could actually carry
-  const items = [];
-  books.skus.forEach((name, sku) => items.push({ name, sku }));
-  Object.keys(books.items).forEach(lower => {
-    if (!items.some(i => i.name.toLowerCase() === lower)) {
-      items.push({ name: lower, sku: '' });
-    }
-  });
-  items.sort((a, b) => a.name.localeCompare(b.name));
+  // The list to answer with: every item in the books that an invoice could
+  // actually carry, under its real name. Deleted and merged-away items are
+  // not in it - offering one would be offering an answer QuickBooks will
+  // refuse, and it is a product somebody has already decided is finished
+  // with. Built in the shelf, where active and gone are told apart once.
+  const items = books.live || [];
 
   return {
     groups: [...groups.values()].sort((a, b) => b.orders - a.orders),
@@ -994,11 +991,10 @@ export async function stuckItems(realmId) {
 export async function checkWritten(realmId, { from, to, limit } = {}) {
   const books = await openBooks(realmId);
 
-  // id -> name, which is what an invoice line actually carries
-  const nameOf = new Map();
-  Object.keys(books.items).forEach(lower => {
-    nameOf.set(String(books.items[lower]), lower);
-  });
+  // id -> name, over every item there has ever been. An invoice written last
+  // month may well point at an item deleted since, and this has to be able to
+  // say what is on it.
+  const nameOf = books.everyName || new Map();
 
   const args = [realmId];
   const where = [`o.realm_id = $1`, `o.state = 'done'`,
@@ -1331,15 +1327,6 @@ export function previewItem(books, line, s) {
   }
   if (!sku) return { how: '', item: null, why: 'no SKU in Shopify' };
   if (books.skus.has(sku)) return { how: 'SKU', item: books.skus.get(sku) };
-
-  // the same sentence writeOne would use - the comment above says these two
-  // must never be different answers, and a switched-off item is one of them
-  const off = books.asleep && books.asleep.get(sku);
-  if (off) {
-    return { how: '', item: null,
-             why: 'the item carrying this SKU, "' + off + '", is switched off ' +
-                  'in QuickBooks' };
-  }
 
   return { how: '', item: null, why: 'SKU not on any item in QuickBooks' };
 }
