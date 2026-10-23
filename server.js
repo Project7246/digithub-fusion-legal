@@ -26,6 +26,7 @@ import {
   offList as shopifyOff,
   fetchOne as shopifyFetchOne, saveOne as shopifySaveOne,
   heldList as shopifyHeld, releaseHeld, wakeAll, wakeWaiting,
+  editNewItem, dropNewItem, reopenNewItem, newItemList, newItemTally,
   shopHookKey, shopByHookKey,
   madeItems, madeInvoices, unsync,
   appKeysFor, saveAppKeys, forgetAppKeys, installUrl, callbackIsReal,
@@ -37,7 +38,8 @@ import {
   shelfSeen,
   shippingItemFor, descOf, FREE_DELIVERY, checkWritten, stuckItems,
   sweep as shopifySweep, syncState, startShopifySync, wakeSoon,
-  nudgeOrder, nudgeProduct, wireHooks
+  nudgeOrder, nudgeProduct, wireHooks,
+  reviewNewItems, makeNewItems
 } from './shopifysync.js';
 import { listCompanies } from './companies.js';
 import { listSheets, listTabs, readTab, paintRows, testConnection } from './sheets.js';
@@ -1405,6 +1407,8 @@ const RIGHT_GROUPS = [
             '/api/shopify/settings', '/api/shopify/retry', '/api/shopify/wire',
             '/api/shopify/app', '/api/shopify/undo/invoices',
             '/api/shopify/events/clear',
+            '/api/shopify/new-items/edit', '/api/shopify/new-items/drop',
+            '/api/shopify/new-items/reopen', '/api/shopify/new-items/make',
             '/api/shopify/undo/merge', '/api/shopify/sync'] },
 
   { key: 'settings', area: 'items', label: 'SKU mappings',
@@ -8615,6 +8619,102 @@ app.get('/api/shopify/held', async (req, res) => {
 
 // Put what is stuck back in the queue and run it now. Pressed after the thing
 // it was stuck on - a SKU with no item, mostly - has been dealt with.
+
+/* ============ products new in Shopify, waiting to be allowed in ============ */
+
+// The list, and what is already answered taken off it.
+//
+// `reviewNewItems` reads QuickBooks once and settles every row whose SKU is
+// already on an item there - which is most of them the first time a shop is
+// connected, because the webhook offers every variant it has not seen before
+// and a shop has years of products. What is left is what is actually new.
+//
+// It also marks the dangerous one rather than settling it: a row whose NAME
+// is already in QuickBooks under a DIFFERENT SKU. QuickBooks will refuse a
+// second product of that name, and using the one that is there is how the
+// wrong product ends up on an invoice.
+app.get('/api/shopify/new-items', async (req, res) => {
+  const realmId = await requireCompany(req, res);
+  if (!realmId) return;
+  try {
+    const r = await reviewNewItems(realmId);
+    res.json({
+      rows: r.rows,
+      settled: r.settled,
+      accounts: r.accounts,
+      // where the money will land, in words, so it is not a surprise
+      why: r.why || '',
+      tally: await newItemTally(realmId),
+      today: new Date().toISOString().slice(0, 10)
+    });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// Everything she has said no to, and everything already made, so a decision
+// can be looked at again.
+app.get('/api/shopify/new-items/past', async (req, res) => {
+  const realmId = await requireCompany(req, res);
+  if (!realmId) return;
+  try {
+    const state = req.query.state === 'done' ? 'done' : 'off';
+    res.json({ rows: await newItemList(realmId, { state, limit: 300 }) });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// What she typed on the card. Only the QuickBooks side, and only while the row
+// is still waiting - an item already in the books is not edited from here,
+// because this table is a request and not a copy of QuickBooks.
+app.post('/api/shopify/new-items/edit', async (req, res) => {
+  const realmId = await requireCompany(req, res);
+  if (!realmId) return;
+  try {
+    const n = await editNewItem(realmId, req.body.id, req.body.fields || {});
+    res.json({ ok: true, saved: n });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.post('/api/shopify/new-items/drop', async (req, res) => {
+  const realmId = await requireCompany(req, res);
+  if (!realmId) return;
+  try {
+    res.json({ ok: true, n: await dropNewItem(realmId, req.body.ids || req.body.id) });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.post('/api/shopify/new-items/reopen', async (req, res) => {
+  const realmId = await requireCompany(req, res);
+  if (!realmId) return;
+  try {
+    res.json({ ok: true, n: await reopenNewItem(realmId, req.body.ids || req.body.id) });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// Sync now. The one door in Fusion that makes a product in QuickBooks, and it
+// opens because somebody pressed it on a named row. `ids` is what was ticked;
+// without it, everything still waiting.
+app.post('/api/shopify/new-items/make', async (req, res) => {
+  const realmId = await requireCompany(req, res);
+  if (!realmId) return;
+  try {
+    const did = await makeNewItems(realmId, req.body.ids || []);
+    res.json(Object.assign({ ok: true }, did, {
+      tally: await newItemTally(realmId)
+    }));
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 app.post('/api/shopify/retry', async (req, res) => {
   const realmId = await requireCompany(req, res);
   if (!realmId) return;

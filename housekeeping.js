@@ -174,6 +174,26 @@ export async function trimShopifyEvents(days) {
   }
 }
 
+// A product request that has been answered.
+//
+// A row still waiting (`state = 'new'`) is a question on a screen and is kept
+// for ever, the same rule held orders get. One already answered - made in
+// QuickBooks, or said no to - is a note about a decision, and a month of those
+// is plenty: the product itself is in QuickBooks, and Shopify still has its
+// own. Said no to and trimmed simply means it can be offered again if Shopify
+// mentions the variant once more, which is the right outcome anyway.
+export async function trimNewItems(days) {
+  try {
+    return await count(
+      `DELETE FROM shopify_new_items
+        WHERE state IN ('done', 'off')
+          AND COALESCE(decided_at, seen_at) < NOW() - ($1 || ' days')::interval`,
+      [String(Math.max(7, Number(days) || 30))]);
+  } catch (e) {
+    return 0;
+  }
+}
+
 // Logs of uploads keep their message for ever; a year of them is a year of
 // messages nobody will read again.
 export async function trimUploadLogs(days) {
@@ -203,12 +223,13 @@ export async function cleanUp(opts) {
   const raw = await trimCourierRaw(o.rawDays);
   const lines = await trimShopifyLines(o.linesDays);
   const events = await trimShopifyEvents(o.eventDays);
+  const asked = await trimNewItems(o.askDays);
   const uploads = await trimUploadLogs(o.uploadDays);
 
   if (o.vacuum) {
     for (const t of ['courier_orders', 'courier_cprs', 'courier_hook_log',
-                     'shopify_orders', 'shopify_events', 'upload_logs',
-                     'cache_blobs']) {
+                     'shopify_orders', 'shopify_events', 'shopify_new_items',
+                     'upload_logs', 'cache_blobs']) {
       try { await pool.query('VACUUM FULL ' + t); }
       catch (e) { /* a table this database has not got, or is busy */ }
     }
@@ -234,6 +255,7 @@ export async function cleanUp(opts) {
     rawCleared: raw,
     shopifyLinesCleared: lines,
     shopifyEventsDeleted: events,
+    newItemsDeleted: asked,
     uploadLogsDeleted: uploads,
     kept: {
       courierRawDays: Number(o.rawDays) || RAW_DAYS,
@@ -260,6 +282,7 @@ export function startHousekeeping() {
       if (r.rawCleared) said.push(r.rawCleared + " couriers' raw answers");
       if (r.shopifyLinesCleared) said.push(r.shopifyLinesCleared + ' invoiced Shopify orders stripped');
       if (r.shopifyEventsDeleted) said.push(r.shopifyEventsDeleted + ' old Shopify log lines');
+      if (r.newItemsDeleted) said.push(r.newItemsDeleted + ' answered product requests');
       if (said.length) console.log('housekeeping:', said.join(', '));
     })
     .catch(e => console.error('housekeeping failed:', e.message));

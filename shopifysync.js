@@ -28,12 +28,13 @@ import { getSetting, setSetting } from './settings.js';
 import { getMappings } from './mappings.js';
 import {
   fetchOne, fetchProduct, saveOne, getShop, dueOrders, olderWaiting,
-  setDone, setHeld, setFailed, setOff, failAll, releaseHeld, note, toInvoice, ask
+  setDone, setHeld, setFailed, setOff, failAll, releaseHeld, note, toInvoice, ask,
+  offerNewItem, newItemList, newItemsToMake, newItemDone, newItemStuck
 } from './shopify.js';
 import { decrypt } from './secrets.js';
 import {
   getAccessToken, qbQuery, loadTerms, getOrCreateCustomer,
-  postInvoice, listAccounts, salesPrefs, isRetryable
+  postInvoice, listAccounts, salesPrefs, isRetryable, createItem
 } from './qb.js';
 
 const KEY = 'shopify';
@@ -128,12 +129,21 @@ export function standingAccounts(all, s) {
 
 // Can an item be made at all? Said in words rather than left to QuickBooks to
 // refuse, because "ValidationFault 2030" is not something anybody should read.
-// Nothing is ever made in the books from here. Kept because the settings
-// screen still asks, and the honest answer is no rather than silence.
+//
+// The answer has two halves and they have to stay apart:
+//
+//   **By itself, never.** No sweep, no webhook and no order creates a product.
+//   itemFor() matches on the SKU and nothing else; a SKU on no item holds its
+//   order and says so. That is what stopped SP-21 going onto SP-21-50's item.
+//
+//   **Because you pressed it, yes.** A product new in Shopify becomes a
+//   request on New products, showing exactly what will be typed into
+//   QuickBooks, and Sync now makes that one. Nothing else.
 export function itemsPossible() {
-  return { can: false, inventory: false,
-           why: 'Fusion never makes a product in QuickBooks. A SKU it cannot ' +
-                'match waits, by name, and you put it right in QuickBooks.' };
+  return { can: false, byHand: true, inventory: true,
+           why: 'Nothing makes a product in QuickBooks on its own. A product ' +
+                'new in Shopify waits on New products, showing what will be ' +
+                'entered, and nothing is created until you press Sync now.' };
 }
 
 /* ==================== the books, held open for one pass ==================== */
@@ -1173,6 +1183,231 @@ export async function checkWritten(realmId, { from, to, limit } = {}) {
   };
 }
 
+
+/* ============ a product allowed into QuickBooks, one press at a time ============ */
+
+// What QuickBooks will actually accept, which is not the same question as what
+// kind of thing the product is.
+//
+// She asked for two things that cannot both be had: the kind should follow
+// Shopify ("type Inventory hi rahegi jo bhi Shopify mein select hoti"), and
+// the quantity and date should not be ticked ("quantity aur date par tick na
+// laga ho"). QuickBooks requires an opening quantity, an as-of date and an
+// asset account for every Inventory item - there is no Inventory without
+// counting. So the tick wins, because it is the one she said she wants to
+// decide, and the kind bends to it:
+//
+//   tick off  ->  Non-inventory. Same product, same name, same descriptions,
+//                 same price, same income and cost-of-sale accounts.
+//                 QuickBooks simply does not count units of it.
+//   tick on   ->  Inventory, with the quantity and the date from the card.
+//
+// The card says this in one line rather than letting QuickBooks refuse it,
+// because "ValidationFault 2030" is not something anybody should have to read.
+export function kindFor(row) {
+  const wants = String(row.qb_type || 'NonInventory');
+  const track = !!row.qb_track;
+  if (wants === 'Inventory' && !track) {
+    return {
+      kind: 'NonInventory',
+      bent: 'QuickBooks only counts an Inventory product, so with the quantity ' +
+            'tick off it goes in as Non-inventory - same name, same ' +
+            'descriptions, same price, same accounts'
+    };
+  }
+  return { kind: wants, bent: '' };
+}
+
+// Read the waiting list and settle, against QuickBooks as it is right now,
+// whatever is not a question any more.
+//
+// The webhook offers every variant it has not seen before, which the first
+// time a shop is connected means a flood of products that have been in the
+// books for years. Rather than leaving her to say no to two hundred of them,
+// anything whose SKU is already on an item in QuickBooks is marked done, with
+// the item it matched named. The list that is left is the list that is
+// actually new.
+//
+// What is deliberately NOT settled: a row whose NAME is already in QuickBooks
+// under a DIFFERENT SKU. That is the shape of the worst thing this app has
+// done - SP-21 going onto SP-21-50's item because the names were close enough
+// for QuickBooks to call it a duplicate. It stays on the list, with both the
+// name and the other item's SKU on it, and she renames it or says no.
+export async function reviewNewItems(realmId) {
+  const rows = await newItemList(realmId, { state: 'new', limit: 500 });
+  const out = { rows: [], settled: 0, accounts: null, why: '' };
+  if (!rows.length) return out;
+
+  let books;
+  try {
+    books = await openBooks(realmId);
+  } catch (e) {
+    // The list is still worth showing. It just cannot say what is already
+    // there, and it says so rather than implying everything is new.
+    out.rows = rows.map(r => Object.assign({}, r, { already: '', clash: '' }));
+    out.why = e.message;
+    return out;
+  }
+
+  out.accounts = books.accounts;
+
+  for (const r of rows) {
+    const sku = String(r.sku || '').trim().toLowerCase();
+    const name = String(r.qb_name || r.shop_title || '').trim();
+    const onSku = sku ? books.skus.get(sku) : null;
+
+    if (onSku) {
+      await newItemDone(realmId, r.id, '',
+        'already in QuickBooks: SKU ' + String(r.sku).trim() + ' is on "' + onSku + '"');
+      out.settled++;
+      continue;
+    }
+
+    // the same name, a different SKU. Not settled - named.
+    let clash = '';
+    const byName = name ? books.ids[name.toLowerCase()] : null;
+    if (byName) {
+      const other = (books.live.find(x => x.name.toLowerCase() === name.toLowerCase()) || {});
+      clash = 'QuickBooks already has a product called "' + name + '"' +
+        (other.sku ? ', and its SKU is ' + other.sku + ' - not ' +
+                     (String(r.sku).trim() || 'this one')
+                   : ', with no SKU on it') +
+        '. QuickBooks will refuse a second product of the same name, so give ' +
+        'this one a name of its own or say no to it.';
+    }
+
+    out.rows.push(Object.assign({}, r, { already: '', clash }));
+  }
+
+  return out;
+}
+
+// Sync now. The only thing in Fusion that makes a product in QuickBooks, and
+// it runs because a person pressed it on a named row.
+//
+// The writer has not changed and must not: itemFor() still matches on the SKU
+// and nothing else and still creates nothing. A SKU that matches no item still
+// holds its order and waits. This is the other door, and it is a door somebody
+// opens.
+export async function makeNewItems(realmId, ids) {
+  const rows = await newItemsToMake(realmId, ids);
+  if (!rows.length) return { made: 0, already: 0, refused: 0, freed: 0, said: [] };
+
+  const books = await openBooks(realmId);
+  const acc = books.accounts;
+  const out = { made: 0, already: 0, refused: 0, freed: 0, said: [] };
+
+  const refuse = async (row, why) => {
+    out.refused++;
+    out.said.push({ id: row.id, name: row.qb_name || row.shop_title, ok: false, why });
+    await newItemStuck(realmId, row.id, why);
+  };
+
+  for (const row of rows) {
+    const name = String(row.qb_name || row.shop_title || '').trim();
+    const sku = String(row.sku || '').trim();
+    const { kind, bent } = kindFor(row);
+
+    if (!name) { await refuse(row, 'it needs a name'); continue; }
+
+    // An item with no SKU is an item no order can ever match, which is the
+    // whole reason for making it. Said plainly rather than made and useless.
+    if (!sku) {
+      await refuse(row, 'it has no SKU. Products are matched on the SKU and ' +
+        'nothing else, so an item made without one could never be put on an ' +
+        'invoice - put the SKU on the variant in Shopify, or type it here');
+      continue;
+    }
+
+    // Already there is not a failure. Read fresh at the top of this call, so
+    // a SKU added in QuickBooks a minute ago is seen.
+    const onSku = books.skus.get(sku.toLowerCase());
+    if (onSku) {
+      await newItemDone(realmId, row.id, '',
+        'already in QuickBooks: SKU ' + sku + ' is on "' + onSku + '"');
+      out.already++;
+      out.said.push({ id: row.id, name, ok: true,
+        why: 'already in QuickBooks on "' + onSku + '"' });
+      continue;
+    }
+
+    // The same name under a different SKU. This is the exact shape of the
+    // worst thing this app has done, so it is refused and named - never
+    // quietly used.
+    if (books.ids[name.toLowerCase()]) {
+      const other = books.live.find(x => x.name.toLowerCase() === name.toLowerCase()) || {};
+      await refuse(row, 'QuickBooks already has a product called "' + name + '"' +
+        (other.sku ? ' and its SKU is ' + other.sku : ' with no SKU on it') +
+        '. Two products cannot share a name, and using that one for this SKU ' +
+        'is how the wrong product ends up on an invoice. Give this one its own ' +
+        'name, or say no to it.');
+      continue;
+    }
+
+    if (!acc.income) {
+      await refuse(row, 'these books have no income account to sell it through');
+      continue;
+    }
+    if (kind === 'Inventory' && !acc.asset) {
+      await refuse(row, 'Inventory needs an Other Current Asset account for the ' +
+        'stock to sit in and these books have none - turn the quantity tick off ' +
+        'to put it in as Non-inventory instead');
+      continue;
+    }
+
+    const made = await createItem(realmId, books.token, {
+      name,
+      sku,
+      // Both descriptions, the same words - createItem puts them on
+      // Description and PurchaseDesc together.
+      description: String(row.qb_desc == null ? '' : row.qb_desc).trim(),
+      type: kind,
+      price: Number(row.qb_price) || 0,
+      cost: Number(row.qb_cost) || 0,
+      qty: Number(row.qb_qty) || 0,
+      startDate: row.qb_start ? String(row.qb_start).slice(0, 10) : null,
+      incomeAccount: acc.income,
+      assetAccount: acc.asset,
+      cogsAccount: acc.cogs
+    });
+
+    if (!made.ok) {
+      await refuse(row, 'QuickBooks refused it: ' + made.error);
+      await note(realmId, 'error', {
+        shopId: row.shop_id, sku, title: name, ok: false,
+        note: 'QuickBooks refused the new product: ' + made.error,
+        detail: { status: made.status, tid: made.tid }
+      });
+      continue;
+    }
+
+    out.made++;
+    await newItemDone(realmId, row.id, made.id, bent || null);
+    out.said.push({ id: row.id, name, ok: true,
+      why: 'made in QuickBooks as ' + kind + (bent ? ' - ' + bent : '') });
+
+    await note(realmId, 'item', {
+      shopId: row.shop_id, sku, title: name,
+      note: 'made in QuickBooks as ' + kind + ' at ' + (Number(row.qb_price) || 0) +
+            (bent ? ' - ' + bent : ''),
+      detail: {
+        qbId: made.id, type: kind, price: Number(row.qb_price) || 0,
+        cost: Number(row.qb_cost) || 0, you: true
+      }
+    });
+  }
+
+  // The point of making it. Orders held because this SKU was on no item go
+  // straight back in the queue, so "add the product" is the whole of the fix
+  // and nothing else has to be pressed.
+  if (out.made) {
+    try { out.freed = await releaseHeld(realmId); } catch (e) { /* the sweep will */ }
+    wakeSoon();
+  }
+
+  return out;
+}
+
 /* ==================== the nudge ==================== */
 
 // Shopify called. Read the order back from Shopify, save it, and put it in the
@@ -1293,6 +1528,7 @@ export async function nudgeProduct(realmId, shop, gid, topic) {
   const vs = (p.variants && p.variants.nodes) || [];
   const kept = await getSetting(realmId, 'shopify:prices', {}) || {};
   let moved = 0;
+  let offered = 0;
 
   for (const v of vs) {
     const key = v.sku || v.id;
@@ -1302,11 +1538,28 @@ export async function nudgeProduct(realmId, shop, gid, topic) {
     const was = kept[key];
 
     if (!was) {
-      if (topic === 'products/create') {
+      // Never seen this variant before, so it is offered - put on New
+      // products with everything filled in, waiting on her. This happens on
+      // products/update as well as products/create, because a variant added
+      // to a product that already existed is just as new.
+      //
+      // Nothing is written into QuickBooks here and nothing can be: all this
+      // does is put a row on a list. The first webhook after a shop is
+      // connected therefore offers everything, and reviewNewItems() settles
+      // whatever is already in the books by itself - see there.
+      let fresh = false;
+      try {
+        const off = await offerNewItem(realmId, shop.id, p, v);
+        fresh = off.fresh;
+        if (fresh) offered++;
+      } catch (e) { /* a note is still worth making */ }
+
+      if (topic === 'products/create' || fresh) {
         await note(realmId, 'item', {
           shopId: shop.id, sku: v.sku, title: p.title + (v.title && v.title !== 'Default Title' ? ' · ' + v.title : ''),
-          note: 'new on Shopify at ' + price + (cost ? ', cost ' + cost : ''),
-          detail: { price, cost, status: p.status }
+          note: 'new on Shopify at ' + price + (cost ? ', cost ' + cost : '') +
+                ' - waiting on New products',
+          detail: { price, cost, status: p.status, offered: fresh }
         });
       }
     } else if (was.price !== price || was.cost !== cost) {
@@ -1323,6 +1576,7 @@ export async function nudgeProduct(realmId, shop, gid, topic) {
   }
 
   await setSetting(realmId, 'shopify:prices', kept);
+  if (offered) return 'offered';
   return moved ? 'moved' : 'seen';
 }
 

@@ -439,6 +439,18 @@ export async function listAccounts(realmId, token) {
 // three accounts and a date it started being counted; the other two kinds need
 // only where the money lands. Getting that wrong is the usual reason a created
 // item is refused.
+//
+// Where it lands is the same for all three, which is what was asked for -
+// "sales aur cost of sale bhi same": the income account every other product
+// sells through, and the cost-of-goods account every other product costs
+// through. `ExpenseAccountRef` is set whatever the kind, because QuickBooks
+// wants it on a Non-inventory and a Service item too the moment the item is
+// one you buy as well as sell.
+//
+// Both descriptions carry the same words, also as asked. QuickBooks keeps two
+// - `Description` is what shows on an invoice, `PurchaseDesc` is what shows on
+// a bill - and a product with the sales one filled in and the purchase one
+// empty reads, on a purchase order, as a blank line.
 export async function createItem(realmId, token, item) {
   const kind = String(item.type || 'NonInventory');
   const body = {
@@ -447,18 +459,27 @@ export async function createItem(realmId, token, item) {
     IncomeAccountRef: { value: String(item.incomeAccount) }
   };
   if (item.sku) body.Sku = String(item.sku).slice(0, 100);
-  if (item.description) body.Description = String(item.description).slice(0, 4000);
+  if (item.description) {
+    const words = String(item.description).slice(0, 4000);
+    body.Description = words;
+    body.PurchaseDesc = words;
+  }
   if (item.price != null) body.UnitPrice = Number(item.price) || 0;
   // What it cost, when the shop knows - so the first sale does not work its
   // cost of sales out of nothing.
   if (item.cost) body.PurchaseCost = Number(item.cost) || 0;
+  if (item.cogsAccount) body.ExpenseAccountRef = { value: String(item.cogsAccount) };
 
   if (kind === 'Inventory') {
+    // QuickBooks will not take an Inventory item any other way. The three it
+    // insists on are the asset account the stock sits in, an opening quantity
+    // and the date that quantity is true as of - which is why "Inventory, but
+    // do not count it" is not a thing that can be sent, and the caller turns
+    // that into Non-inventory before it gets here.
     body.TrackQtyOnHand = true;
     body.QtyOnHand = Number(item.qty) || 0;
     body.InvStartDate = item.startDate || new Date().toISOString().slice(0, 10);
     body.AssetAccountRef = { value: String(item.assetAccount) };
-    body.ExpenseAccountRef = { value: String(item.cogsAccount) };
   }
 
   const res = await qbFetch(

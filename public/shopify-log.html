@@ -140,6 +140,33 @@
   .said{font-size:12.5px}
   .said.bad{color:var(--bad,#9A2E24)}
   .said.good{color:var(--qbo)}
+
+  /* a product waiting to be allowed into QuickBooks: Shopify on the left,
+     what will be typed into the books on the right, side by side so the two
+     can be compared rather than trusted */
+  .ask{border:1px solid var(--line);border-radius:10px;margin-bottom:12px;
+    background:#fff;overflow:hidden}
+  .ask.hot{border-color:#C9872B}
+  .asktop{display:flex;align-items:center;gap:10px;padding:10px 13px;
+    border-bottom:1px solid var(--line);background:var(--wash,#FAFAFA);flex-wrap:wrap}
+  .asktop b{font-size:13px}
+  .asktop .sku{font-family:var(--mono);font-size:11.5px;color:var(--muted)}
+  .askbody{display:grid;grid-template-columns:200px 1fr;gap:0}
+  .askshop{padding:12px 13px;border-right:1px solid var(--line);
+    background:var(--wash,#FAFAFA);font-size:12px}
+  .askshop div{margin-bottom:6px}
+  .askshop span{color:var(--faint);display:block;font-size:10px;
+    letter-spacing:.07em;text-transform:uppercase}
+  .askqb{padding:12px 13px}
+  .askqb .fields{margin-bottom:10px}
+  .askqb .fields label{margin-bottom:3px}
+  .askqb .fields input,.askqb .fields select{padding:7px 9px;font-size:12.5px}
+  .askqty{display:flex;align-items:center;gap:9px;font-size:12.5px;margin:0 0 10px}
+  .askwarn{padding:9px 12px;background:#FFF8EC;border-top:1px solid #F0DCB8;
+    color:#7A5410;font-size:12px}
+  .asksaid{padding:9px 12px;border-top:1px solid var(--line);font-size:12px}
+  @media (max-width:780px){ .askbody{grid-template-columns:1fr}
+    .askshop{border-right:0;border-bottom:1px solid var(--line)} }
 </style>
 </head>
 <body>
@@ -180,6 +207,7 @@
           <button data-tab="held" class="on">Needs you <i id="cHeld"></i></button>
           <button data-tab="invoice">Invoices in <i id="cInv"></i></button>
           <button data-tab="error">QuickBooks said no <i id="cErr"></i></button>
+          <button data-tab="new">New products <i id="cNew"></i></button>
           <button data-tab="item">Products made <i id="cItem"></i></button>
           <button data-tab="off">Left out <i id="cOff"></i></button>
           <button data-tab="check">Check the invoices <i id="cWrong"></i></button>
@@ -200,6 +228,11 @@
             <b>Try all of them again now</b> reads each of these back from
             Shopify first, so a SKU you added over there a minute ago is picked
             up straight away &mdash; then it puts them in the queue and runs it.
+            <br><br>
+            If the product simply is not in QuickBooks yet, it is waiting for you
+            under <b>New products</b>. Add it there and every order held on that
+            SKU goes back in the queue by itself &mdash; nothing here has to be
+            pressed again.
           </div>
           <div class="acts" style="margin-bottom:12px">
             <button class="go" id="btnRetry">Try all of them again now</button>
@@ -244,11 +277,53 @@
           <div id="box-invoice"></div>
         </div>
         <div class="pane" id="p-error"><div id="box-error"></div></div>
+
+        <!-- ============ products new in Shopify, waiting on you ============ -->
+        <div class="pane" id="p-new">
+          <div class="hint">
+            A product saved in Shopify shows up here within seconds, the same way
+            an order does &mdash; but an order writes itself and a product waits
+            on you. <b>Nothing reaches QuickBooks until you press Sync now on
+            the row.</b>
+            <br><br>
+            The right-hand side is exactly what will be typed into QuickBooks,
+            and it is yours to change first. The <b>description</b> goes in both
+            places QuickBooks keeps one &mdash; the sales description and the
+            purchasing description, the same words in each. The <b>income</b> and
+            <b>cost of sale</b> accounts are the ones your other products already
+            use.
+            <br><br>
+            <b>Quantity and date are off.</b> QuickBooks only counts an
+            <em>Inventory</em> product, so with that tick off the product goes in
+            as <em>Non-inventory</em> &mdash; same name, same descriptions, same
+            price, same accounts, QuickBooks just does not count units of it.
+            Tick it and it goes in as Inventory with the opening quantity and the
+            as-of date below.
+            <br><br>
+            The writer itself still makes nothing. It matches on the SKU and
+            nothing else, so a SKU on no item holds its order and says so &mdash;
+            and the moment you add the product here, those orders go straight
+            back in the queue.
+          </div>
+          <div class="acts" style="margin-bottom:12px">
+            <button class="go" id="btnMakeAll">Sync all ticked</button>
+            <button class="ghost" id="btnNewAgain">Read again</button>
+            <button class="ghost" id="btnNewPast">What I said no to</button>
+            <span class="said" id="newSaid"></span>
+          </div>
+          <div id="newAcc" class="hint" style="margin-bottom:12px;display:none"></div>
+          <div id="newBox"><div class="none">Loading&hellip;</div></div>
+        </div>
         <div class="pane" id="p-item">
           <div class="hint">
-            Products this app once made in QuickBooks, back when it did that.
-            It does not any more &mdash; nothing is created, renamed or given a
-            SKU in your books.
+            Every product that was added to QuickBooks. From now on each line here
+            is one you approved yourself under <b>New products</b>; anything dated
+            before that is from when this app created products by itself, which it
+            no longer does.
+            <br><br>
+            Nothing here is renamed or given a SKU &mdash; a SKU is never written
+            onto an item that already exists, and a product is only ever added
+            because you pressed <b>Sync now</b> on it.
           </div>
           <div id="box-item"></div>
         </div>
@@ -334,10 +409,11 @@
 
           <h3 style="font:600 13px var(--head);margin:22px 0 6px">What the invoice says</h3>
           <div class="hint">
-            Who the invoices are made out to, what goes before the number and where
-            delivery lands are set on the <a href="/shopify">orders page</a>, beside
-            the button that makes them &mdash; one place, and the automatic writing
-            uses the same answers.
+            Who the invoices are made out to and where delivery lands are set on
+            the <a href="/shopify">orders page</a>, beside the button that makes
+            them &mdash; one place, and the automatic writing uses the same answers.
+            The invoice number is Shopify&rsquo;s own, character for character, so
+            there is nothing to set for it.
           </div>
 
           <h3 style="font:600 13px var(--head);margin:22px 0 6px">A product that is not in the books yet</h3>
@@ -346,12 +422,19 @@
             SKU is used on both sides, so the two may call a thing by different
             names and the SKU says they are the same thing.
             <br><br>
-            <b>Nothing is ever made, renamed, or changed in QuickBooks.</b> No item
-            is created, no SKU is written onto one. The books are read and invoices
-            are written, and that is the whole of what this touches &mdash; the same
-            deal the file upload has always had. A SKU that matches nothing stops
-            that one order, names the SKU under <b>Needs you</b>, and goes through
-            by itself the moment that SKU is on the right item in QuickBooks.
+            <b>Nothing is ever made or changed in QuickBooks on its own.</b> No
+            item is created by an order, by the sweep or by a webhook, and no SKU
+            is ever written onto an item that already exists. A SKU that matches
+            nothing stops that one order, names the SKU under <b>Needs you</b>,
+            and goes through by itself the moment that SKU is on the right item in
+            QuickBooks.
+            <br><br>
+            <b>You can add a product, and only you.</b> A product saved in Shopify
+            appears under <b>New products</b> within seconds, showing exactly what
+            will be typed into the books &mdash; name, one description for both the
+            sales and the purchasing side, type, price, cost &mdash; and nothing is
+            created until you press <b>Sync now</b> on that row. The accounts below
+            are the ones it will use.
           </div>
 
           <!-- The one figure that says whether the reading works. Nothing on
@@ -466,6 +549,7 @@
       p.classList.toggle('on', p.id === 'p-' + name);
     });
     if(name === 'held'){ loadHeld(); loadMatch(); }
+    else if(name === 'new') loadNew();
     else if(name === 'off') loadOff();
     else if(name === 'setup') loadSetup();
     else if(name === 'check') { /* only when asked: it reads QuickBooks */ }
@@ -486,6 +570,10 @@
         card('warn', (st.waiting || 0), 'Waiting', 'held') +
         card('bad',  (st.held || 0), 'Needs you', 'held') +
         card('', (st.off || 0), 'Left out', 'off') +
+        // A product waiting on her is an order held next week, so it goes on
+        // the headline rather than only on its tab.
+        card((d.tally && d.tally.newItems) ? 'warn' : '',
+             (d.tally && d.tally.newItems) || 0, 'New products', 'new') +
         card('', k.item || 0, 'Products made', 'item');
       wireCards();
 
@@ -499,6 +587,8 @@
       $('cOff').textContent   = st.off ? '(' + n0(st.off) + ')' : '';
       $('cErr').textContent   = k.error ? '(' + n0(k.error) + ')' : '';
       $('cItem').textContent  = k.item ? '(' + n0(k.item) + ')' : '';
+      var waitingNew = (d.tally && d.tally.newItems) || 0;
+      $('cNew').textContent   = waitingNew ? '(' + n0(waitingNew) + ')' : '';
 
       // Is it alive, and what did it do when it last looked? Without this the
       // page says what the totals are but never that anything is still happening,
@@ -883,6 +973,273 @@
     return '<div class="hint" style="margin-top:12px">' +
       bits.join('<br><br>') + '</div>';
   }
+
+
+  /* ---------- products new in Shopify, waiting on her ---------- */
+
+  // What QuickBooks will actually take, worked out the same way the server
+  // does it (kindFor in shopifysync.js). The screen must not promise a kind
+  // the books would refuse.
+  function kindOf(type, track){
+    if(type === 'Inventory' && !track){
+      return { kind: 'NonInventory',
+               bent: 'QuickBooks only counts an Inventory product, so with the ' +
+                     'quantity tick off this goes in as Non-inventory \u2014 same ' +
+                     'name, same descriptions, same price, same accounts.' };
+    }
+    return { kind: type, bent: '' };
+  }
+
+  var NEWROWS = [];
+
+  function askCard(r){
+    var id = r.id;
+    var k = kindOf(r.qb_type || 'NonInventory', !!r.qb_track);
+    var warn = r.clash || k.bent || '';
+    var shopKind = r.tracked ? 'tracked in Shopify' : 'not tracked in Shopify';
+
+    return '<div class="ask' + (r.clash ? ' hot' : '') + '" data-ask="' + id + '">' +
+      '<div class="asktop">' +
+        '<input type="checkbox" class="pick" data-pick="' + id + '">' +
+        '<b>' + esc(r.shop_title || '(no name)') + '</b>' +
+        '<span class="sku">' + (r.sku ? esc(r.sku) : 'no SKU') + '</span>' +
+        '<span style="flex:1"></span>' +
+        '<span class="pill ' + (r.clash ? 'no' : 'mid') + '">' +
+          (r.clash ? 'needs a new name' : 'waiting on you') + '</span>' +
+      '</div>' +
+      '<div class="askbody">' +
+        '<div class="askshop">' +
+          '<div><span>Shopify says</span>' + esc(r.shop_title || '') + '</div>' +
+          '<div><span>SKU</span>' + (r.sku ? esc(r.sku) : '\u2014') + '</div>' +
+          '<div><span>Price</span>' + money(r.shop_price) + '</div>' +
+          '<div><span>Cost</span>' + (Number(r.shop_cost) ? money(r.shop_cost) : '\u2014') + '</div>' +
+          '<div><span>Counted</span>' + shopKind + '</div>' +
+        '</div>' +
+        '<div class="askqb">' +
+          '<div class="fields">' +
+            '<div><label>Name in QuickBooks</label>' +
+              '<input data-f="qb_name" value="' + esc(r.qb_name || '') + '"></div>' +
+            '<div><label>SKU</label>' +
+              '<input data-f="sku" value="' + esc(r.sku || '') + '"></div>' +
+            '<div style="grid-column:1/-1"><label>Description &mdash; sales and purchasing, the same words</label>' +
+              '<input data-f="qb_desc" value="' + esc(r.qb_desc || '') + '"></div>' +
+            '<div><label>Type</label><select data-f="qb_type">' +
+              '<option value="Inventory"' + (r.qb_type === 'Inventory' ? ' selected' : '') + '>Inventory</option>' +
+              '<option value="NonInventory"' + (r.qb_type === 'NonInventory' ? ' selected' : '') + '>Non-inventory</option>' +
+              '<option value="Service"' + (r.qb_type === 'Service' ? ' selected' : '') + '>Service</option>' +
+            '</select></div>' +
+            '<div><label>Sales price</label>' +
+              '<input data-f="qb_price" type="number" step="0.01" value="' + (Number(r.qb_price) || 0) + '"></div>' +
+            '<div><label>Cost</label>' +
+              '<input data-f="qb_cost" type="number" step="0.01" value="' + (Number(r.qb_cost) || 0) + '"></div>' +
+          '</div>' +
+          '<div class="askqty">' +
+            '<input type="checkbox" data-f="qb_track"' + (r.qb_track ? ' checked' : '') + '>' +
+            '<span>Count the quantity in QuickBooks</span>' +
+          '</div>' +
+          '<div class="fields" data-qty style="' + (r.qb_track ? '' : 'display:none') + '">' +
+            '<div><label>Quantity on hand</label>' +
+              '<input data-f="qb_qty" type="number" step="1" value="' + (Number(r.qb_qty) || 0) + '"></div>' +
+            '<div><label>As of</label>' +
+              '<input data-f="qb_start" type="date" value="' + esc((r.qb_start || TODAY || '').slice(0,10)) + '"></div>' +
+          '</div>' +
+          '<div class="acts">' +
+            '<button class="go" data-make="' + id + '">Sync now</button>' +
+            '<button class="ghost" data-drop="' + id + '">No thanks</button>' +
+            '<span class="said" data-said="' + id + '"></span>' +
+          '</div>' +
+        '</div>' +
+      '</div>' +
+      (warn ? '<div class="askwarn">' + esc(warn) + '</div>' : '') +
+      (r.why ? '<div class="asksaid said bad">' + esc(r.why) + '</div>' : '') +
+    '</div>';
+  }
+
+  var TODAY = '';
+
+  function cardOf(id){ return document.querySelector('[data-ask="' + id + '"]'); }
+
+  // Everything typed on one card, as the server's own column names. Saved on
+  // blur so a reload does not lose it, and again before Sync now so what goes
+  // into QuickBooks is what is on the screen.
+  function fieldsOf(id){
+    var box = cardOf(id);
+    if(!box) return null;
+    var out = {};
+    box.querySelectorAll('[data-f]').forEach(function(el){
+      var f = el.getAttribute('data-f');
+      out[f] = el.type === 'checkbox' ? el.checked : el.value;
+    });
+    return out;
+  }
+
+  function saveCard(id){
+    var f = fieldsOf(id);
+    if(!f) return Promise.resolve();
+    return post('/api/shopify/new-items/edit', { id: id, fields: f })
+      .catch(function(){ /* said when it matters, on Sync now */ });
+  }
+
+  function loadNew(){
+    $('newBox').innerHTML = '<div class="none">Reading Shopify and your QuickBooks product list&hellip;</div>';
+    say($('newSaid'), '', '');
+    get('/api/shopify/new-items', 60).then(function(d){
+      if(d.error) throw new Error(d.error);
+      NEWROWS = d.rows || [];
+      TODAY = d.today || '';
+      $('cNew').textContent = NEWROWS.length ? ' ' + n0(NEWROWS.length) : '';
+
+      if(d.accounts){
+        $('newAcc').style.display = '';
+        $('newAcc').innerHTML = 'Where it will land in QuickBooks, the same as ' +
+          'your other products: <b>income</b> account #' + esc(d.accounts.income || '\u2014') +
+          ', <b>cost of sale</b> account #' + esc(d.accounts.cogs || '\u2014') +
+          (d.accounts.asset ? ', <b>inventory asset</b> account #' + esc(d.accounts.asset) : '') +
+          '. Change these under <b>How it runs</b> on this page.';
+      } else {
+        $('newAcc').style.display = 'none';
+      }
+
+      var bits = [];
+      if(d.settled) bits.push(n0(d.settled) + ' were already in QuickBooks and have been taken off this list');
+      if(d.why) bits.push('QuickBooks could not be read, so this list cannot say what is already there: ' + d.why);
+      if(bits.length) say($('newSaid'), d.why ? 'bad' : '', bits.join(' \u00b7 '));
+
+      if(!NEWROWS.length){
+        $('newBox').innerHTML = '<div class="none">Nothing is waiting. A product ' +
+          'saved in Shopify appears here within seconds.</div>';
+        return;
+      }
+      $('newBox').innerHTML = NEWROWS.map(askCard).join('');
+      wireNew();
+    }).catch(function(e){
+      $('newBox').innerHTML = '<div class="none">Could not read the list: ' +
+        esc(e.message) + '</div>';
+    });
+  }
+
+  function wireNew(){
+    $('newBox').querySelectorAll('[data-f]').forEach(function(el){
+      el.addEventListener('change', function(){
+        var box = el.closest('[data-ask]');
+        if(!box) return;
+        var id = Number(box.getAttribute('data-ask'));
+        // the quantity and date only mean anything with the tick on
+        if(el.getAttribute('data-f') === 'qb_track'){
+          var qty = box.querySelector('[data-qty]');
+          if(qty) qty.style.display = el.checked ? '' : 'none';
+        }
+        saveCard(id);
+      });
+    });
+
+    $('newBox').querySelectorAll('[data-make]').forEach(function(b){
+      b.addEventListener('click', function(){ makeOne(Number(b.getAttribute('data-make')), b); });
+    });
+    $('newBox').querySelectorAll('[data-drop]').forEach(function(b){
+      b.addEventListener('click', function(){
+        var id = Number(b.getAttribute('data-drop'));
+        post('/api/shopify/new-items/drop', { id: id }).then(function(){
+          var box = cardOf(id);
+          if(box) box.remove();
+          loadTally();
+        });
+      });
+    });
+  }
+
+  function saidOn(id, cls, text){
+    var el = document.querySelector('[data-said="' + id + '"]');
+    if(el) say(el, cls, text);
+  }
+
+  function makeOne(id, btn){
+    if(btn) btn.disabled = true;
+    saidOn(id, '', 'Saving what you typed\u2026');
+    saveCard(id).then(function(){
+      saidOn(id, '', 'Adding it to QuickBooks\u2026');
+      return post('/api/shopify/new-items/make', { ids: [id] });
+    }).then(function(d){
+      if(d.error) throw new Error(d.error);
+      var one = (d.said || [])[0];
+      if(one && one.ok){
+        saidOn(id, 'good', one.why);
+        var box = cardOf(id);
+        if(box) setTimeout(function(){ if(box) box.remove(); }, 2500);
+        if(d.freed) say($('newSaid'), 'good',
+          n0(d.freed) + ' order(s) that were waiting on a product have gone back in the queue');
+      } else {
+        saidOn(id, 'bad', (one && one.why) || 'QuickBooks did not take it');
+        if(btn) btn.disabled = false;
+      }
+      loadTally();
+    }).catch(function(e){
+      saidOn(id, 'bad', e.message);
+      if(btn) btn.disabled = false;
+    });
+  }
+
+  $('btnNewAgain').addEventListener('click', loadNew);
+
+  $('btnMakeAll').addEventListener('click', function(){
+    var picked = [];
+    $('newBox').querySelectorAll('[data-pick]').forEach(function(c){
+      if(c.checked) picked.push(Number(c.getAttribute('data-pick')));
+    });
+    if(!picked.length) return say($('newSaid'), 'bad', 'Nothing is ticked.');
+    if(!confirm('Add ' + picked.length + ' product(s) to QuickBooks, exactly as ' +
+                'they are shown here?')) return;
+
+    var btn = $('btnMakeAll');
+    btn.disabled = true;
+    say($('newSaid'), '', 'Saving and adding\u2026');
+
+    // Saved first, every one of them, so what goes into the books is what is
+    // on the screen rather than what was last typed somewhere.
+    Promise.all(picked.map(saveCard)).then(function(){
+      return post('/api/shopify/new-items/make', { ids: picked });
+    }).then(function(d){
+      if(d.error) throw new Error(d.error);
+      var bits = [];
+      if(d.made) bits.push(n0(d.made) + ' added to QuickBooks');
+      if(d.already) bits.push(n0(d.already) + ' were already there');
+      if(d.refused) bits.push(n0(d.refused) + ' were not taken \u2014 the reason is on each one');
+      if(d.freed) bits.push(n0(d.freed) + ' waiting order(s) back in the queue');
+      say($('newSaid'), d.refused ? 'bad' : 'good', bits.join(' \u00b7 ') || 'Nothing to do.');
+      btn.disabled = false;
+      loadNew();
+      loadTally();
+    }).catch(function(e){
+      say($('newSaid'), 'bad', e.message);
+      btn.disabled = false;
+    });
+  });
+
+  $('btnNewPast').addEventListener('click', function(){
+    get('/api/shopify/new-items/past?state=off').then(function(d){
+      var rows = d.rows || [];
+      if(!rows.length) return say($('newSaid'), '', 'You have not said no to anything.');
+      $('newBox').innerHTML =
+        '<div class="hint" style="margin-bottom:10px">Products you said no to. ' +
+        'Nothing in QuickBooks was touched for any of them \u2014 each was only ever ' +
+        'a question. <b>Bring it back</b> puts it on the list again.</div>' +
+        rows.map(function(r){
+          return '<div class="ask" data-ask="' + r.id + '"><div class="asktop">' +
+            '<b>' + esc(r.shop_title || '') + '</b>' +
+            '<span class="sku">' + (r.sku ? esc(r.sku) : 'no SKU') + '</span>' +
+            '<span style="flex:1"></span>' +
+            '<button class="ghost" data-back="' + r.id + '">Bring it back</button>' +
+            '</div></div>';
+        }).join('');
+      $('newBox').querySelectorAll('[data-back]').forEach(function(b){
+        b.addEventListener('click', function(){
+          post('/api/shopify/new-items/reopen', { id: Number(b.getAttribute('data-back')) })
+            .then(loadNew);
+        });
+      });
+      say($('newSaid'), '', '');
+    }).catch(function(e){ say($('newSaid'), 'bad', e.message); });
+  });
 
   /* ---------- what was left out ---------- */
 

@@ -270,32 +270,49 @@
           <div class="body">
             <div class="line">
               Match all associated products on <em>the SKU, and nothing else</em> &mdash;
-              and <b>never</b> create a product in QuickBooks
+              and add a new product to QuickBooks <em>only when you say so</em>
             </div>
             <div class="note">
               Where the SKU on the Shopify line is the SKU on a QuickBooks item, that item is
               used, and <b>what it says is what goes on the invoice</b>: its name, its sales
               description, its account. The Shopify title is not consulted at all, so a
-              product renamed on one side cannot become a second item on the other. Its
-              purchase description is left exactly as it is &mdash; that belongs on bills,
-              not here.
+              product renamed on one side cannot become a second item on the other.
               <br><br>
               <b>The price is the one exception, and it comes from Shopify</b>: what the
               buyer was actually charged is a fact of that sale, not a setting in the books.
-              <b>Cost is never touched.</b> Cost reaches QuickBooks when the purchase order
-              is entered, and nothing on an invoice has any business writing it.
+              <b>Cost on an invoice is never touched.</b> Cost reaches QuickBooks when the
+              purchase order is entered.
               <br><br>
               A SKU that is on no item in QuickBooks, and a Shopify line with no SKU at all,
               stop that order and name it in the report. Nothing is guessed and nothing is
-              part-written.
+              part-written. <b>No order, no sweep and no webhook ever creates a product</b>,
+              and no SKU is ever written onto an item that already exists.
+              <br><br>
+              <b>A product new in Shopify is a question, not an entry.</b> Within seconds of
+              being saved it appears under <b>New products</b> on the
+              <a href="/shopify-log">report</a>, showing exactly what will be typed into the
+              books &mdash; the name, one description used for both the sales and the
+              purchasing side, the type, the price, the cost, and the income and
+              cost-of-sale accounts your other products already use. You change whatever you
+              want to and press <b>Sync now</b>. Until you do, nothing has been created.
             </div>
-            <button class="cfgbtn" data-open="c3" type="button">Why there is nothing to set</button>
+            <button class="cfgbtn" data-open="c3" type="button">Quantity, and why the type bends</button>
             <div class="cfg" id="c3">
               <div class="tip" style="margin-top:0">
-                This was a setting once, and it is the one thing on this page that could put
-                the wrong product on real books. Matching on the name made a second item
-                carrying the same SKU, and the sales went to the new one. So it is not a
-                choice any more. If something needs fixing from that,
+                <b>The quantity and the as-of date are off by default</b>, and turning them on
+                is yours. QuickBooks only counts an <b>Inventory</b> product &mdash; it
+                insists on an opening quantity, a date and an asset account for one &mdash; so
+                with the tick off the product goes in as <b>Non-inventory</b>: same name, same
+                descriptions, same price, same accounts, and QuickBooks simply does not count
+                units of it. Tick it and it goes in as Inventory with the quantity and date you
+                give. The card says which it will be before you press anything.
+                <br><br>
+                <b>What is still not a choice</b> is matching by name. That is the one thing on
+                this page that put the wrong product on real books: a Shopify line carrying
+                SP-21 went onto the item whose own SKU is SP-21-50, because the two names were
+                close enough for QuickBooks to call them a duplicate. So a new product whose
+                name is already in QuickBooks is <b>refused and named</b>, never quietly
+                reused. If something needs fixing from before,
                 <a href="/shopify-undo">Put it back</a> lists exactly what Fusion made.
               </div>
             </div>

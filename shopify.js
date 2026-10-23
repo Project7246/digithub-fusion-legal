@@ -167,6 +167,62 @@ export async function initShopify() {
     CREATE UNIQUE INDEX IF NOT EXISTS shopify_shops_hook
       ON shopify_shops (hook_key) WHERE hook_key IS NOT NULL
   `);
+
+  // A product new in Shopify, waiting to be allowed into QuickBooks.
+  //
+  // This is the one place a product is ever made in the books, and it is made
+  // because a person pressed a button on this row - never by the sweep, never
+  // by a webhook, never because an order needed it. The writer still matches
+  // on the SKU and nothing else and still creates nothing: that is what
+  // stopped SP-21 going onto SP-21-50's item, and it does not change.
+  //
+  // Two sides to every row, which is the whole point of it:
+  //
+  //   shop_*   what Shopify says. Refreshed whenever Shopify calls again, so
+  //            a price corrected five minutes later is the price on the card.
+  //   qb_*     what will be typed into QuickBooks. Filled in from the Shopify
+  //            side the first time, and then it is hers: whatever is in these
+  //            columns when she presses Sync now is exactly what is created,
+  //            and a Shopify update never writes over her edit.
+  //
+  // `state` is new (waiting on her) / done (in QuickBooks) / off (she said no).
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS shopify_new_items (
+      id          SERIAL PRIMARY KEY,
+      realm_id    TEXT NOT NULL,
+      shop_id     INTEGER,
+      product_gid TEXT NOT NULL,
+      variant_gid TEXT NOT NULL,
+      sku         TEXT,
+      shop_title  TEXT,
+      shop_price  NUMERIC(14,2) DEFAULT 0,
+      shop_cost   NUMERIC(14,2) DEFAULT 0,
+      tracked     BOOLEAN DEFAULT FALSE,
+      qb_name     TEXT,
+      qb_desc     TEXT,
+      qb_type     TEXT DEFAULT 'NonInventory',
+      qb_price    NUMERIC(14,2) DEFAULT 0,
+      qb_cost     NUMERIC(14,2) DEFAULT 0,
+      qb_track    BOOLEAN DEFAULT FALSE,
+      qb_qty      NUMERIC(14,2) DEFAULT 0,
+      qb_start    DATE,
+      state       TEXT DEFAULT 'new',
+      why         TEXT,
+      qb_item_id  TEXT,
+      decided_at  TIMESTAMPTZ,
+      seen_at     TIMESTAMPTZ DEFAULT NOW()
+    )
+  `);
+
+  await pool.query(`
+    CREATE UNIQUE INDEX IF NOT EXISTS shopify_new_items_key
+      ON shopify_new_items (realm_id, variant_gid)
+  `);
+
+  await pool.query(`
+    CREATE INDEX IF NOT EXISTS shopify_new_items_look
+      ON shopify_new_items (realm_id, state, id DESC)
+  `);
 }
 
 /* ==================== what happened, in words ==================== */
@@ -275,7 +331,7 @@ export async function forgetEvents(realmId, kind) {
 export async function tally(realmId) {
   const one = [realmId];
 
-  const [byState, byKind, held, due, soon, sore, stuck, openErrors] =
+  const [byState, byKind, held, due, soon, sore, stuck, openErrors, newItems] =
     await Promise.all([
     pool.query(
       `SELECT state, COUNT(*)::int AS n FROM shopify_orders
@@ -326,7 +382,14 @@ export async function tally(realmId) {
          LEFT JOIN shopify_orders o
                 ON o.realm_id = e.realm_id AND o.order_gid = e.order_gid
         WHERE e.realm_id = $1 AND e.kind = 'error'
-          AND (e.order_gid IS NULL OR o.state IS DISTINCT FROM 'done')`, one)
+          AND (e.order_gid IS NULL OR o.state IS DISTINCT FROM 'done')`, one),
+
+    // Products new in Shopify waiting to be allowed into QuickBooks. It is on
+    // the headline because a product nobody notices is an order held next
+    // week: the whole arrangement only works if the waiting list is seen.
+    pool.query(
+      `SELECT COUNT(*)::int AS n FROM shopify_new_items
+        WHERE realm_id = $1 AND state = 'new'`, one)
   ]);
 
   const out = {
@@ -340,6 +403,7 @@ export async function tally(realmId) {
   byKind.rows.forEach(r => { out.kinds[r.kind] = r.n; });
   // the refusals still standing, which is what the tab lists
   out.kinds.error = openErrors.rows[0].n;
+  out.newItems = newItems.rows[0].n;
   return out;
 }
 
@@ -387,6 +451,176 @@ export async function wakeWaiting(realmId) {
     [realmId]
   );
   return r.rowCount;
+}
+
+
+/* ==================== products waiting to be allowed in ==================== */
+
+// A variant that is new on Shopify, offered rather than made.
+//
+// Called from the product webhook, so it happens the moment a product is
+// saved in Shopify - the same immediacy an order has. The difference is the
+// last step: an order writes itself, a product waits on her.
+//
+// Two things it is careful about:
+//
+//  - **It never writes over her edits.** On a second call only the Shopify
+//    side is refreshed. If she has retyped the name or the price that is what
+//    stays, because that is the version she is about to approve.
+//  - **It never re-opens something decided.** A product she said no to, or
+//    one already in QuickBooks, is not put back on the list by Shopify
+//    saving the product again. `state` is only ever moved by a person.
+export async function offerNewItem(realmId, shopId, p, v) {
+  const vTitle = String((v && v.title) || '').trim();
+  const title = String((p && p.title) || '').trim() +
+    (vTitle && vTitle !== 'Default Title' ? ' - ' + vTitle : '');
+
+  const price = Number(v.price) || 0;
+  const cost = Number(v.inventoryItem && v.inventoryItem.unitCost &&
+                      v.inventoryItem.unitCost.amount) || 0;
+  // Shopify's own answer to "do you count this one", which is what decides the
+  // kind of item QuickBooks is asked for.
+  const tracked = !!(v.inventoryItem && v.inventoryItem.tracked);
+
+  const r = await pool.query(
+    `INSERT INTO shopify_new_items
+       (realm_id, shop_id, product_gid, variant_gid, sku, shop_title,
+        shop_price, shop_cost, tracked,
+        qb_name, qb_desc, qb_type, qb_price, qb_cost, qb_track, qb_qty)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$6,$6,$10,$7,$8,FALSE,0)
+     ON CONFLICT (realm_id, variant_gid) DO UPDATE SET
+       sku        = EXCLUDED.sku,
+       shop_title = EXCLUDED.shop_title,
+       shop_price = EXCLUDED.shop_price,
+       shop_cost  = EXCLUDED.shop_cost,
+       tracked    = EXCLUDED.tracked,
+       seen_at    = NOW()
+     RETURNING (xmax = 0) AS fresh, state`,
+    [realmId, shopId, p.id, v.id, String(v.sku || '').trim(), title,
+     price, cost, tracked,
+     // The kind QuickBooks is asked for follows Shopify: a variant Shopify
+     // counts is Inventory, one it does not is Non-inventory. Hers to change
+     // on the card - and see makeNewItems for what QuickBooks will actually
+     // accept, which is not the same question.
+     tracked ? 'Inventory' : 'NonInventory']
+  );
+
+  const row = r.rows[0] || {};
+  return { fresh: !!row.fresh, state: row.state || 'new' };
+}
+
+export async function newItemList(realmId, opts) {
+  const o = opts || {};
+  const args = [realmId];
+  let where = 'realm_id = $1';
+  if (o.state) { args.push(String(o.state)); where += ' AND state = $' + args.length; }
+  args.push(Math.min(Math.max(Number(o.limit) || 200, 1), 500));
+  const r = await pool.query(
+    `SELECT * FROM shopify_new_items
+      WHERE ${where} ORDER BY id DESC LIMIT $${args.length}`, args);
+  return r.rows;
+}
+
+export async function newItemTally(realmId) {
+  const r = await pool.query(
+    `SELECT state, COUNT(*)::int AS n FROM shopify_new_items
+      WHERE realm_id = $1 GROUP BY state`, [realmId]);
+  const out = { new: 0, done: 0, off: 0 };
+  r.rows.forEach(x => { out[x.state] = x.n; });
+  return out;
+}
+
+// What she typed on the card. Only the QuickBooks side can be edited, and only
+// while the row is still waiting: an item already in the books is not changed
+// from here, because changing it here would say something about QuickBooks that
+// is not true.
+const MINE = {
+  qb_name: 'text', qb_desc: 'text', qb_type: 'kind', qb_price: 'num',
+  qb_cost: 'num', qb_track: 'bool', qb_qty: 'num', qb_start: 'date',
+  sku: 'text'
+};
+
+export async function editNewItem(realmId, id, patch) {
+  const sets = [];
+  const args = [realmId, Number(id)];
+  Object.keys(patch || {}).forEach(k => {
+    const how = MINE[k];
+    if (!how) return;
+    let v = patch[k];
+    if (how === 'num') v = Number(v) || 0;
+    else if (how === 'bool') v = !!v;
+    else if (how === 'kind') {
+      v = ['Inventory', 'NonInventory', 'Service'].indexOf(String(v)) >= 0
+        ? String(v) : 'NonInventory';
+    } else if (how === 'date') v = v ? String(v).slice(0, 10) : null;
+    else v = String(v == null ? '' : v).slice(0, 4000);
+    args.push(v);
+    sets.push(k + ' = $' + args.length);
+  });
+  if (!sets.length) return 0;
+  const r = await pool.query(
+    `UPDATE shopify_new_items SET ${sets.join(', ')}, why = NULL
+      WHERE realm_id = $1 AND id = $2 AND state = 'new'`, args);
+  return r.rowCount;
+}
+
+// "No thanks" - and it stays no. Nothing in QuickBooks is touched: this row
+// was only ever a question.
+export async function dropNewItem(realmId, ids) {
+  const list = (Array.isArray(ids) ? ids : [ids]).map(Number).filter(Boolean);
+  if (!list.length) return 0;
+  const r = await pool.query(
+    `UPDATE shopify_new_items
+        SET state = 'off', why = 'you said no', decided_at = NOW()
+      WHERE realm_id = $1 AND id = ANY($2::int[]) AND state = 'new'`,
+    [realmId, list]);
+  return r.rowCount;
+}
+
+export async function reopenNewItem(realmId, ids) {
+  const list = (Array.isArray(ids) ? ids : [ids]).map(Number).filter(Boolean);
+  if (!list.length) return 0;
+  const r = await pool.query(
+    `UPDATE shopify_new_items
+        SET state = 'new', why = NULL, decided_at = NULL
+      WHERE realm_id = $1 AND id = ANY($2::int[]) AND state = 'off'`,
+    [realmId, list]);
+  return r.rowCount;
+}
+
+// The rows a Sync now is about. Named ids, or everything still waiting - and
+// `state = 'new'` is in the query, so a row decided a second ago by another
+// tab cannot be made twice.
+export async function newItemsToMake(realmId, ids) {
+  const list = (Array.isArray(ids) ? ids : []).map(Number).filter(Boolean);
+  if (list.length) {
+    const r = await pool.query(
+      `SELECT * FROM shopify_new_items
+        WHERE realm_id = $1 AND id = ANY($2::int[]) AND state = 'new'
+        ORDER BY id`, [realmId, list]);
+    return r.rows;
+  }
+  const r = await pool.query(
+    `SELECT * FROM shopify_new_items
+      WHERE realm_id = $1 AND state = 'new' ORDER BY id`, [realmId]);
+  return r.rows;
+}
+
+export async function newItemDone(realmId, id, qbItemId, why) {
+  await pool.query(
+    `UPDATE shopify_new_items
+        SET state = 'done', qb_item_id = $3, why = $4, decided_at = NOW()
+      WHERE realm_id = $1 AND id = $2`,
+    [realmId, Number(id), String(qbItemId || ''), why || null]);
+}
+
+// QuickBooks refused it, so it stays on the list with the refusal on it. Not
+// 'off': she did not say no, QuickBooks did, and that is a thing to fix and
+// press again rather than a decision.
+export async function newItemStuck(realmId, id, why) {
+  await pool.query(
+    `UPDATE shopify_new_items SET why = $3 WHERE realm_id = $1 AND id = $2`,
+    [realmId, Number(id), String(why || '').slice(0, 600)]);
 }
 
 /* ==================== the shops ==================== */
@@ -954,7 +1188,10 @@ query FusionProduct($id: ID!) {
   product(id: $id) {
     id title status
     variants(first: 100) {
-      nodes { id sku title price compareAtPrice inventoryItem { unitCost { amount } } }
+      nodes {
+        id sku title price compareAtPrice
+        inventoryItem { tracked unitCost { amount } }
+      }
     }
   }
 }`;

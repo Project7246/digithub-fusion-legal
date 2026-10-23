@@ -734,8 +734,9 @@ The rules, as the screen states them:
    order number, on the customer's terms
 2. one customer for the shop; the buyer's own name and address go in the
    billing block, and nothing goes in the memo
-3. products match on **the SKU and nothing else**, and nothing is ever made,
-   renamed or given a SKU in QuickBooks
+3. products match on **the SKU and nothing else**. Nothing is renamed and no
+   SKU is written onto an item that exists; a product new in Shopify becomes a
+   request you approve, and nothing is created until you press Sync now
 4. delivery is a line on **every** order, free ones at 0; the discount goes
    in the discount box, in rupees
 5. cancelled and void orders are left out
@@ -1247,17 +1248,139 @@ the buyer was actually charged is a fact of that sale - the order number as
 the document number, the buyer's own name and address in the billing block,
 and the discount. The memo is deliberately empty.
 
-## Fusion never changes anything in QuickBooks' product list
+## A new product is a question, and she is the only one who answers it
+
+Asked for on 23 Oct 2026, and it is the last piece of the connector: *"Shopify
+mein naya product bana hai aur uske variant bhi bana diye hain, ab ye product
+QB mein sync karna hai... phir Sync now par click karte hain, wo product QB
+mein add ho jaye. Matlab ye hai jis ko main allow kar gayi wohi product QB
+mein enter hota jayega."*
+
+So there are now **two doors into the product list, and only one of them
+opens**. The distinction is the whole of the safety:
+
+| | |
+|---|---|
+| the writer | **makes nothing, ever.** `itemFor()` matches on the SKU and nothing else. A SKU on no item holds its order and names it. No sweep, no webhook and no order creates a product or writes a SKU onto one |
+| **New products** | a person presses Sync now on one named row, having seen exactly what will be typed. That row, and nothing else |
+
+That is what keeps the SP-21/SP-21-50 disaster shut while still answering what
+she asked for. The dangerous thing was never *creating* an item - it was
+creating one and then **silently using a different item when QuickBooks said
+the name was taken**. So a request whose name is already in QuickBooks is
+**refused and named**, with the other item's SKU printed, and she renames it
+or says no.
+
+### The row has two sides
+
+`shopify_new_items` (realm-scoped, like everything else) keeps both:
+
+- **`shop_*`** - what Shopify says. Refreshed every time Shopify calls, so a
+  price corrected five minutes later is the price on the card.
+- **`qb_*`** - what will be typed into QuickBooks. Filled in from the Shopify
+  side the first time, and after that it is hers. **A Shopify update never
+  writes over her edit**, because the edit is the version she is about to
+  approve.
+
+`state` is `new` (waiting on her) / `done` (in QuickBooks, or already was) /
+`off` (she said no), and **only a person moves it**. Shopify saving the product
+again does not re-open a decision.
+
+### The webhook offers, it does not enter
+
+`nudgeProduct` already ran on `products/create` and `products/update`. It now
+calls `offerNewItem` for a variant it has never seen before - which includes a
+variant added to a product that already existed, because that is just as new.
+Nothing reaches QuickBooks; all it does is put a row on a list, within seconds
+of the product being saved. That is the "foran webhook ke through show ho jaye"
+half, and it is as immediate as an order.
+
+**The flood this would otherwise cause is settled by itself.** The first
+webhook after a shop is connected offers every variant, and a shop has years of
+products. `reviewNewItems()` reads QuickBooks once when the tab is opened and
+marks `done` every row whose SKU is already on an item there, naming the item it
+matched. What is left on the list is what is actually new. Saying no to two
+hundred products by hand was not an acceptable first experience.
+
+### Both descriptions, the same words
+
+Asked for: *"sales aur purchase description ek jaise hi"*. QuickBooks keeps two
+- `Description` shows on an invoice, `PurchaseDesc` shows on a bill - and
+`createItem` now writes the same text into both. A product with the sales one
+filled in and the purchase one empty reads as a blank line on a purchase order.
+
+And *"sales aur cost of sale bhi same"*: `IncomeAccountRef` and
+`ExpenseAccountRef` are the accounts every other product in those books already
+uses, worked out by `standingAccounts()` from the company's own chart rather
+than demanded. `ExpenseAccountRef` is now set for **every** kind, not only
+Inventory. They are overridable under **How it runs**, and the card prints which
+ones it will use before anything is pressed.
+
+### Quantity off wins, and the type bends to it
+
+Two instructions that cannot both be obeyed: *"type Inventory hi rahegi jo bhi
+Shopify mein select hoti"* and *"quantity aur date par tick na laga ho"*.
+
+**QuickBooks has no Inventory item that it does not count.** Type `Inventory`
+requires `AssetAccountRef`, `InvStartDate`, `TrackQtyOnHand` and `QtyOnHand`;
+there is no way to send one without an opening quantity and a date.
+
+So the tick wins, because the tick is the one she said she wants to decide
+(*"ye hamari marzi hai ke wohi add karein ya nahi"*), and `kindFor()` bends the
+type:
+
+| tick | goes in as |
+|---|---|
+| off (the default) | **Non-inventory** - same name, same descriptions, same price, same accounts. QuickBooks simply does not count units |
+| on | **Inventory**, with the quantity and the as-of date from the card |
+
+The card says which it will be **before** she presses anything, rather than
+letting QuickBooks refuse it: "ValidationFault 2030" is not something anybody
+should have to read. The type still starts from Shopify - a variant Shopify
+tracks arrives as Inventory, one it does not as Non-inventory - which is why
+`ONE_PRODUCT` now reads `inventoryItem { tracked }`.
+
+### An item with no SKU is refused
+
+Matching is the SKU and nothing else, so an item made without one could never
+be put on an invoice. Rather than make something useless, the request is
+refused in those words - and the SKU is editable on the card, so she can type
+it there instead of going back to Shopify.
+
+### Adding the product is the whole of the fix
+
+`makeNewItems` ends with `releaseHeld`. Every order held because that SKU was
+on no item goes straight back in the queue, so **"add the product" is the only
+thing that has to be done** - nothing on Needs you has to be pressed
+afterwards. The Needs you tab says so, and points at the tab.
+
+### Where it lives, and what it costs
+
+`GET /api/shopify/new-items` reads QuickBooks once per tab open (the same
+pattern `stuck-items` already uses) - it is a tab somebody opens, not a poll.
+Nothing ticks itself: the tick boxes start **empty**, so "Sync all ticked"
+cannot add anything by a careless click. `POST .../make` is the one door, and
+it takes named ids.
+
+Housekeeping keeps a row still waiting **for ever** - it is a question on a
+screen, the same rule held orders get - and clears an answered one after thirty
+days (`trimNewItems`).
+
+## Fusion never creates a product by itself
 
 Said by the owner, in as many words: **whatever is in QuickBooks stays as it
 is**. Every product is there and every SKU is on it. Match on the SKU, put the
 line on the invoice, change nothing - the same deal the file upload has always
 had.
 
-So nothing here makes an item, renames one, or writes a SKU onto one. The
-`makeItems` setting is gone, its tick is off the How it runs tab, and
-`createItem`/`setItemSku` are no longer imported. `itemsPossible()` answers no,
-always, and says why. A SKU that matches nothing stops that one order, names
+So **nothing on the writing path** makes an item, renames one, or writes a SKU
+onto one. The `makeItems` setting is gone and its tick is off the How it runs
+tab. `itemsPossible()` answers `can: false` for anything automatic and
+`byHand: true` for the one door above, and says which is which.
+
+`setItemSku` stays unimported here: putting a SKU onto an item that already
+exists is still never done. `createItem` is imported again, and is reached from
+exactly one place - `makeNewItems`, behind a button on a named row. A SKU that matches nothing stops that one order, names
 the SKU under **Needs you**, and goes through by itself the moment somebody
 puts that SKU on the right item in QuickBooks.
 
