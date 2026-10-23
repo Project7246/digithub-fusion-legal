@@ -22,7 +22,7 @@ import {
   initShopify, listShops, getShop, saveShop, removeShop, checkShop, cleanDomain,
   pullOrders, listOrders as listShopOrders, productsSeen, markSynced, unmark,
   toInvoice, API_VERSION as SHOPIFY_VERSION,
-  note as shopNote, events as shopifyEvents, tally as shopifyTally,
+  note as shopNote, events as shopifyEvents, tally as shopifyTally, forgetEvents,
   fetchOne as shopifyFetchOne, saveOne as shopifySaveOne,
   heldList as shopifyHeld, releaseHeld, wakeAll, shopHookKey, shopByHookKey,
   madeItems, madeInvoices, unsync,
@@ -1402,6 +1402,7 @@ const RIGHT_GROUPS = [
             '/api/shopify/build', '/api/shopify/mark', '/api/shopify/unmark',
             '/api/shopify/settings', '/api/shopify/retry', '/api/shopify/wire',
             '/api/shopify/app', '/api/shopify/undo/invoices',
+            '/api/shopify/events/clear',
             '/api/shopify/undo/merge', '/api/shopify/sync'] },
 
   { key: 'settings', area: 'items', label: 'SKU mappings',
@@ -8443,7 +8444,10 @@ app.get('/api/shopify/events', async (req, res) => {
   try {
     res.setHeader('Cache-Control', 'no-store');
     const rows = await shopifyEvents(realmId, {
-      kind: req.query.kind, limit: req.query.limit, since: req.query.since
+      kind: req.query.kind, limit: req.query.limit, since: req.query.since,
+      // "only what is still a problem" - an order refused this morning and
+      // written this afternoon is not on the refusals list any more
+      open: req.query.open === '1'
     });
     res.json({ events: rows });
   } catch (e) {
@@ -8500,6 +8504,30 @@ app.post('/api/shopify/sync', async (req, res) => {
     if (freed > (did && did.done ? did.done : 0)) wakeSoon();
 
     res.json({ from, to, read, freed, did, tally: await shopifyTally(realmId) });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// Rub out one of these lists.
+//
+// Ours, not QuickBooks' - a line here is this app's note of something it did,
+// and when what it did was wrong and has been undone in QuickBooks, the note
+// describing it is wrong too. Nothing in the books is touched, and only the
+// list named is cleared.
+app.post('/api/shopify/events/clear', async (req, res) => {
+  const realmId = await requireCompany(req, res);
+  if (!realmId) return;
+
+  const kind = String((req.body && req.body.kind) || '').trim();
+  const allowed = new Set(['item', 'price', 'error', 'paid', 'refund',
+                           'cancelled', 'edited', 'held']);
+  if (!allowed.has(kind)) {
+    return res.status(400).json({ error: 'Which list?' });
+  }
+
+  try {
+    res.json({ ok: true, cleared: await forgetEvents(realmId, kind) });
   } catch (e) {
     res.status(500).json({ error: e.message });
   }

@@ -740,6 +740,34 @@ The rules, as the screen states them:
    in the discount box, in rupees
 5. cancelled and void orders are left out
 
+## A refusal is only news while it is still true
+
+"QuickBooks said no" listed every refusal there had ever been, so an order
+turned down at four in the morning and written at noon stayed on it for ever,
+under a heading that says something is wrong. Ten orders sat there, every one
+of them long since in the books, and a clean list looked dirty.
+
+`events()` took an `open` flag: with it, an event is left out when its order
+is now `done`. Company-level errors - books that would not open - have no
+order and stay. The tab's own counter counts the same thing, from `tally()`,
+or the number and the list would disagree.
+
+The history is not deleted. It is in the table, and **Download this report**
+still carries all of it; it is only not shown under a heading that claims it
+is a problem.
+
+## Clearing a list is clearing our notes, never the books
+
+**Products made** held fourteen lines about products this app created in
+QuickBooks back when it did that - every one of which the owner then undid by
+hand. The notes were a record of something that no longer exists.
+
+So that list has **Clear this list**, which deletes those rows from
+`shopify_events` and nothing else. It asks twice, says in as many words that
+nothing in QuickBooks changes, and is offered only where the notes can be
+wrong in that way (`CLEARABLE` in `shopify-log.html`). `POST
+/api/shopify/events/clear` names the one list to clear and takes nothing else.
+
 ## A deleted item is not there
 
 An item merged away or switched off in QuickBooks is finished with. It must

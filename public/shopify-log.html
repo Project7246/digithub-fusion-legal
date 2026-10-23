@@ -822,14 +822,25 @@
     box.innerHTML = '<div class="none">Loading&hellip;</div>';
     var kinds = name === 'changes' ? ['paid','refund','cancelled','edited'] : [name];
 
+    // A refusal is worth keeping as history and worth showing only while it
+    // is still true: an order QuickBooks turned down at four in the morning
+    // and wrote at noon has nothing wrong with it any more, and leaving it
+    // under a heading that says otherwise is how a clean list looks dirty.
+    var only = name === 'error' ? '&open=1' : '';
+
     Promise.all(kinds.map(function(k){
-      return get('/api/shopify/events?kind=' + k + '&limit=300').then(function(d){ return d.events||[]; });
+      return get('/api/shopify/events?kind=' + k + '&limit=300' + only)
+        .then(function(d){ return d.events||[]; });
     })).then(function(sets){
       var rows = [].concat.apply([], sets);
       rows.sort(function(a,b){ return new Date(b.at) - new Date(a.at); });
 
       if(!rows.length){
-        box.innerHTML = '<div class="none">Nothing yet.</div>';
+        box.innerHTML = '<div class="none">' +
+          (name === 'error'
+            ? 'Nothing is being refused. Anything QuickBooks turned down ' +
+              'before has since gone in.'
+            : 'Nothing yet.') + '</div>' + clearBar(name);
         return;
       }
       var c = COLS[name] || ['What','When','Note'];
@@ -852,9 +863,50 @@
             '<td>' + (name === 'changes'
                 ? '<span class="pill ' + (e.kind === 'paid' ? 'ok' : 'mid') + '">' + esc(e.kind) + '</span> '
                 : '') + esc(e.note || '') + '</td></tr>';
-        }).join('') + '</table></div>';
+        }).join('') + '</table></div>' + clearBar(name);
+
+      wireClear(name, box);
     }).catch(function(e){
       box.innerHTML = '<div class="none">' + esc(e.message) + '</div>';
+    });
+  }
+
+  // Rubbing out a list is rubbing out this app's own notes, never anything
+  // in QuickBooks - offered where the notes can be wrong, which is the list
+  // of products this app once made and has since had undone by hand.
+  var CLEARABLE = { item: 'products made' };
+
+  function clearBar(name){
+    if(!CLEARABLE[name]) return '';
+    return '<div class="acts" style="margin-top:12px">' +
+      '<button class="ghost" id="clr-' + name + '">Clear this list</button>' +
+      '<span class="said" id="clrsaid-' + name + '"></span>' +
+      '<span class="none" style="padding:0;margin-left:auto">' +
+      'These are Fusion&rsquo;s own notes of what it did. Clearing them ' +
+      'changes nothing in QuickBooks.</span></div>';
+  }
+
+  function wireClear(name, box){
+    var b = document.getElementById('clr-' + name);
+    if(!b) return;
+    var said = document.getElementById('clrsaid-' + name);
+    var armed = false;
+
+    b.addEventListener('click', function(){
+      if(!armed){
+        armed = true;
+        b.textContent = 'Yes, clear it';
+        say(said, '', 'This rubs out the list of ' + CLEARABLE[name] +
+          '. Nothing in QuickBooks changes.');
+        return;
+      }
+      b.disabled = true;
+      post('/api/shopify/events/clear', { kind: name })
+        .then(function(d){
+          say(said, 'good', n0(d.cleared) + ' lines cleared.');
+          loadEvents(name); loadTally();
+        })
+        .catch(function(e){ say(said, 'bad', e.message); b.disabled = false; });
     });
   }
 

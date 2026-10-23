@@ -221,20 +221,49 @@ export async function note(realmId, kind, row) {
   }
 }
 
-export async function events(realmId, { kind, limit, since }) {
-  const where = ['realm_id = $1'];
+export async function events(realmId, { kind, limit, since, open }) {
+  const where = ['e.realm_id = $1'];
   const args = [realmId];
-  if (kind && kind !== 'all') { args.push(kind); where.push(`kind = $${args.length}`); }
-  if (since) { args.push(since); where.push(`at >= $${args.length}`); }
+  if (kind && kind !== 'all') { args.push(kind); where.push(`e.kind = $${args.length}`); }
+  if (since) { args.push(since); where.push(`e.at >= $${args.length}`); }
+
+  // `open` means: only what is still a problem.
+  //
+  // "QuickBooks said no" was a list of every refusal there had ever been, so
+  // an order refused at four in the morning and written at noon stayed on it
+  // for ever, under a heading that says something is wrong. A refusal is
+  // worth keeping as history and worth showing only while it is still true.
+  const join = open
+    ? `LEFT JOIN shopify_orders o
+              ON o.realm_id = e.realm_id AND o.order_gid = e.order_gid`
+    : '';
+  if (open) {
+    where.push(`(e.order_gid IS NULL OR o.state IS DISTINCT FROM 'done')`);
+  }
+
   args.push(Math.min(Number(limit) || 200, 1000));
 
   const r = await pool.query(
-    `SELECT at, kind, ok, order_name, order_gid, sku, title, note, detail
-       FROM shopify_events WHERE ${where.join(' AND ')}
-      ORDER BY id DESC LIMIT $${args.length}`,
+    `SELECT e.at, e.kind, e.ok, e.order_name, e.order_gid, e.sku, e.title,
+            e.note, e.detail
+       FROM shopify_events e ${join}
+      WHERE ${where.join(' AND ')}
+      ORDER BY e.id DESC LIMIT $${args.length}`,
     args
   );
   return r.rows;
+}
+
+// Rub out a list. Ours, not QuickBooks' - these are the lines this app wrote
+// about what it did, and when what it did was wrong and has been undone, the
+// lines describing it are wrong too. Nothing in the books is touched.
+export async function forgetEvents(realmId, kind) {
+  if (!kind) return 0;
+  const r = await pool.query(
+    'DELETE FROM shopify_events WHERE realm_id = $1 AND kind = $2',
+    [realmId, String(kind)]
+  );
+  return r.rowCount;
 }
 
 // The headline numbers, counted rather than guessed at.
@@ -246,7 +275,8 @@ export async function events(realmId, { kind, limit, since }) {
 export async function tally(realmId) {
   const one = [realmId];
 
-  const [byState, byKind, held, due, soon, sore, stuck] = await Promise.all([
+  const [byState, byKind, held, due, soon, sore, stuck, openErrors] =
+    await Promise.all([
     pool.query(
       `SELECT state, COUNT(*)::int AS n FROM shopify_orders
         WHERE realm_id = $1 GROUP BY state`, one),
@@ -286,7 +316,17 @@ export async function tally(realmId) {
          FROM shopify_orders
         WHERE realm_id = $1 AND state IN ('held','waiting')
           AND (held_why IS NOT NULL OR sync_error IS NOT NULL)
-        GROUP BY 1 ORDER BY COUNT(*) DESC LIMIT 6`, one)
+        GROUP BY 1 ORDER BY COUNT(*) DESC LIMIT 6`, one),
+
+    // refusals that are still true - the tab shows these, so the number on
+    // the tab has to count the same thing
+    pool.query(
+      `SELECT COUNT(*)::int AS n
+         FROM shopify_events e
+         LEFT JOIN shopify_orders o
+                ON o.realm_id = e.realm_id AND o.order_gid = e.order_gid
+        WHERE e.realm_id = $1 AND e.kind = 'error'
+          AND (e.order_gid IS NULL OR o.state IS DISTINCT FROM 'done')`, one)
   ]);
 
   const out = {
@@ -298,6 +338,8 @@ export async function tally(realmId) {
   };
   byState.rows.forEach(r => { out.states[r.state || 'waiting'] = r.n; });
   byKind.rows.forEach(r => { out.kinds[r.kind] = r.n; });
+  // the refusals still standing, which is what the tab lists
+  out.kinds.error = openErrors.rows[0].n;
   return out;
 }
 
@@ -1232,7 +1274,3 @@ export async function unsync(realmId, gids) {
 }
 
 // Every item in the books, for choosing what to merge into.
-export async function forgetEvents(realmId, kind) {
-  await pool.query('DELETE FROM shopify_events WHERE realm_id = $1 AND kind = $2',
-    [realmId, kind]);
-}
