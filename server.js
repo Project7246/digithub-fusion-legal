@@ -33,7 +33,7 @@ import {
   settingsOf as shopifySettings, saveSettings as saveShopifySettings,
   itemsPossible, standingAccounts, openBooks, itemFor, previewItem, whyNot,
   shelfSeen,
-  shippingItemFor, descOf, FREE_DELIVERY,
+  shippingItemFor, descOf, FREE_DELIVERY, checkWritten,
   sweep as shopifySweep, syncState, startShopifySync, wakeSoon,
   nudgeOrder, nudgeProduct, wireHooks
 } from './shopifysync.js';
@@ -8500,6 +8500,24 @@ app.post('/api/shopify/sync', async (req, res) => {
     if (freed > (did && did.done ? did.done : 0)) wakeSoon();
 
     res.json({ from, to, read, freed, did, tally: await shopifyTally(realmId) });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// Which invoices got the wrong product on them.
+//
+// Reads the invoices back out of QuickBooks and compares each line against
+// what its SKU says today. Writes nothing and changes nothing - what to do
+// about one that is wrong is the merchant's to decide, in their own books.
+app.get('/api/shopify/check-items', async (req, res) => {
+  const realmId = await requireCompany(req, res);
+  if (!realmId) return;
+  try {
+    res.setHeader('Cache-Control', 'no-store');
+    res.json(await checkWritten(realmId, {
+      from: req.query.from, to: req.query.to, limit: req.query.limit
+    }));
   } catch (e) {
     res.status(500).json({ error: e.message });
   }

@@ -889,6 +889,135 @@ export function startShopifySync() {
   tick();
 }
 
+/* ============ which invoices got the wrong product on them ============ */
+//
+// Written because one of them did, and nobody could have found out.
+//
+// Until 21 Oct 2026 `itemFor()` had a fallback: where the SKU matched
+// nothing, it tried to **create** an item named after the Shopify product,
+// QuickBooks answered "duplicate name", and it then looked that name up and
+// used whatever it found - **including an item already carrying a different
+// SKU**. So a Shopify line with SP-21 went onto the QuickBooks item whose own
+// SKU is SP-21-50, on a real invoice, with nothing said anywhere. That is a
+// different product at a different price, and it was silent.
+//
+// The fallback is gone - matching is the SKU and nothing else, and nothing is
+// ever created. But the invoices it wrote are in the books, and the books are
+// the merchant's. So this reads them back and says which lines disagree with
+// what their SKU says today. It writes nothing, changes nothing and decides
+// nothing.
+
+export async function checkWritten(realmId, { from, to, limit } = {}) {
+  const books = await openBooks(realmId);
+
+  // id -> name, which is what an invoice line actually carries
+  const nameOf = new Map();
+  Object.keys(books.items).forEach(lower => {
+    nameOf.set(String(books.items[lower]), lower);
+  });
+
+  const args = [realmId];
+  const where = [`o.realm_id = $1`, `o.state = 'done'`,
+                 `COALESCE(o.qb_doc_number,'') <> ''`];
+  if (from) { args.push(from); where.push(`o.placed_at >= $${args.length}::date`); }
+  if (to)   { args.push(to);   where.push(`o.placed_at < ($${args.length}::date + 1)`); }
+  args.push(Math.min(Number(limit) || 500, 2000));
+
+  const ours = await pool.query(
+    `SELECT o.order_gid, o.name, o.placed_at, o.qb_doc_number, o.lines
+       FROM shopify_orders o
+      WHERE ${where.join(' AND ')}
+      ORDER BY o.placed_at ASC NULLS LAST
+      LIMIT $${args.length}`, args);
+
+  if (!ours.rows.length) {
+    return { looked: 0, checked: 0, wrong: [], unread: [], missing: [] };
+  }
+
+  // The invoices, by date range rather than one call each - a few hundred
+  // orders would otherwise be a few hundred round trips to Intuit.
+  const days = ours.rows.map(r => r.placed_at).filter(Boolean).sort();
+  const first = days[0] ? new Date(days[0]).toISOString().slice(0, 10) : null;
+  const last  = days[days.length - 1]
+    ? new Date(days[days.length - 1]).toISOString().slice(0, 10) : null;
+
+  const byDoc = new Map();
+  if (first && last) {
+    let start = 1;
+    while (true) {
+      const q = await qbQuery(realmId, books.token,
+        `SELECT * FROM Invoice WHERE TxnDate >= '${first}' AND TxnDate <= '${last}' ` +
+        `STARTPOSITION ${start} MAXRESULTS 1000`);
+      const arr = q.Invoice || [];
+      arr.forEach(i => { if (i.DocNumber) byDoc.set(String(i.DocNumber).trim(), i); });
+      if (arr.length < 1000) break;
+      start += 1000;
+      if (start > 9000) break;
+    }
+  }
+
+  const wrong = [], missing = [];
+  let checked = 0;
+
+  for (const row of ours.rows) {
+    const doc = String(row.qb_doc_number || '').trim();
+    const inv = byDoc.get(doc) || byDoc.get(doc.replace(/^#/, '')) ||
+                byDoc.get('#' + doc);
+    if (!inv) { missing.push({ order: row.name, doc }); continue; }
+    checked++;
+
+    // what the invoice actually carries, by item name
+    const onInvoice = (inv.Line || [])
+      .filter(L => L.DetailType === 'SalesItemLineDetail')
+      .map(L => {
+        const ref = L.SalesItemLineDetail && L.SalesItemLineDetail.ItemRef;
+        const id = ref && String(ref.value);
+        return {
+          name: (ref && ref.name) || (id && nameOf.get(id)) || '',
+          amount: Number(L.Amount) || 0
+        };
+      });
+
+    const have = onInvoice.map(x => String(x.name || '').toLowerCase());
+
+    for (const L of (row.lines || [])) {
+      const sku = String(L.sku || '').toLowerCase().trim();
+      if (!sku) continue;                       // nothing to check it against
+      const should = books.skus.get(sku);
+      if (!should) continue;                    // the SKU is on nothing today
+
+      if (have.indexOf(String(should).toLowerCase()) > -1) continue;
+
+      // It is not on the invoice under the name its SKU says. Which item did
+      // it get instead? The line whose amount matches, failing that any line
+      // the order does not otherwise account for.
+      const want = Number(L.amt) || 0;
+      const near = onInvoice.filter(x =>
+        Math.abs(x.amount - want) < 0.01 &&
+        String(x.name).toLowerCase() !== String(should).toLowerCase());
+
+      wrong.push({
+        order: row.name,
+        doc,
+        on: row.placed_at ? String(row.placed_at).slice(0, 10) : '',
+        sku: L.sku,
+        title: L.title || '',
+        shouldBe: should,
+        went: near.length ? near[0].name : (onInvoice.map(x => x.name).join(', ') || '(nothing)'),
+        amount: want
+      });
+    }
+  }
+
+  return {
+    looked: ours.rows.length,
+    checked,
+    wrong,
+    missing,
+    from: first, to: last
+  };
+}
+
 /* ==================== the nudge ==================== */
 
 // Shopify called. Read the order back from Shopify, save it, and put it in the

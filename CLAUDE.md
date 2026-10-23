@@ -707,6 +707,52 @@ a time, about 28 minutes to get through them"*. **Twenty an order a minute
 at once**, and nothing on the screen used to say that. Its count poll also
 stops while the tab is in the background, like every other poll here.
 
+## The worst thing this app has done, and how to find it
+
+A Shopify line carrying SKU **SP-21** went onto the QuickBooks item whose own
+SKU is **SP-21-50** - a different product at a different price - on real
+invoices, repeatedly, with nothing said anywhere. The owner found it by
+opening QuickBooks.
+
+The path, in `itemFor()` before 21 Oct 2026:
+
+1. the SKU matched no item, so it tried to **create** one named after the
+   Shopify product
+2. QuickBooks refused with *duplicate name*
+3. it looked that name up and used whatever came back —
+
+```js
+} else if (found.Sku) {
+  books.skus.set(String(found.Sku).toLowerCase(), found.Name);
+}
+return { name: found.Name };     // a different SKU's item, matched by name
+```
+
+The `else if` is the whole of it: the code noticed the item already carried a
+**different** SKU, declined to overwrite it, and then used the item anyway.
+"Anti Acne Cleanser 50ml" and "Anti Acne Cleanser 50" were close enough for
+QuickBooks to call it a duplicate name, and that was the entire check.
+
+**It cannot happen again.** Matching is the SKU and nothing else, nothing is
+created, nothing is renamed, no SKU is written onto anything - see the two
+sections below. A name is not an identity, and this is what that costs when
+it is treated as one.
+
+### Check the invoices
+
+`checkWritten()` in `shopifysync.js`, behind **Check the invoices** on
+`/shopify-log`, reads every invoice Fusion has written back out of QuickBooks
+and shows each line that disagrees with what its SKU says today: the invoice,
+the order, the SKU, what it should be, and what went on instead. The list
+downloads as a file.
+
+It **writes nothing**. What to do about an invoice already in the books is the
+merchant's to decide, in their own books - that is the rule that was broken in
+the first place.
+
+Invoices are read by **date range**, not one call each, so a few hundred
+orders are a few calls rather than a few hundred.
+
 ## Catch up first, in date order, then go live
 
 The owner's rule, and it is the right one: **start at the date I chose, work

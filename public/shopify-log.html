@@ -158,6 +158,7 @@
           <button data-tab="item">Items made <i id="cItem"></i></button>
           <button data-tab="price">Price and cost <i id="cPrice"></i></button>
           <button data-tab="changes">Paid, refunded, cancelled <i id="cChg"></i></button>
+          <button data-tab="check">Check the invoices <i id="cWrong"></i></button>
           <button data-tab="setup">How it runs</button>
           <span style="flex:1"></span>
           <button class="ghost" id="btnCsv" style="margin:4px 0">Download this report</button>
@@ -190,6 +191,31 @@
         <div class="pane" id="p-item"><div id="box-item"></div></div>
         <div class="pane" id="p-price"><div id="box-price"></div></div>
         <div class="pane" id="p-changes"><div id="box-changes"></div></div>
+
+        <!-- ============ check the invoices ============ -->
+        <div class="pane" id="p-check">
+          <div class="hint">
+            Until <b>21 October</b> there was a fallback in the matching: where a
+            SKU matched nothing, Fusion tried to create an item under the Shopify
+            product's name, QuickBooks answered &ldquo;duplicate name&rdquo;, and
+            it then used whatever carried that name &mdash; <b>including an item
+            already holding a different SKU</b>. So a Shopify line with
+            <code>SP-21</code> could land on the QuickBooks item whose own SKU is
+            <code>SP-21-50</code>: a different product, at a different price, with
+            nothing said anywhere.
+            <br><br>
+            That fallback is gone &mdash; matching is the SKU and nothing else, and
+            nothing is ever created. But the invoices it wrote are in your books.
+            This reads them back out of QuickBooks and shows every line that
+            disagrees with what its SKU says today. <b>It changes nothing.</b>
+            What to do about one is yours to decide, in QuickBooks.
+          </div>
+          <div class="acts" style="margin-bottom:12px">
+            <button class="go" id="btnCheck">Check every invoice Fusion wrote</button>
+            <span class="said" id="checkSaid"></span>
+          </div>
+          <div id="checkBox"></div>
+        </div>
 
         <!-- ============ how it runs ============ -->
         <div class="pane" id="p-setup">
@@ -353,6 +379,7 @@
     });
     if(name === 'held') loadHeld();
     else if(name === 'setup') loadSetup();
+    else if(name === 'check') { /* only when asked: it reads QuickBooks */ }
     else loadEvents(name);
   }
 
@@ -573,6 +600,63 @@
       .then(function(){ $('btnRetry').disabled = false; });
   });
 
+  /* ---------- which invoices got the wrong product ---------- */
+
+  var LAST_CHECK = null;
+
+  $('btnCheck').addEventListener('click', function(){
+    var b = $('btnCheck');
+    b.disabled = true;
+    say($('checkSaid'), '', 'Reading your invoices back from QuickBooks\u2026');
+    $('checkBox').innerHTML = '';
+
+    // no date range: every invoice Fusion has written for this company
+    get('/api/shopify/check-items?limit=2000', 120)
+      .then(function(d){
+        LAST_CHECK = d;
+        var wrong = d.wrong || [];
+        $('cWrong').textContent = wrong.length ? '(' + n0(wrong.length) + ')' : '';
+
+        if(!wrong.length){
+          say($('checkSaid'), 'good',
+            n0(d.checked) + ' invoices read, every line matches its SKU.');
+          $('checkBox').innerHTML = '<div class="none">Nothing is on the wrong ' +
+            'item.</div>' + unreadNote(d);
+          return;
+        }
+
+        say($('checkSaid'), 'bad',
+          n0(wrong.length) + ' line' + (wrong.length === 1 ? '' : 's') +
+          ' on ' + n0(new Set(wrong.map(function(w){ return w.doc; })).size) +
+          ' invoices are on the wrong item.');
+
+        $('checkBox').innerHTML = '<div class="scroll"><table class="t">' +
+          '<tr><th>Invoice</th><th>Order</th><th>Placed</th><th>SKU</th>' +
+          '<th>Should be</th><th>What went on instead</th><th class="num">Amount</th></tr>' +
+          wrong.map(function(w){
+            return '<tr class="bad"><td class="mono">' + esc(w.doc) + '</td>' +
+              '<td class="mono">' + esc(w.order) + '</td>' +
+              '<td class="mono">' + esc(w.on) + '</td>' +
+              '<td class="mono">' + esc(w.sku) + '</td>' +
+              '<td>' + esc(w.shouldBe) + '</td>' +
+              '<td><b>' + esc(w.went) + '</b></td>' +
+              '<td class="num">' + money(w.amount) + '</td></tr>';
+          }).join('') + '</table></div>' + unreadNote(d);
+      })
+      .catch(function(e){ say($('checkSaid'), 'bad', e.message); })
+      .then(function(){ b.disabled = false; });
+  });
+
+  function unreadNote(d){
+    var miss = d.missing || [];
+    if(!miss.length) return '';
+    return '<div class="hint" style="margin-top:12px"><b>' + n0(miss.length) +
+      '</b> of them could not be found in QuickBooks at all \u2014 deleted there, ' +
+      'or written under a different number: ' +
+      esc(miss.slice(0, 8).map(function(m){ return m.order; }).join(', ')) +
+      (miss.length > 8 ? ' and more' : '') + '.</div>';
+  }
+
   /* ---------- the event tabs ---------- */
 
   var BAG = '<svg viewBox="0 0 24 24" fill="currentColor">' +
@@ -761,6 +845,26 @@
   }
 
   $('btnCsv').addEventListener('click', function(){
+    // The check tab is not an events tab; what is worth taking away from it
+     // is the list of lines on the wrong item, which is the one thing on this
+     // page somebody has to act on outside Fusion.
+    if(tab === 'check'){
+      var rows = (LAST_CHECK && LAST_CHECK.wrong) || [];
+      if(!rows.length){ say($('checkSaid'), '', 'Run the check first.'); return; }
+      var out = [['Invoice','Order','Placed','SKU','Should be',
+                  'What went on instead','Amount']]
+        .concat(rows.map(function(w){
+          return [w.doc, w.order, w.on, w.sku, w.shouldBe, w.went, w.amount];
+        }));
+      var text = out.map(function(r){ return r.map(csvCell).join(','); })
+                    .join(String.fromCharCode(13) + String.fromCharCode(10));
+      var a2 = document.createElement('a');
+      a2.href = URL.createObjectURL(new Blob(['\ufeff' + text], { type:'text/csv' }));
+      a2.download = 'invoices-on-the-wrong-item.csv';
+      document.body.appendChild(a2); a2.click(); a2.remove();
+      return;
+    }
+
     var kinds = tab === 'changes' ? ['paid','refund','cancelled','edited']
               : (tab === 'held' || tab === 'setup') ? null : [tab];
 
