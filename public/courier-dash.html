@@ -846,7 +846,7 @@
         '<div class="k1 c-net open" data-due="1" data-alltime="1">' +
           '<div class="lb">Net receivable</div>' +
           '<div class="vl">' + full(netRec) + '</div>' +
-          '<div class="fn">after ' + n0(ever.cprCount || 0) + ' closed CPRs' +
+          '<div class="fn">' + n0(ever.dueOrders || 0) + ' parcels' +
           (ever.oldestDue ? ' &middot; oldest delivery ' + esc(ever.oldestDue) : '') + '</div>' +
         '</div>' +
         '<div class="k1 c-cod open" data-due="0" data-alltime="1">' +
@@ -859,19 +859,18 @@
           '<div class="vl">' + full(ever.charges || 0) + '</div>' +
           '<div class="fn">' + pc(pct(ever.charges || 0, ever.cod || 0)) + ' of COD</div>' +
         '</div>' +
-        '<div class="k1 c-cpr open" data-gotab="cprs">' +
+        '<div class="k1 c-cpr open" data-due="0" data-alltime="1">' +
           '<div class="lb">Received against CPR</div>' +
           '<div class="vl">' + full(ever.paid || 0) + '</div>' +
-          '<div class="fn">' + n0(ever.cprCount || 0) + ' closed CPRs</div>' +
+          '<div class="fn">' + n0(ever.paidOrders || 0) + ' parcels' +
+          (ever.cprCount ? ' &middot; ' + n0(ever.cprCount) + ' CPRs' : '') + '</div>' +
         '</div>' +
       '</div>';
 
     F.statement +=
       '<div class="sched">' +
         '<h3>Receivable from couriers' +
-          '<span class="aside">' +
-            (ever.cprSince ? 'parcels and CPRs from ' + esc(ever.cprSince) + ' &middot; ' : '') +
-            'click a line for its parcels</span></h3>' +
+          '<span class="aside">click a line for its parcels</span></h3>' +
         '<table class="stmt">' +
           '<tr><th>&nbsp;</th><th>Parcels</th><th>All time (Rs)</th>' +
             '<th>' + esc(d.from) + ' &rarr; ' + esc(d.to) + ' (Rs)</th></tr>' +
@@ -888,19 +887,22 @@
                { n: null, v: ever.net }, { v: inRange.net }, 'sub') +
 
           sRow('Less: received against CPR (closed)',
-               { n: ever.cprCount, v: ever.cprPaid }, { v: inRange.cprPaid },
-               'less open', ' data-gotab="cprs"', 'less') +
-
-          (ever.directPaid || inRange.directPaid
-            ? sRow('Less: settled by carrier without a CPR',
-                   { n: ever.directOrders, v: ever.directPaid }, { v: inRange.directPaid },
-                   'less open', ' data-due="0" data-alltime="1"', 'less')
-            : '') +
+               { n: ever.paidOrders, v: ever.paid }, { v: inRange.paid },
+               'less open', ' data-due="0" data-alltime="1"', 'less') +
 
           sRow('<b>Net receivable</b>',
-               { n: null, v: ever.due }, { v: inRange.due },
+               { n: ever.dueOrders, v: ever.due }, { v: inRange.due },
                'close open', ' data-due="1" data-alltime="1"') +
         '</table>' +
+
+        (ever.uncheckedOrders
+          ? '<div class="lateline click" data-unchecked="1" style="margin-top:13px;' +
+            'background:#F4F7FA;border-color:#D8E1E9;color:#45535F">' +
+              '<b>' + n0(ever.uncheckedOrders) + ' parcels</b> have no payment answer ' +
+              'from the carrier yet — ' + full(ever.uncheckedCod) + ' of COD. ' +
+              'They are counted as receivable until it answers.' +
+            '</div>'
+          : '') +
 
         (ever.lateOrders
           ? '<div class="lateline click" data-late="1" style="margin-top:13px">' +
@@ -931,7 +933,7 @@
       mt.parcels += x.parcels; mt.cod += x.cod; mt.charges += x.charges;
       mt.gross += x.gross; mt.cprs += x.cprs; mt.received += x.received;
       mt.net += x.net;
-      return '<tr>' +
+      return '<tr class="open" data-month="' + esc(x.month) + '">' +
         '<td class="lbl">' + monthLabel(x.month) + '</td>' +
         '<td class="n">' + (x.parcels ? n0(x.parcels) : '') + '</td>' +
         '<td class="v">' + (x.cod ? full(x.cod) : DASH) + '</td>' +
@@ -948,7 +950,8 @@
     F.months +=
       '<div class="sched">' +
       '<h3>Month by month' +
-        '<span class="aside">parcels by delivery date &middot; CPRs by issue date</span></h3>' +
+        '<span class="aside">the parcels delivered that month, and the CPRs against them' +
+        '</span></h3>' +
       '<table class="stmt">' +
       '<tr><th class="l">Month</th><th>Delivered</th><th>COD collected</th>' +
       '<th>Charges &amp; GST</th><th>Gross receivable</th><th>CPRs</th>' +
@@ -990,13 +993,8 @@
       '<div class="age">' + (ageHtml ||
         '<div class="a1" style="cursor:default;color:var(--muted)">' +
         '<div>Nothing outstanding.</div><div></div><div></div><div></div></div>') +
-        (Math.abs(ever.unmatched || 0) >= 1
-          ? '<div class="a1" data-gotab="cprs" style="color:var(--muted)">' +
-              '<div>Paid CPRs not matched to parcels yet</div><div></div>' +
-              '<div class="nn">' + n0(ever.cprCount || 0) + ' CPRs</div>' +
-              '<div class="vv"><span class="neg">(' + full(ever.unmatched) + ')</span></div></div>'
-          : '') +
-        '<div class="a1 sum"><div>Net receivable</div><div></div><div></div>' +
+        '<div class="a1 sum"><div>Net receivable</div><div></div>' +
+          '<div class="nn">' + n0(ever.dueOrders || 0) + ' pcs</div>' +
           '<div class="vv">' + full(netRec) + '</div></div>' +
       '</div></div>';
 
@@ -1644,6 +1642,19 @@
           title: due === '1' ? 'Net receivable — not received yet'
                              : 'Received against CPR'
         });
+      });
+    });
+    $('out').querySelectorAll('[data-unchecked]').forEach(function(el){
+      el.addEventListener('click', function(){
+        openList({ unchecked: '1', allTime: true,
+                   title: 'Delivered, no payment answer from the carrier yet' });
+      });
+    });
+    $('out').querySelectorAll('tr[data-month]').forEach(function(tr){
+      tr.addEventListener('click', function(){
+        var m = tr.getAttribute('data-month');
+        openList({ dfrom: m + '-01', dto: m + '-31',
+                   title: 'Delivered in ' + m });
       });
     });
     $('out').querySelectorAll('[data-late]').forEach(function(el){

@@ -415,6 +415,15 @@ async function owedQuery(realmId, opts, dates) {
             MIN(o.delivered_on) FILTER (WHERE o.status_group = 'delivered' AND NOT ${paid}) AS oldest_due,
             MIN(o.delivered_on) FILTER (WHERE o.status_group = 'delivered') AS first_delivery,
 
+            COUNT(*) FILTER (WHERE o.status_group = 'delivered' AND o.settled IS NULL
+              AND (o.cpr_number IS NULL OR o.cpr_number = '')) AS unchecked_n,
+            COALESCE(SUM(o.amount) FILTER (WHERE o.status_group = 'delivered'
+              AND o.settled IS NULL
+              AND (o.cpr_number IS NULL OR o.cpr_number = '')),0) AS unchecked_v,
+
+            COUNT(DISTINCT o.cpr_number) FILTER (WHERE o.status_group = 'delivered'
+              AND ${paid} AND o.cpr_number IS NOT NULL AND o.cpr_number <> '') AS cpr_n,
+
             COALESCE(SUM(o.amount) FILTER (WHERE o.status_group = 'delivered' AND NOT ${paid}
               AND o.delivered_on < CURRENT_DATE - 14),0) AS late_cod,
             COUNT(*) FILTER (WHERE o.status_group = 'delivered' AND NOT ${paid}
@@ -448,7 +457,6 @@ async function owedQuery(realmId, opts, dates) {
     paidOrders: Number(x.paid_n || 0),
     // what the parcels themselves say has been paid; moneyOwed() replaces
     // `paid` with the CPRs' own figure and keeps this one to reconcile against
-    parcelPaid: r2(paidCod - paidCharges),
     paid: r2(paidCod - paidCharges),
     dueOrders: Number(x.due_n || 0),
     dueCod,
@@ -456,6 +464,9 @@ async function owedQuery(realmId, opts, dates) {
     due: r2(dueCod - dueCharges),
     oldestDue: day(x.oldest_due),
     firstDelivery: day(x.first_delivery),
+    uncheckedOrders: Number(x.unchecked_n || 0),
+    uncheckedCod: r2(x.unchecked_v),
+    cprCount: Number(x.cpr_n || 0),
     lateOrders: Number(x.late_n || 0),
     lateCod: r2(x.late_cod),
     ageing: [
@@ -515,198 +526,56 @@ async function receiptsOwed(realmId, opts) {
   };
 }
 
-// What the carrier says it has paid, off its own CPRs.
-//
-// This is the authority on payment, and the parcels are not. Her correction,
-// and she is right: "jis cprs ki amount k agy status closed likha gya h is ka
-// mtlb ys amount hmy mil gai tu receivble ki amount sy minus ho jy gai... cprs
-// ka status kha rha h k payment hmy mil gai, likn receivble mn hmy show ho rha
-// h k hmy paymnet milna baki h, ye tu saf difference h."
-//
-// The CPR arrives with its amount and its status the moment the carrier issues
-// it. Which parcels sit under it is a second call to PostEx that is made a few
-// at a time, and may be days behind - so a receivable that waits for the
-// parcels to be matched is a receivable that is wrong for days, by millions.
-// The document is what the books would be reconciled against, so the document
-// is what the statement deducts.
-//
-// `net_amount` is what the carrier pays out, which is the figure to take off a
-// receivable stated net of charges.
-async function cprPaid(realmId, opts, dates, since) {
-  const where = [`c.realm_id = $1`, `UPPER(COALESCE(c.status, '')) = 'CLOSED'`];
-  const args = [realmId];
-
-  if (opts.account) { args.push(Number(opts.account)); where.push(`c.account_id = $${args.length}`); }
-  if (opts.courier) { args.push(String(opts.courier)); where.push(`c.courier = $${args.length}`); }
-  if (dates && dates.from && dates.to) {
-    args.push(dates.from); where.push(`c.created_on >= $${args.length}`);
-    args.push(dates.to);   where.push(`c.created_on < ($${args.length}::date + 1)`);
-  } else if (since) {
-    // A CPR older than the first parcel we hold paid for parcels that are not
-    // in this database - PostEx has been paying since July and the orders here
-    // start in September. Deducting those from a receivable built out of the
-    // parcels we do hold is how the figure went to minus 28 million: "ye 19
-    // cprs july sy ab tk k hn, cpr zda hn parcels kam hn". So the two sides
-    // are cut to the same window, and the screen says which window it is.
-    args.push(since); where.push(`c.created_on >= $${args.length}`);
-  }
-
-  const r = await pool.query(
-    `SELECT COUNT(*) AS n, COALESCE(SUM(c.net_amount),0) AS v
-       FROM courier_cprs c
-      WHERE ${where.join(' AND ')}`, args);
-
-  const x = r.rows[0] || {};
-  return { count: Number(x.n || 0), amount: r2(x.v) };
-}
-
-// Parcels the carrier settled without ever issuing a CPR we hold - which is
-// how Trax and M&P pay: a payment webhook, or an M&P PaymentID, and no advice
-// document on our side. Counting these separately is what stops a parcel that
-// IS under a closed CPR being deducted twice.
-async function directPaid(realmId, opts, dates) {
-  const base = scope(realmId, opts);
-  const args = base.args.slice();
-  let where = base.where.join(' AND ');
-
-  if (dates && dates.from && dates.to) {
-    args.push(dates.from); const a = args.length;
-    args.push(dates.to);   const b = args.length;
-    where += ` AND o.booked_on >= $${a} AND o.booked_on <= $${b}`;
-  }
-
-  const r = await pool.query(
-    `SELECT COUNT(*) AS n, COALESCE(SUM(o.amount - o.fee - o.tax),0) AS v
-       FROM courier_orders o
-      WHERE ${where}
-        AND o.status_group = 'delivered'
-        AND o.settled IS TRUE
-        AND NOT EXISTS (SELECT 1 FROM courier_cprs c
-                         WHERE c.realm_id = o.realm_id
-                           AND c.account_id = o.account_id
-                           AND c.cpr_number = o.cpr_number)`, args);
-
-  const x = r.rows[0] || {};
-  return { count: Number(x.n || 0), amount: r2(x.v) };
-}
-
-// Month by month, which is the question a statement always raises next:
-// "ye 10,000 parcel ki cod jo arhi h ye kis month ki h, or ye 13 cprs kis
-// month k hn, mujy ksy pta chly ga". A total with no months behind it can be
-// read but it cannot be checked.
-//
-// A parcel's month is the month it was **delivered** - that is when the cash
-// was taken - and a CPR's month is the month it was issued. So where a month
-// shows more CPR than COD, the carrier was paying that month for parcels
-// delivered before this database starts, and the table says so by itself.
 async function byMonth(realmId, opts) {
   const base = scope(realmId, opts);
 
-  const parcels = pool.query(
+  const r = await pool.query(
     `SELECT to_char(date_trunc('month', o.delivered_on), 'YYYY-MM') AS m,
             COUNT(*) AS n,
             COALESCE(SUM(o.amount),0) AS cod,
-            COALESCE(SUM(o.fee + o.tax),0) AS charges
+            COALESCE(SUM(o.fee + o.tax),0) AS charges,
+
+            COUNT(*) FILTER (WHERE ${PAID_SQL}) AS paid_n,
+            COALESCE(SUM(o.amount - o.fee - o.tax) FILTER (WHERE ${PAID_SQL}),0) AS paid_v,
+            COUNT(DISTINCT o.cpr_number) FILTER (WHERE ${PAID_SQL}
+              AND o.cpr_number IS NOT NULL AND o.cpr_number <> '') AS cprs,
+
+            COUNT(*) FILTER (WHERE o.settled IS NULL
+              AND (o.cpr_number IS NULL OR o.cpr_number = '')) AS unchecked_n
        FROM courier_orders o
       WHERE ${base.where.join(' AND ')}
         AND o.status_group = 'delivered'
         AND o.delivered_on IS NOT NULL
-      GROUP BY 1`, base.args);
+      GROUP BY 1
+      ORDER BY 1 DESC`, base.args);
 
-  const cwhere = [`c.realm_id = $1`];
-  const cargs = [realmId];
-  if (opts.account) { cargs.push(Number(opts.account)); cwhere.push(`c.account_id = $${cargs.length}`); }
-  if (opts.courier) { cargs.push(String(opts.courier)); cwhere.push(`c.courier = $${cargs.length}`); }
-
-  const cprs = pool.query(
-    `SELECT to_char(date_trunc('month', c.created_on), 'YYYY-MM') AS m,
-            COUNT(*) FILTER (WHERE UPPER(COALESCE(c.status,'')) = 'CLOSED') AS n,
-            COALESCE(SUM(c.net_amount)
-              FILTER (WHERE UPPER(COALESCE(c.status,'')) = 'CLOSED'),0) AS v,
-            COUNT(*) FILTER (WHERE UPPER(COALESCE(c.status,'')) <> 'CLOSED') AS open_n,
-            COALESCE(SUM(c.net_amount)
-              FILTER (WHERE UPPER(COALESCE(c.status,'')) <> 'CLOSED'),0) AS open_v
-       FROM courier_cprs c
-      WHERE ${cwhere.join(' AND ')}
-        AND c.created_on IS NOT NULL
-      GROUP BY 1`, cargs);
-
-  const [a, b] = await Promise.all([parcels, cprs]);
-
-  const months = new Map();
-  const get = m => {
-    if (!months.has(m)) {
-      months.set(m, { month: m, parcels: 0, cod: 0, charges: 0, gross: 0,
-                      cprs: 0, received: 0, openCprs: 0, openAmount: 0, net: 0 });
-    }
-    return months.get(m);
-  };
-
-  for (const r of a.rows) {
-    if (!r.m) continue;
-    const x = get(r.m);
-    x.parcels = Number(r.n || 0);
-    x.cod = r2(r.cod);
-    x.charges = r2(r.charges);
-    x.gross = r2(x.cod - x.charges);
-  }
-  for (const r of b.rows) {
-    if (!r.m) continue;
-    const x = get(r.m);
-    x.cprs = Number(r.n || 0);
-    x.received = r2(r.v);
-    x.openCprs = Number(r.open_n || 0);
-    x.openAmount = r2(r.open_v);
-  }
-  for (const x of months.values()) x.net = r2(x.gross - x.received);
-
-  return [...months.values()].sort((p, q) => (p.month < q.month ? 1 : -1));
+  return r.rows.map(x => {
+    const cod = r2(x.cod), charges = r2(x.charges);
+    const received = r2(x.paid_v);
+    return {
+      month: x.m,
+      parcels: Number(x.n || 0),
+      cod,
+      charges,
+      gross: r2(cod - charges),
+      cprs: Number(x.cprs || 0),
+      paidOrders: Number(x.paid_n || 0),
+      received,
+      unchecked: Number(x.unchecked_n || 0),
+      net: r2(cod - charges - received)
+    };
+  });
 }
 
 export async function moneyOwed(realmId, opts, dates) {
-  const [range, ever, receipts, directEver, directRange] = await Promise.all([
+  const [range, ever, receipts, months] = await Promise.all([
     owedQuery(realmId, opts, dates),
     owedQuery(realmId, opts, null),
     receiptsOwed(realmId, opts).catch(() => null),
-    directPaid(realmId, opts, null).catch(() => ({ count: 0, amount: 0 })),
-    directPaid(realmId, opts, dates).catch(() => ({ count: 0, amount: 0 }))
+    byMonth(realmId, opts).catch(() => [])
   ]);
 
-  // The CPRs can only be cut to the right window once the parcels have said
-  // where that window starts, so they are asked for second rather than
-  // running owedQuery twice to have it earlier.
-  const since = ever.firstDelivery || null;
-  const none = { count: 0, amount: 0 };
-  const [cprEver, cprRange] = await Promise.all([
-    cprPaid(realmId, opts, null, since).catch(() => none),
-    cprPaid(realmId, opts, dates).catch(() => none)
-  ]);
-
-  // The statement's arithmetic: gross receivable, less what the CPRs say has
-  // been paid, less what was settled outside any CPR.
-  const settle = (q, cpr, direct) => {
-    q.cprCount = cpr.count;
-    q.cprPaid = cpr.amount;
-    q.cprSince = since;
-    q.directPaid = direct.amount;
-    q.directOrders = direct.count;
-    q.paid = r2(cpr.amount + direct.amount);
-    q.due = r2(q.net - q.paid);
-    // What the parcels alone would have said. The difference between the two
-    // is CPRs that are paid whose parcels have not been matched here yet, and
-    // the ageing table names it rather than quietly disagreeing.
-    q.unmatched = r2(q.paid - q.parcelPaid);
-    return q;
-  };
-
-  const months = await byMonth(realmId, opts).catch(() => []);
-
-  return {
-    range: settle(range, cprRange, directRange),
-    ever: settle(ever, cprEver, directEver),
-    months,
-    receipts
-  };
+  return { range, ever, months, receipts };
 }
 
 /* ==================== the receipts ==================== */
@@ -1069,6 +938,15 @@ function moneyWhere(opts, where) {
     open();
     where.push(`o.delivered_on < CURRENT_DATE - 14`);
   }
+  // delivered, and the carrier has never been asked about the money on it
+  if (opts.unchecked === '1' || opts.unchecked === 1) {
+    where.push(`o.status_group = 'delivered'`);
+    where.push(`o.settled IS NULL`);
+    where.push(`(o.cpr_number IS NULL OR o.cpr_number = '')`);
+  }
+  // one month of deliveries, from the month-by-month table
+  if (opts.dfrom) { args.push(opts.dfrom); where.push(`o.delivered_on >= $${args.length}`); }
+  if (opts.dto)   { args.push(opts.dto);   where.push(`o.delivered_on <= $${args.length}`); }
   // every parcel sitting under one CPR, paid or not
   if (opts.cprStatus === 'open' || opts.cprStatus === 'closed') {
     where.push(`o.cpr_number IS NOT NULL AND o.cpr_number <> ''`);
