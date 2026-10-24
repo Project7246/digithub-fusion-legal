@@ -413,6 +413,7 @@ async function owedQuery(realmId, opts, dates) {
             COALESCE(SUM(o.fee + o.tax) FILTER (WHERE o.status_group = 'delivered' AND NOT ${paid}),0) AS due_charges,
 
             MIN(o.delivered_on) FILTER (WHERE o.status_group = 'delivered' AND NOT ${paid}) AS oldest_due,
+            MIN(o.delivered_on) FILTER (WHERE o.status_group = 'delivered') AS first_delivery,
 
             COALESCE(SUM(o.amount) FILTER (WHERE o.status_group = 'delivered' AND NOT ${paid}
               AND o.delivered_on < CURRENT_DATE - 14),0) AS late_cod,
@@ -454,6 +455,7 @@ async function owedQuery(realmId, opts, dates) {
     dueCharges,
     due: r2(dueCod - dueCharges),
     oldestDue: day(x.oldest_due),
+    firstDelivery: day(x.first_delivery),
     lateOrders: Number(x.late_n || 0),
     lateCod: r2(x.late_cod),
     ageing: [
@@ -530,7 +532,7 @@ async function receiptsOwed(realmId, opts) {
 //
 // `net_amount` is what the carrier pays out, which is the figure to take off a
 // receivable stated net of charges.
-async function cprPaid(realmId, opts, dates) {
+async function cprPaid(realmId, opts, dates, since) {
   const where = [`c.realm_id = $1`, `UPPER(COALESCE(c.status, '')) = 'CLOSED'`];
   const args = [realmId];
 
@@ -539,6 +541,14 @@ async function cprPaid(realmId, opts, dates) {
   if (dates && dates.from && dates.to) {
     args.push(dates.from); where.push(`c.created_on >= $${args.length}`);
     args.push(dates.to);   where.push(`c.created_on < ($${args.length}::date + 1)`);
+  } else if (since) {
+    // A CPR older than the first parcel we hold paid for parcels that are not
+    // in this database - PostEx has been paying since July and the orders here
+    // start in September. Deducting those from a receivable built out of the
+    // parcels we do hold is how the figure went to minus 28 million: "ye 19
+    // cprs july sy ab tk k hn, cpr zda hn parcels kam hn". So the two sides
+    // are cut to the same window, and the screen says which window it is.
+    args.push(since); where.push(`c.created_on >= $${args.length}`);
   }
 
   const r = await pool.query(
@@ -581,29 +591,37 @@ async function directPaid(realmId, opts, dates) {
 }
 
 export async function moneyOwed(realmId, opts, dates) {
-  const [range, ever, receipts, cprEver, cprRange, directEver, directRange] =
-    await Promise.all([
-      owedQuery(realmId, opts, dates),
-      owedQuery(realmId, opts, null),
-      receiptsOwed(realmId, opts).catch(() => null),
-      cprPaid(realmId, opts, null).catch(() => ({ count: 0, amount: 0 })),
-      cprPaid(realmId, opts, dates).catch(() => ({ count: 0, amount: 0 })),
-      directPaid(realmId, opts, null).catch(() => ({ count: 0, amount: 0 })),
-      directPaid(realmId, opts, dates).catch(() => ({ count: 0, amount: 0 }))
-    ]);
+  const [range, ever, receipts, directEver, directRange] = await Promise.all([
+    owedQuery(realmId, opts, dates),
+    owedQuery(realmId, opts, null),
+    receiptsOwed(realmId, opts).catch(() => null),
+    directPaid(realmId, opts, null).catch(() => ({ count: 0, amount: 0 })),
+    directPaid(realmId, opts, dates).catch(() => ({ count: 0, amount: 0 }))
+  ]);
 
-  // The statement's own arithmetic: gross receivable, less what the CPRs say
-  // has been paid, less what was settled outside any CPR.
+  // The CPRs can only be cut to the right window once the parcels have said
+  // where that window starts, so they are asked for second rather than
+  // running owedQuery twice to have it earlier.
+  const since = ever.firstDelivery || null;
+  const none = { count: 0, amount: 0 };
+  const [cprEver, cprRange] = await Promise.all([
+    cprPaid(realmId, opts, null, since).catch(() => none),
+    cprPaid(realmId, opts, dates).catch(() => none)
+  ]);
+
+  // The statement's arithmetic: gross receivable, less what the CPRs say has
+  // been paid, less what was settled outside any CPR.
   const settle = (q, cpr, direct) => {
     q.cprCount = cpr.count;
     q.cprPaid = cpr.amount;
+    q.cprSince = since;
     q.directPaid = direct.amount;
     q.directOrders = direct.count;
     q.paid = r2(cpr.amount + direct.amount);
     q.due = r2(q.net - q.paid);
     // What the parcels alone would have said. The difference between the two
-    // is CPRs that are paid and whose parcels have not been matched here yet,
-    // and the ageing table names it rather than quietly disagreeing.
+    // is CPRs that are paid whose parcels have not been matched here yet, and
+    // the ageing table names it rather than quietly disagreeing.
     q.unmatched = r2(q.paid - q.parcelPaid);
     return q;
   };

@@ -20,6 +20,8 @@
   .cdbar button:hover{border-color:var(--qbo)}
   .cdbar button.on{background:var(--qbo);border-color:var(--qbo);color:#fff;font-weight:600}
   .cdbar .find{margin-left:auto;display:flex;gap:6px}
+  .cdbar #picker{display:flex;gap:6px;align-items:center}
+  .cdbar #picker.hide{display:none}
   .cdbar .find input{border:1px solid var(--line);border-radius:7px;padding:7px 11px;
     font:inherit;font-size:12.5px;width:190px}
 
@@ -341,12 +343,14 @@
 
         <div class="cdbar">
           <button data-days="0">Today</button>
-          <button data-days="6" class="on">7 days</button>
+          <button data-days="6">7 days</button>
           <button data-days="29">30 days</button>
           <button data-days="89">3 months</button>
-          <input type="date" id="from">
-          <input type="date" id="to">
-          <button class="on" id="go">Show</button>
+          <button id="btnPick">Date range</button>
+          <span id="picker" class="hide">
+            <input type="date" id="from">
+            <input type="date" id="to">
+          </span>
           <div class="find">
             <input id="track" placeholder="Tracking number">
             <button id="btnTrack">Find</button>
@@ -474,15 +478,50 @@
     var sf = localStorage.getItem('cdFrom'), st = localStorage.getItem('cdTo');
     if(sf && st){ fromEl.value = sf; toEl.value = st; } else setRange(6);
 
+    // Which pill is lit has to be worked out from the dates, not left on
+    // whichever one the markup happened to carry: the page used to open with
+    // "7 days" lit over whatever range was last saved, so pressing Today and
+    // seeing nothing move looked like a dead button.
+    function markPills(){
+      var days = null;
+      document.querySelectorAll('.cdbar button[data-days]').forEach(function(x){
+        var f = new Date(), t = new Date();
+        f.setDate(f.getDate() - Number(x.getAttribute('data-days')));
+        var hit = (fromEl.value === iso(f) && toEl.value === iso(t));
+        x.classList.toggle('on', hit);
+        if(hit) days = x;
+      });
+      $('btnPick').classList.toggle('on', !days);
+      if(!days) $('picker').classList.remove('hide');
+    }
+
     document.querySelectorAll('.cdbar button[data-days]').forEach(function(b){
       b.addEventListener('click', function(){
-        document.querySelectorAll('.cdbar button[data-days]').forEach(function(x){ x.classList.remove('on'); });
-        b.classList.add('on');
         setRange(Number(b.getAttribute('data-days')));
+        $('picker').classList.add('hide');
+        markPills();
         load();
       });
     });
-    $('go').addEventListener('click', load);
+
+    // The two date boxes are behind a button, and changing either one reloads
+    // on the spot. There is no Show: a button that only repeats what the boxes
+    // already say is a button to forget to press.
+    $('btnPick').addEventListener('click', function(){
+      $('picker').classList.toggle('hide');
+      if(!$('picker').classList.contains('hide')) fromEl.focus();
+    });
+    [fromEl, toEl].forEach(function(el){
+      el.addEventListener('change', function(){
+        if(!fromEl.value || !toEl.value) return;
+        if(fromEl.value > toEl.value){
+          if(el === fromEl) toEl.value = fromEl.value; else fromEl.value = toEl.value;
+        }
+        markPills();
+        load();
+      });
+    });
+    markPills();
     $('btnTrack').addEventListener('click', findOne);
     $('track').addEventListener('keydown', function(e){ if(e.key === 'Enter') findOne(); });
 
@@ -828,7 +867,9 @@
     F.statement +=
       '<div class="sched">' +
         '<h3>Receivable from couriers' +
-          '<span class="aside">click a line for its parcels</span></h3>' +
+          '<span class="aside">' +
+            (ever.cprSince ? 'parcels and CPRs from ' + esc(ever.cprSince) + ' &middot; ' : '') +
+            'click a line for its parcels</span></h3>' +
         '<table class="stmt">' +
           '<tr><th>&nbsp;</th><th>Parcels</th><th>All time (Rs)</th>' +
             '<th>' + esc(d.from) + ' &rarr; ' + esc(d.to) + ' (Rs)</th></tr>' +
