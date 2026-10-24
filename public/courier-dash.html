@@ -208,13 +208,23 @@
 
   .sched{background:var(--panel);border:1px solid var(--line);border-radius:10px;
     padding:18px 20px;margin-bottom:13px}
-  .sched > .eyebrow{font-size:10px;letter-spacing:.1em;text-transform:uppercase;
-    color:var(--accent-deep,#0E8C88);font-weight:600}
-  .sched > h3{margin:3px 0 2px;font-size:15px;font-weight:600;font-family:var(--head);
+  .sched > h3{margin:0 0 14px;font-size:15px;font-weight:600;font-family:var(--head);
     display:flex;align-items:baseline;gap:10px}
   .sched > h3 .aside{margin-left:auto;font-size:11.5px;color:var(--faint);font-weight:400}
-  .sched > h3 a{font-size:11.5px;font-weight:400;color:var(--qbo);text-decoration:none}
-  .sched > .lede{font-size:12px;color:var(--muted);margin:0 0 14px;line-height:1.55}
+  .sched > h3 a{margin-left:auto;font-size:11.5px;font-weight:400;color:var(--qbo);
+    text-decoration:none}
+  .sched > h3 a:hover{text-decoration:underline}
+
+  /* the tabs inside Finance: one table a screen, rather than one long scroll */
+  .subtabs{display:flex;gap:6px;flex-wrap:wrap;margin:0 0 14px}
+  .subtabs button{border:1px solid var(--line);background:#fff;border-radius:20px;
+    padding:6px 14px;font:inherit;font-size:12.5px;cursor:pointer;color:var(--muted);
+    width:auto;height:auto}
+  .subtabs button:hover{border-color:var(--qbo);color:var(--ink)}
+  .subtabs button.on{background:var(--ink-3,#18212A);border-color:var(--ink-3,#18212A);
+    color:#fff;font-weight:500}
+  .fpane{display:none}
+  .fpane.on{display:block}
 
   table.stmt{width:100%;border-collapse:collapse;font-size:13px;
     font-variant-numeric:tabular-nums}
@@ -734,31 +744,25 @@
     var M = d.money || {};
     var ever = M.ever || {}, inRange = M.range || {}, rec = M.receipts || null;
 
-    /* ==================== Finance, in the words of the books ============
+    /* ==================== Finance ====================
 
-       Asked for by name, twice: "finance ka structure hota hai usi base par
-       banao", and then - when the page still said *money owed to you* - "ye
-       to yaar kisi ko bhi samajh nahin aana, payment receivable, is tarah se
-       ho, aasan".
+       Three corrections, all from the owner, all pointing the same way:
 
-       Both are the same instruction, and the second one is the sharper of
-       the two. The courier side of this app is a **trade receivable**: goods
-       were handed to a carrier, the carrier collected cash at the door, it
-       keeps its own charges, and the rest is owed to us until it is
-       remitted. Every step of that already has a word in accounting. The
-       plain-English version is not simpler - it is less exact, and it is
-       unreadable to the one person who has to agree these figures with a set
-       of books. So the words here are the ledger's, and a glossary under the
-       statement says what each one means for anybody meeting it new.
-
-       The old tab answered the same question in five separate boxes - the
-       chain, the chain again side by side, "to receive by courier", "money
-       not in yet", and a tile repeating all of it. That is what made it
-       unreadable. One statement, then schedules beneath it, each answering
-       something the statement does not.                                   */
+       - "finance ka structure hota hai usi base par banao" - so the money is
+         a statement: COD collected, less the carrier's charges, less what it
+         has paid against a CPR, and the balance still receivable.
+       - "money owed to you ye to yaar kisi ko bhi samajh nahin aana" - so the
+         words are the ones in the books. Except one: what the carrier pays is
+         a **CPR**, not a remittance. That is the word these couriers use and
+         the word on their own paperwork.
+       - "finance ke tab ko itna complicated na banao... sab tab bhi to ban
+         sakte hain" and "is tarah ki explanation ko remove kar do har jagah
+         se" - so one screen holds one table, under its own tab, and nothing
+         explains itself in a paragraph. A manager should open it and read the
+         answer, not an essay about the answer.                              */
 
     // A figure in a column. What is deducted goes in brackets, the way a
-    // ledger writes it, and a dash means "does not apply" rather than nought.
+    // ledger writes it; a dash means it does not apply.
     function amt(v, kind){
       if(v === null || v === undefined) return '—';
       var s = full(Math.abs(Number(v) || 0));
@@ -766,12 +770,9 @@
     }
     function pcs(n){ return (n === null || n === undefined) ? '' : n0(n); }
 
-    // One line of the statement, carrying both columns: all time, and the
-    // dates on screen. A statement with a single period cannot answer "is
-    // this month worse than usual", which is the next question every time.
-    function sRow(label, why, a, b, cls, attr, kind){
+    function sRow(label, a, b, cls, attr, kind){
       return '<tr' + (cls ? ' class="' + cls + '"' : '') + (attr || '') + '>' +
-        '<td class="lbl">' + label + (why ? '<span class="why">' + why + '</span>' : '') + '</td>' +
+        '<td class="lbl">' + label + '</td>' +
         '<td class="n">' + pcs(a.n) + '</td>' +
         '<td class="v">' + amt(a.v, kind) + '</td>' +
         '<td class="v">' + amt(b.v, kind) + '</td></tr>';
@@ -779,127 +780,99 @@
 
     var netRec = ever.due || 0;
 
-    /* ---------- the four figures it opens with ---------- */
+    // Each key is one sub-tab of Finance.
+    var F = { statement:'', ageing:'', carriers:'', cprs:'', pending:'', cities:'' };
 
-    T.finance +=
+    /* ---------- Statement ---------- */
+
+    F.statement +=
       '<div class="kpi">' +
         '<div class="k1 lead open" data-due="1" data-alltime="1">' +
-          '<div class="lb">Net receivable &middot; outstanding</div>' +
+          '<div class="lb">Net receivable</div>' +
           '<div class="vl">' + full(netRec) + '</div>' +
-          '<div class="fn">' + n0(ever.dueOrders || 0) + ' delivered parcels not yet remitted' +
+          '<div class="fn">' + n0(ever.dueOrders || 0) + ' parcels' +
           (ever.oldestDue ? ' &middot; oldest ' + esc(ever.oldestDue) : '') + '</div>' +
         '</div>' +
         '<div class="k1 open" data-due="0" data-alltime="1">' +
           '<div class="lb">COD collected</div>' +
           '<div class="vl">' + full(ever.cod || 0) + '</div>' +
-          '<div class="fn">on ' + n0(ever.delivered || 0) + ' delivered parcels, all time</div>' +
+          '<div class="fn">' + n0(ever.delivered || 0) + ' delivered</div>' +
         '</div>' +
         '<div class="k1">' +
-          '<div class="lb">Courier charges &amp; GST</div>' +
+          '<div class="lb">Charges &amp; GST</div>' +
           '<div class="vl">' + full(ever.charges || 0) + '</div>' +
-          '<div class="fn">' + pc(pct(ever.charges || 0, ever.cod || 0)) +
-            ' of COD collected</div>' +
+          '<div class="fn">' + pc(pct(ever.charges || 0, ever.cod || 0)) + ' of COD</div>' +
         '</div>' +
         '<div class="k1 open" data-due="0" data-alltime="1">' +
-          '<div class="lb">Remittance received</div>' +
+          '<div class="lb">Paid against CPR</div>' +
           '<div class="vl">' + full(ever.paid || 0) + '</div>' +
-          '<div class="fn">' + n0(ever.paidOrders || 0) + ' parcels settled or against a receipt</div>' +
+          '<div class="fn">' + n0(ever.paidOrders || 0) + ' parcels</div>' +
         '</div>' +
       '</div>';
 
-    /* ---------- the statement itself ---------- */
-
-    T.finance +=
+    F.statement +=
       '<div class="sched">' +
-        '<div class="eyebrow">Statement</div>' +
         '<h3>Receivable from couriers' +
-          '<span class="aside">click any line to see the parcels behind it</span></h3>' +
-        '<p class="lede">Cash on delivery is collected by the carrier and held ' +
-          'until it is remitted, so a delivered parcel is a receivable from the ' +
-          'day it is delivered to the day the money lands.</p>' +
+          '<span class="aside">click a line for its parcels</span></h3>' +
         '<table class="stmt">' +
           '<tr><th>&nbsp;</th><th>Parcels</th><th>All time (Rs)</th>' +
             '<th>' + esc(d.from) + ' &rarr; ' + esc(d.to) + ' (Rs)</th></tr>' +
 
           sRow('COD collected on delivered parcels',
-               'what the buyer paid at the door',
                { n: ever.delivered, v: ever.cod }, { v: inRange.cod },
                'open', ' data-due="0" data-alltime="1"') +
 
           sRow('Less: courier charges and GST',
-               'the carrier’s own fee, deducted before it remits',
                { n: null, v: ever.charges }, { v: inRange.charges },
                'less', '', 'less') +
 
-          sRow('<b>Gross receivable from couriers</b>', '',
+          sRow('<b>Gross receivable</b>',
                { n: null, v: ever.net }, { v: inRange.net }, 'sub') +
 
-          sRow('Less: remittance received',
-               'settled, or carrying a receipt number (CPR)',
+          sRow('Less: paid against CPR',
                { n: ever.paidOrders, v: ever.paid }, { v: inRange.paid },
                'less open', ' data-due="0" data-alltime="1"', 'less') +
 
-          sRow('<b>Net receivable — outstanding</b>',
-               ever.oldestDue ? 'oldest delivery still unpaid: ' + esc(ever.oldestDue) : '',
+          sRow('<b>Net receivable</b>',
                { n: ever.dueOrders, v: ever.due }, { v: inRange.due },
                'close open', ' data-due="1" data-alltime="1"') +
         '</table>' +
 
         (ever.lateOrders
           ? '<div class="lateline click" data-late="1" style="margin-top:13px">' +
-              '<b>' + n0(ever.lateOrders) + ' parcels</b> were delivered more than a ' +
-              'fortnight ago and are still unremitted — ' + full(ever.lateCod) +
-              ' of COD. These are the ones to take up with the carrier.' +
+              '<b>' + n0(ever.lateOrders) + ' parcels</b> delivered over a fortnight ' +
+              'ago, no CPR yet — ' + full(ever.lateCod) + ' of COD.' +
             '</div>'
           : '') +
-
-        '<div class="note">The <b>all time</b> column is every delivered parcel on ' +
-        'this account, whenever it was booked, because money owed on a parcel ' +
-        'delivered last month is still owed today. The second column is only the ' +
-        'parcels booked between ' + esc(d.from) + ' and ' + esc(d.to) + '.</div>' +
-
-        '<details class="gloss"><summary>What these words mean</summary><dl>' +
-          '<dt>COD collected</dt><dd>Cash the carrier took from the buyer on delivery. It is ours from that moment; the carrier is holding it.</dd>' +
-          '<dt>Courier charges &amp; GST</dt><dd>The carrier’s delivery fee and the tax on it, deducted before it pays us.</dd>' +
-          '<dt>Gross receivable</dt><dd>COD collected less those charges — what the carrier owes in full.</dd>' +
-          '<dt>Remittance received</dt><dd>What the carrier has actually paid out, against a receipt (CPR) or marked settled.</dd>' +
-          '<dt>Net receivable</dt><dd>Gross receivable less remittance received — the balance still to come in. This is the figure to chase.</dd>' +
-          '<dt>Ageing</dt><dd>How long each part of that balance has been outstanding, counted from the delivery date.</dd>' +
-        '</dl></details>' +
       '</div>';
 
-    /* ---------- ageing: the shape of the receivable ---------- */
+    /* ---------- Ageing ---------- */
 
     var AGE_KEY = ['a1','a2','a3','a4','a5','a0'];
     var ageAll = ever.ageing || [];
-    if (ageAll.some(function(a){ return a.n; })) {
-      var ageMax = ageAll.reduce(function(m, a){ return Math.max(m, Math.abs(a.amount)); }, 0) || 1;
-      var ageHtml = ageAll.map(function(a, i){
-        if(!a.n) return '';
-        var col = a.old ? '#C9453F' : (a.unknown ? '#B0B7BE' : (i >= 2 ? '#C98B1E' : '#4FB477'));
-        return '<div class="a1" data-age="' + AGE_KEY[i] + '">' +
-          '<div>' + esc(a.label) + '</div>' +
-          '<div class="tr2"><i class="fl" style="width:' +
-            (100 * Math.abs(a.amount) / ageMax).toFixed(1) + '%;background:' + col + '"></i></div>' +
-          '<div class="nn">' + n0(a.n) + ' pcs</div>' +
-          '<div class="vv">' + full(a.amount) + '</div></div>';
-      }).join('');
+    var ageMax = ageAll.reduce(function(m, a){ return Math.max(m, Math.abs(a.amount)); }, 0) || 1;
+    var ageHtml = ageAll.map(function(a, i){
+      if(!a.n) return '';
+      var col = a.old ? '#C9453F' : (a.unknown ? '#B0B7BE' : (i >= 2 ? '#C98B1E' : '#4FB477'));
+      return '<div class="a1" data-age="' + AGE_KEY[i] + '">' +
+        '<div>' + esc(a.label) + '</div>' +
+        '<div class="tr2"><i class="fl" style="width:' +
+          (100 * Math.abs(a.amount) / ageMax).toFixed(1) + '%;background:' + col + '"></i></div>' +
+        '<div class="nn">' + n0(a.n) + ' pcs</div>' +
+        '<div class="vv">' + full(a.amount) + '</div></div>';
+    }).join('');
 
-      T.finance +=
-        '<div class="sched"><div class="eyebrow">Schedule 1</div>' +
-        '<h3>Ageing of the net receivable' +
-          '<span class="aside">counted from the delivery date</span></h3>' +
-        '<p class="lede">Money a week old and money three months old are not the ' +
-          'same money. Past thirty days is worth a written query to the carrier; ' +
-          'past sixty, treat it as at risk.</p>' +
-        '<div class="age">' + ageHtml +
-          '<div class="a1 sum"><div>Net receivable</div><div></div>' +
-            '<div class="nn">' + n0(ever.dueOrders || 0) + ' pcs</div>' +
-            '<div class="vv">' + full(netRec) + '</div></div>' +
-        '</div>' +
-        '<div class="note">Click a band to see the parcels in it. The bands add up ' +
-        'to the net receivable on the statement above.</div></div>';
-    }
+    F.ageing +=
+      '<div class="sched">' +
+      '<h3>Ageing of the net receivable' +
+        '<span class="aside">from the delivery date</span></h3>' +
+      '<div class="age">' + (ageHtml ||
+        '<div class="a1" style="cursor:default;color:var(--muted)">' +
+        '<div>Nothing outstanding.</div><div></div><div></div><div></div></div>') +
+        '<div class="a1 sum"><div>Net receivable</div><div></div>' +
+          '<div class="nn">' + n0(ever.dueOrders || 0) + ' pcs</div>' +
+          '<div class="vv">' + full(netRec) + '</div></div>' +
+      '</div></div>';
 
     /* --- each courier company, by its own name --- */
     // Two PostEx accounts are one PostEx. On "All courier companies" this is
@@ -942,22 +915,18 @@
 
       T.parcels += '<div class="box" style="margin-bottom:13px"><h3>' +
         'Each courier company' +
-        '<span class="aside">click a company to see only its parcels</span></h3>' +
+        '<span class="aside">' + esc(d.from) + ' &rarr; ' + esc(d.to) + '</span></h3>' +
         '<table class="t"><tr><th>Courier</th><th class="r">Parcels</th>' +
         '<th class="r">Delivered</th><th class="r">Returned</th><th class="r">Moving</th>' +
-        '<th class="r">Rate</th></tr>' + cRowsP + '</table>' +
-        '<div class="note">Parcels booked between ' + esc(d.from) + ' and ' +
-        esc(d.to) + '.</div></div>';
+        '<th class="r">Rate</th></tr>' + cRowsP + '</table></div>';
 
       // One carrier is one debtor. This is the schedule that says which of
       // them is sitting on the money - PostEx against M&P by name, not two
       // PostEx accounts to be added up by eye.
-      T.finance += '<div class="sched"><div class="eyebrow">Schedule 2</div>' +
+      F.carriers += '<div class="sched">' +
         '<h3>Receivable by carrier' +
-        '<span class="aside">click a carrier to scope the whole page to it</span></h3>' +
-        '<p class="lede">Each courier company is a debtor of its own, and they ' +
-        'settle on different cycles. For parcels booked between ' + esc(d.from) +
-        ' and ' + esc(d.to) + '.</p>' +
+        '<span class="aside">' + esc(d.from) + ' &rarr; ' + esc(d.to) +
+        ' &middot; click a carrier to scope the page</span></h3>' +
         '<table class="stmt"><tr><th>Carrier</th><th>Delivered</th>' +
         '<th>COD collected</th><th>Charges &amp; GST</th>' +
         '<th>Gross receivable</th><th>Remitted</th>' +
@@ -1018,14 +987,12 @@
     // question, and it was on here too - which is how one page ends up
     // answering neither question properly.
     T.parcels += '<div class="box" style="margin-bottom:13px"><h3>' +
-      'What happened to the parcels booked in this range' +
+      'What happened to them' +
+      '<span class="aside">' + esc(d.from) + ' &rarr; ' + esc(d.to) + '</span>' +
       '<button class="dl" id="dlBooked">Download the lot</button></h3>' +
       '<table class="t"><tr><th>Stage</th><th class="r">Parcels</th>' +
       '<th class="r">Of booked</th></tr>' + trackRows +
-      '</table>' +
-      '<div class="note">Parcels booked between ' + esc(d.from) + ' and ' + esc(d.to) +
-      '. The rows under "where they ended up" add up to what was booked. ' +
-      'Click any row to see those parcels.</div></div>';
+      '</table></div>';
 
     /* --- one grid, every tile the same --- */
 
@@ -1223,38 +1190,29 @@
     // thing is how a page stops being read.
 
     if (rec && rec.receipts) {
-      T.finance += '<div class="sched"><div class="eyebrow">Schedule 3</div>' +
-        '<h3>Remittance reconciliation' +
+      F.cprs += '<div class="sched">' +
+        '<h3>CPRs against QuickBooks' +
         '<a href="/receipts' + (account ? '?account=' + account : '') +
         '">Open the receipt book</a></h3>' +
-        '<p class="lede">What the carriers say they have paid, against what has ' +
-        'been recorded in QuickBooks. The closing line is cash received that the ' +
-        'books do not know about yet — unrecorded, not unpaid.</p>' +
         '<table class="stmt">' +
-        '<tr><th>&nbsp;</th><th>Receipts</th><th>Amount (Rs)</th></tr>' +
-        '<tr><td class="lbl">Remittance advised by carriers' +
-          '<span class="why">receipts (CPR) issued to us</span></td>' +
+        '<tr><th>&nbsp;</th><th>CPRs</th><th>Amount (Rs)</th></tr>' +
+        '<tr><td class="lbl">CPRs issued by carriers</td>' +
           '<td class="n">' + n0(rec.receipts) + '</td>' +
           '<td class="v">' + full(rec.worth) + '</td></tr>' +
-        '<tr class="less"><td class="lbl">Less: recorded in QuickBooks</td>' +
+        '<tr class="less"><td class="lbl">Less: posted in QuickBooks</td>' +
           '<td class="n">' + n0(rec.inBooks) + '</td>' +
           '<td class="v"><span class="neg">(' + full(rec.inBooksAmount) + ')</span></td></tr>' +
-        '<tr class="close"><td class="lbl">Unrecorded remittance</td>' +
+        '<tr class="close"><td class="lbl">Not in QuickBooks yet</td>' +
           '<td class="n">' + n0(rec.notInBooks) + '</td>' +
           '<td class="v">' + full(rec.notInBooksAmount) + '</td></tr>' +
-        '</table>' +
-        '<div class="note">Receiving a payment is a journal in QuickBooks, not a ' +
-        'tick here: the receipt book is where each one is matched and posted.' +
-        '</div></div>';
+        '</table></div>';
     }
 
     var accs = d.accounts || [];
     if (accs.length > 1) {
-      T.finance += '<div class="sched"><div class="eyebrow">Schedule 4</div>' +
-        '<h3>By carrier account' +
+      F.carriers += '<div class="sched">' +
+        '<h3>By account' +
         '<span class="aside">one line per set of credentials</span></h3>' +
-        '<p class="lede">Two accounts with the same carrier settle separately and ' +
-        'are reconciled separately, so they are never added up here.</p>' +
         '<table class="stmt"><tr><th>Account</th><th>Carrier</th>' +
         '<th>Parcels</th><th>Delivered</th>' +
         '<th>COD collected</th><th>Charges &amp; GST</th></tr>' +
@@ -1269,18 +1227,14 @@
         }).join('') + '</table></div>';
     }
 
-    T.finance += '<div class="sched" id="cd-receipts"><div class="eyebrow">Schedule 5</div>' +
-      '<h3>Remittance advices (CPR)' +
+    F.cprs += '<div class="sched" id="cd-receipts">' +
+      '<h3>CPRs' +
       '<a href="/receipts' + (account ? '?account='+account : '') + '">Open the receipt book</a></h3>' +
-      '<p class="lede">Each one is the carrier’s own written admission of what ' +
-      'it has paid, and the document a payment in QuickBooks is posted against.</p>' +
-      '<table class="stmt"><tr><th>Receipt no.</th><th>Issued</th><th>Carrier status</th>' +
+      '<table class="stmt"><tr><th>CPR no.</th><th>Issued</th><th>Status</th>' +
       '<th>Net amount (Rs)</th><th>&nbsp;</th></tr>' +
       (cprRows || '<tr><td colspan="5" style="color:var(--muted);padding:14px 10px">' +
-        'No remittance advice yet. One appears as soon as a carrier says it has ' +
-        'paid for a parcel. <a href="/receipts' +
-        (account ? '?account='+account : '') + '">Open the receipt book</a> to pull ' +
-        'them in from the carrier’s portal.</td></tr>') +
+        'No CPR yet. <a href="/receipts' + (account ? '?account='+account : '') +
+        '">Open the receipt book</a>.</td></tr>') +
       '</table></div>';
 
     // Delivered and returned are settled one way or the other. Everything
@@ -1321,20 +1275,15 @@
                   '<td class="n">' + pc(pct(owedCount, t.orders)) + '</td></tr>';
     }
 
-    T.finance += '<div class="sched" id="cd-notin"><div class="eyebrow">Schedule 6</div>' +
-      '<h3>Order value not yet collected' +
-      '<span class="aside">click a line to see those parcels</span></h3>' +
-      '<p class="lede">Goods in the carrier’s hands, or back in yours: the COD on ' +
-      'them has not been collected from anybody, so none of it is receivable yet. ' +
-      'For parcels booked between ' + esc(d.from) + ' and ' + esc(d.to) + '.</p>' +
+    F.pending += '<div class="sched" id="cd-notin">' +
+      '<h3>Not collected yet' +
+      '<span class="aside">' + esc(d.from) + ' &rarr; ' + esc(d.to) +
+      ' &middot; click a line for its parcels</span></h3>' +
       '<table class="stmt"><tr><th>Where it stands</th><th>Parcels</th>' +
       '<th>Order value (Rs)</th><th>Of booked</th></tr>' +
       (owedRows || '<tr><td colspan="4" style="color:var(--muted);padding:14px 10px">' +
         'Every parcel booked in this range has settled one way or the other.</td></tr>') +
-      '</table>' +
-      '<div class="note">Of what was booked in this range, ' + full(t.deliveredAmount) +
-      ' has been collected at the door. What the carrier has actually remitted is ' +
-      'on the statement at the top.</div></div>';
+      '</table></div>';
 
     /* ==================== Cities ==================== */
 
@@ -1362,10 +1311,7 @@
       '<th class="r">Returned</th><th class="r">Moving</th><th class="r">Lost</th>' +
       '<th class="r">Rate</th><th class="r">Return %</th></tr>' +
       (cityRows || '<tr><td colspan="8" style="color:var(--muted)">No cities.</td></tr>') +
-      '</table></div>' +
-      '<div class="note">Green is 90% or better, amber 75–90%, red under 75%. ' +
-      'Cities with only a handful of settled parcels swing wildly — read those ' +
-      'percentages with care.</div></div>';
+      '</table></div></div>';
 
     var cityMoney = (d.cities || []).slice()
       .sort(function(a, b){ return (b.amount || 0) - (a.amount || 0); })
@@ -1379,12 +1325,9 @@
                '</td></tr>';
       }).join('');
 
-    T.finance += '<div class="sched"><div class="eyebrow">Schedule 7</div>' +
+    F.cities += '<div class="sched">' +
       '<h3>Order value by city' +
-      '<span class="aside">largest first · click a row for the parcels</span></h3>' +
-      '<p class="lede">What each city is worth in orders, and what the carriers ' +
-      'charge to serve it. This is order value, not cash collected \u2014 the ' +
-      'collected figure is on the statement at the top.</p>' +
+      '<span class="aside">largest first &middot; click a row for its parcels</span></h3>' +
       '<div style="max-height:420px;overflow:auto"><table class="stmt">' +
       '<tr><th>City</th><th>Parcels</th><th>Order value (Rs)</th>' +
       '<th>Charges &amp; GST</th><th>Net (Rs)</th></tr>' +
@@ -1440,6 +1383,34 @@
 
     /* ==================== put it together ==================== */
 
+    // Finance is six screens, not one scroll. Said in as many words:
+    // "finance ke tab ko itna complicated na banao... sab tab bhi to ban
+    // sakte hain". One table at a time, and the one anybody opens first -
+    // the statement - is the one that opens.
+    var FTABS = [
+      { k:'statement', l:'Statement' },
+      { k:'ageing',    l:'Ageing' },
+      { k:'carriers',  l:'By carrier' },
+      { k:'cprs',      l:'CPRs' },
+      { k:'pending',   l:'Not collected' },
+      { k:'cities',    l:'Cities' }
+    ].filter(function(x){ return F[x.k]; });
+
+    if (FTABS.length) {
+      var want = localStorage.getItem('cdFinTab');
+      if (!FTABS.some(function(x){ return x.k === want; })) want = FTABS[0].k;
+
+      T.finance =
+        '<div class="subtabs">' + FTABS.map(function(x){
+          return '<button data-ftab="' + x.k + '"' +
+                 (x.k === want ? ' class="on"' : '') + '>' + esc(x.l) + '</button>';
+        }).join('') + '</div>' +
+        FTABS.map(function(x){
+          return '<div class="fpane' + (x.k === want ? ' on' : '') +
+                 '" data-fpane="' + x.k + '">' + F[x.k] + '</div>';
+        }).join('');
+    }
+
     ['parcels','finance'].forEach(function(k){
       html += '<div class="pane' + (k === tab ? ' on' : '') + '" data-pane="' + k + '">' +
               (T[k] || '<div class="box"><div class="note">Nothing here.</div></div>') +
@@ -1470,6 +1441,20 @@
         location.href = '/api/courier/export?' + params();
       });
     }
+
+    // the finance sub-tabs
+    $('out').querySelectorAll('button[data-ftab]').forEach(function(b){
+      b.addEventListener('click', function(){
+        var k = b.getAttribute('data-ftab');
+        localStorage.setItem('cdFinTab', k);
+        $('out').querySelectorAll('button[data-ftab]').forEach(function(x){
+          x.classList.toggle('on', x.getAttribute('data-ftab') === k);
+        });
+        $('out').querySelectorAll('.fpane').forEach(function(x){
+          x.classList.toggle('on', x.getAttribute('data-fpane') === k);
+        });
+      });
+    });
 
     $('out').querySelectorAll('.more[data-jump]').forEach(function(b){
       b.addEventListener('click', function(){
