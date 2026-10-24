@@ -231,7 +231,7 @@
   table.stmt th{font-size:10px;letter-spacing:.07em;text-transform:uppercase;
     color:var(--faint);font-weight:600;padding:0 10px 9px;text-align:right;
     border-bottom:1px solid var(--line)}
-  table.stmt th:first-child{text-align:left}
+  table.stmt th:first-child,table.stmt th.l{text-align:left}
   table.stmt td{padding:9px 10px;border:0}
   table.stmt td.n,table.stmt td.v{text-align:right;font-family:var(--mono);
     white-space:nowrap}
@@ -805,8 +805,8 @@
         '<div class="k1 c-net open" data-due="1" data-alltime="1">' +
           '<div class="lb">Net receivable</div>' +
           '<div class="vl">' + full(netRec) + '</div>' +
-          '<div class="fn">' + n0(ever.dueOrders || 0) + ' parcels' +
-          (ever.oldestDue ? ' &middot; oldest ' + esc(ever.oldestDue) : '') + '</div>' +
+          '<div class="fn">after ' + n0(ever.cprCount || 0) + ' closed CPRs' +
+          (ever.oldestDue ? ' &middot; oldest delivery ' + esc(ever.oldestDue) : '') + '</div>' +
         '</div>' +
         '<div class="k1 c-cod open" data-due="0" data-alltime="1">' +
           '<div class="lb">COD collected by courier</div>' +
@@ -818,10 +818,10 @@
           '<div class="vl">' + full(ever.charges || 0) + '</div>' +
           '<div class="fn">' + pc(pct(ever.charges || 0, ever.cod || 0)) + ' of COD</div>' +
         '</div>' +
-        '<div class="k1 c-cpr open" data-due="0" data-alltime="1">' +
+        '<div class="k1 c-cpr open" data-gotab="cprs">' +
           '<div class="lb">Received against CPR</div>' +
           '<div class="vl">' + full(ever.paid || 0) + '</div>' +
-          '<div class="fn">' + n0(ever.paidOrders || 0) + ' parcels</div>' +
+          '<div class="fn">' + n0(ever.cprCount || 0) + ' closed CPRs</div>' +
         '</div>' +
       '</div>';
 
@@ -845,11 +845,17 @@
                { n: null, v: ever.net }, { v: inRange.net }, 'sub') +
 
           sRow('Less: received against CPR (closed)',
-               { n: ever.paidOrders, v: ever.paid }, { v: inRange.paid },
-               'less open', ' data-due="0" data-alltime="1"', 'less') +
+               { n: ever.cprCount, v: ever.cprPaid }, { v: inRange.cprPaid },
+               'less open', ' data-gotab="cprs"', 'less') +
+
+          (ever.directPaid || inRange.directPaid
+            ? sRow('Less: settled by carrier without a CPR',
+                   { n: ever.directOrders, v: ever.directPaid }, { v: inRange.directPaid },
+                   'less open', ' data-due="0" data-alltime="1"', 'less')
+            : '') +
 
           sRow('<b>Net receivable</b>',
-               { n: ever.dueOrders, v: ever.due }, { v: inRange.due },
+               { n: null, v: ever.due }, { v: inRange.due },
                'close open', ' data-due="1" data-alltime="1"') +
         '</table>' +
 
@@ -884,8 +890,13 @@
       '<div class="age">' + (ageHtml ||
         '<div class="a1" style="cursor:default;color:var(--muted)">' +
         '<div>Nothing outstanding.</div><div></div><div></div><div></div></div>') +
-        '<div class="a1 sum"><div>Net receivable</div><div></div>' +
-          '<div class="nn">' + n0(ever.dueOrders || 0) + ' pcs</div>' +
+        (Math.abs(ever.unmatched || 0) >= 1
+          ? '<div class="a1" data-gotab="cprs" style="color:var(--muted)">' +
+              '<div>Paid CPRs not matched to parcels yet</div><div></div>' +
+              '<div class="nn">' + n0(ever.cprCount || 0) + ' CPRs</div>' +
+              '<div class="vv"><span class="neg">(' + full(ever.unmatched) + ')</span></div></div>'
+          : '') +
+        '<div class="a1 sum"><div>Net receivable</div><div></div><div></div>' +
           '<div class="vv">' + full(netRec) + '</div></div>' +
       '</div></div>';
 
@@ -1190,11 +1201,12 @@
       var scls = s === 'CLOSED' ? 'ok' : (s === 'NEW' || s === 'OPEN' ? 'wait' : 'grey');
 
       return '<tr class="click" data-goto="' + esc(c.remoteId) + '">' +
-             '<td class="mono">' + esc(c.cpr) + '</td>' +
-             '<td class="mono">' + esc(c.createdOn || '') + '</td>' +
-             '<td><span class="cpill ' + scls + '">' + esc(c.status || '—') + '</span></td>' +
-             '<td class="r">' + full(c.netAmount) + '</td>' +
-             '<td>' + cprBadges(c) + '</td></tr>';
+             '<td class="lbl mono">' + esc(c.cpr) + '</td>' +
+             '<td class="lbl mono" style="width:auto">' + esc(c.createdOn || '') + '</td>' +
+             '<td class="lbl" style="width:auto">' +
+               '<span class="cpill ' + scls + '">' + esc(c.status || '—') + '</span></td>' +
+             '<td class="v">' + full(c.netAmount) + '</td>' +
+             '<td class="lbl" style="width:auto">' + cprBadges(c) + '</td></tr>';
     }).join('');
 
     /* ---------- the remittance side, and our own books ---------- */
@@ -1209,12 +1221,12 @@
     // carrier has written out and not yet paid, and it is still receivable.
     if (rec && rec.receipts) {
       F.cprs += '<div class="kpi">' +
-        '<div class="k1 c-cod open" data-cprstatus="closed">' +
+        '<div class="k1 c-cod">' +
           '<div class="lb">Paid &middot; closed</div>' +
           '<div class="vl">' + full(rec.closedAmount || 0) + '</div>' +
           '<div class="fn">' + n0(rec.closed || 0) + ' of ' + n0(rec.receipts) + ' CPRs</div>' +
         '</div>' +
-        '<div class="k1 c-chg open" data-cprstatus="open">' +
+        '<div class="k1 c-chg">' +
           '<div class="lb">Not paid yet &middot; approved</div>' +
           '<div class="vl">' + full(rec.openAmount || 0) + '</div>' +
           '<div class="fn">' + n0(rec.open || 0) + ' of ' + n0(rec.receipts) + ' CPRs</div>' +
@@ -1266,8 +1278,8 @@
     F.cprs += '<div class="sched" id="cd-receipts">' +
       '<h3>CPRs' +
       '<a href="/receipts' + (account ? '?account='+account : '') + '">Open the receipt book</a></h3>' +
-      '<table class="stmt"><tr><th>CPR no.</th><th>Issued</th><th>Status</th>' +
-      '<th>Net amount (Rs)</th><th>&nbsp;</th></tr>' +
+      '<table class="stmt"><tr><th class="l">CPR no.</th><th class="l">Issued</th>' +
+      '<th class="l">Status</th><th>Net amount (Rs)</th><th class="l">QuickBooks</th></tr>' +
       (cprRows || '<tr><td colspan="5" style="color:var(--muted);padding:14px 10px">' +
         'No CPR yet. <a href="/receipts' + (account ? '?account='+account : '') +
         '">Open the receipt book</a>.</td></tr>') +
@@ -1539,15 +1551,12 @@
                    title: 'Delivered over a fortnight ago, not received' });
       });
     });
-    // the parcels under the paid CPRs, or under the ones not paid yet
-    $('out').querySelectorAll('[data-cprstatus]').forEach(function(el){
+    // a CPR figure opens into the CPRs themselves
+    $('out').querySelectorAll('[data-gotab]').forEach(function(el){
       el.addEventListener('click', function(){
-        var k = el.getAttribute('data-cprstatus');
-        openList({
-          cprStatus: k, allTime: true,
-          title: k === 'closed' ? 'Parcels under paid CPRs'
-                                : 'Parcels under CPRs not paid yet'
-        });
+        var b = $('out').querySelector('button[data-ftab="' +
+                  el.getAttribute('data-gotab') + '"]');
+        if(b) b.click();
       });
     });
     // one band of the ageing table, all-time like the statement it ties to

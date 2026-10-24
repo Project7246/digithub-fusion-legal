@@ -445,6 +445,9 @@ async function owedQuery(realmId, opts, dates) {
     charges,
     net: r2(cod - charges),
     paidOrders: Number(x.paid_n || 0),
+    // what the parcels themselves say has been paid; moneyOwed() replaces
+    // `paid` with the CPRs' own figure and keeps this one to reconcile against
+    parcelPaid: r2(paidCod - paidCharges),
     paid: r2(paidCod - paidCharges),
     dueOrders: Number(x.due_n || 0),
     dueCod,
@@ -510,14 +513,106 @@ async function receiptsOwed(realmId, opts) {
   };
 }
 
-export async function moneyOwed(realmId, opts, dates) {
-  const [range, ever, receipts] = await Promise.all([
-    owedQuery(realmId, opts, dates),
-    owedQuery(realmId, opts, null),
-    receiptsOwed(realmId, opts).catch(() => null)
-  ]);
+// What the carrier says it has paid, off its own CPRs.
+//
+// This is the authority on payment, and the parcels are not. Her correction,
+// and she is right: "jis cprs ki amount k agy status closed likha gya h is ka
+// mtlb ys amount hmy mil gai tu receivble ki amount sy minus ho jy gai... cprs
+// ka status kha rha h k payment hmy mil gai, likn receivble mn hmy show ho rha
+// h k hmy paymnet milna baki h, ye tu saf difference h."
+//
+// The CPR arrives with its amount and its status the moment the carrier issues
+// it. Which parcels sit under it is a second call to PostEx that is made a few
+// at a time, and may be days behind - so a receivable that waits for the
+// parcels to be matched is a receivable that is wrong for days, by millions.
+// The document is what the books would be reconciled against, so the document
+// is what the statement deducts.
+//
+// `net_amount` is what the carrier pays out, which is the figure to take off a
+// receivable stated net of charges.
+async function cprPaid(realmId, opts, dates) {
+  const where = [`c.realm_id = $1`, `UPPER(COALESCE(c.status, '')) = 'CLOSED'`];
+  const args = [realmId];
 
-  return { range, ever, receipts };
+  if (opts.account) { args.push(Number(opts.account)); where.push(`c.account_id = $${args.length}`); }
+  if (opts.courier) { args.push(String(opts.courier)); where.push(`c.courier = $${args.length}`); }
+  if (dates && dates.from && dates.to) {
+    args.push(dates.from); where.push(`c.created_on >= $${args.length}`);
+    args.push(dates.to);   where.push(`c.created_on < ($${args.length}::date + 1)`);
+  }
+
+  const r = await pool.query(
+    `SELECT COUNT(*) AS n, COALESCE(SUM(c.net_amount),0) AS v
+       FROM courier_cprs c
+      WHERE ${where.join(' AND ')}`, args);
+
+  const x = r.rows[0] || {};
+  return { count: Number(x.n || 0), amount: r2(x.v) };
+}
+
+// Parcels the carrier settled without ever issuing a CPR we hold - which is
+// how Trax and M&P pay: a payment webhook, or an M&P PaymentID, and no advice
+// document on our side. Counting these separately is what stops a parcel that
+// IS under a closed CPR being deducted twice.
+async function directPaid(realmId, opts, dates) {
+  const base = scope(realmId, opts);
+  const args = base.args.slice();
+  let where = base.where.join(' AND ');
+
+  if (dates && dates.from && dates.to) {
+    args.push(dates.from); const a = args.length;
+    args.push(dates.to);   const b = args.length;
+    where += ` AND o.booked_on >= $${a} AND o.booked_on <= $${b}`;
+  }
+
+  const r = await pool.query(
+    `SELECT COUNT(*) AS n, COALESCE(SUM(o.amount - o.fee - o.tax),0) AS v
+       FROM courier_orders o
+      WHERE ${where}
+        AND o.status_group = 'delivered'
+        AND o.settled IS TRUE
+        AND NOT EXISTS (SELECT 1 FROM courier_cprs c
+                         WHERE c.realm_id = o.realm_id
+                           AND c.account_id = o.account_id
+                           AND c.cpr_number = o.cpr_number)`, args);
+
+  const x = r.rows[0] || {};
+  return { count: Number(x.n || 0), amount: r2(x.v) };
+}
+
+export async function moneyOwed(realmId, opts, dates) {
+  const [range, ever, receipts, cprEver, cprRange, directEver, directRange] =
+    await Promise.all([
+      owedQuery(realmId, opts, dates),
+      owedQuery(realmId, opts, null),
+      receiptsOwed(realmId, opts).catch(() => null),
+      cprPaid(realmId, opts, null).catch(() => ({ count: 0, amount: 0 })),
+      cprPaid(realmId, opts, dates).catch(() => ({ count: 0, amount: 0 })),
+      directPaid(realmId, opts, null).catch(() => ({ count: 0, amount: 0 })),
+      directPaid(realmId, opts, dates).catch(() => ({ count: 0, amount: 0 }))
+    ]);
+
+  // The statement's own arithmetic: gross receivable, less what the CPRs say
+  // has been paid, less what was settled outside any CPR.
+  const settle = (q, cpr, direct) => {
+    q.cprCount = cpr.count;
+    q.cprPaid = cpr.amount;
+    q.directPaid = direct.amount;
+    q.directOrders = direct.count;
+    q.paid = r2(cpr.amount + direct.amount);
+    q.due = r2(q.net - q.paid);
+    // What the parcels alone would have said. The difference between the two
+    // is CPRs that are paid and whose parcels have not been matched here yet,
+    // and the ageing table names it rather than quietly disagreeing.
+    q.unmatched = r2(q.paid - q.parcelPaid);
+    return q;
+  };
+
+  return {
+    range: settle(range, cprRange, directRange),
+    ever: settle(ever, cprEver, directEver),
+    receipts
+  };
 }
 
 /* ==================== the receipts ==================== */

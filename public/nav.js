@@ -87,14 +87,12 @@
         { href:'/couriers',     label:'Courier accounts', icon:'truck', tree:true,
           need:'couriersync', tile:'truck', as:'Couriers' },
         { href:'/courier-dash', label:'Tracking',      icon:'pin',    need:'couriersync', tile:'pin' },
-        { href:'/pickups',      label:'Pickups',       icon:'hand',   need:'couriersync', tile:'hand' },
-        // One line, because a CPR and a receipt are the same piece of paper.
-        // /cprs redirects here and the page carries both: every courier's
-        // receipts, and the PostEx work of writing them into QuickBooks. It
-        // opens into a shelf of courier companies, because a receipt belongs
-        // to one of them and a list with two couriers in it is not a list.
-        { href:'/receipts',     label:'Receipts (CPR)', icon:'receipt',
-          need:'couriersync', tile:'receipt', rtree:true }
+        { href:'/pickups',      label:'Pickups',       icon:'hand',   need:'couriersync', tile:'hand' }
+        // No Receipts line. The CPRs are on the courier account's own Finance
+        // tab, under the statement they belong to - "jb finance k section mn
+        // har courier ka acount mn cpr show ho rha h tu yaha is ki zarort ni
+        // h". /receipts is still there and still does the work of posting one
+        // into QuickBooks; it is reached from the CPR tab, not from the rail.
       ]},
       // The day as it is run, rather than the accounts behind it. These three
       // are Logistics' own and are not repeated under Operations: the same
@@ -119,9 +117,7 @@
       ]},
       { group: 'Couriers', items: [
         { href:'/couriers',     label:'Courier accounts', icon:'truck', need:'couriersync', tile:'truck', as:'Couriers' },
-        { href:'/courier-dash', label:'Tracking',      icon:'pin',    need:'couriersync', tile:'pin' },
-        { href:'/receipts',     label:'Receipts (CPR)', icon:'receipt',
-          need:'couriersync', tile:'receipt', rtree:true }
+        { href:'/courier-dash', label:'Tracking',      icon:'pin',    need:'couriersync', tile:'pin' }
       ]}
     ]},
 
