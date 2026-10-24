@@ -526,56 +526,176 @@ async function receiptsOwed(realmId, opts) {
   };
 }
 
-async function byMonth(realmId, opts) {
-  const base = scope(realmId, opts);
+// ==================== the money, as the CPRs state it ====================
+//
+// Said plainly, after three goes at it: "net receivble mn to bs wohi payment
+// ay gai jis cprs ki payment ka status closed ni hoa. simple si bat h."
+//
+// And it is. PostEx writes a CPR for the parcels it has collected on. CLOSED
+// means it has paid us; anything else means it has not. So what the carrier
+// still owes is the CPRs that are not closed - not a sum worked out from the
+// parcels, which only ever approximated it and needed every parcel matched to
+// a CPR before it could be right.
+//
+// The parcels still answer their own question - how many went out, what they
+// were worth, how they are doing - and that is what the Parcels tab and the
+// COD figures are for. They are not the receivable.
+function cprScope(realmId, opts) {
+  const where = [`c.realm_id = $1`];
+  const args = [realmId];
+  if (opts.account) { args.push(Number(opts.account)); where.push(`c.account_id = $${args.length}`); }
+  if (opts.courier) { args.push(String(opts.courier)); where.push(`c.courier = $${args.length}`); }
+  return { where, args };
+}
+
+const CLOSED = `UPPER(COALESCE(c.status, '')) = 'CLOSED'`;
+
+async function cprMoney(realmId, opts, dates) {
+  const base = cprScope(realmId, opts);
+  const where = base.where.slice();
+  const args = base.args.slice();
+
+  if (dates && dates.from && dates.to) {
+    args.push(dates.from); where.push(`c.created_on >= $${args.length}`);
+    args.push(dates.to);   where.push(`c.created_on < ($${args.length}::date + 1)`);
+  }
 
   const r = await pool.query(
-    `SELECT to_char(date_trunc('month', o.delivered_on), 'YYYY-MM') AS m,
-            COUNT(*) AS n,
-            COALESCE(SUM(o.amount),0) AS cod,
-            COALESCE(SUM(o.fee + o.tax),0) AS charges,
+    `SELECT COUNT(*) AS n,
+            COALESCE(SUM(c.net_amount),0) AS v,
+            COUNT(*) FILTER (WHERE ${CLOSED}) AS paid_n,
+            COALESCE(SUM(c.net_amount) FILTER (WHERE ${CLOSED}),0) AS paid_v,
+            COUNT(*) FILTER (WHERE NOT ${CLOSED}) AS due_n,
+            COALESCE(SUM(c.net_amount) FILTER (WHERE NOT ${CLOSED}),0) AS due_v,
+            MIN(c.created_on) FILTER (WHERE NOT ${CLOSED}) AS oldest_due,
+            COUNT(*) FILTER (WHERE c.received_on IS NOT NULL) AS in_books_n,
+            COALESCE(SUM(COALESCE(c.received_amount, c.net_amount))
+              FILTER (WHERE c.received_on IS NOT NULL),0) AS in_books_v
+       FROM courier_cprs c
+      WHERE ${where.join(' AND ')}`, args);
 
-            COUNT(*) FILTER (WHERE ${PAID_SQL}) AS paid_n,
-            COALESCE(SUM(o.amount - o.fee - o.tax) FILTER (WHERE ${PAID_SQL}),0) AS paid_v,
-            COUNT(DISTINCT o.cpr_number) FILTER (WHERE ${PAID_SQL}
-              AND o.cpr_number IS NOT NULL AND o.cpr_number <> '') AS cprs,
+  const x = r.rows[0] || {};
+  return {
+    cprs: Number(x.n || 0),
+    worth: r2(x.v),
+    paidCprs: Number(x.paid_n || 0),
+    paid: r2(x.paid_v),
+    dueCprs: Number(x.due_n || 0),
+    due: r2(x.due_v),
+    oldestDue: day(x.oldest_due),
+    inBooks: Number(x.in_books_n || 0),
+    inBooksAmount: r2(x.in_books_v)
+  };
+}
 
-            COUNT(*) FILTER (WHERE o.settled IS NULL
-              AND (o.cpr_number IS NULL OR o.cpr_number = '')) AS unchecked_n
-       FROM courier_orders o
-      WHERE ${base.where.join(' AND ')}
-        AND o.status_group = 'delivered'
-        AND o.delivered_on IS NOT NULL
-      GROUP BY 1
-      ORDER BY 1 DESC`, base.args);
+// How long each unpaid CPR has been sitting, counted from the day it was
+// issued. The bands add up to the net receivable, which is the whole point of
+// putting them on the same tab.
+async function cprAgeing(realmId, opts) {
+  const base = cprScope(realmId, opts);
+  const open = `NOT ${CLOSED}`;
+  const band = (name, when) =>
+    `COUNT(*) FILTER (WHERE ${open} AND ${when}) AS ${name}_n,
+     COALESCE(SUM(c.net_amount) FILTER (WHERE ${open} AND ${when}),0) AS ${name}_v`;
 
-  return r.rows.map(x => {
-    const cod = r2(x.cod), charges = r2(x.charges);
-    const received = r2(x.paid_v);
-    return {
-      month: x.m,
-      parcels: Number(x.n || 0),
-      cod,
-      charges,
-      gross: r2(cod - charges),
-      cprs: Number(x.cprs || 0),
-      paidOrders: Number(x.paid_n || 0),
-      received,
-      unchecked: Number(x.unchecked_n || 0),
-      net: r2(cod - charges - received)
-    };
-  });
+  const r = await pool.query(
+    `SELECT ${band('a1', `c.created_on >= CURRENT_DATE - 7`)},
+            ${band('a2', `c.created_on < CURRENT_DATE - 7 AND c.created_on >= CURRENT_DATE - 14`)},
+            ${band('a3', `c.created_on < CURRENT_DATE - 14 AND c.created_on >= CURRENT_DATE - 30`)},
+            ${band('a4', `c.created_on < CURRENT_DATE - 30 AND c.created_on >= CURRENT_DATE - 60`)},
+            ${band('a5', `c.created_on < CURRENT_DATE - 60`)},
+            ${band('a0', `c.created_on IS NULL`)}
+       FROM courier_cprs c
+      WHERE ${base.where.join(' AND ')}`, base.args);
+
+  const x = r.rows[0] || {};
+  const one = (k, label, extra) =>
+    Object.assign({ label, n: Number(x[k + '_n'] || 0), amount: r2(x[k + '_v']) }, extra || {});
+
+  return [
+    one('a1', '0 \u2013 7 days'),
+    one('a2', '8 \u2013 14 days'),
+    one('a3', '15 \u2013 30 days'),
+    one('a4', '31 \u2013 60 days'),
+    one('a5', 'Over 60 days', { old: true }),
+    one('a0', 'No issue date', { unknown: true })
+  ];
+}
+
+// Month by month. The parcels sit in the month they were delivered - that is
+// when the cash was taken - and the CPRs in the month the carrier issued them.
+// Both are stated, so "which month is this COD from" and "which month are
+// these CPRs from" are answered side by side rather than argued about.
+async function byMonth(realmId, opts) {
+  const base = scope(realmId, opts);
+  const cbase = cprScope(realmId, opts);
+
+  const [a, b] = await Promise.all([
+    pool.query(
+      `SELECT to_char(date_trunc('month', o.delivered_on), 'YYYY-MM') AS m,
+              COUNT(*) AS n,
+              COALESCE(SUM(o.amount),0) AS cod,
+              COALESCE(SUM(o.fee + o.tax),0) AS charges
+         FROM courier_orders o
+        WHERE ${base.where.join(' AND ')}
+          AND o.status_group = 'delivered'
+          AND o.delivered_on IS NOT NULL
+        GROUP BY 1`, base.args),
+    pool.query(
+      `SELECT to_char(date_trunc('month', c.created_on), 'YYYY-MM') AS m,
+              COUNT(*) AS n,
+              COALESCE(SUM(c.net_amount),0) AS v,
+              COUNT(*) FILTER (WHERE ${CLOSED}) AS paid_n,
+              COALESCE(SUM(c.net_amount) FILTER (WHERE ${CLOSED}),0) AS paid_v,
+              COUNT(*) FILTER (WHERE NOT ${CLOSED}) AS due_n,
+              COALESCE(SUM(c.net_amount) FILTER (WHERE NOT ${CLOSED}),0) AS due_v
+         FROM courier_cprs c
+        WHERE ${cbase.where.join(' AND ')}
+          AND c.created_on IS NOT NULL
+        GROUP BY 1`, cbase.args)
+  ]);
+
+  const months = new Map();
+  const get = m => {
+    if (!months.has(m)) {
+      months.set(m, { month: m, parcels: 0, cod: 0, charges: 0,
+                      cprs: 0, paidCprs: 0, paid: 0, dueCprs: 0, due: 0 });
+    }
+    return months.get(m);
+  };
+
+  for (const x of a.rows) {
+    if (!x.m) continue;
+    const row = get(x.m);
+    row.parcels = Number(x.n || 0);
+    row.cod = r2(x.cod);
+    row.charges = r2(x.charges);
+  }
+  for (const x of b.rows) {
+    if (!x.m) continue;
+    const row = get(x.m);
+    row.cprs = Number(x.n || 0);
+    row.paidCprs = Number(x.paid_n || 0);
+    row.paid = r2(x.paid_v);
+    row.dueCprs = Number(x.due_n || 0);
+    row.due = r2(x.due_v);
+  }
+
+  return [...months.values()].sort((p, q) => (p.month < q.month ? 1 : -1));
 }
 
 export async function moneyOwed(realmId, opts, dates) {
-  const [range, ever, receipts, months] = await Promise.all([
+  const [range, ever, cprRange, cprEver, ageing, months, receipts] = await Promise.all([
     owedQuery(realmId, opts, dates),
     owedQuery(realmId, opts, null),
-    receiptsOwed(realmId, opts).catch(() => null),
-    byMonth(realmId, opts).catch(() => [])
+    cprMoney(realmId, opts, dates).catch(() => null),
+    cprMoney(realmId, opts, null).catch(() => null),
+    cprAgeing(realmId, opts).catch(() => []),
+    byMonth(realmId, opts).catch(() => []),
+    receiptsOwed(realmId, opts).catch(() => null)
   ]);
 
-  return { range, ever, months, receipts };
+  return { range, ever, cprRange, cprEver, ageing, months, receipts };
 }
 
 /* ==================== the receipts ==================== */

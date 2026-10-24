@@ -798,28 +798,27 @@
     // it so both questions are answered at once.
     var M = d.money || {};
     var ever = M.ever || {}, inRange = M.range || {}, rec = M.receipts || null;
+    var C = M.cprEver || {}, CR = M.cprRange || {};
 
     /* ==================== Finance ====================
 
-       Three corrections, all from the owner, all pointing the same way:
+       The receivable is the CPRs, and nothing else. Said four times before it
+       went in, the last time with the patience gone: "net receivble mn to bs
+       wohi payment ay gai jis cprs ki payment ka status closed ni hoa. simple
+       si bat h."
 
-       - "finance ka structure hota hai usi base par banao" - so the money is
-         a statement: COD collected, less the carrier's charges, less what it
-         has paid against a CPR, and the balance still receivable.
-       - "money owed to you ye to yaar kisi ko bhi samajh nahin aana" - so the
-         words are the ones in the books. Except one: what the carrier pays is
-         a **CPR**, not a remittance. That is the word these couriers use and
-         the word on their own paperwork.
-       - "finance ke tab ko itna complicated na banao... sab tab bhi to ban
-         sakte hain" and "is tarah ki explanation ko remove kar do har jagah
-         se" - so one screen holds one table, under its own tab, and nothing
-         explains itself in a paragraph. A manager should open it and read the
-         answer, not an essay about the answer.                              */
+       It is. The carrier writes a CPR for what it has collected; CLOSED means
+       it has paid us, anything else means it has not. Every version before
+       this one built the receivable out of the parcels and then tried to
+       reconcile it to the CPRs - which needs every parcel matched to a CPR
+       before it can be right, and until then is wrong by millions in whichever
+       direction the gap happens to fall. One of them printed minus 28 million.
 
-    // A figure in a column. What is deducted goes in brackets, the way a
-    // ledger writes it; a dash means it does not apply.
+       The parcels answer the parcels' questions - how many went, what they
+       were worth, where they got to. They are not the receivable.            */
+
     function amt(v, kind){
-      if(v === null || v === undefined) return '—';
+      if(v === null || v === undefined) return DASH;
       var s = full(Math.abs(Number(v) || 0));
       return kind === 'less' ? '<span class="neg">(' + s + ')</span>' : s;
     }
@@ -833,9 +832,8 @@
         '<td class="v">' + amt(b.v, kind) + '</td></tr>';
     }
 
-    var netRec = ever.due || 0;
+    var netRec = C.due || 0;
 
-    // Each key is one sub-tab of Finance.
     var F = { statement:'', months:'', ageing:'', carriers:'', cprs:'',
               pending:'', cities:'' };
 
@@ -843,13 +841,13 @@
 
     F.statement +=
       '<div class="kpi">' +
-        '<div class="k1 c-net open" data-due="1" data-alltime="1">' +
+        '<div class="k1 c-net open" data-gotab="cprs">' +
           '<div class="lb">Net receivable</div>' +
           '<div class="vl">' + full(netRec) + '</div>' +
-          '<div class="fn">' + n0(ever.dueOrders || 0) + ' parcels' +
-          (ever.oldestDue ? ' &middot; oldest delivery ' + esc(ever.oldestDue) : '') + '</div>' +
+          '<div class="fn">' + n0(C.dueCprs || 0) + ' CPRs not closed' +
+          (C.oldestDue ? ' &middot; oldest ' + esc(C.oldestDue) : '') + '</div>' +
         '</div>' +
-        '<div class="k1 c-cod open" data-due="0" data-alltime="1">' +
+        '<div class="k1 c-cod open" data-due="" data-alltime="1">' +
           '<div class="lb">COD collected by courier</div>' +
           '<div class="vl">' + full(ever.cod || 0) + '</div>' +
           '<div class="fn">' + n0(ever.delivered || 0) + ' delivered</div>' +
@@ -859,66 +857,57 @@
           '<div class="vl">' + full(ever.charges || 0) + '</div>' +
           '<div class="fn">' + pc(pct(ever.charges || 0, ever.cod || 0)) + ' of COD</div>' +
         '</div>' +
-        '<div class="k1 c-cpr open" data-due="0" data-alltime="1">' +
+        '<div class="k1 c-cpr open" data-gotab="cprs">' +
           '<div class="lb">Received against CPR</div>' +
-          '<div class="vl">' + full(ever.paid || 0) + '</div>' +
-          '<div class="fn">' + n0(ever.paidOrders || 0) + ' parcels' +
-          (ever.cprCount ? ' &middot; ' + n0(ever.cprCount) + ' CPRs' : '') + '</div>' +
+          '<div class="vl">' + full(C.paid || 0) + '</div>' +
+          '<div class="fn">' + n0(C.paidCprs || 0) + ' CPRs closed</div>' +
         '</div>' +
       '</div>';
 
     F.statement +=
       '<div class="sched">' +
         '<h3>Receivable from couriers' +
-          '<span class="aside">click a line for its parcels</span></h3>' +
+          '<span class="aside">click a line to see the CPRs</span></h3>' +
         '<table class="stmt">' +
-          '<tr><th>&nbsp;</th><th>Parcels</th><th>All time (Rs)</th>' +
+          '<tr><th>&nbsp;</th><th>CPRs</th><th>All time (Rs)</th>' +
             '<th>' + esc(d.from) + ' &rarr; ' + esc(d.to) + ' (Rs)</th></tr>' +
 
-          sRow('COD collected by courier',
-               { n: ever.delivered, v: ever.cod }, { v: inRange.cod },
-               'open', ' data-due="0" data-alltime="1"') +
+          sRow('CPRs issued by the courier',
+               { n: C.cprs, v: C.worth }, { v: CR.worth },
+               'open', ' data-gotab="cprs"') +
 
-          sRow('Less: courier charges and GST',
-               { n: null, v: ever.charges }, { v: inRange.charges },
-               'less', '', 'less') +
+          sRow('Less: paid \u2014 status closed',
+               { n: C.paidCprs, v: C.paid }, { v: CR.paid },
+               'less open', ' data-gotab="cprs"', 'less') +
 
-          sRow('<b>Gross receivable</b>',
-               { n: null, v: ever.net }, { v: inRange.net }, 'sub') +
-
-          sRow('Less: received against CPR (closed)',
-               { n: ever.paidOrders, v: ever.paid }, { v: inRange.paid },
-               'less open', ' data-due="0" data-alltime="1"', 'less') +
-
-          sRow('<b>Net receivable</b>',
-               { n: ever.dueOrders, v: ever.due }, { v: inRange.due },
-               'close open', ' data-due="1" data-alltime="1"') +
+          sRow('<b>Net receivable \u2014 not closed</b>',
+               { n: C.dueCprs, v: C.due }, { v: CR.due },
+               'close open', ' data-gotab="cprs"') +
         '</table>' +
 
-        (ever.uncheckedOrders
-          ? '<div class="lateline click" data-unchecked="1" style="margin-top:13px;' +
-            'background:#F4F7FA;border-color:#D8E1E9;color:#45535F">' +
-              '<b>' + n0(ever.uncheckedOrders) + ' parcels</b> have no payment answer ' +
-              'from the carrier yet — ' + full(ever.uncheckedCod) + ' of COD. ' +
-              'They are counted as receivable until it answers.' +
-            '</div>'
-          : '') +
-
-        (ever.lateOrders
-          ? '<div class="lateline click" data-late="1" style="margin-top:13px">' +
-              '<b>' + n0(ever.lateOrders) + ' parcels</b> delivered over a fortnight ' +
-              'ago, not received yet — ' + full(ever.lateCod) + ' of COD.' +
-            '</div>'
-          : '') +
+        '<div class="kpi" style="margin:14px 0 0">' +
+          '<div class="k1 c-cod">' +
+            '<div class="lb">Delivered parcels</div>' +
+            '<div class="vl">' + n0(ever.delivered || 0) + '</div>' +
+            '<div class="fn">COD ' + full(ever.cod || 0) + '</div>' +
+          '</div>' +
+          '<div class="k1 c-chg">' +
+            '<div class="lb">Charges &amp; GST on them</div>' +
+            '<div class="vl">' + full(ever.charges || 0) + '</div>' +
+            '<div class="fn">net ' + full(ever.net || 0) + '</div>' +
+          '</div>' +
+          (rec && rec.notInBooks
+            ? '<div class="k1 c-cpr open" data-gotab="cprs">' +
+                '<div class="lb">Not in QuickBooks yet</div>' +
+                '<div class="vl">' + full(rec.notInBooksAmount || 0) + '</div>' +
+                '<div class="fn">' + n0(rec.notInBooks) + ' CPRs to post</div>' +
+              '</div>'
+            : '') +
+        '</div>' +
       '</div>';
 
     /* ---------- month by month ---------- */
 
-    // "ye 10,000 parcel ki cod jo arhi h ye kis month ki h, or ye 13 cprs kis
-    // month k hn". A total nobody can split into months can be read but not
-    // checked. A parcel sits in the month it was delivered, a CPR in the month
-    // it was issued - so a month showing more CPR than COD is the carrier
-    // paying that month for parcels delivered before this database begins.
     var MONTH_NAME = ['January','February','March','April','May','June','July',
                       'August','September','October','November','December'];
     function monthLabel(m){
@@ -928,73 +917,72 @@
     }
 
     var ms = M.months || [];
-    var mt = { parcels:0, cod:0, charges:0, gross:0, cprs:0, received:0, net:0 };
+    var mt = { parcels:0, cod:0, charges:0, cprs:0, paid:0, due:0, dueCprs:0 };
     var mRows = ms.map(function(x){
       mt.parcels += x.parcels; mt.cod += x.cod; mt.charges += x.charges;
-      mt.gross += x.gross; mt.cprs += x.cprs; mt.received += x.received;
-      mt.net += x.net;
+      mt.cprs += x.cprs; mt.paid += x.paid; mt.due += x.due;
+      mt.dueCprs += x.dueCprs;
       return '<tr class="open" data-month="' + esc(x.month) + '">' +
         '<td class="lbl">' + monthLabel(x.month) + '</td>' +
         '<td class="n">' + (x.parcels ? n0(x.parcels) : '') + '</td>' +
         '<td class="v">' + (x.cod ? full(x.cod) : DASH) + '</td>' +
         '<td class="v">' + (x.charges
           ? '<span class="neg">(' + full(x.charges) + ')</span>' : DASH) + '</td>' +
-        '<td class="v">' + (x.gross ? full(x.gross) : DASH) + '</td>' +
         '<td class="n">' + (x.cprs ? n0(x.cprs) : '') + '</td>' +
-        '<td class="v">' + (x.received
-          ? '<span class="neg">(' + full(x.received) + ')</span>' : DASH) + '</td>' +
-        '<td class="v"' + (x.net < 0 ? ' style="color:#C9453F"' : '') + '>' +
-          full(x.net) + '</td></tr>';
+        '<td class="v">' + (x.paid ? full(x.paid) : DASH) + '</td>' +
+        '<td class="n">' + (x.dueCprs ? n0(x.dueCprs) : '') + '</td>' +
+        '<td class="v"' + (x.due ? ' style="font-weight:600"' : '') + '>' +
+          (x.due ? full(x.due) : DASH) + '</td></tr>';
     }).join('');
 
     F.months +=
       '<div class="sched">' +
       '<h3>Month by month' +
-        '<span class="aside">the parcels delivered that month, and the CPRs against them' +
+        '<span class="aside">parcels by delivery date &middot; CPRs by issue date' +
         '</span></h3>' +
       '<table class="stmt">' +
       '<tr><th class="l">Month</th><th>Delivered</th><th>COD collected</th>' +
-      '<th>Charges &amp; GST</th><th>Gross receivable</th><th>CPRs</th>' +
-      '<th>Received</th><th>Net</th></tr>' +
+      '<th>Charges &amp; GST</th><th>CPRs</th><th>Paid (closed)</th>' +
+      '<th>Not closed</th><th>Receivable</th></tr>' +
       (mRows || '<tr><td colspan="8" style="color:var(--muted);padding:14px 10px">' +
-        'Nothing delivered yet.</td></tr>') +
+        'Nothing here yet.</td></tr>') +
       (mRows
         ? '<tr class="close"><td class="lbl">Total</td>' +
           '<td class="n">' + n0(mt.parcels) + '</td>' +
           '<td class="v">' + full(mt.cod) + '</td>' +
           '<td class="v"><span class="neg">(' + full(mt.charges) + ')</span></td>' +
-          '<td class="v">' + full(mt.gross) + '</td>' +
           '<td class="n">' + n0(mt.cprs) + '</td>' +
-          '<td class="v"><span class="neg">(' + full(mt.received) + ')</span></td>' +
-          '<td class="v">' + full(mt.net) + '</td></tr>'
+          '<td class="v">' + full(mt.paid) + '</td>' +
+          '<td class="n">' + n0(mt.dueCprs) + '</td>' +
+          '<td class="v">' + full(mt.due) + '</td></tr>'
         : '') +
       '</table></div>';
 
-    /* ---------- Ageing ---------- */
+    /* ---------- Ageing: the CPRs that are not closed ---------- */
 
     var AGE_KEY = ['a1','a2','a3','a4','a5','a0'];
-    var ageAll = ever.ageing || [];
+    var ageAll = M.ageing || [];
     var ageMax = ageAll.reduce(function(m, a){ return Math.max(m, Math.abs(a.amount)); }, 0) || 1;
     var ageHtml = ageAll.map(function(a, i){
       if(!a.n) return '';
       var col = a.old ? '#C9453F' : (a.unknown ? '#B0B7BE' : (i >= 2 ? '#C98B1E' : '#4FB477'));
-      return '<div class="a1" data-age="' + AGE_KEY[i] + '">' +
+      return '<div class="a1" style="cursor:default">' +
         '<div>' + esc(a.label) + '</div>' +
         '<div class="tr2"><i class="fl" style="width:' +
           (100 * Math.abs(a.amount) / ageMax).toFixed(1) + '%;background:' + col + '"></i></div>' +
-        '<div class="nn">' + n0(a.n) + ' pcs</div>' +
+        '<div class="nn">' + n0(a.n) + ' CPRs</div>' +
         '<div class="vv">' + full(a.amount) + '</div></div>';
     }).join('');
 
     F.ageing +=
       '<div class="sched">' +
       '<h3>How long the money has been outstanding' +
-        '<span class="aside">counted from the day it was delivered</span></h3>' +
+        '<span class="aside">CPRs not closed, by the day they were issued</span></h3>' +
       '<div class="age">' + (ageHtml ||
         '<div class="a1" style="cursor:default;color:var(--muted)">' +
-        '<div>Nothing outstanding.</div><div></div><div></div><div></div></div>') +
+        '<div>Every CPR is closed.</div><div></div><div></div><div></div></div>') +
         '<div class="a1 sum"><div>Net receivable</div><div></div>' +
-          '<div class="nn">' + n0(ever.dueOrders || 0) + ' pcs</div>' +
+          '<div class="nn">' + n0(C.dueCprs || 0) + ' CPRs</div>' +
           '<div class="vv">' + full(netRec) + '</div></div>' +
       '</div></div>';
 
@@ -1015,9 +1003,7 @@
           '<td class="n">' + n0(c.delivered) + '</td>' +
           '<td class="v">' + full(c.deliveredAmount) + '</td>' +
           '<td class="v"><span class="neg">(' + full(c.charges) + ')</span></td>' +
-          '<td class="v">' + full(c.net) + '</td>' +
-          '<td class="v"><span class="neg">(' + full(c.settledAmount) + ')</span></td>' +
-          '<td class="v" style="font-weight:700">' + full(c.due) + '</td></tr>';
+          '<td class="v">' + full(c.net) + '</td></tr>';
       }).join('');
 
       // The same companies twice with different columns, because they are
@@ -1048,13 +1034,12 @@
       // them is sitting on the money - PostEx against M&P by name, not two
       // PostEx accounts to be added up by eye.
       F.carriers += '<div class="sched">' +
-        '<h3>Receivable by carrier' +
+        '<h3>By carrier' +
         '<span class="aside">' + esc(d.from) + ' &rarr; ' + esc(d.to) +
-        ' &middot; click a carrier to scope the page</span></h3>' +
+        ' &middot; click a carrier for its own statement</span></h3>' +
         '<table class="stmt"><tr><th>Carrier</th><th>Delivered</th>' +
         '<th>COD collected</th><th>Charges &amp; GST</th>' +
-        '<th>Gross receivable</th><th>Remitted</th>' +
-        '<th>Net receivable</th></tr>' + cRows + '</table></div>';
+        '<th>Net of charges</th></tr>' + cRows + '</table></div>';
     }
 
     // Where a parcel got to, and what stopped it. Every group the courier can
@@ -1317,23 +1302,25 @@
     // Paid and not paid, in the carrier's own two words. CLOSED is money that
     // has reached us; anything else - APPROVED, PENDING, OPEN - is a CPR the
     // carrier has written out and not yet paid, and it is still receivable.
-    if (rec && rec.receipts) {
+    if (C.cprs) {
       F.cprs += '<div class="kpi">' +
+        '<div class="k1 c-net">' +
+          '<div class="lb">Net receivable &middot; not closed</div>' +
+          '<div class="vl">' + full(C.due || 0) + '</div>' +
+          '<div class="fn">' + n0(C.dueCprs || 0) + ' of ' + n0(C.cprs) + ' CPRs</div>' +
+        '</div>' +
         '<div class="k1 c-cod">' +
           '<div class="lb">Paid &middot; closed</div>' +
-          '<div class="vl">' + full(rec.closedAmount || 0) + '</div>' +
-          '<div class="fn">' + n0(rec.closed || 0) + ' of ' + n0(rec.receipts) + ' CPRs</div>' +
+          '<div class="vl">' + full(C.paid || 0) + '</div>' +
+          '<div class="fn">' + n0(C.paidCprs || 0) + ' of ' + n0(C.cprs) + ' CPRs</div>' +
         '</div>' +
-        '<div class="k1 c-chg">' +
-          '<div class="lb">Not paid yet &middot; approved</div>' +
-          '<div class="vl">' + full(rec.openAmount || 0) + '</div>' +
-          '<div class="fn">' + n0(rec.open || 0) + ' of ' + n0(rec.receipts) + ' CPRs</div>' +
-        '</div>' +
-        '<div class="k1 c-cpr">' +
-          '<div class="lb">Not in QuickBooks yet</div>' +
-          '<div class="vl">' + full(rec.notInBooksAmount || 0) + '</div>' +
-          '<div class="fn">' + n0(rec.notInBooks || 0) + ' CPRs to post</div>' +
-        '</div>' +
+        (rec && rec.notInBooks
+          ? '<div class="k1 c-cpr">' +
+              '<div class="lb">Not in QuickBooks yet</div>' +
+              '<div class="vl">' + full(rec.notInBooksAmount || 0) + '</div>' +
+              '<div class="fn">' + n0(rec.notInBooks) + ' CPRs to post</div>' +
+            '</div>'
+          : '') +
       '</div>';
 
       F.cprs += '<div class="sched">' +
@@ -1343,14 +1330,14 @@
         '<table class="stmt">' +
         '<tr><th>&nbsp;</th><th>CPRs</th><th>Amount (Rs)</th></tr>' +
         '<tr><td class="lbl">CPRs issued by carriers</td>' +
-          '<td class="n">' + n0(rec.receipts) + '</td>' +
-          '<td class="v">' + full(rec.worth) + '</td></tr>' +
+          '<td class="n">' + n0(C.cprs) + '</td>' +
+          '<td class="v">' + full(C.worth) + '</td></tr>' +
         '<tr class="less"><td class="lbl">Less: posted in QuickBooks</td>' +
-          '<td class="n">' + n0(rec.inBooks) + '</td>' +
-          '<td class="v"><span class="neg">(' + full(rec.inBooksAmount) + ')</span></td></tr>' +
+          '<td class="n">' + n0(C.inBooks) + '</td>' +
+          '<td class="v"><span class="neg">(' + full(C.inBooksAmount) + ')</span></td></tr>' +
         '<tr class="close"><td class="lbl">Not in QuickBooks yet</td>' +
-          '<td class="n">' + n0(rec.notInBooks) + '</td>' +
-          '<td class="v">' + full(rec.notInBooksAmount) + '</td></tr>' +
+          '<td class="n">' + n0(C.cprs - C.inBooks) + '</td>' +
+          '<td class="v">' + full(C.worth - C.inBooksAmount) + '</td></tr>' +
         '</table></div>';
     }
 
