@@ -250,13 +250,28 @@
   .kpi{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:12px;
     margin-bottom:14px}
   .kpi .k1{background:var(--panel);border:1px solid var(--line);border-radius:10px;
-    padding:16px 18px}
-  .kpi .k1.lead{border-color:#CFE3E2;background:linear-gradient(180deg,#F7FDFC,#fff 62%)}
+    padding:16px 18px 16px 20px;position:relative;overflow:hidden}
+  /* a colour per card, and each one means something: what is still ours, what
+     was taken at the door, what the carrier keeps, what has come back */
+  .kpi .k1::before{content:'';position:absolute;left:0;top:0;bottom:0;width:4px;
+    background:var(--bar,transparent)}
+  .kpi .k1.c-net{--bar:#11BAB5;border-color:#CFE7E6;
+    background:linear-gradient(180deg,#F1FBFA,#fff 68%)}
+  .kpi .k1.c-cod{--bar:#4FB477;border-color:#D6E9DC;
+    background:linear-gradient(180deg,#F4FAF6,#fff 68%)}
+  .kpi .k1.c-chg{--bar:#C98B1E;border-color:#EBE0C7;
+    background:linear-gradient(180deg,#FDF9F0,#fff 68%)}
+  .kpi .k1.c-cpr{--bar:#3C7FBF;border-color:#D3E2F0;
+    background:linear-gradient(180deg,#F3F8FC,#fff 68%)}
+  .kpi .k1.c-net .vl{color:#0E7F7C}
+  .kpi .k1.c-cod .vl{color:#2E7D4F}
+  .kpi .k1.c-chg .vl{color:#8A5E12}
+  .kpi .k1.c-cpr .vl{color:#2B5F91}
   .kpi .k1 .lb{font-size:10px;letter-spacing:.08em;text-transform:uppercase;
     color:var(--faint);min-height:24px;line-height:1.3}
   .kpi .k1 .vl{font-family:var(--mono);font-size:25px;font-weight:500;margin-top:7px;
     line-height:1.1;font-variant-numeric:tabular-nums}
-  .kpi .k1.lead .vl{font-size:31px}
+  .kpi .k1.c-net .vl{font-size:31px}
   .kpi .k1 .fn{font-size:11.5px;color:var(--muted);margin-top:5px}
   .kpi .k1.open{cursor:pointer}
   .kpi .k1.open:hover{border-color:var(--qbo)}
@@ -787,24 +802,24 @@
 
     F.statement +=
       '<div class="kpi">' +
-        '<div class="k1 lead open" data-due="1" data-alltime="1">' +
+        '<div class="k1 c-net open" data-due="1" data-alltime="1">' +
           '<div class="lb">Net receivable</div>' +
           '<div class="vl">' + full(netRec) + '</div>' +
           '<div class="fn">' + n0(ever.dueOrders || 0) + ' parcels' +
           (ever.oldestDue ? ' &middot; oldest ' + esc(ever.oldestDue) : '') + '</div>' +
         '</div>' +
-        '<div class="k1 open" data-due="0" data-alltime="1">' +
-          '<div class="lb">COD collected</div>' +
+        '<div class="k1 c-cod open" data-due="0" data-alltime="1">' +
+          '<div class="lb">COD collected by courier</div>' +
           '<div class="vl">' + full(ever.cod || 0) + '</div>' +
           '<div class="fn">' + n0(ever.delivered || 0) + ' delivered</div>' +
         '</div>' +
-        '<div class="k1">' +
-          '<div class="lb">Charges &amp; GST</div>' +
+        '<div class="k1 c-chg">' +
+          '<div class="lb">Courier charges &amp; GST</div>' +
           '<div class="vl">' + full(ever.charges || 0) + '</div>' +
           '<div class="fn">' + pc(pct(ever.charges || 0, ever.cod || 0)) + ' of COD</div>' +
         '</div>' +
-        '<div class="k1 open" data-due="0" data-alltime="1">' +
-          '<div class="lb">Paid against CPR</div>' +
+        '<div class="k1 c-cpr open" data-due="0" data-alltime="1">' +
+          '<div class="lb">Received against CPR</div>' +
           '<div class="vl">' + full(ever.paid || 0) + '</div>' +
           '<div class="fn">' + n0(ever.paidOrders || 0) + ' parcels</div>' +
         '</div>' +
@@ -818,7 +833,7 @@
           '<tr><th>&nbsp;</th><th>Parcels</th><th>All time (Rs)</th>' +
             '<th>' + esc(d.from) + ' &rarr; ' + esc(d.to) + ' (Rs)</th></tr>' +
 
-          sRow('COD collected on delivered parcels',
+          sRow('COD collected by courier',
                { n: ever.delivered, v: ever.cod }, { v: inRange.cod },
                'open', ' data-due="0" data-alltime="1"') +
 
@@ -829,7 +844,7 @@
           sRow('<b>Gross receivable</b>',
                { n: null, v: ever.net }, { v: inRange.net }, 'sub') +
 
-          sRow('Less: paid against CPR',
+          sRow('Less: received against CPR (closed)',
                { n: ever.paidOrders, v: ever.paid }, { v: inRange.paid },
                'less open', ' data-due="0" data-alltime="1"', 'less') +
 
@@ -841,7 +856,7 @@
         (ever.lateOrders
           ? '<div class="lateline click" data-late="1" style="margin-top:13px">' +
               '<b>' + n0(ever.lateOrders) + ' parcels</b> delivered over a fortnight ' +
-              'ago, no CPR yet — ' + full(ever.lateCod) + ' of COD.' +
+              'ago, not received yet — ' + full(ever.lateCod) + ' of COD.' +
             '</div>'
           : '') +
       '</div>';
@@ -864,8 +879,8 @@
 
     F.ageing +=
       '<div class="sched">' +
-      '<h3>Ageing of the net receivable' +
-        '<span class="aside">from the delivery date</span></h3>' +
+      '<h3>How long the money has been outstanding' +
+        '<span class="aside">counted from the day it was delivered</span></h3>' +
       '<div class="age">' + (ageHtml ||
         '<div class="a1" style="cursor:default;color:var(--muted)">' +
         '<div>Nothing outstanding.</div><div></div><div></div><div></div></div>') +
@@ -1189,7 +1204,28 @@
     // statement at the top now does in two columns. Two tables saying one
     // thing is how a page stops being read.
 
+    // Paid and not paid, in the carrier's own two words. CLOSED is money that
+    // has reached us; anything else - APPROVED, PENDING, OPEN - is a CPR the
+    // carrier has written out and not yet paid, and it is still receivable.
     if (rec && rec.receipts) {
+      F.cprs += '<div class="kpi">' +
+        '<div class="k1 c-cod open" data-cprstatus="closed">' +
+          '<div class="lb">Paid &middot; closed</div>' +
+          '<div class="vl">' + full(rec.closedAmount || 0) + '</div>' +
+          '<div class="fn">' + n0(rec.closed || 0) + ' of ' + n0(rec.receipts) + ' CPRs</div>' +
+        '</div>' +
+        '<div class="k1 c-chg open" data-cprstatus="open">' +
+          '<div class="lb">Not paid yet &middot; approved</div>' +
+          '<div class="vl">' + full(rec.openAmount || 0) + '</div>' +
+          '<div class="fn">' + n0(rec.open || 0) + ' of ' + n0(rec.receipts) + ' CPRs</div>' +
+        '</div>' +
+        '<div class="k1 c-cpr">' +
+          '<div class="lb">Not in QuickBooks yet</div>' +
+          '<div class="vl">' + full(rec.notInBooksAmount || 0) + '</div>' +
+          '<div class="fn">' + n0(rec.notInBooks || 0) + ' CPRs to post</div>' +
+        '</div>' +
+      '</div>';
+
       F.cprs += '<div class="sched">' +
         '<h3>CPRs against QuickBooks' +
         '<a href="/receipts' + (account ? '?account=' + account : '') +
@@ -1492,15 +1528,26 @@
         openList({
           due: due,
           allTime: el.getAttribute('data-alltime') === '1',
-          title: due === '1' ? 'Net receivable — delivered, not yet remitted'
-                             : 'Remitted by the carrier'
+          title: due === '1' ? 'Net receivable — not received yet'
+                             : 'Received against CPR'
         });
       });
     });
     $('out').querySelectorAll('[data-late]').forEach(function(el){
       el.addEventListener('click', function(){
         openList({ late: '1', allTime: true,
-                   title: 'Delivered over a fortnight ago, still unremitted' });
+                   title: 'Delivered over a fortnight ago, not received' });
+      });
+    });
+    // the parcels under the paid CPRs, or under the ones not paid yet
+    $('out').querySelectorAll('[data-cprstatus]').forEach(function(el){
+      el.addEventListener('click', function(){
+        var k = el.getAttribute('data-cprstatus');
+        openList({
+          cprStatus: k, allTime: true,
+          title: k === 'closed' ? 'Parcels under paid CPRs'
+                                : 'Parcels under CPRs not paid yet'
+        });
       });
     });
     // one band of the ageing table, all-time like the statement it ties to
@@ -1509,7 +1556,7 @@
         openList({
           age: el.getAttribute('data-age'),
           allTime: true,
-          title: 'Receivable outstanding — ' +
+          title: 'Not received yet — ' +
                  (el.firstChild ? el.firstChild.textContent : 'this band')
         });
       });

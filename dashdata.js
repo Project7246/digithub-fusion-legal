@@ -353,6 +353,28 @@ export async function dashboard(realmId, opts) {
 // this one out" - PostEx says so on its payment call, Trax on its payment
 // webhook, M&P by handing back a PaymentID - and a receipt number on the row
 // says the same thing a second way, so either counts.
+// When is a delivered parcel paid for?
+//
+// A CPR number on a parcel is not payment, and reading it as one was wrong.
+// PostEx issues a CPR as APPROVED when it means to pay and marks it CLOSED
+// once it has, and that is how the merchant reads it: "jis cpr k agy status
+// close likha hoa h is ka mtlb un cprs ki paymnt hmy receive ho gai... bs jis
+// k agy approve likha hoa h us ki payment show ho gi". So an approved CPR is
+// still money to come, and it belongs in the receivable.
+//
+// A cpr number we hold no advice for stays paid, which is how Trax and M&P
+// arrive: their payment webhook and M&P's PaymentID are written only once the
+// money is out, and there is no CPR document on our side to read a status off.
+const CLOSED_CPR = `UPPER(COALESCE(c.status, '')) = 'CLOSED'`;
+const OPEN_CPR = `EXISTS (SELECT 1 FROM courier_cprs c
+                           WHERE c.realm_id = o.realm_id
+                             AND c.account_id = o.account_id
+                             AND c.cpr_number = o.cpr_number
+                             AND NOT (${CLOSED_CPR}))`;
+const PAID_SQL =
+  `(o.settled IS TRUE OR (o.cpr_number IS NOT NULL AND o.cpr_number <> ''
+     AND NOT ${OPEN_CPR}))`;
+
 // One ageing bucket: how many parcels are in it and what is still receivable
 // on them. The amount is the COD less that parcel's own charges, which is the
 // same arithmetic as the statement above it - so the buckets add up to the net
@@ -375,7 +397,7 @@ async function owedQuery(realmId, opts, dates) {
     where += ` AND o.booked_on >= $${a} AND o.booked_on <= $${b}`;
   }
 
-  const paid = `(o.settled IS TRUE OR (o.cpr_number IS NOT NULL AND o.cpr_number <> ''))`;
+  const paid = PAID_SQL;
 
   const r = await pool.query(
     `SELECT COUNT(*) FILTER (WHERE o.status_group = 'delivered') AS delivered_n,
@@ -456,6 +478,14 @@ async function receiptsOwed(realmId, opts) {
   const r = await pool.query(
     `SELECT COUNT(*) AS n,
             COALESCE(SUM(COALESCE(c.cod_amount, c.net_amount)),0) AS worth,
+            -- the carrier's own two words: CLOSED is paid, anything else is
+            -- still to come, and the merchant reads the list that way
+            COUNT(*) FILTER (WHERE UPPER(COALESCE(c.status,'')) = 'CLOSED') AS closed_n,
+            COALESCE(SUM(COALESCE(c.cod_amount, c.net_amount))
+              FILTER (WHERE UPPER(COALESCE(c.status,'')) = 'CLOSED'),0) AS closed_v,
+            COUNT(*) FILTER (WHERE UPPER(COALESCE(c.status,'')) <> 'CLOSED') AS open_n,
+            COALESCE(SUM(COALESCE(c.cod_amount, c.net_amount))
+              FILTER (WHERE UPPER(COALESCE(c.status,'')) <> 'CLOSED'),0) AS open_v,
             COUNT(*) FILTER (WHERE c.received_on IS NOT NULL) AS taken_n,
             COALESCE(SUM(COALESCE(c.received_amount, c.cod_amount, c.net_amount))
               FILTER (WHERE c.received_on IS NOT NULL),0) AS taken,
@@ -469,6 +499,10 @@ async function receiptsOwed(realmId, opts) {
   return {
     receipts: Number(x.n || 0),
     worth: r2(x.worth),
+    closed: Number(x.closed_n || 0),
+    closedAmount: r2(x.closed_v),
+    open: Number(x.open_n || 0),
+    openAmount: r2(x.open_v),
     inBooks: Number(x.taken_n || 0),
     inBooksAmount: r2(x.taken),
     notInBooks: Number(x.waiting_n || 0),
@@ -834,18 +868,22 @@ function moneyWhere(opts, where) {
     if (opened) return;
     opened = true;
     where.push(`o.status_group = 'delivered'`);
-    where.push(`o.settled IS NOT TRUE`);
-    where.push(`(o.cpr_number IS NULL OR o.cpr_number = '')`);
+    where.push(`NOT ${PAID_SQL}`);
   };
 
   if (opts.due === '1' || opts.due === 1) open();
   if (opts.due === '0' || opts.due === 0) {
     where.push(`o.status_group = 'delivered'`);
-    where.push(`(o.settled IS TRUE OR (o.cpr_number IS NOT NULL AND o.cpr_number <> ''))`);
+    where.push(PAID_SQL);
   }
   if (opts.late === '1' || opts.late === 1) {
     open();
     where.push(`o.delivered_on < CURRENT_DATE - 14`);
+  }
+  // every parcel sitting under one CPR, paid or not
+  if (opts.cprStatus === 'open' || opts.cprStatus === 'closed') {
+    where.push(`o.cpr_number IS NOT NULL AND o.cpr_number <> ''`);
+    where.push(opts.cprStatus === 'closed' ? `NOT ${OPEN_CPR}` : OPEN_CPR);
   }
   if (opts.age && AGE_WHERE[String(opts.age)]) {
     open();

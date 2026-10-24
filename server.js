@@ -8983,12 +8983,12 @@ app.get('/api/courier/rows', async (req, res) => {
   if (!realmId) return;
 
   const { from, to, account, courier, status, group, city, cpr, picked,
-          due, late, age } = req.query;
+          due, late, age, cprStatus } = req.query;
 
   try {
     res.setHeader('Cache-Control', 'no-store');
     res.json(await ordersBy(realmId, { from, to, account, courier, status, group,
-                                       city, cpr, picked, due, late, age }));
+                                       city, cpr, picked, due, late, age, cprStatus }));
   } catch (e) {
     res.status(500).json({ error: e.message });
   }
