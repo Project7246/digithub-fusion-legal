@@ -394,7 +394,7 @@ async function owedQuery(realmId, opts, dates) {
   if (dates && dates.from && dates.to) {
     args.push(dates.from); const a = args.length;
     args.push(dates.to);   const b = args.length;
-    where += ` AND o.booked_on >= $${a} AND o.booked_on <= $${b}`;
+    where += ` AND o.delivered_on >= $${a} AND o.delivered_on <= $${b}`;
   }
 
   const paid = PAID_SQL;
@@ -590,6 +590,79 @@ async function directPaid(realmId, opts, dates) {
   return { count: Number(x.n || 0), amount: r2(x.v) };
 }
 
+// Month by month, which is the question a statement always raises next:
+// "ye 10,000 parcel ki cod jo arhi h ye kis month ki h, or ye 13 cprs kis
+// month k hn, mujy ksy pta chly ga". A total with no months behind it can be
+// read but it cannot be checked.
+//
+// A parcel's month is the month it was **delivered** - that is when the cash
+// was taken - and a CPR's month is the month it was issued. So where a month
+// shows more CPR than COD, the carrier was paying that month for parcels
+// delivered before this database starts, and the table says so by itself.
+async function byMonth(realmId, opts) {
+  const base = scope(realmId, opts);
+
+  const parcels = pool.query(
+    `SELECT to_char(date_trunc('month', o.delivered_on), 'YYYY-MM') AS m,
+            COUNT(*) AS n,
+            COALESCE(SUM(o.amount),0) AS cod,
+            COALESCE(SUM(o.fee + o.tax),0) AS charges
+       FROM courier_orders o
+      WHERE ${base.where.join(' AND ')}
+        AND o.status_group = 'delivered'
+        AND o.delivered_on IS NOT NULL
+      GROUP BY 1`, base.args);
+
+  const cwhere = [`c.realm_id = $1`];
+  const cargs = [realmId];
+  if (opts.account) { cargs.push(Number(opts.account)); cwhere.push(`c.account_id = $${cargs.length}`); }
+  if (opts.courier) { cargs.push(String(opts.courier)); cwhere.push(`c.courier = $${cargs.length}`); }
+
+  const cprs = pool.query(
+    `SELECT to_char(date_trunc('month', c.created_on), 'YYYY-MM') AS m,
+            COUNT(*) FILTER (WHERE UPPER(COALESCE(c.status,'')) = 'CLOSED') AS n,
+            COALESCE(SUM(c.net_amount)
+              FILTER (WHERE UPPER(COALESCE(c.status,'')) = 'CLOSED'),0) AS v,
+            COUNT(*) FILTER (WHERE UPPER(COALESCE(c.status,'')) <> 'CLOSED') AS open_n,
+            COALESCE(SUM(c.net_amount)
+              FILTER (WHERE UPPER(COALESCE(c.status,'')) <> 'CLOSED'),0) AS open_v
+       FROM courier_cprs c
+      WHERE ${cwhere.join(' AND ')}
+        AND c.created_on IS NOT NULL
+      GROUP BY 1`, cargs);
+
+  const [a, b] = await Promise.all([parcels, cprs]);
+
+  const months = new Map();
+  const get = m => {
+    if (!months.has(m)) {
+      months.set(m, { month: m, parcels: 0, cod: 0, charges: 0, gross: 0,
+                      cprs: 0, received: 0, openCprs: 0, openAmount: 0, net: 0 });
+    }
+    return months.get(m);
+  };
+
+  for (const r of a.rows) {
+    if (!r.m) continue;
+    const x = get(r.m);
+    x.parcels = Number(r.n || 0);
+    x.cod = r2(r.cod);
+    x.charges = r2(r.charges);
+    x.gross = r2(x.cod - x.charges);
+  }
+  for (const r of b.rows) {
+    if (!r.m) continue;
+    const x = get(r.m);
+    x.cprs = Number(r.n || 0);
+    x.received = r2(r.v);
+    x.openCprs = Number(r.open_n || 0);
+    x.openAmount = r2(r.open_v);
+  }
+  for (const x of months.values()) x.net = r2(x.gross - x.received);
+
+  return [...months.values()].sort((p, q) => (p.month < q.month ? 1 : -1));
+}
+
 export async function moneyOwed(realmId, opts, dates) {
   const [range, ever, receipts, directEver, directRange] = await Promise.all([
     owedQuery(realmId, opts, dates),
@@ -626,9 +699,12 @@ export async function moneyOwed(realmId, opts, dates) {
     return q;
   };
 
+  const months = await byMonth(realmId, opts).catch(() => []);
+
   return {
     range: settle(range, cprRange, directRange),
     ever: settle(ever, cprEver, directEver),
+    months,
     receipts
   };
 }

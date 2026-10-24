@@ -435,6 +435,7 @@
     return String(s == null ? '' : s)
       .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
   }
+  var DASH = '\u2014';
   function n0(v){ return Number(v||0).toLocaleString('en-US'); }
   function full(v){ return Number(v||0).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2}); }
   function money(v){
@@ -835,7 +836,8 @@
     var netRec = ever.due || 0;
 
     // Each key is one sub-tab of Finance.
-    var F = { statement:'', ageing:'', carriers:'', cprs:'', pending:'', cities:'' };
+    var F = { statement:'', months:'', ageing:'', carriers:'', cprs:'',
+              pending:'', cities:'' };
 
     /* ---------- Statement ---------- */
 
@@ -907,6 +909,63 @@
             '</div>'
           : '') +
       '</div>';
+
+    /* ---------- month by month ---------- */
+
+    // "ye 10,000 parcel ki cod jo arhi h ye kis month ki h, or ye 13 cprs kis
+    // month k hn". A total nobody can split into months can be read but not
+    // checked. A parcel sits in the month it was delivered, a CPR in the month
+    // it was issued - so a month showing more CPR than COD is the carrier
+    // paying that month for parcels delivered before this database begins.
+    var MONTH_NAME = ['January','February','March','April','May','June','July',
+                      'August','September','October','November','December'];
+    function monthLabel(m){
+      var bits = String(m || '').split('-');
+      if(bits.length !== 2) return esc(m || '');
+      return MONTH_NAME[Number(bits[1]) - 1] + ' ' + bits[0];
+    }
+
+    var ms = M.months || [];
+    var mt = { parcels:0, cod:0, charges:0, gross:0, cprs:0, received:0, net:0 };
+    var mRows = ms.map(function(x){
+      mt.parcels += x.parcels; mt.cod += x.cod; mt.charges += x.charges;
+      mt.gross += x.gross; mt.cprs += x.cprs; mt.received += x.received;
+      mt.net += x.net;
+      return '<tr>' +
+        '<td class="lbl">' + monthLabel(x.month) + '</td>' +
+        '<td class="n">' + (x.parcels ? n0(x.parcels) : '') + '</td>' +
+        '<td class="v">' + (x.cod ? full(x.cod) : DASH) + '</td>' +
+        '<td class="v">' + (x.charges
+          ? '<span class="neg">(' + full(x.charges) + ')</span>' : DASH) + '</td>' +
+        '<td class="v">' + (x.gross ? full(x.gross) : DASH) + '</td>' +
+        '<td class="n">' + (x.cprs ? n0(x.cprs) : '') + '</td>' +
+        '<td class="v">' + (x.received
+          ? '<span class="neg">(' + full(x.received) + ')</span>' : DASH) + '</td>' +
+        '<td class="v"' + (x.net < 0 ? ' style="color:#C9453F"' : '') + '>' +
+          full(x.net) + '</td></tr>';
+    }).join('');
+
+    F.months +=
+      '<div class="sched">' +
+      '<h3>Month by month' +
+        '<span class="aside">parcels by delivery date &middot; CPRs by issue date</span></h3>' +
+      '<table class="stmt">' +
+      '<tr><th class="l">Month</th><th>Delivered</th><th>COD collected</th>' +
+      '<th>Charges &amp; GST</th><th>Gross receivable</th><th>CPRs</th>' +
+      '<th>Received</th><th>Net</th></tr>' +
+      (mRows || '<tr><td colspan="8" style="color:var(--muted);padding:14px 10px">' +
+        'Nothing delivered yet.</td></tr>') +
+      (mRows
+        ? '<tr class="close"><td class="lbl">Total</td>' +
+          '<td class="n">' + n0(mt.parcels) + '</td>' +
+          '<td class="v">' + full(mt.cod) + '</td>' +
+          '<td class="v"><span class="neg">(' + full(mt.charges) + ')</span></td>' +
+          '<td class="v">' + full(mt.gross) + '</td>' +
+          '<td class="n">' + n0(mt.cprs) + '</td>' +
+          '<td class="v"><span class="neg">(' + full(mt.received) + ')</span></td>' +
+          '<td class="v">' + full(mt.net) + '</td></tr>'
+        : '') +
+      '</table></div>';
 
     /* ---------- Ageing ---------- */
 
@@ -1478,6 +1537,7 @@
     // the statement - is the one that opens.
     var FTABS = [
       { k:'statement', l:'Statement' },
+      { k:'months',    l:'By month' },
       { k:'ageing',    l:'Ageing' },
       { k:'carriers',  l:'By carrier' },
       { k:'cprs',      l:'CPRs' },
