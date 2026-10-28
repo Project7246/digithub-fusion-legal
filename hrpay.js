@@ -1019,10 +1019,16 @@ export async function timeSheetOf(realmId, month, code) {
     if (day >= cycle.to) break;
   }
 
-  // Their Man Month: the working days against the month's own days, to two
-  // decimals, which is what a client is billed on.
-  const mdays = Number(policy.monthDays) || 30;
-  const manMonth = mdays ? Math.round((tally.worked / mdays) * 100) / 100 : 0;
+  // Their Man Month, and it is **not** working days over thirty.
+  //
+  // Their own printed sheet says 1.00 against 26 working days, 4 weekends and a
+  // holiday - because a weekend is not a day somebody failed to work. It is the
+  // month less what was actually missed: an absence, and half of each half day.
+  // Approved leave is paid time and does not reduce it.
+  const missed = tally.absent + (tally.half / 2);
+  const manMonth = tally.days
+    ? Math.round(((tally.days - missed) / tally.days) * 100) / 100
+    : 0;
 
   return {
     month: m, cycle,
