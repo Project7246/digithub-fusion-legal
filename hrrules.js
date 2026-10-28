@@ -49,6 +49,13 @@ export function worksheet(o) {
     minuteRate: dutyMinutes ? dayRate / dutyMinutes : 0,
 
     // what the attendance says
+    //
+    // `daysRecorded` is how many days of this cycle anything is known about at
+    // all, and it has to be here because **nothing recorded is not a clear
+    // month**. Without it the attendance bonus was handed to everybody in a
+    // month whose biometric report had not been brought in yet - seventy-four
+    // people, most of them with no attendance in the system at any time.
+    daysRecorded: Number(o.daysRecorded) || 0,
     lateMinutes: Number(o.lateMinutes) || 0,
     lateDays: Number(o.lateDays) || 0,
     overtimeMinutes: Number(o.overtimeMinutes) || 0,
@@ -182,11 +189,14 @@ export const RULES = [
     how: 'one day of basic, or nothing at all',
     cell: 'R991',
     note: 'Any single absence or approved leave takes the whole bonus, which is ' +
-          'the point of it. Departments named in the policy do not get it.',
-    figure: s => (s.bonusPaid && !s.absentDays && !s.leaveDays &&
+          'the point of it. Departments named in the policy do not get it, and ' +
+          'neither does a month whose attendance has not been brought in yet - ' +
+          'nothing recorded is not a clear month.',
+    figure: s => (s.bonusPaid && s.daysRecorded && !s.absentDays && !s.leaveDays &&
                   s.workDays >= s.monthDays && s.workDays)
       ? n2(s.basic / s.workDays) : 0,
     sum: s => !s.bonusPaid ? 'this department does not get the bonus'
+      : !s.daysRecorded ? 'no attendance recorded for this month, so none of it'
       : s.absentDays ? r(s.absentDays) + ' day(s) absent, so none of it'
       : s.leaveDays ? r(s.leaveDays) + ' day(s) leave, so none of it'
       : s.workDays < s.monthDays ? 'only ' + s.workDays + ' days on the payroll, so none of it'
@@ -298,6 +308,7 @@ export function exampleSheet(policy) {
     monthDays: (policy && policy.monthDays) || 30,
     workDays: (policy && policy.monthDays) || 30,
     dutyMinutes: (policy && policy.dutyMinutes) || 480,
+    daysRecorded: (policy && policy.monthDays) || 30,
     lateMinutes: 90,
     lateDays: 3,
     overtimeMinutes: 60,

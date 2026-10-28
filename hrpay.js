@@ -489,6 +489,10 @@ export async function workingOf(realmId, month) {
       monthDays: mdays,
       workDays,
       dutyMinutes: dutyMin,
+      // how many days of this cycle anything is known about. Nought means the
+      // attendance has not been brought in, which is not the same as a clear
+      // month and must never be paid as one.
+      daysRecorded: mine.length,
       lateMinutes: lateMin,
       lateDays,
       overtimeMinutes: otMin,

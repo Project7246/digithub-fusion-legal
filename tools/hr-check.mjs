@@ -66,7 +66,11 @@ is('CSR late rule', lateRuleFor(p, { department:'CSR' }), 'days');
 // Every expected number below is one the company's own working sheet printed,
 // and the person it belonged to is deliberately not named.
 
-function sheetOf(o) { return worksheet(Object.assign({ monthDays: 30, dutyMinutes: 480 }, o)); }
+// daysRecorded defaults to a full month here: every case below is about a month
+// whose attendance IS in. The one case that is not is checked on its own, below.
+function sheetOf(o) {
+  return worksheet(Object.assign({ monthDays: 30, dutyMinutes: 480, daysRecorded: 26 }, o));
+}
 const money = (o, head) => figureAll(sheetOf(o))[head];
 
 // an office salary, a full clear month, an hour and three quarters of overtime
@@ -84,6 +88,16 @@ is('one day of leave takes it too',
    money(Object.assign({}, office, { leaveDays: 1 }), 'Attendance Bonus'), 0);
 is('a part month does not earn it',
    money(Object.assign({}, office, { workDays: 19 }), 'Attendance Bonus'), 0);
+// **Nothing recorded is not a clear month.** Without this the bonus was handed
+// to every person on the staff in a month whose biometric report had not been
+// brought in yet - which is how an untouched month came out at 2.6 million.
+is('a month with no attendance at all earns no bonus',
+   figureAll(worksheet(Object.assign({}, office,
+     { monthDays: 30, dutyMinutes: 480, daysRecorded: 0 })))['Attendance Bonus'], 0);
+is('and it says why',
+   /no attendance recorded/.test(explainAll(worksheet(Object.assign({}, office,
+     { monthDays: 30, dutyMinutes: 480, daysRecorded: 0 })))
+       .filter(x => x.head === 'Attendance Bonus')[0].sum), true);
 
 // the logistics floor: by the minute, doubled past the first hour
 const floor = { basic: 27500, workDays: 30, lateRule: 'minutes2x', lateMinutes: 90,
