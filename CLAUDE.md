@@ -484,67 +484,51 @@ not an HTTP one.
   200 and a line in the server log - a 401 was tidier and also told whoever was
   guessing that they had found a live address.
 
-#### A Trax history, and the list that was there all along
+#### A Trax account fills itself from its webhooks, and nothing else
 
 Their first account came in with nothing behind it, and **Pull orders**
 answered *"0 orders came back"* over a date range - true, useless, and it
-reads as a broken key. Sonic cannot be asked for a span of days, so the dates
-box was asking a question their API does not take.
+reads as a broken key. Sonic has no call that takes a span of days.
 
-It was then written here, and built, that the only way in was to upload the
-tracking numbers from their portal. The owner said that is not a system, and
-she was right - so the document (*API Documentation-SONIC 2.0*, 22 endpoints)
-was read again properly. **Two of them change the answer:**
+Two things were then built to get a past in: upload the tracking numbers from
+their portal, and ask the courier about our own Shopify order numbers. **Both
+are gone.** The owner's objection to the first was that uploading a file every
+month is not a system, and to the second that a day's orders are split between
+several couriers, so asking one of them about all of them is mostly asking
+about parcels that went to somebody else. Both objections were right, and a
+screen nobody should use is worse than no screen.
 
-| Endpoint | What it really gives |
+What is left is the thing that needs nobody: **the four Subscriptions**. From
+the day they are switched on, Trax sends every booking, status, charge and
+payment by itself - which is what PostEx does, and all that was ever asked for.
+
+And reading the Sonic document properly (*API Documentation-SONIC 2.0*, 22
+endpoints) turned up the one call that matters for the past:
+
+| Endpoint | What it gives |
 |---|---|
 | `GET /invoice?id=<id>&type=1\|2` | **every shipment in one payment**, with weight charges, fuel surcharge, GST and invoice amount. `type=2` is a payment id, which is what the payment webhook carries |
-| `GET /shipment/track/order_id?order_id=…&type=0` | a parcel found by **our own order number**, with its whole tracking history |
-| `GET /payments?tracking_number[]=…` | several parcels' payments in **one** call, not one call each |
+| `GET /shipment/track/order_id` | a parcel found by our own order number |
+| `GET /payments?tracking_number[]=` | several parcels' payments in one call |
 
-So the sentence to retire is "Trax cannot be asked for a list". It cannot be
-asked for a list **by date**. It can be asked for one **by payment**, and that
-is the same shape as a PostEx CPR - which is why `traxlive.js` is `cprlive.js`
-written again for Sonic:
+So "Trax cannot be asked for a list" is wrong as written: it cannot be asked
+for one **by date**, but it can be asked for one **by payment** - the same
+shape as a PostEx CPR. `traxlive.js` is `cprlive.js` written again for Sonic:
 
-- **A payment webhook now opens the whole payment.** `absorbPayment()` reads
+- **A payment webhook opens the whole payment.** `absorbPayment()` reads
   `/invoice`, settles every parcel in it with its charges and tax, writes the
-  payment down as a `courier_cprs` row (so the finance screens do not have to
-  know which courier paid), and then **looks up every parcel in it this app has
-  never heard of** - because a payment made this week pays for parcels booked
-  before Fusion ever saw the account. That one line is most of how a Trax
-  account comes by a past at all.
-- **And the past needs no upload.** `/shipment/track/order_id` takes the
-  number *we* put on the load sheet, and every Shopify order in the company is
-  already here - so `orderNames()` hands the backfill a list and the courier is
-  asked about our own orders. Which of our two numbers it was booked against
-  (`#9323516` or `9323516`) is not knowable in advance, so the first few are
-  tried both ways and **whichever answers becomes the shape for the rest**.
+  payment down as a `courier_cprs` row so the finance screens need not know
+  which courier paid, and **looks up every parcel in it this app has never
+  heard of**. A payment made this week pays for parcels booked long before
+  Fusion saw the account, so the past arrives by itself, a batch at a time,
+  without a screen or a file.
 
-The export file stays as the second way in, for an account whose parcels were
-never Shopify orders here. It is no longer the only way.
-
-- **Only the tracking numbers are read out of that file.** Nothing else in it
-  is kept - the courier is a better source for the status, the city and the
-  money than a spreadsheet somebody downloaded last Tuesday, and a stale
-  status written in as fact is worse than no row.
-  `POST /api/courier/tracking-file` picks the column by its heading first
-  (`track`, `consign`, `cn no`, `awb`) and by what is in it second, because a
-  heading can be anything and a consignment number cannot. It hands back the
-  headings as well, so a wrong guess is corrected by choosing, not by editing
-  the file.
-- **It is the backfill, not a second job.** `startBackfill` takes `trackings`
-  or `ourOrders` in place of `from`/`to`, and `run()` splits three ways -
-  `askByMonth` (PostEx, M&P), `askByName` (their export) and `askByOrder` (our
-  own numbers) - all followed by the same `askWhatWasPaid`. So Stop,
-  Carry on and Clear log work the same for both - and **carry on means carry
-  on**: `okUnits` holds what was kept and `badUnits` what the courier had
-  nothing for, and neither is asked about twice.
-- **Asked three at a time, written sixty at a time.** The courier is not leant
-  on, and Neon is written to once a minute rather than once a parcel, which is
-  what the month's compute would otherwise be spent on.
-  `BACKFILL_TRACKING_CAP` (20,000) is said out loud when a file is bigger,
-  rather than discovered at parcel 40,000.
+**What this still cannot answer**, and it is worth being plain about: a parcel
+the courier never booked does not exist from their side, so "they lost it" and
+"it was never handed over" look identical. The only record that would tell them
+apart is our own - which orders went to which courier on which day. That record
+is made where the day is split, and the load sheet is deliberately left for
+later, so the question stays open until then.
 
 **M&P** is the COD API at `https://mnpcourier.com/mycodapi/api` (*M&P COD API
 Manual*, 2025022404). The sign-in is a username and a password **in the call

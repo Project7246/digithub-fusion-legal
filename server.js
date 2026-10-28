@@ -1423,8 +1423,7 @@ const RIGHT_GROUPS = [
 
   { key: 'couriersync', area: 'purchases', label: 'Bring courier data in',
     what: 'Pull courier orders and receipts in',
-    paths: ['/api/courier/sync', '/api/courier/backfill', '/api/courier/tracking-file',
-            '/api/courier/cpr-chase',
+    paths: ['/api/courier/sync', '/api/courier/backfill', '/api/courier/cpr-chase',
             '/api/courier/keeper-now', '/api/courier/hook-roll', '/api/courier/backfill-clear',
             '/api/courier/backfill-resume', '/api/receipts/login', '/api/receipts/logout'] },
 
@@ -7535,79 +7534,6 @@ app.post('/api/courier/cpr-chase', async (req, res) => {
   }
 });
 // ---------- Bringing the history in ----------
-
-// Reading a courier's own export for the one column that matters.
-//
-// Trax have no call that lists a day's shipments, so their history cannot be
-// asked for - only named. Their portal exports it, and the tracking numbers in
-// that file are the names. Nothing else in the file is read or kept: the
-// courier is a better source for the status, the city and the money than a
-// spreadsheet somebody downloaded last Tuesday.
-app.post('/api/courier/tracking-file', upload.single('file'), async (req, res) => {
-  const realmId = await requireCompany(req, res);
-  if (!realmId) return;
-  if (!req.file) return res.status(400).json({ error: 'No file came through' });
-
-  // A consignment number: letters, digits and dashes, no spaces, long enough
-  // not to be a quantity and short enough not to be an address.
-  const looksLikeOne = v => /^[A-Za-z0-9][A-Za-z0-9._\/-]{5,29}$/.test(String(v).trim());
-
-  try {
-    const book = XLSX.read(req.file.buffer, { type: 'buffer', cellDates: false });
-    const sheetName = book.SheetNames[0];
-    if (!sheetName) return res.status(400).json({ error: 'That file has no sheet in it' });
-
-    const rows = XLSX.utils.sheet_to_json(book.Sheets[sheetName],
-                                          { header: 1, raw: false, defval: '' });
-    if (!rows.length) return res.status(400).json({ error: 'That file is empty' });
-
-    const head = (rows[0] || []).map(h => String(h == null ? '' : h).trim());
-    const body = rows.slice(1);
-
-    const valuesIn = i => body.map(r => String((r && r[i]) == null ? '' : r[i]).trim());
-
-    // The column is picked by its heading first and by what is in it second,
-    // because a heading can be anything and a consignment number cannot.
-    const WANTED = /track|consign|^cn|cn[ _-]?(no|num)|awb|air ?way|booking/i;
-
-    let pick = -1;
-    if (req.body.column) {
-      const want = String(req.body.column).trim().toLowerCase();
-      pick = head.findIndex(h => h.toLowerCase() === want);
-      if (pick < 0) return res.status(400).json({ error: 'No column called ' + req.body.column });
-    } else {
-      let best = -1;
-      head.forEach((h, i) => {
-        const good = valuesIn(i).filter(looksLikeOne).length;
-        if (!good) return;
-        const score = (WANTED.test(h) ? 1e6 : 0) + good;
-        if (score > best) { best = score; pick = i; }
-      });
-    }
-
-    if (pick < 0) {
-      return res.status(400).json({
-        error: 'No column in that file looks like tracking numbers',
-        columns: head
-      });
-    }
-
-    const all = valuesIn(pick).filter(looksLikeOne);
-    const trackings = [...new Set(all)];
-
-    res.json({
-      column: head[pick] || ('column ' + (pick + 1)),
-      columns: head,
-      rows: body.length,
-      found: trackings.length,
-      duplicates: all.length - trackings.length,
-      sample: trackings.slice(0, 5),
-      trackings
-    });
-  } catch (e) {
-    res.status(400).json({ error: 'That file could not be read: ' + e.message });
-  }
-});
 
 app.post('/api/courier/backfill', async (req, res) => {
   const realmId = await requireCompany(req, res);
