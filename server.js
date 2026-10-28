@@ -171,6 +171,7 @@ import {
 } from './compute.js';
 import { startHousekeeping, cleanUp, lastClean } from './housekeeping.js';
 import { reachCourier } from './reach.js';
+import { absorbPayment } from './traxlive.js';
 import { relayState } from './wire.js';
 import {
   dashboard as dashData, recentCprs, pickups, pickupOrders, ordersBy, eachOrder,
@@ -8078,6 +8079,16 @@ async function applyCourierHook(courier, key, given, body) {
 
     if (kind === 'payment') {
       what = await applyPayment(account, read);
+
+      // Trax name a payment id on that hook, and `/invoice` turns one id into
+      // every parcel the payment covers - charges, tax, and parcels this app
+      // has never seen. One call where there would otherwise be a thousand,
+      // and it is how a Trax account comes by a past at all.
+      if (read.paymentId) {
+        absorbPayment(account.realm_id, account, read.paymentId,
+                      { status: read.settled === false ? 'OPEN' : 'CLOSED' })
+          .catch(e => console.error('trax payment ' + read.paymentId + ': ' + e.message));
+      }
     } else if (kind === 'charges') {
       what = await applyCharges(account, read);
     } else {

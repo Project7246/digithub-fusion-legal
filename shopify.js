@@ -1173,6 +1173,31 @@ export async function listOrders(realmId, { from, to, shop, state, limit }) {
   return r.rows;
 }
 
+// Just the order numbers, oldest first. A courier that will not list a day's
+// shipments but will answer about an order id can be asked using these: they
+// are the numbers that went on the load sheet, so they are the numbers the
+// courier booked against. Nothing else about the order is read - this is a
+// list of names to ask with, not a report.
+export async function orderNames(realmId, { from, to, limit }) {
+  const where = ['realm_id = $1'];
+  const args = [realmId];
+
+  if (from) { args.push(from); where.push(`placed_at >= $${args.length}::date`); }
+  if (to)   { args.push(to);   where.push(`placed_at < ($${args.length}::date + 1)`); }
+
+  args.push(Math.min(Number(limit) || 20000, 50000));
+
+  const r = await pool.query(
+    `SELECT name, number, placed_at
+       FROM shopify_orders
+      WHERE ${where.join(' AND ')}
+      ORDER BY placed_at ASC NULLS LAST
+      LIMIT $${args.length}`,
+    args
+  );
+  return r.rows;
+}
+
 // Every SKU and product name in a range, with how many orders carry it - what
 // the matching step needs to show what is still unmatched.
 export async function productsSeen(realmId, { from, to, shop }) {

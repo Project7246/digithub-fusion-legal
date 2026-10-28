@@ -90,6 +90,12 @@
   .range select{width:100%;border:1px solid var(--line);border-radius:7px;padding:8px 10px;
     font:inherit;font-size:13px;background:#fff}
 
+  /* two ways of naming past parcels, and only one of them is typing */
+  .ways{display:flex;gap:7px;margin-bottom:14px;flex-wrap:wrap}
+  .ways button{font-size:12px;padding:6px 13px;border-radius:999px;border:1px solid var(--line);
+    background:#fff;cursor:pointer;font-family:inherit;color:var(--muted)}
+  .ways button.on{border-color:var(--qbo);color:var(--qbo);font-weight:600}
+
   /* how far through a run of tracking numbers we are */
   .pbar{height:7px;border-radius:4px;background:#EEF1F4;overflow:hidden;margin:10px 0 6px}
   .pbar i{display:block;height:100%;background:var(--qbo);width:0;transition:width .4s}
@@ -214,6 +220,28 @@
 
           <!-- and one that will only answer about a parcel it is named -->
           <div id="pullNames" class="hide">
+            <div class="ways">
+              <button data-how="ours" class="on">Our own order numbers</button>
+              <button data-how="file">Their export file</button>
+            </div>
+
+            <!-- the numbers this company already holds -->
+            <div id="howOurs">
+              <div class="range">
+                <div>
+                  <label>Orders placed from</label>
+                  <input type="date" id="pastFrom">
+                </div>
+                <div>
+                  <label>To</label>
+                  <input type="date" id="pastTo">
+                </div>
+              </div>
+              <button class="solid" id="btnOursGo">Ask the courier</button>
+            </div>
+
+            <!-- and the file, for parcels that were never orders here -->
+            <div id="howFile" class="hide">
             <div class="range">
               <div>
                 <label>Their export file</label>
@@ -232,6 +260,8 @@
             </div>
             <button class="solid" id="btnPastRead">Read the list</button>
             <button id="btnPastGo" class="hide">Bring them in</button>
+            </div>
+
             <button id="btnPastStop" class="hide">Stop</button>
             <button id="btnPastCarry" class="hide">Carry on</button>
             <button id="btnPastClear" class="hide">Clear log</button>
@@ -834,6 +864,55 @@
 
   $('pullAcc').addEventListener('change', shapePull);
 
+  // Two ways to name a past parcel, and the first one needs nothing typed:
+  // Sonic's /shipment/track/order_id takes **our** order number, and every
+  // Shopify order in this company is already here. The file is for an account
+  // whose parcels were never orders here.
+  $('pullNames').querySelectorAll('.ways button').forEach(function(b){
+    b.addEventListener('click', function(){
+      var how = b.getAttribute('data-how');
+      $('pullNames').querySelectorAll('.ways button').forEach(function(x){
+        x.classList.toggle('on', x === b);
+      });
+      $('howOurs').classList.toggle('hide', how !== 'ours');
+      $('howFile').classList.toggle('hide', how !== 'file');
+    });
+  });
+
+  (function(){
+    // a month back, as a starting point rather than an answer
+    var today = new Date();
+    var back = new Date(today.getTime() - 30 * 86400000);
+    var ten = function(d){ return d.toISOString().slice(0, 10); };
+    $('pastTo').value = ten(today);
+    $('pastFrom').value = ten(back);
+  })();
+
+  $('btnOursGo').addEventListener('click', function(){
+    var acc = chosenAccount();
+    var from = $('pastFrom').value, to = $('pastTo').value;
+
+    if(!acc) return pastSay('bad', '\u2717 Pick an account.');
+    if(!from || !to) return pastSay('bad', '\u2717 Pick both dates.');
+    if(from > to) return pastSay('bad', '\u2717 The first date is after the last one.');
+
+    $('btnOursGo').disabled = true;
+    PAST.since = 0;
+    PAST.lines = [];
+    pastSay('', 'Reading the orders we hold\u2026');
+
+    post('/api/courier/backfill',
+         { account: acc.id, ourOrders: { from: from, to: to }, withCpr: true })
+      .then(function(){
+        $('btnOursGo').disabled = false;
+        watchPast();
+      })
+      .catch(function(e){
+        $('btnOursGo').disabled = false;
+        pastSay('bad', '\u2717 ' + esc(e.message));
+      });
+  });
+
   function pastSay(cls, html){
     $('pastOut').innerHTML =
       '<div class="result' + (cls ? ' ' + cls : '') + '">' + html + '</div>';
@@ -1002,12 +1081,15 @@
         var total = job.total || job.monthsTotal || 0;
         var done = job.done || job.monthsDone || 0;
         var pct = total ? Math.min(100, Math.round(done * 100 / total)) : 0;
-        var thing = job.unit === 'parcel' ? 'parcels' : 'months';
+        var thing = job.unit === 'parcel' ? 'parcels'
+                  : job.unit === 'order' ? 'of our orders' : 'months';
 
         $('btnPastStop').classList.toggle('hide', !running);
         $('btnPastCarry').classList.toggle('hide', !job.canCarryOn);
         $('btnPastClear').classList.toggle('hide', running);
         if(running) $('btnPastGo').classList.add('hide');
+        $('btnOursGo').disabled = running;
+        $('btnPastRead').disabled = running;
 
         var head =
           (job.state === 'done' ? '\u2713 Finished' :

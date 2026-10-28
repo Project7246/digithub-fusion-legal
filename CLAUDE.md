@@ -444,16 +444,45 @@ not an HTTP one.
   200 and a line in the server log - a 401 was tidier and also told whoever was
   guessing that they had found a live address.
 
-#### A Trax history exists only as a list of numbers
+#### A Trax history, and the list that was there all along
 
 Their first account came in with nothing behind it, and **Pull orders**
-answered *"0 orders came back"* over a date range - which is true, useless,
-and reads as a broken key. Sonic cannot be asked for a span of days at all, so
-the dates box was asking a question their API does not take.
+answered *"0 orders came back"* over a date range - true, useless, and it
+reads as a broken key. Sonic cannot be asked for a span of days, so the dates
+box was asking a question their API does not take.
 
-What they will answer is a consignment they are named. So the same box changes
-shape for a courier with `lists: false` and a `trackOne`: upload the export
-their own portal makes, and every tracking number in it is looked up.
+It was then written here, and built, that the only way in was to upload the
+tracking numbers from their portal. The owner said that is not a system, and
+she was right - so the document (*API Documentation-SONIC 2.0*, 22 endpoints)
+was read again properly. **Two of them change the answer:**
+
+| Endpoint | What it really gives |
+|---|---|
+| `GET /invoice?id=<id>&type=1\|2` | **every shipment in one payment**, with weight charges, fuel surcharge, GST and invoice amount. `type=2` is a payment id, which is what the payment webhook carries |
+| `GET /shipment/track/order_id?order_id=…&type=0` | a parcel found by **our own order number**, with its whole tracking history |
+| `GET /payments?tracking_number[]=…` | several parcels' payments in **one** call, not one call each |
+
+So the sentence to retire is "Trax cannot be asked for a list". It cannot be
+asked for a list **by date**. It can be asked for one **by payment**, and that
+is the same shape as a PostEx CPR - which is why `traxlive.js` is `cprlive.js`
+written again for Sonic:
+
+- **A payment webhook now opens the whole payment.** `absorbPayment()` reads
+  `/invoice`, settles every parcel in it with its charges and tax, writes the
+  payment down as a `courier_cprs` row (so the finance screens do not have to
+  know which courier paid), and then **looks up every parcel in it this app has
+  never heard of** - because a payment made this week pays for parcels booked
+  before Fusion ever saw the account. That one line is most of how a Trax
+  account comes by a past at all.
+- **And the past needs no upload.** `/shipment/track/order_id` takes the
+  number *we* put on the load sheet, and every Shopify order in the company is
+  already here - so `orderNames()` hands the backfill a list and the courier is
+  asked about our own orders. Which of our two numbers it was booked against
+  (`#9323516` or `9323516`) is not knowable in advance, so the first few are
+  tried both ways and **whichever answers becomes the shape for the rest**.
+
+The export file stays as the second way in, for an account whose parcels were
+never Shopify orders here. It is no longer the only way.
 
 - **Only the tracking numbers are read out of that file.** Nothing else in it
   is kept - the courier is a better source for the status, the city and the
@@ -465,8 +494,9 @@ their own portal makes, and every tracking number in it is looked up.
   headings as well, so a wrong guess is corrected by choosing, not by editing
   the file.
 - **It is the backfill, not a second job.** `startBackfill` takes `trackings`
-  in place of `from`/`to`, and `run()` splits into `askByMonth` (PostEx, M&P)
-  and `askByName` (Trax), both followed by the same `askWhatWasPaid`. So Stop,
+  or `ourOrders` in place of `from`/`to`, and `run()` splits three ways -
+  `askByMonth` (PostEx, M&P), `askByName` (their export) and `askByOrder` (our
+  own numbers) - all followed by the same `askWhatWasPaid`. So Stop,
   Carry on and Clear log work the same for both - and **carry on means carry
   on**: `okUnits` holds what was kept and `badUnits` what the courier had
   nothing for, and neither is asked about twice.

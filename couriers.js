@@ -508,6 +508,21 @@ export async function movingTrackings(realmId, accountId, limit) {
 }
 
 // which delivered orders we have not asked about yet
+// Of these tracking numbers, which are already rows here. Asked before a
+// payment's parcels are looked up one at a time, so only the ones this app has
+// never heard of cost a call.
+export async function haveTrackings(realmId, accountId, list) {
+  const want = (list || []).map(t => String(t).trim()).filter(Boolean);
+  if (!want.length) return new Set();
+
+  const r = await pool.query(
+    `SELECT tracking FROM courier_orders
+      WHERE realm_id = $1 AND account_id = $2 AND tracking = ANY($3::text[])`,
+    [realmId, accountId, want]
+  );
+  return new Set(r.rows.map(x => String(x.tracking)));
+}
+
 export async function needCpr(realmId, accountId, limit) {
   const r = await pool.query(
     `SELECT tracking FROM courier_orders

@@ -6,19 +6,24 @@
 //
 //   by month     PostEx and M&P hand over a span of days, so the job walks it
 //                a month at a time and keeps whatever comes back
-//   by tracking  Trax has no call that lists a day's shipments - twenty-seven
-//                endpoints and every one of them is about a consignment you
-//                already hold. So their history cannot be asked for; it can
-//                only be named. Give the job the tracking numbers (their own
-//                portal exports them) and it asks about each one.
+//   by tracking  Trax has no call that lists a day's shipments - every endpoint
+//                they publish is about a consignment you already hold. So their
+//                history cannot be asked for; it can only be named. Give the
+//                job the tracking numbers (their own portal exports them) and
+//                it asks about each one.
+//   by order id  the same, with the numbers we already have. Sonic's
+//                `/shipment/track/order_id` takes **our** order number - the
+//                one that went on the load sheet - so the Shopify orders in
+//                this company are themselves the list, and nobody has to
+//                upload anything at all.
 //
-// The second is the only way a Trax account ever gets a past, and without it
-// their webhooks are the whole record - which starts the day they are switched
-// on and knows nothing of the months before.
+// The third is the one to reach for. The second is for an account whose
+// parcels were never Shopify orders here.
 
 import { getAccount, saveOrders, needCpr, savePayments, credsOf } from './couriers.js';
 import { adapterFor } from './adapters.js';
 import { realmOf } from './desk.js';
+import { orderNames } from './shopify.js';
 
 const jobs = new Map();          // desk (company and person) -> job
 
@@ -172,8 +177,20 @@ export function startBackfill(desk, opts) {
       'is as many as one run takes. Split the file and run it twice.');
   }
 
+  // The third shape: our own order numbers over a span of days. The days are
+  // when the order was placed here, not when the courier did anything.
+  const ourOrders = opts.ourOrders
+    ? { from: String(opts.ourOrders.from || '').slice(0, 10),
+        to:   String(opts.ourOrders.to || '').slice(0, 10) }
+    : null;
+
+  if (ourOrders && (!/^\d{4}-\d{2}-\d{2}$/.test(ourOrders.from) ||
+                    !/^\d{4}-\d{2}-\d{2}$/.test(ourOrders.to))) {
+    throw new Error('Pick a from and to date');
+  }
+
   let from = '', to = '';
-  if (!named) {
+  if (!named && !ourOrders) {
     from = String(opts.from || '').slice(0, 10);
     to = String(opts.to || '').slice(0, 10);
     if (!/^\d{4}-\d{2}-\d{2}$/.test(from) || !/^\d{4}-\d{2}-\d{2}$/.test(to)) {
@@ -193,10 +210,13 @@ export function startBackfill(desk, opts) {
     accountId: Number(opts.account),
     label: '',
     from, to,
-    // one of the two, never both
-    unit: named ? 'parcel' : 'month',
+    // one of the three, never more
+    unit: named ? 'parcel' : (ourOrders ? 'order' : 'month'),
     trackings: named || [],
-    months: named ? [] : monthsBetween(from, to),
+    ourOrders,
+    orders: [],                   // filled in at the start of the run
+    orderShape: '',               // which of our two numbers the courier knows
+    months: (named || ourOrders) ? [] : monthsBetween(from, to),
     monthsDone: 0,
     okUnits: new Set(),           // kept, which a carry-on skips
     badUnits: new Set(),          // asked, and the courier knew nothing
@@ -207,7 +227,8 @@ export function startBackfill(desk, opts) {
     withCpr: opts.withCpr !== false,
     log: []
   };
-  job.monthsTotal = named ? named.length : job.months.length;
+  // an order-id run does not know its total until it has read the orders
+  job.monthsTotal = named ? named.length : (ourOrders ? 0 : job.months.length);
 
   jobs.set(desk, job);
   run(realmId, job).catch(e => {
@@ -228,12 +249,17 @@ async function run(realmId, job, carrying) {
   if (!a) throw new Error('No adapter for ' + acc.courier);
 
   const byName = job.unit === 'parcel';
+  const byOrder = job.unit === 'order';
 
+  if (byOrder && typeof a.trackByOrderId !== 'function') {
+    throw new Error(a.name + ' will not answer about our own order numbers, so ' +
+      'there is nothing to ask it with. Use their export file instead.');
+  }
   if (byName && typeof a.trackOne !== 'function') {
     throw new Error(a.name + ' will not answer about one parcel at a time, so a ' +
       'list of tracking numbers is no use to it. Use the dates instead.');
   }
-  if (!byName && (a.lists === false || typeof a.fetchOrders !== 'function')) {
+  if (!byName && !byOrder && (a.lists === false || typeof a.fetchOrders !== 'function')) {
     throw new Error(a.name + ' cannot be asked for past months - its API only ' +
       'answers about one parcel at a time. Give it the tracking numbers from ' +
       'its own portal instead, and it will answer about every one of them.');
@@ -243,15 +269,37 @@ async function run(realmId, job, carrying) {
   const extra = credsOf(acc);
 
   job.label = acc.label;
+
+  // The order numbers are read once, here, so a carry-on does not read them
+  // again and find a different list.
+  if (byOrder && !job.orders.length) {
+    const rows = await orderNames(realmId, job.ourOrders);
+    job.orders = rows.map(r => ({
+      name: String(r.name || '').trim(),
+      number: String(r.number || '').trim()
+    })).filter(o => o.name || o.number);
+    job.monthsTotal = job.orders.length;
+
+    if (!job.orders.length) {
+      throw new Error('There are no Shopify orders here between ' +
+        job.ourOrders.from + ' and ' + job.ourOrders.to + ', so there is ' +
+        'nothing to ask the courier about. Use their export file instead.');
+    }
+  }
+
   if (!carrying) {
     say(job, byName
       ? `${acc.label}: ${job.trackings.length} tracking numbers to ask about`
-      : `${acc.label}: ${job.from} to ${job.to}, ${job.months.length} month${job.months.length === 1 ? '' : 's'}`);
+      : byOrder
+        ? `${acc.label}: ${job.orders.length} of our own order numbers, ` +
+          `${job.ourOrders.from} to ${job.ourOrders.to}`
+        : `${acc.label}: ${job.from} to ${job.to}, ${job.months.length} month${job.months.length === 1 ? '' : 's'}`);
   }
 
   /* ---------- the orders themselves ---------- */
 
   if (byName) await askByName(realmId, job, acc, a, extra);
+  else if (byOrder) await askByOrder(realmId, job, acc, a, extra);
   else await askByMonth(realmId, job, acc, a, extra);
 
   if (job.cancel) {
@@ -362,6 +410,92 @@ async function askByName(realmId, job, acc, a, extra) {
   if (misses) {
     say(job, `${misses} the courier had nothing for` +
              (unknown.length ? ' - first few: ' + unknown.join('; ') : ''));
+  }
+}
+
+// Our own order numbers. One order id can have been booked more than once, so
+// the courier answers with a list and all of it is kept.
+//
+// Which of our two numbers the courier was booked against is not knowable in
+// advance - the load sheet may carry `#9323516` or `9323516` - so the first
+// few are tried both ways and whichever answers becomes the shape for the
+// rest. Guessing wrong on every order would double the calls for nothing.
+async function askByOrder(realmId, job, acc, a, extra) {
+  const left = job.orders.filter(o => {
+    const key = o.name || o.number;
+    return !job.okUnits.has(key) && !job.badUnits.has(key);
+  });
+
+  let batch = [];
+  let misses = 0;
+
+  const keep = async () => {
+    if (!batch.length) return;
+    const holding = batch;
+    batch = [];
+    try {
+      job.ordersSaved += await saveOrders(realmId, acc.id, acc.courier,
+                                          holding.map(x => x.order));
+      holding.forEach(x => job.okUnits.add(x.key));
+    } catch (e) {
+      say(job, `${holding.length} came back but could not be kept - ${e.message}`);
+    }
+  };
+
+  const askOne = async o => {
+    const key = o.name || o.number;
+    // both forms, unless one of them has already proved itself
+    let tries = job.orderShape === 'name' ? [o.name]
+              : job.orderShape === 'number' ? [o.number]
+              : [o.name, o.number];
+    tries = tries.filter(Boolean);
+
+    for (const id of tries) {
+      let got = [];
+      try { got = await a.trackByOrderId(acc.token, id, extra); }
+      catch (e) { got = []; }
+
+      if (got && got.length) {
+        if (!job.orderShape) {
+          job.orderShape = id === o.name ? 'name' : 'number';
+          say(job, `The courier knows these by their ${job.orderShape === 'name'
+            ? 'order name (' + o.name + ')' : 'order number (' + o.number + ')'}`);
+        }
+        return { key, got };
+      }
+    }
+    return { key, got: [] };
+  };
+
+  for (let i = 0; i < left.length; i += ASK_AT_ONCE) {
+    if (job.cancel) break;
+
+    const answers = await Promise.all(
+      left.slice(i, i + ASK_AT_ONCE).map(askOne));
+
+    answers.forEach(x => {
+      job.monthsDone++;
+      if (x.got.length) {
+        x.got.forEach(order => batch.push({ key: x.key, order }));
+      } else {
+        misses++;
+        job.badUnits.add(x.key);
+      }
+    });
+
+    if (batch.length >= KEEP_EVERY) await keep();
+
+    if (job.monthsDone % 300 < ASK_AT_ONCE) {
+      say(job, `${job.monthsDone} of ${job.monthsTotal} orders asked about, ` +
+               `${job.ordersSaved} parcels kept`);
+    }
+  }
+
+  await keep();
+
+  if (misses) {
+    say(job, `${misses} of our orders the courier has nothing against - ` +
+             'most likely they went with another courier');
   }
 }
 

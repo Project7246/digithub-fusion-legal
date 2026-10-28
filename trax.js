@@ -261,6 +261,106 @@ export async function fetchPayment(token, tracking) {
   };
 }
 
+/* ---------- the list Sonic does have ---------- */
+//
+// It was read here for a long time that Trax cannot be asked for a list at
+// all. That is half true and the half that is wrong matters: there is no call
+// that takes a span of days, but `/invoice` takes **one payment** and hands
+// back every shipment in it, charges and GST and all. That is the same shape
+// as a PostEx CPR, and it is how a Trax account fills itself - one id arrives
+// on the payment webhook, and a whole batch of parcels comes back, including
+// ones this app had never heard of.
+//
+//   type=1   the id is an invoice id
+//   type=2   the id is a payment id - which is what the webhook carries
+//
+// Their `shipments` is an array of one-key objects, the key being the tracking
+// number, so it is flattened here rather than anywhere above.
+export async function fetchInvoice(token, id, type) {
+  const j = await ask(token, '/invoice', {
+    id: String(id || '').trim(),
+    type: Number(type) === 1 ? 1 : 2
+  });
+
+  const p = j.payments || {};
+  const rows = Array.isArray(p.shipments) ? p.shipments : [];
+  const out = [];
+
+  rows.forEach(row => {
+    Object.keys(row || {}).forEach(tracking => {
+      const c = row[tracking] || {};
+      out.push({
+        tracking:   String(tracking).trim(),
+        orderRef:   '',
+        settled:    true,                       // it is in a payment
+        settledOn:  day(p.invoice_date),
+        cprNumber:  String(id || '').trim(),    // the payment is the receipt
+        status:     String(c.payment_type || '').trim(),
+        amount:     num(c.invoice_amount),
+        fee:        num(c.total_charges),
+        tax:        num(c.gst),
+        upfrontOn:  null,
+        reserveOn:  null
+      });
+    });
+  });
+
+  return {
+    id: String(id || '').trim(),
+    billingMethod: String(p.billing_method || '').trim(),
+    invoiceDate: day(p.invoice_date),
+    parcels: out
+  };
+}
+
+// Our own order number, not theirs. Fusion knows every Shopify order number it
+// ever put on a load sheet, so this is how a Trax account gets a past without
+// anybody uploading anything: ask about the orders we already hold.
+//
+// Their answer is an array - one order id can have been booked more than once.
+export async function trackByOrderId(token, orderId) {
+  const j = await ask(token, '/shipment/track/order_id', {
+    order_id: String(orderId || '').trim(),
+    type: 0
+  });
+
+  const d = j.details;
+  const list = Array.isArray(d) ? d : (d ? [d] : []);
+  return list.map(mapTracked).filter(o => o.tracking);
+}
+
+// Several parcels' payments in one call. `/shipment/payments` below answers
+// about one; this one takes `tracking_number[]` as many times as there are
+// parcels, which is the difference between 80 calls and one.
+export async function fetchPayments(token, trackings) {
+  const want = (trackings || []).map(t => String(t).trim()).filter(Boolean);
+  if (!want.length) return [];
+
+  const j = await ask(token, '/payments', { 'tracking_number[]': want });
+  const got = (j && j.payments) || {};
+
+  return Object.keys(got).map(tracking => {
+    const lines = Array.isArray(got[tracking]) ? got[tracking] : [got[tracking]];
+    const first = lines[0] || {};
+    const said = String(first.payment_status || '').trim();
+
+    return {
+      tracking:   String(tracking).trim(),
+      orderRef:   '',
+      settled:    /processed|paid|cleared|transferred/i.test(said),
+      settledOn:  day(first.payment_date),
+      cprNumber:  first.payment_id === undefined || first.payment_id === null
+                    ? '' : String(first.payment_id),
+      upfrontOn:  null,
+      reserveOn:  null,
+      status:     said,
+      amount:     num(first.payable) || num(first.amount),
+      fee:        num(first.charges),
+      tax:        num(first.gst)
+    };
+  }).filter(x => x.tracking);
+}
+
 // Sonic cannot be asked for a span of days, so this is the sweep's shape for
 // Trax: the parcels we already hold, asked about by name, newest first and
 // capped - a courier that only answers one at a time is a courier it is easy
@@ -370,6 +470,10 @@ export const adapter = {
   lists: false,
   groupOf,
   readHook,
+  // the list they do have: one payment, every parcel in it
+  fetchInvoice,
+  trackByOrderId,
+  fetchPayments,
   testToken,
   trackOne,
   statusOne,

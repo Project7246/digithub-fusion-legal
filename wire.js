@@ -21,7 +21,11 @@ export function qs(base, path, params) {
   const full = new URL(String(base).replace(/\/+$/, '') + String(path || ''));
   Object.keys(params || {}).forEach(k => {
     const v = params[k];
-    if (v !== undefined && v !== null && v !== '') full.searchParams.set(k, v);
+    if (v === undefined || v === null || v === '') return;
+    // Sonic's payments call takes `tracking_number[]` several times over, which
+    // is a different thing from one parameter holding a comma-joined list.
+    if (Array.isArray(v)) v.forEach(x => full.searchParams.append(k, x));
+    else full.searchParams.set(k, v);
   });
   return full.toString();
 }
