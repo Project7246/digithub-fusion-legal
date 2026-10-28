@@ -880,35 +880,69 @@ export async function importDays(realmId, grid, opts) {
              unknown: [...unknown.values()] };
   }
 
-  // One transaction. A half-imported month is a month whose figures are wrong
-  // in a way nobody can see.
+  // **Two queries for the whole report, not two a day.**
+  //
+  // The first version asked whether each day had been ruled on and then wrote
+  // it, one day at a time - for a month's report that is nearly two thousand
+  // round trips to Neon, and the import simply never came back. A thousand days
+  // go in as a handful of statements now.
   const client = await pool.connect();
   let written = 0, kept = 0;
   try {
     await client.query('BEGIN');
-    for (const d of rows) {
-      // A day a person has already ruled on is not overwritten by the machine.
-      // That is the whole point of the approval: the report says Absent, the
-      // leave email says it was approved, and the person's answer wins.
-      const held = await client.query(
-        `SELECT source FROM hr_days WHERE realm_id = $1 AND emp_code = $2 AND day = $3`,
-        [realmId, d.code, d.day]);
-      if (held.rowCount && held.rows[0].source === 'hand' && !o.force) { kept++; continue; }
 
-      await client.query(
+    // Every day in this span that a person has already ruled on, in one ask.
+    // Those are not overwritten by the machine: that is the whole point of the
+    // approval - the report says Absent, the leave email says it was approved,
+    // and the person's answer wins.
+    const ruled = new Set();
+    if (!o.force) {
+      const held = await client.query(
+        `SELECT emp_code, day FROM hr_days
+          WHERE realm_id = $1 AND day >= $2 AND day <= $3 AND source = 'hand'`,
+        [realmId, from, to]);
+      held.rows.forEach(x => ruled.add(x.emp_code + '|' + x.day));
+    }
+
+    const mine = rows.filter(d => {
+      if (ruled.has(d.code + '|' + d.day)) { kept++; return false; }
+      return true;
+    });
+
+    // In chunks, because one statement carrying ten thousand parameters is a
+    // statement Postgres has to be talked into rather than handed.
+    const CHUNK = 250;
+    for (let at = 0; at < mine.length; at += CHUNK) {
+      const lot = mine.slice(at, at + CHUNK);
+      const args = [realmId];
+      const holes = lot.map(d => {
+        args.push(d.code, d.day, d.timetable, d.onDuty, d.offDuty, d.clockIn,
+                  d.clockOut, d.status, d.words);
+        const n = args.length;
+        // every placeholder cast: a VALUES list carries no types of its own
+        return '($1::text,$' + (n - 8) + '::text,$' + (n - 7) + '::text,$' +
+               (n - 6) + '::text,$' + (n - 5) + '::text,$' + (n - 4) + '::text,$' +
+               (n - 3) + '::text,$' + (n - 2) + '::text,$' + (n - 1) + '::text,$' +
+               n + '::text)';
+      }).join(',');
+
+      const out = await client.query(
         `INSERT INTO hr_days
-           (realm_id, emp_code, day, timetable, on_duty, off_duty, clock_in, clock_out,
-            status, words, source)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,'biometric')
+           (realm_id, emp_code, day, timetable, on_duty, off_duty, clock_in,
+            clock_out, status, words, source)
+         SELECT v.realm_id, v.emp_code, v.day, v.timetable, v.on_duty, v.off_duty,
+                v.clock_in, v.clock_out, v.status, v.words, 'biometric'
+           FROM (VALUES ${holes}) AS v(realm_id, emp_code, day, timetable, on_duty,
+                                       off_duty, clock_in, clock_out, status, words)
          ON CONFLICT (realm_id, emp_code, day) DO UPDATE SET
            timetable = EXCLUDED.timetable, on_duty = EXCLUDED.on_duty,
            off_duty = EXCLUDED.off_duty, clock_in = EXCLUDED.clock_in,
            clock_out = EXCLUDED.clock_out, status = EXCLUDED.status,
            words = EXCLUDED.words, source = 'biometric', updated_at = NOW()`,
-        [realmId, d.code, d.day, d.timetable, d.onDuty, d.offDuty, d.clockIn,
-         d.clockOut, d.status, d.words]);
-      written++;
+        args);
+      written += out.rowCount;
     }
+
     for (const [code, s] of seen) {
       if (!s.timetable && !s.acNo && !s.dept) continue;
       await client.query(
