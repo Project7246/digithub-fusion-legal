@@ -19,17 +19,24 @@
 //   1. Hostinger -> File Manager -> public_html, upload this file. Rename it to
 //      something nobody would guess, e.g. relay-7f3a91.php.
 //   2. Open it once and set $KEY below to a long random string first - the
-//      file refuses everything until you do.
+//      file refuses everything until you do. That string is typed into the file
+//      on the server and nowhere else: it is a secret, so it never comes back
+//      into git, and a key that has been in git is a key to replace.
+//      Setting it below is also the only copy that matters - the one in
+//      DigitalOcean has to match it character for character.
 //   3. In DigitalOcean, on the app component's Environment Variables:
 //        COURIER_RELAY      = https://availity.pk/relay-7f3a91.php?u={url}
 //        COURIER_RELAY_KEY  = the same string as $KEY
 //      and press **Save**, then redeploy.
-//   4. /couriers -> "Can this server reach Trax?" should come back green.
+//   4. /couriers -> "Can this server reach Trax?" should come back green. That
+//      check walks the relay too, so it says which of the two is broken: a red
+//      `tcp` with a green `relay` is the expected answer here - Bangalore
+//      cannot see sonic.pk directly and does not need to.
 //
 // The {url} in the address is what tells Fusion to pass the target as a query
 // parameter rather than as a path - see relayed() in wire.js.
 
-$KEY = 'RVJ5OHpYTDU2dHVxM3RZb2xDbmxxZDJid1BiekJrdEtIdGJEcFcwOVNuUG05VERwRHhhNXoyWnRJUGJO68fa0772657f4';   // <- put a long random string here, the same one as COURIER_RELAY_KEY
+$KEY = '';   // <- put a long random string here, the same one as COURIER_RELAY_KEY
 
 // Only these hosts are ever forwarded to. A relay that forwards wherever it is
 // told is an open proxy with your domain's name on it.

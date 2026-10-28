@@ -21,6 +21,8 @@ import dns from 'node:dns';
 import net from 'node:net';
 import tls from 'node:tls';
 
+import { relayed, relayHeaders } from './wire.js';
+
 const STEP_MS = Math.max(2000, Number(process.env.REACH_TIMEOUT_MS) || 8000);
 
 function ms(t0) { return Math.round(Number(process.hrtime.bigint() - t0) / 1e6); }
@@ -99,6 +101,40 @@ async function plainGet(url) {
   }
 }
 
+// The same plain GET, sent the way Fusion itself sends a Trax call: through the
+// relay, carrying the relay's own lock. A blocked direct route says nothing
+// about this one, and this one is the route that matters.
+//
+// The relay answers for itself in four cases, and every one of them comes back
+// as a perfectly good HTTP response - so they are told apart here by hand,
+// rather than being read as the courier answering.
+async function relayGet(url) {
+  const ctl = new AbortController();
+  const bell = setTimeout(() => ctl.abort(), STEP_MS);
+  try {
+    const r = await fetch(url, {
+      signal: ctl.signal,
+      redirect: 'manual',
+      headers: Object.assign({ 'Accept': 'application/json' }, relayHeaders())
+    });
+    const text = await r.text().catch(() => '');
+    const no = (code, msg) => Object.assign(new Error(msg), { code });
+
+    if (r.status === 401) throw no('RELAY_KEY', 'the relay refused the key');
+    if (r.status === 403) throw no('RELAY_HOST', 'the relay does not serve that host');
+    if (r.status === 500 && /no key set/i.test(text)) {
+      throw no('RELAY_NOKEY', 'the relay has no key in it yet');
+    }
+    if (r.status === 502 && /could not reach/i.test(text)) {
+      throw no('RELAY_BLIND', text.slice(0, 200));
+    }
+
+    return { status: r.status, bytes: text.length, first: text.slice(0, 160) };
+  } finally {
+    clearTimeout(bell);
+  }
+}
+
 // One courier's base URL, walked. `label` is only for the answer.
 export async function reach(base, label) {
   let url;
@@ -118,11 +154,55 @@ export async function reach(base, label) {
     if (out.tcp.ok && (!https || out.tls.ok)) out.http = await step(() => plainGet(url.toString()));
   }
 
+  // A relay set for this host means the walk above is not the route Fusion
+  // takes, so the real one is walked as well. Without this the check stayed
+  // red on a relay that was working perfectly, which is a worse answer than
+  // none - it sends somebody to fix a key that is fine.
+  const through = relayed(String(base));
+  if (through) {
+    out.relayTo = through;
+    out.relay = await step(() => relayGet(through));
+  }
+
   out.verdict = verdictOf(out);
   return out;
 }
 
 function verdictOf(o) {
+  const direct = directVerdict(o);
+  if (!o.relay) return direct;
+
+  let via = 'the relay';
+  try { via = new URL(o.relayTo).hostname; } catch (e) {}
+
+  if (o.relay.ok) {
+    return {
+      where: 'ok',
+      via: 'relay',
+      say: 'Through the relay at ' + via + ' this server reaches ' + o.host +
+           ' - it answered ' + o.relay.status + ' in ' + o.relay.ms + ' ms. That ' +
+           'is the route Fusion takes for ' + o.host + ', so the direct one being ' +
+           (direct.where === 'ok' ? 'open' : 'blocked') + ' changes nothing.'
+    };
+  }
+
+  const code = o.relay.code || '';
+  const why =
+    code === 'RELAY_KEY'   ? 'the relay refused our key: COURIER_RELAY_KEY here and the key inside the relay file are not the same string.' :
+    code === 'RELAY_NOKEY' ? 'the relay file has no key set in it yet, so it refuses everything.' :
+    code === 'RELAY_HOST'  ? 'the relay will not forward to ' + o.host + ' - its own allowed list does not name that host.' :
+    code === 'RELAY_BLIND' ? 'the relay answers, but it cannot see ' + o.host + ' either - that server is in the same position as this one. ' + (o.relay.error || '') :
+                             'the relay at ' + via + ' did not answer' +
+                             (code ? ' (' + code + ')' : '') + '.';
+
+  return {
+    where: 'relay',
+    via: 'relay',
+    say: 'A relay is set for ' + o.host + ', and ' + why
+  };
+}
+
+function directVerdict(o) {
   if (!o.dns || !o.dns.ok) {
     return {
       where: 'dns',

@@ -387,6 +387,15 @@ Two things came out of it:
   query parameter (the PHP one); without it, the target is appended as a path
   (the worker). The adapters' own base URLs never change, so nothing above
   `wire.js` knows it is happening.
+  **The reach check walks the relay as well**, because the four steps it
+  walks are the route Fusion does *not* take once a relay is set - so a
+  working relay showed as a red `tcp` and sent somebody off to fix a key that
+  was fine. A red `tcp` beside a green `relay` is the right answer here. It
+  tells the relay's own four refusals apart from the courier's
+  (`RELAY_KEY`, `RELAY_NOKEY`, `RELAY_HOST`, `RELAY_BLIND`), so "the two keys
+  do not match" is never reported as "Trax cannot be reached". The relay's
+  key is typed into the PHP file on the server and into DigitalOcean, and
+  into git in neither.
   The other way out is to host the app in a region that can reach Pakistan -
   App Platform cannot be moved after it is made, so that means a new app.
 

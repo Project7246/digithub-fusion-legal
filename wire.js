@@ -110,6 +110,13 @@ export function relayState() {
   return { on: !!RELAY, hosts: RELAY_HOSTS, keyed: !!RELAY_KEY };
 }
 
+// The relay's own lock, for anything that has to call through it by hand. The
+// reach check does: it is testing the route rather than asking a courier
+// anything, so it cannot go through call() below.
+export function relayHeaders() {
+  return RELAY_KEY ? { 'X-Relay-Key': RELAY_KEY } : {};
+}
+
 export async function call({ url, method, headers, body }) {
   const through = relayed(url);
   if (through) {

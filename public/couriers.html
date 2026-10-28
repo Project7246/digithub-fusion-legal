@@ -564,7 +564,7 @@
         var html = (d.checks || []).map(function(c){
           var v = c.verdict || {};
           var good = v.where === 'ok';
-          var steps = ['dns', 'tcp', 'tls', 'http'].map(function(name){
+          var steps = ['dns', 'tcp', 'tls', 'http', 'relay'].map(function(name){
             var st = c[name];
             if(!st) return '';
             return '<span class="tag ' + (st.ok ? 'on' : 'off') + '">' + name +
