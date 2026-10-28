@@ -123,6 +123,7 @@ export async function initCouriers() {
       ADD COLUMN IF NOT EXISTS received_amount NUMERIC(14,2),
       ADD COLUMN IF NOT EXISTS dc_journal_id   TEXT,
       ADD COLUMN IF NOT EXISTS dc_posted_on    TIMESTAMPTZ,
+      ADD COLUMN IF NOT EXISTS linked_at       TIMESTAMPTZ,
       ADD COLUMN IF NOT EXISTS cod_amount      NUMERIC(14,2),
       ADD COLUMN IF NOT EXISTS charges_amount  NUMERIC(14,2),
       ADD COLUMN IF NOT EXISTS tax_amount      NUMERIC(14,2),
@@ -531,22 +532,66 @@ export async function savePayments(realmId, accountId, rows) {
   const good = (rows || []).filter(p => p && p.tracking);
   if (!good.length) return 0;
 
+  // The fee and tax come with the receipt and are written where they are
+  // given - a NULL leaves whatever the parcel already had, so a payment call
+  // that says nothing about charges cannot wipe them.
   await pool.query(
     `UPDATE courier_orders o
         SET settled    = v.settled,
             settled_on = v.settled_on,
-            cpr_number = v.cpr_number
+            cpr_number = v.cpr_number,
+            fee        = COALESCE(v.fee, o.fee),
+            tax        = COALESCE(v.tax, o.tax)
        FROM (SELECT * FROM unnest(
-               $3::text[], $4::boolean[], $5::date[], $6::text[]
-             ) AS t(tracking, settled, settled_on, cpr_number)) v
+               $3::text[], $4::boolean[], $5::date[], $6::text[],
+               $7::numeric[], $8::numeric[]
+             ) AS t(tracking, settled, settled_on, cpr_number, fee, tax)) v
       WHERE o.realm_id = $1 AND o.account_id = $2 AND o.tracking = v.tracking`,
     [realmId, accountId,
      good.map(p => p.tracking),
      good.map(p => p.settled === true),
      good.map(p => p.settledOn || null),
-     good.map(p => p.cprNumber || null)]
+     good.map(p => p.cprNumber || null),
+     good.map(p => (p.fee === undefined || p.fee === null) ? null : Number(p.fee)),
+     good.map(p => (p.tax === undefined || p.tax === null) ? null : Number(p.tax))]
   );
   return good.length;
+}
+
+// Which receipts have not had their parcels read in yet.
+//
+// A CPR names every parcel it paid for, and PostEx hands that list over in one
+// call. Asking parcel by parcel - five thousand calls for five thousand
+// parcels - was the long way round to the same answer: "postex ko khud btna
+// chahiy total itny paracels hn or itni payment h". Twenty receipts is twenty
+// calls, and they carry the charges and the settlement date with them.
+//
+// A receipt is read again when the courier has touched it since (approved
+// becoming closed is the one that matters), and otherwise never twice.
+export async function cprsToLink(realmId, accountId, limit) {
+  const r = await pool.query(
+    `SELECT cpr_number, remote_id, created_on, status
+       FROM courier_cprs
+      WHERE realm_id = $1 AND account_id = $2
+        AND remote_id IS NOT NULL
+        AND (linked_at IS NULL OR linked_at < seen_at)
+      ORDER BY created_on DESC NULLS LAST
+      LIMIT $3`,
+    [realmId, Number(accountId), Number(limit) || 25]
+  );
+  return r.rows.map(x => ({
+    cpr: x.cpr_number,
+    remoteId: x.remote_id,
+    createdOn: x.created_on,
+    status: x.status
+  }));
+}
+
+export async function markCprLinked(realmId, accountId, cprNumber) {
+  await pool.query(
+    `UPDATE courier_cprs SET linked_at = NOW()
+      WHERE realm_id = $1 AND account_id = $2 AND cpr_number = $3`,
+    [realmId, Number(accountId), String(cprNumber)]);
 }
 
 // the receipts themselves, built from the orders that carry their number

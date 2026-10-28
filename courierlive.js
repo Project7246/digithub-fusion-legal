@@ -8,6 +8,7 @@ import {
   needCpr, savePayments, credsOf
 } from './couriers.js';
 import { adapterFor } from './adapters.js';
+import { fillFromCprs } from './cprlive.js';
 
 // account id + span -> { at, orders }
 const recent = new Map();
@@ -57,6 +58,22 @@ async function askAboutMoney(acc) {
     const a = adapterFor(acc.courier);
     if (!a || !a.fetchPayment) return;
 
+    // The receipts first, because one call answers a whole receipt's worth of
+    // parcels. PostEx's payment call names one parcel at a time; its CPR
+    // transaction list names every parcel the receipt paid for, with the fee,
+    // the tax and the settlement date on each. Twenty calls instead of five
+    // thousand, and the charges arrive with them.
+    //
+    // It needs the portal sign-in, which not every account has, and it only
+    // covers parcels that are on a receipt. Whatever is left - delivered, no
+    // receipt yet - still has to be asked about one at a time below.
+    let fromCprs = 0;
+    try {
+      fromCprs = await fillFromCprs(acc.realm_id, acc);
+    } catch (e) {
+      fromCprs = 0;
+    }
+
     // Keep going until there is nothing left to ask about.
     //
     // It used to do one batch and stop, and only /receipts ever started it -
@@ -73,7 +90,7 @@ async function askAboutMoney(acc) {
     const SECONDS = Math.max(10, Number(process.env.CPR_CHASE_SECONDS) || 240);
     const until = Date.now() + SECONDS * 1000;
 
-    let done = 0;
+    let done = fromCprs;
     for (;;) {
       const list = await needCpr(acc.realm_id, acc.id, STEP);
       if (!list.length) break;

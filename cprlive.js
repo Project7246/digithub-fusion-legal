@@ -9,8 +9,10 @@
 // instead, which is all a person clicking around needs.
 
 import {
-  getAccount, saveCprs, listPortalCprs, saveCprTotals, cprsMissingTotals
+  getAccount, saveCprs, listPortalCprs, saveCprTotals, cprsMissingTotals,
+  cprsToLink, markCprLinked, savePayments
 } from './couriers.js';
+import { adapterFor } from './adapters.js';
 import { decrypt } from './secrets.js';
 import {
   tokenFor, forget as forgetToken,
@@ -121,6 +123,86 @@ function remember(key, value) {
     const oldest = [...detail.entries()].sort((a, b) => a[1].at - b[1].at)[0];
     detail.delete(oldest[0]);
   }
+}
+
+// ==================== reading a receipt into the parcels ====================
+//
+// A CPR names every parcel it paid for, and PostEx hands that list over in one
+// call. So the money on five thousand parcels is twenty calls, not five
+// thousand - and the list carries the fee, the tax and the settlement date,
+// which is why the charges column used to sit at zero.
+//
+// "postex ko khud btna chahiy total itny paracels hn or itni payment h, or
+// sary status sb kuch wo khud btye." This is that, as far as PostEx will go:
+// it will not push the money to us, but it will hand over a whole receipt at
+// a time instead of being asked about one parcel at a time.
+export async function absorbCpr(realmId, accountId, cpr) {
+  const s = await sessionFor(realmId, accountId);
+  const rows = await fetchTransactions(s, cpr.remoteId);
+  if (!rows.length) {
+    await markCprLinked(realmId, accountId, cpr.cpr);
+    return 0;
+  }
+
+  // A closed receipt is money received; an open one names the parcels it will
+  // pay for and has not. Both are worth writing down - the second is what
+  // makes "in a CPR, not paid yet" a real line rather than a guess.
+  const paid = String(cpr.status || '').toUpperCase() === 'CLOSED';
+
+  const n = await savePayments(realmId, accountId, rows.map(o => ({
+    tracking:  o.tracking,
+    settled:   paid && o.settled !== false,
+    settledOn: o.settledOn || null,
+    cprNumber: cpr.cpr,
+    fee:       o.fee,
+    tax:       o.tax
+  })));
+
+  await markCprLinked(realmId, accountId, cpr.cpr);
+  return n;
+}
+
+// Every receipt that has not been read in yet, newest first. Bounded by time
+// like the per-parcel chase, and guarded by the same set so two never run.
+export async function fillFromCprs(realmId, acc) {
+  const a = adapterFor(acc.courier);
+  if (!a || acc.courier !== 'postex') return 0;
+  if (!acc.portal_email) return 0;          // no portal sign-in, nothing to ask with
+
+  const SECONDS = Math.max(10, Number(process.env.CPR_LINK_SECONDS) || 180);
+  const until = Date.now() + SECONDS * 1000;
+
+  // Ask what receipts exist before reading them in, or a receipt issued this
+  // morning is one nobody here knows about. Three months back, which is as
+  // far as the parcels in this database go for most accounts.
+  try {
+    const back = Math.max(7, Number(process.env.CPR_LIST_DAYS) || 120);
+    const to = new Date();
+    const from = new Date(Date.now() - back * 86400000);
+    const d = x => x.toISOString().slice(0, 10);
+    await refreshCprs(realmId, acc.id, d(from), d(to));
+  } catch (e) {
+    // the receipts we already hold are still worth reading in
+  }
+
+  let done = 0;
+  for (;;) {
+    const list = await cprsToLink(realmId, acc.id, 10);
+    if (!list.length) break;
+
+    for (const cpr of list) {
+      try {
+        done += await absorbCpr(realmId, acc.id, cpr);
+      } catch (e) {
+        // one receipt that will not open does not stop the rest, but it must
+        // not be marked done either - it comes round again next time
+        break;
+      }
+      if (Date.now() > until) break;
+    }
+    if (Date.now() > until) break;
+  }
+  return done;
 }
 
 export async function cprDetail(realmId, accountId, remoteId, createdOn, fresh) {
