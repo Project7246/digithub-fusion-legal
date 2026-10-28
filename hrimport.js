@@ -519,6 +519,18 @@ export async function importLedger(realmId, grid, opts) {
            amount = EXCLUDED.amount, source = 'import', updated_at = NOW()
            WHERE hr_pay_lines.source <> 'hand'`,
         args);
+      // The month is closed the moment it is in, because it was closed years
+      // ago in their book. Left open, the working would run over the top of it
+      // and invent every head the sheet did not have.
+      await client.query(
+        `INSERT INTO hr_pay_runs (realm_id, month, state, note)
+         VALUES ($1,$2,'imported','brought in from the old salary book')
+         ON CONFLICT (realm_id, month) DO UPDATE SET
+           state = 'imported',
+           note = 'brought in from the old salary book',
+           updated_at = NOW()
+           WHERE hr_pay_runs.state = 'open'`,
+        [realmId, month]);
       await client.query('COMMIT');
       written += r.rowCount;
       kept += rows.length - r.rowCount;

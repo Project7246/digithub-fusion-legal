@@ -145,11 +145,29 @@ export async function setStanding(realmId, code, head, amount, prorate) {
 // So from `approved` onwards the stored lines **are** the answer and nothing
 // recalculates. That is what "final and submit" means here.
 export function isFinal(run) {
-  return !!run && (run.state === 'approved' || run.state === 'posted');
+  return !!run && (run.state === 'approved' || run.state === 'posted' ||
+                   run.state === 'imported');
 }
 
 export function whyShut(run) {
   if (!run) return null;
+  // A month that came out of the old book was signed off long ago, in a
+  // spreadsheet. **Fusion must not add anything to it.**
+  //
+  // This was wrong and it was wrong badly. A brought-in month was left `open`,
+  // so the working ran over the top of it and filled in every head the sheet
+  // had not got - handing an attendance bonus to seventy-four people, most of
+  // whom have no attendance recorded at all, because no attendance recorded
+  // reads to the rule as a clear month. September came out at 2.8 million
+  // against the 2.08 million on their own report.
+  //
+  // No attendance recorded is not a clear month, and a closed month is not a
+  // month to recalculate. The history is the history.
+  if (run.state === 'imported') {
+    return 'That month was brought in from the old salary book, so its figures ' +
+           'are exactly as they were. Reopen it only if you want Fusion to work ' +
+           'it out again from the attendance.';
+  }
   if (run.state === 'posted') {
     return 'That month is in QuickBooks as ' + (run.qb_doc_number || 'an entry') +
            '. Nothing in it can change.';

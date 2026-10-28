@@ -390,6 +390,11 @@
     if (run.state === 'posted') {
       return '<span class="pill ok">in QuickBooks as ' + esc(run.qb_doc_number || run.qb_journal_id) + '</span>';
     }
+    // A month out of the old book reads differently from one signed off here,
+    // and somebody looking at last year needs to know which they have.
+    if (run.state === 'imported') {
+      return '<span class="pill no">from the old salary book</span>';
+    }
     if (run.state === 'approved') return '<span class="pill ok">approved</span>';
     var n = (run.approvals || []).length;
     return '<span class="pill warn">open' + (n ? ', ' + n + ' approved' : '') + '</span>';

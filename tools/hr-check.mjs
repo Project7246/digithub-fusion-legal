@@ -180,6 +180,11 @@ is('joined after the cycle', workDaysOf({ joined_on:'2026-11-01' }, c, 30), 0);
 is('an open month is not final', isFinal({ state: 'open' }), false);
 is('a signed-off month is final', isFinal({ state: 'approved' }), true);
 is('a posted month is final', isFinal({ state: 'posted' }), true);
+// a month out of the old book is closed as well: no attendance recorded is not
+// a clear month, and the working must not run over the top of last year
+is('a month out of the old book is final', isFinal({ state: 'imported' }), true);
+is('and it says where it came from',
+   /old salary book/.test(whyShut({ state: 'imported' })), true);
 is('an open month has nothing to say', whyShut({ state: 'open' }), 'null');
 is('a signed-off month says why it is shut',
    /signed off/.test(whyShut({ state: 'approved' })), true);
