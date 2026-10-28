@@ -385,7 +385,12 @@ Two things came out of it:
   (default: the sonic.pk ones) that way; PostEx and M&P keep going straight
   out. An address containing `{url}` means the target goes in as an encoded
   query parameter (the PHP one); without it, the target is appended as a path
-  (the worker). The adapters' own base URLs never change, so nothing above
+  (the worker). **`{url}` cannot be typed into DigitalOcean**, which reads
+  braces in a value as a variable of its own and refuses the line with
+  `Unexpected "}" at 43` - an error that reads as Fusion rejecting the
+  address. So an address ending in `.php` takes the query shape by itself,
+  an address already ending in `?u=` is completed, and
+  `COURIER_RELAY_PARAM` names the parameter anywhere else. The adapters' own base URLs never change, so nothing above
   `wire.js` knows it is happening.
   **The reach check walks the relay as well**, because the four steps it
   walks are the route Fusion does *not* take once a relay is set - so a

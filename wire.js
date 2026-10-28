@@ -87,6 +87,18 @@ export function plainly(e) {
 const RELAY_RAW = String(process.env.COURIER_RELAY || '');
 const RELAY = RELAY_RAW.includes('{url}') ? RELAY_RAW : RELAY_RAW.replace(/\/+$/, '');
 const RELAY_KEY = process.env.COURIER_RELAY_KEY || '';
+
+// DigitalOcean will not save a value with braces in it. Its own settings parser
+// reads `{url}` as a variable it has never heard of and answers
+// `Unexpected "}" at 43` - so the placeholder cannot be typed where it is
+// needed most, and the error reads as though Fusion refused the address.
+//
+// The placeholder is therefore not the only way to say it. An address ending in
+// `.php` takes the target as a query parameter (`?u=`) by itself, because that
+// is the one relay shape that cannot take it as a path; `COURIER_RELAY_PARAM`
+// names the parameter by hand for anything else.
+const RELAY_PARAM = String(process.env.COURIER_RELAY_PARAM ||
+  (/\.php$/i.test(RELAY) ? 'u' : '')).trim().replace(/[?&=]/g, '');
 const RELAY_HOSTS = String(process.env.COURIER_RELAY_HOSTS ||
   'sonic.pk,app.sonic.pk,www.sonic.pk')
   .split(',').map(h => h.trim().toLowerCase()).filter(Boolean);
@@ -97,17 +109,25 @@ export function relayed(url) {
   try { host = new URL(url).hostname.toLowerCase(); } catch (e) { return null; }
   if (!RELAY_HOSTS.includes(host)) return null;
 
-  // Two shapes, because the two relays want it differently. A worker takes the
-  // whole target as the path (`<relay>/https://sonic.pk/...`); a PHP file on
-  // ordinary hosting cannot, so its address carries `{url}` and the target
-  // goes in encoded. Whichever is set decides.
-  return RELAY.includes('{url}')
-    ? RELAY.replace('{url}', encodeURIComponent(url))
-    : RELAY + '/' + url;
+  // Four ways of saying the same thing, because the relays and the places the
+  // address is typed all want it differently. A worker takes the whole target
+  // as the path (`<relay>/https://sonic.pk/...`); a PHP file on ordinary
+  // hosting cannot, so the target goes in encoded as a query parameter.
+  if (RELAY.includes('{url}')) {                   // the placeholder, where it saves
+    return RELAY.replace('{url}', encodeURIComponent(url));
+  }
+  if (/[?&][^=&]+=$/.test(RELAY)) {                // already ends in `?u=`
+    return RELAY + encodeURIComponent(url);
+  }
+  if (RELAY_PARAM) {                               // a .php relay, or named by hand
+    return RELAY + (RELAY.includes('?') ? '&' : '?') +
+           RELAY_PARAM + '=' + encodeURIComponent(url);
+  }
+  return RELAY + '/' + url;                        // the worker
 }
 
 export function relayState() {
-  return { on: !!RELAY, hosts: RELAY_HOSTS, keyed: !!RELAY_KEY };
+  return { on: !!RELAY, hosts: RELAY_HOSTS, keyed: !!RELAY_KEY, param: RELAY_PARAM };
 }
 
 // The relay's own lock, for anything that has to call through it by hand. The

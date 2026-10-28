@@ -25,16 +25,22 @@
 //      Setting it below is also the only copy that matters - the one in
 //      DigitalOcean has to match it character for character.
 //   3. In DigitalOcean, on the app component's Environment Variables:
-//        COURIER_RELAY      = https://availity.pk/relay-7f3a91.php?u={url}
+//        COURIER_RELAY      = https://availity.pk/relay-7f3a91.php
 //        COURIER_RELAY_KEY  = the same string as $KEY
 //      and press **Save**, then redeploy.
+//
+//      Plainly, with no `?u={url}` on the end: DigitalOcean reads braces in a
+//      value as a variable of its own and refuses to save the line at all
+//      (`Unexpected "}" at 43`). An address ending in .php is understood here
+//      without it - see relayed() in wire.js.
 //   4. /couriers -> "Can this server reach Trax?" should come back green. That
 //      check walks the relay too, so it says which of the two is broken: a red
 //      `tcp` with a green `relay` is the expected answer here - Bangalore
 //      cannot see sonic.pk directly and does not need to.
 //
-// The {url} in the address is what tells Fusion to pass the target as a query
-// parameter rather than as a path - see relayed() in wire.js.
+// The target is passed as a query parameter rather than as a path, which is
+// what `?u={url}` used to say out loud and what the .php ending now says by
+// itself. Somewhere that does save braces, the placeholder still works.
 
 $KEY = '';   // <- put a long random string here, the same one as COURIER_RELAY_KEY
 
