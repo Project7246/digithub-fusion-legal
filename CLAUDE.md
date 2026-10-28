@@ -444,6 +444,38 @@ not an HTTP one.
   200 and a line in the server log - a 401 was tidier and also told whoever was
   guessing that they had found a live address.
 
+#### A Trax history exists only as a list of numbers
+
+Their first account came in with nothing behind it, and **Pull orders**
+answered *"0 orders came back"* over a date range - which is true, useless,
+and reads as a broken key. Sonic cannot be asked for a span of days at all, so
+the dates box was asking a question their API does not take.
+
+What they will answer is a consignment they are named. So the same box changes
+shape for a courier with `lists: false` and a `trackOne`: upload the export
+their own portal makes, and every tracking number in it is looked up.
+
+- **Only the tracking numbers are read out of that file.** Nothing else in it
+  is kept - the courier is a better source for the status, the city and the
+  money than a spreadsheet somebody downloaded last Tuesday, and a stale
+  status written in as fact is worse than no row.
+  `POST /api/courier/tracking-file` picks the column by its heading first
+  (`track`, `consign`, `cn no`, `awb`) and by what is in it second, because a
+  heading can be anything and a consignment number cannot. It hands back the
+  headings as well, so a wrong guess is corrected by choosing, not by editing
+  the file.
+- **It is the backfill, not a second job.** `startBackfill` takes `trackings`
+  in place of `from`/`to`, and `run()` splits into `askByMonth` (PostEx, M&P)
+  and `askByName` (Trax), both followed by the same `askWhatWasPaid`. So Stop,
+  Carry on and Clear log work the same for both - and **carry on means carry
+  on**: `okUnits` holds what was kept and `badUnits` what the courier had
+  nothing for, and neither is asked about twice.
+- **Asked three at a time, written sixty at a time.** The courier is not leant
+  on, and Neon is written to once a minute rather than once a parcel, which is
+  what the month's compute would otherwise be spent on.
+  `BACKFILL_TRACKING_CAP` (20,000) is said out loud when a file is bigger,
+  rather than discovered at parcel 40,000.
+
 **M&P** is the COD API at `https://mnpcourier.com/mycodapi/api` (*M&P COD API
 Manual*, 2025022404). The sign-in is a username and a password **in the call
 itself** - query on a GET, JSON body on a POST - and their own document spells
