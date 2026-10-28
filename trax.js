@@ -349,12 +349,19 @@ export const adapter = {
       hint: 'sonic.pk → click your company name (top right) → Profile → API key' }
   ],
   hook: {
-    where: 'sonic.pk → Settings → Webhooks',
-    note: 'Four toggles - Shipment Status, Payment Status, Initial Charges, ' +
-          'Final Charges. Paste this same address into all four; Fusion can ' +
-          'tell them apart. Trax waits only 3 seconds and switches a webhook ' +
-          'off after 5 failures, so turn each one on while Fusion is up.',
-    // Sonic's webhook screen takes a URL and nothing else - no header field -
+    // Trax do not use the word webhook anywhere in their portal, and sending
+    // somebody to look for a Webhooks screen is sending them to a screen that
+    // does not exist. Theirs are four separate lines under Settings, each
+    // called a Subscription.
+    where: 'sonic.pk → Settings → Shipment Status Subscription, and the three ' +
+           'lines under it',
+    note: 'Trax call these Subscriptions, not webhooks. There are four - ' +
+          'Shipment Status, Payment Status, Initial Charges and Final Charges ' +
+          '- each its own line in the Settings menu. Paste this same address ' +
+          'into all four; Fusion can tell them apart. Trax waits only 3 ' +
+          'seconds and switches a subscription off after 5 failures, so turn ' +
+          'each one on while Fusion is up.',
+    // A subscription screen takes a URL and nothing else - no header field -
     // so the second secret rides in the address as ?k=
     headerless: true
   },
