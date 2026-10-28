@@ -436,6 +436,18 @@
       .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
   }
   var DASH = '\u2014';
+
+  function ask(url, body){
+    return fetch(url, {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify(body || {})
+    }).then(function(r){
+      return r.json().catch(function(){ return {}; }).then(function(j){
+        if(!r.ok) throw new Error(j.error || ('Server said ' + r.status));
+        return j;
+      });
+    });
+  }
   function n0(v){ return Number(v||0).toLocaleString('en-US'); }
   function full(v){ return Number(v||0).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2}); }
   function money(v){
@@ -862,6 +874,25 @@
           '<div class="fn">' + n0(P.gotOrders || 0) + ' parcels</div>' +
         '</div>' +
       '</div>';
+
+    // "In no CPR at all" is only true once the courier has been asked. PostEx
+    // names the receipt one parcel at a time, so until that has run for every
+    // delivered parcel the figure below is the question, not the answer - and
+    // it has to say so, with the button that finishes the asking.
+    var prog = d.cprProgress || null;
+    if (prog && prog.left > 0) {
+      F.statement +=
+        '<div class="lateline" id="chaseBar" style="margin:0 0 13px;cursor:default;' +
+        'background:#F4F7FA;border-color:#D8E1E9;color:#45535F">' +
+          '<b>' + n0(prog.left) + ' of ' + n0(prog.delivered) + ' delivered parcels</b> ' +
+          'have not been matched to a CPR yet. Until they are, they count as ' +
+          'not received.' +
+          '<button id="btnChase" style="margin-left:12px;border:1px solid var(--line);' +
+          'background:#fff;border-radius:7px;padding:5px 12px;font:inherit;' +
+          'font-size:12px;cursor:pointer;width:auto;height:auto">Ask the courier now</button>' +
+          '<span id="chaseSaid" style="margin-left:10px"></span>' +
+        '</div>';
+    }
 
     F.statement +=
       '<div class="sched">' +
@@ -1693,6 +1724,30 @@
                   'Delivered over a fortnight ago, not received');
       });
     });
+    var bc = document.getElementById('btnChase');
+    if (bc) {
+      bc.addEventListener('click', function(){
+        bc.disabled = true;
+        bc.textContent = 'Asking\u2026';
+        var said = document.getElementById('chaseSaid');
+        ask('/api/courier/cpr-chase', { account: account || '' })
+          .then(function(r){
+            var pg = r && r.progress;
+            if (said) {
+              said.textContent = pg
+                ? n0(pg.left) + ' still to ask about \u2014 reload in a minute'
+                : 'asking\u2026';
+            }
+            bc.textContent = 'Asking in the background';
+          })
+          .catch(function(e){
+            bc.disabled = false;
+            bc.textContent = 'Ask the courier now';
+            if (said) said.textContent = e.message;
+          });
+      });
+    }
+
     // a CPR figure opens into the CPRs themselves
     $('out').querySelectorAll('[data-gotab]').forEach(function(el){
       el.addEventListener('click', function(){

@@ -7461,7 +7461,9 @@ app.post('/api/courier/cpr-chase', async (req, res) => {
   if (!realmId) return;
 
   try {
-    res.json(await chaseCpr(realmId, req.body.account));
+    const out = await chaseCpr(realmId, req.body.account);
+    res.json(Object.assign({}, out,
+      { progress: await cprProgress(realmId, req.body.account) }));
   } catch (e) {
     res.status(500).json({ error: e.message });
   }
@@ -8898,11 +8900,29 @@ app.get('/api/courier/dash', async (req, res) => {
 
   try {
     res.setHeader('Cache-Control', 'no-store');
-    res.json(await dashData(realmId, { from, to, account, courier }));
+
+    // Ask the courier about the money on the parcels nobody has asked about
+    // yet, while the page is being read. PostEx names the receipt one parcel
+    // at a time and only /receipts ever started that, so a company with five
+    // thousand delivered parcels showed every one of them as "in no CPR at
+    // all" - for a month, while PostEx had paid seven CPRs in the same thirty
+    // days. The figure was built out of a question nobody had asked.
+    //
+    // It runs in the background and the answer does not wait for it; what it
+    // learns is on the screen the next time the page is read.
+    chaseCpr(realmId, account).catch(() => {});
+
+    const [data, progress] = await Promise.all([
+      dashData(realmId, { from, to, account, courier }),
+      cprProgress(realmId, account).catch(() => null)
+    ]);
+
+    res.json(Object.assign({}, data, { cprProgress: progress }));
   } catch (e) {
     res.status(500).json({ error: e.message });
   }
 });
+
 
 // the receipts, newest first
 app.get('/api/courier/receipts', async (req, res) => {

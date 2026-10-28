@@ -57,7 +57,17 @@ async function askAboutMoney(acc) {
     const a = adapterFor(acc.courier);
     if (!a || !a.fetchPayment) return;
 
-    const list = await needCpr(acc.realm_id, acc.id, 120);
+    // How many to ask about in one visit.
+    //
+    // It was 120, and the only screen that ever started it was /receipts - so
+    // a company with five thousand delivered parcels needed forty-five visits
+    // to that one page before its receivable meant anything. What it showed
+    // instead was the whole lot under "in no CPR at all", for a month, while
+    // PostEx had plainly paid seven CPRs worth fifteen million in the same
+    // thirty days. The report was not lying; nobody had ever asked.
+    const CAP = Math.max(20, Number(process.env.CPR_CHASE_CAP) || 600);
+
+    const list = await needCpr(acc.realm_id, acc.id, CAP);
     if (!list.length) return;
 
     // eight at a time is quick without leaning on the courier
