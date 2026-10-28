@@ -123,11 +123,26 @@
 
     { key:'hr', label:'HR', home:'/hr', tile:'people',
       what:'The people who do the work.', qb:false,
-      soon:[{ label:'People', tile:'people' }, { label:'Timesheets', tile:'clock' },
-            { label:'Attendance', tile:'cal' }, { label:'Payroll', tile:'cash' }],
+      soon:[{ label:'Contracts', tile:'sheet' }, { label:'Hiring', tile:'people' }],
       groups: [
       { group: null, items: [
         { href:'/hr', front:true,       label:'Overview',          icon:'grid' }
+      ]},
+      // Who works here, and the one screen an employee of their own sees. My
+      // record needs no right: it is their own, and it is looked up from who is
+      // signed in rather than from an address anybody could type.
+      { group: 'The people', items: [
+        { href:'/employees', label:'People',     icon:'people', need:'hr',
+          tile:'people' },
+        { href:'/my-hr',     label:'My record',  icon:'check',  tile:'check' }
+      ]},
+      // The month, in the order it is actually done: the biometric report and
+      // the leave first, the figures after.
+      { group: 'The month', items: [
+        { href:'/attendance', label:'Attendance', icon:'cal',  need:'hr',
+          tile:'cal' },
+        { href:'/payroll',    label:'Payroll',    icon:'cash', need:'payroll',
+          tile:'cash' }
       ]}
     ]},
 
@@ -186,7 +201,9 @@
     sheet:  '<rect x="4" y="3" width="16" height="18" rx="2"/><path d="M8 8h8M8 12h8M8 16h5"/>',
     chart:  '<path d="M4 20V4"/><path d="M4 20h16"/><rect x="7" y="12" width="3" height="5"/>' +
             '<rect x="12" y="8" width="3" height="9"/><rect x="17" y="14" width="3" height="3"/>',
-    map:    '<path d="M9 4L3 6.5v13.5L9 17.5l6 2.5 6-2.5V4l-6 2.5z"/><path d="M9 4v13.5M15 6.5V20"/>'
+    map:    '<path d="M9 4L3 6.5v13.5L9 17.5l6 2.5 6-2.5V4l-6 2.5z"/><path d="M9 4v13.5M15 6.5V20"/>',
+    cal:    '<rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/>',
+    clock:  '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3.5 2"/>'
   };
 
   function svg(name){

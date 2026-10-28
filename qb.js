@@ -585,6 +585,34 @@ export async function salesPrefs(realmId, token) {
 // Delete an invoice outright. QuickBooks wants the SyncToken with it, so the
 // invoice is read first - and if it is already gone, that is not a failure,
 // it is the thing we were trying to achieve.
+// One journal entry, posted as it is handed over. The HR module's month ends
+// here - debits to the salary heads, credits to the deductions and to salary
+// payable - and nothing else in Fusion writes a journal, so this is the whole
+// of that door. It is in qb.js rather than in hrpay.js because this file is the
+// one place that knows how to talk to Intuit, and a second place doing it its
+// own way is how one of them stays wrong for weeks (see the two item reads).
+export async function postJournalEntry(realmId, token, payload) {
+  const res = await qbFetch(
+    `${API}/v3/company/${realmId}/journalentry?minorversion=70`,
+    token,
+    { method: 'POST', body: JSON.stringify(payload) }
+  );
+  const tid = tidOf(res);
+  if (res.ok) {
+    const json = await res.json();
+    return { ok: true, id: json.JournalEntry.Id, doc: json.JournalEntry.DocNumber, tid };
+  }
+  const text = await res.text();
+  let msg = text.slice(0, 400);
+  try {
+    const fault = JSON.parse(text).Fault;
+    if (fault && fault.Error && fault.Error.length) {
+      msg = `${fault.Error[0].Message} | ${fault.Error[0].Detail || ''}`;
+    }
+  } catch (e) { /* keep raw */ }
+  return { ok: false, status: res.status, msg, tid, retryable: isRetryable(msg, res.status) };
+}
+
 export async function deleteInvoice(realmId, token, id) {
   const q = await qbQuery(realmId, token,
     "SELECT Id, SyncToken, DocNumber FROM Invoice WHERE Id = '" +

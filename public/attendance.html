@@ -1,0 +1,600 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Attendance</title>
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="manifest" href="/manifest.json">
+<meta name="theme-color" content="#222F34">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@600;700;800&family=Roboto:wght@400;500&family=Roboto+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/app.css">
+<style>
+  .cbar{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:16px}
+  .cbar input[type=text],.cbar input[type=month],.cbar input[type=date],.cbar select{
+    border:1px solid var(--line);border-radius:7px;padding:7px 9px;font:inherit;
+    font-size:12.5px;background:#fff;height:auto;width:auto}
+  .cbar button{border:1px solid var(--line);background:#fff;border-radius:7px;padding:7px 12px;
+    font:inherit;font-size:12.5px;cursor:pointer;width:auto;height:auto;color:var(--ink)}
+  .cbar button:hover{border-color:var(--accent)}
+  .cbar .right{margin-left:auto;display:flex;gap:6px;align-items:center}
+
+  .ctabs{display:flex;gap:7px;flex-wrap:wrap;margin:0 0 14px}
+  .ctabs button{padding:6px 13px;border:1px solid var(--line);border-radius:20px;
+    font:inherit;font-size:12.5px;color:var(--muted);background:#fff;cursor:pointer;
+    white-space:nowrap;width:auto;height:auto}
+  .ctabs button:hover{border-color:var(--accent);color:var(--ink)}
+  .ctabs button.on{background:var(--accent);border-color:var(--accent);color:#fff;font-weight:600}
+  .ctabs button .ct{font-family:var(--mono);font-size:11px;opacity:.75;margin-left:5px}
+
+  .box{background:var(--panel);border:1px solid var(--line);border-radius:10px;
+    padding:16px 18px;margin-bottom:14px}
+  .box h3{margin:0 0 14px;font-size:13.5px;font-weight:600;display:flex;
+    align-items:baseline;gap:9px}
+  .box h3 .aside{margin-left:auto;font-size:11.5px;color:var(--faint);font-weight:400}
+
+  .cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(148px,1fr));gap:12px;
+    margin-bottom:16px}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:15px 17px}
+  .card .k{font-size:10.5px;letter-spacing:.08em;text-transform:uppercase;color:var(--faint)}
+  .card .v{font-family:var(--mono);font-size:22px;font-weight:500;margin-top:6px;line-height:1.1}
+  .card .n{font-size:11.5px;color:var(--muted);margin-top:4px}
+
+  table.t{width:100%;border-collapse:collapse;font-size:12.5px}
+  table.t th{text-align:left;font-size:10px;text-transform:uppercase;letter-spacing:.06em;
+    color:var(--faint);border-bottom:1px solid var(--line);padding:8px;font-weight:600;
+    position:sticky;top:0;background:var(--panel);z-index:1}
+  table.t td{padding:8px;border-bottom:1px solid var(--line);vertical-align:top}
+  table.t tr:last-child td{border-bottom:0}
+  .num{font-family:var(--mono);text-align:right;font-variant-numeric:tabular-nums}
+  .lst{max-height:620px;overflow:auto}
+
+  /* the month as a calendar: one row an employee, one narrow column a day */
+  table.grid{border-collapse:collapse;font-size:11px}
+  table.grid th,table.grid td{border:1px solid var(--line);padding:3px 4px;text-align:center}
+  table.grid th.who,table.grid td.who{text-align:left;white-space:nowrap;position:sticky;
+    left:0;background:var(--panel);z-index:2;min-width:168px;padding:4px 8px}
+  table.grid thead th{position:sticky;top:0;background:var(--panel);z-index:3;
+    font-size:9.5px;color:var(--faint);font-weight:600}
+  table.grid thead th.who{z-index:4}
+  table.grid td.d{cursor:pointer;font-family:var(--mono);width:26px}
+  table.grid td.d:hover{outline:2px solid var(--accent);outline-offset:-2px}
+  .m-present{background:var(--ok-soft);color:var(--ok)}
+  .m-absent{background:var(--neg-soft);color:var(--neg);font-weight:700}
+  .m-leave{background:#EAF0FB;color:#2B4C86}
+  .m-half,.m-ahalf{background:var(--warn-soft);color:var(--warn)}
+  .m-wfh{background:var(--accent-soft);color:var(--accent-deep)}
+  .m-holiday{background:#F3F5F7;color:var(--faint)}
+  .m-weekend{background:#F7FAFA;color:#C2CFCF}
+  .m-pending{background:#FFF;color:var(--faint)}
+  .m-late{background:var(--warn-soft);color:var(--warn)}
+  .m-none{background:#FBFCFC;color:#DDE5E5}
+  .wrap{overflow:auto;max-height:640px}
+
+  .key{display:flex;gap:12px;flex-wrap:wrap;font-size:11px;color:var(--muted);margin-top:11px}
+  .key span b{font-family:var(--mono);margin-right:4px}
+
+  .pill{display:inline-block;padding:2px 9px;border-radius:20px;font-size:10.5px;
+    font-weight:600;white-space:nowrap}
+  .pill.ok{background:var(--ok-soft);color:var(--ok)}
+  .pill.no{background:#F3F5F7;color:var(--faint)}
+  .pill.warn{background:var(--warn-soft);color:var(--warn)}
+  .pill.neg{background:var(--neg-soft);color:var(--neg)}
+
+  .f label{display:block;font-size:10.5px;letter-spacing:.06em;text-transform:uppercase;
+    color:var(--faint);margin-bottom:4px}
+  .f input,.f select{width:100%;border:1px solid var(--line);border-radius:7px;
+    padding:8px 10px;font:inherit;font-size:13px;background:#fff}
+  .form{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:12px 16px}
+  .acts{display:flex;gap:8px;flex-wrap:wrap;margin-top:16px;align-items:center}
+
+  .drop{border:2px dashed var(--line-2);border-radius:10px;padding:26px;text-align:center;
+    color:var(--muted);font-size:13px;cursor:pointer;background:var(--panel-2)}
+  .drop:hover{border-color:var(--accent);color:var(--ink)}
+
+  .msg{padding:13px 15px;border-radius:8px;background:var(--neg-soft);
+    border:1px solid var(--neg);color:var(--neg);font-size:12.5px;margin-bottom:12px}
+  .good{padding:13px 15px;border-radius:8px;background:var(--ok-soft);
+    border:1px solid var(--ok);color:var(--ok);font-size:12.5px;margin-bottom:12px}
+  .warnbox{padding:11px 14px;border-radius:8px;background:var(--warn-soft);
+    border:1px solid var(--warn);color:var(--warn);font-size:12.5px;margin-bottom:12px}
+  .loading{color:var(--muted);font-size:12.5px;padding:22px 0}
+  .empty{color:var(--muted);font-size:12.5px;padding:16px 0}
+  .note{font-size:11.5px;color:var(--faint);margin-top:11px}
+</style>
+</head>
+<body>
+
+<div class="layout">
+  <aside class="rail"></aside>
+
+  <div class="main">
+    <div class="topline">
+      <div>
+        <h1>Attendance</h1>
+        <div class="sub" id="sub">The month as the machine recorded it</div>
+      </div>
+    </div>
+
+    <div class="shell">
+      <div id="head"></div>
+      <div class="ctabs" id="ctabs"></div>
+      <div id="pane"><div class="loading">One moment&hellip;</div></div>
+    </div>
+  </div>
+</div>
+
+<script src="/nav.js"></script>
+<script>
+(function(){
+  "use strict";
+  var $ = function(id){ return document.getElementById(id); };
+
+  function esc(s){
+    return String(s == null ? '' : s)
+      .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  }
+  function n0(v){ return Number(v||0).toLocaleString('en-US'); }
+  function get(url){
+    return fetch(url, { cache:'no-store' }).then(function(r){ return r.json(); });
+  }
+  function post(url, body){
+    return fetch(url, { method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify(body || {}) }).then(function(r){ return r.json(); });
+  }
+
+  var MARK = { present:'X', late:'X', half:'HF', ahalf:'HF', leave:'L', absent:'A',
+               wfh:'W/H', holiday:'H', weekend:'W', pending:'?', thirdparty:'3P' };
+
+  var S = { tab:'month', month:'', cycle:null, days:[], statuses:{}, leaves:[],
+            mayApprove:false, approvers:[], people:[], said:'', err:'' };
+
+  var TAB = [
+    { k:'month',  label:'The month' },
+    { k:'import', label:'Bring the report in' },
+    { k:'leave',  label:'Leave' },
+    { k:'away',   label:'Working away' }
+  ];
+
+  function monthNow(){
+    var d = new Date();
+    return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0');
+  }
+
+  function load(){
+    S.err = '';
+    return Promise.all([
+      get('/api/hr/days?month=' + encodeURIComponent(S.month)),
+      get('/api/hr/leaves'),
+      get('/api/hr/people?all=1')
+    ]).then(function(r){
+      var d = r[0], l = r[1], p = r[2];
+      if (d.error) { S.err = d.error; }
+      else {
+        S.month = d.month; S.cycle = d.cycle; S.days = d.days || [];
+        S.statuses = d.statuses || {};
+      }
+      if (!l.error) {
+        S.leaves = l.leaves || []; S.mayApprove = !!l.mayApprove;
+        S.approvers = l.approvers || [];
+      }
+      if (!p.error) S.people = (p.people || []);
+      paint();
+    }).catch(function(e){
+      S.err = 'Could not read the month: ' + e.message;
+      paint();
+    });
+  }
+
+  function paint(){
+    var waiting = S.leaves.filter(function(l){ return l.state === 'asked'; }).length;
+    var absent = S.days.filter(function(d){ return d.status === 'absent'; }).length;
+    var pending = S.days.filter(function(d){ return d.status === 'pending'; }).length;
+    var lateDays = S.days.filter(function(d){ return d.lateDay; }).length;
+
+    var h = '';
+    if (S.err) h += '<div class="msg">' + esc(S.err) + '</div>';
+    if (S.said) h += '<div class="good">' + esc(S.said) + '</div>';
+
+    h += '<div class="cbar">' +
+      '<label style="font-size:12.5px;color:var(--muted)">Month</label>' +
+      '<input type="month" id="m" value="' + esc(S.month) + '">' +
+      '<span style="font-size:11.5px;color:var(--faint)">' +
+        (S.cycle ? esc(S.cycle.from) + ' to ' + esc(S.cycle.to) : '') + '</span>' +
+      '<span class="right"><a href="/payroll" style="font-size:12.5px;color:var(--accent-deep)">' +
+      'Work the month out &rarr;</a></span></div>';
+
+    h += '<div class="cards">' +
+      card('Days recorded', n0(S.days.length), S.cycle ? 'in this cycle' : '') +
+      card('Absent', n0(absent), absent ? 'each one is a day deducted' : 'nobody') +
+      card('Late days', n0(lateDays), 'over the grace') +
+      card('Not accounted for', n0(pending), pending ? 'somebody has to look at these' : 'all clear') +
+      card('Leave to approve', n0(waiting), waiting ? 'waiting on a person' : 'nothing waiting') +
+      '</div>';
+
+    $('head').innerHTML = h;
+
+    $('ctabs').innerHTML = TAB.map(function(t){
+      var n = t.k === 'leave' ? waiting : null;
+      return '<button data-k="' + t.k + '" class="' + (S.tab === t.k ? 'on' : '') + '">' +
+        esc(t.label) + (n ? '<span class="ct">' + n0(n) + '</span>' : '') + '</button>';
+    }).join('');
+    $('ctabs').querySelectorAll('button').forEach(function(b){
+      b.addEventListener('click', function(){
+        S.tab = b.getAttribute('data-k'); S.said = ''; paint();
+      });
+    });
+
+    $('m').addEventListener('change', function(){
+      S.month = this.value || monthNow(); S.said = ''; load();
+    });
+
+    if (S.tab === 'import') paintImport();
+    else if (S.tab === 'leave') paintLeave();
+    else if (S.tab === 'away') paintAway();
+    else paintMonth();
+  }
+
+  function card(k, v, n){
+    return '<div class="card"><div class="k">' + esc(k) + '</div>' +
+      '<div class="v">' + v + '</div><div class="n">' + esc(n) + '</div></div>';
+  }
+
+  /* ---------- the month ---------- */
+
+  function eachDay(from, to){
+    var out = [], p = from.split('-').map(Number);
+    var y = p[0], m = p[1], d = p[2];
+    for (var i = 0; i < 400; i++) {
+      var day = y + '-' + String(m).padStart(2,'0') + '-' + String(d).padStart(2,'0');
+      out.push(day);
+      if (day >= to) break;
+      d++;
+      var last = new Date(y, m, 0).getDate();
+      if (d > last) { d = 1; m++; if (m > 12) { m = 1; y++; } }
+    }
+    return out;
+  }
+
+  function paintMonth(){
+    if (!S.cycle) { $('pane').innerHTML = '<div class="empty">No month.</div>'; return; }
+    var days = eachDay(S.cycle.from, S.cycle.to);
+
+    var by = {};
+    S.days.forEach(function(d){
+      by[d.emp_code] = by[d.emp_code] || {};
+      by[d.emp_code][d.day] = d;
+    });
+
+    var people = S.people.filter(function(p){
+      return p.status !== 'left' || by[p.emp_code];
+    });
+
+    if (!S.days.length) {
+      $('pane').innerHTML = '<div class="box"><h3>Nothing recorded for this month</h3>' +
+        '<div class="empty">Bring the biometric report in from the tab above, and the ' +
+        'month fills in.</div></div>';
+      return;
+    }
+
+    var h = '<div class="box"><h3>Every day, every person' +
+      '<span class="aside">click a day to change it</span></h3><div class="wrap">' +
+      '<table class="grid"><thead><tr><th class="who">Name</th>' +
+      days.map(function(d){
+        return '<th>' + d.slice(8) + '</th>';
+      }).join('') + '<th>Late</th><th>OT</th><th>Abs</th></tr></thead><tbody>';
+
+    people.forEach(function(p){
+      var mine = by[p.emp_code] || {};
+      var late = 0, ot = 0, abs = 0;
+      var cells = days.map(function(day){
+        var d = mine[day];
+        if (!d) return '<td class="d m-none" data-code="' + esc(p.emp_code) +
+          '" data-day="' + day + '">&middot;</td>';
+        late += Number(d.lateMin) || 0;
+        ot += Number(d.otMin) || 0;
+        if (d.status === 'absent') abs++;
+        var cls = d.lateDay && d.status === 'present' ? 'm-late' : 'm-' + d.status;
+        return '<td class="d ' + cls + '" data-code="' + esc(p.emp_code) +
+          '" data-day="' + day + '" title="' + esc(d.day + ' ' +
+            (S.statuses[d.status] || d.status) +
+            (d.clock_in ? ' ' + d.clock_in + '-' + (d.clock_out || '?') : '') +
+            (d.lateMin ? ' late ' + d.lateMin + 'm' : '')) + '">' +
+          (MARK[d.status] || '?') + '</td>';
+      }).join('');
+      h += '<tr><td class="who"><b>' + esc(p.name) + '</b> <small style="color:var(--faint)">' +
+        esc(p.emp_code) + '</small></td>' + cells +
+        '<td class="num">' + n0(late) + '</td>' +
+        '<td class="num">' + n0(ot) + '</td>' +
+        '<td class="num">' + (abs ? n0(abs) : '') + '</td></tr>';
+    });
+
+    h += '</tbody></table></div>' +
+      '<div class="key">' + Object.keys(MARK).map(function(k){
+        return '<span class="m-' + k + '" style="padding:1px 6px;border-radius:4px">' +
+          '<b>' + MARK[k] + '</b>' + esc(S.statuses[k] || k) + '</span>';
+      }).join('') + '</div></div><div id="one"></div>';
+
+    $('pane').innerHTML = h;
+
+    $('pane').querySelectorAll('td.d').forEach(function(td){
+      td.addEventListener('click', function(){
+        oneDay(td.getAttribute('data-code'), td.getAttribute('data-day'));
+      });
+    });
+  }
+
+  function oneDay(code, day){
+    var d = S.days.filter(function(x){
+      return x.emp_code === code && x.day === day;
+    })[0] || { emp_code: code, day: day, status:'present' };
+    var who = S.people.filter(function(p){ return p.emp_code === code; })[0] || {};
+
+    var h = '<div class="box"><h3>' + esc(who.name || code) + ' &mdash; ' + esc(day) +
+      '<span class="aside">' + esc(d.source || 'nothing recorded') + '</span></h3>' +
+      '<div class="f"><div class="form">' +
+      '<div><label>What happened</label><select id="dst">' +
+        Object.keys(S.statuses).map(function(k){
+          return '<option value="' + k + '"' + (d.status === k ? ' selected' : '') +
+            '>' + esc(S.statuses[k]) + '</option>';
+        }).join('') + '</select></div>' +
+      '<div><label>Clock in</label><input type="time" id="din" value="' +
+        esc(d.clock_in || '') + '"></div>' +
+      '<div><label>Clock out</label><input type="time" id="dout" value="' +
+        esc(d.clock_out || '') + '"></div>' +
+      '<div style="grid-column:1/-1"><label>Remarks</label>' +
+      '<input type="text" id="dnote" value="' + esc(d.note || d.words || '') + '"></div>' +
+      '</div><div class="acts"><button class="solid" id="dsave">Save this day</button>' +
+      '<span class="note" style="margin:0">A day changed here is not written over by the ' +
+      'next import &mdash; a person\'s answer beats the machine\'s.</span></div></div></div>';
+
+    $('one').innerHTML = h;
+    $('one').scrollIntoView({ behavior:'smooth', block:'nearest' });
+
+    $('dsave').addEventListener('click', function(){
+      post('/api/hr/days/save', {
+        emp_code: code, day: day, status: $('dst').value,
+        clock_in: $('din').value, clock_out: $('dout').value,
+        note: $('dnote').value
+      }).then(function(r){
+        if (r.error) return alert(r.error);
+        S.said = day + ' saved for ' + (who.name || code) + '.';
+        load();
+      });
+    });
+  }
+
+  /* ---------- bringing the report in ---------- */
+
+  var looked = null;
+
+  function paintImport(){
+    var h = '<div class="box"><h3>The biometric report' +
+      '<span class="aside">the file off the machine, as it comes</span></h3>' +
+      '<div class="drop" id="drop">Choose the attendance log &mdash; .xlsx or .csv' +
+      '<input type="file" id="file" accept=".xlsx,.xls,.csv" style="display:none"></div>' +
+      '<div id="ires"></div>' +
+      '<div class="note">Nothing of the file is kept. The rows are read, the days are ' +
+      'written, and the file goes &mdash; the same rule the invoice uploads have ' +
+      'always had.</div></div>';
+    $('pane').innerHTML = h;
+
+    $('drop').addEventListener('click', function(){ $('file').click(); });
+    $('file').addEventListener('change', function(){
+      if (this.files && this.files[0]) send(this.files[0], true);
+    });
+  }
+
+  function send(file, lookFirst){
+    var fd = new FormData();
+    fd.append('file', file);
+    if (lookFirst) fd.append('look', '1');
+    $('ires').innerHTML = '<div class="loading">Reading the sheet&hellip;</div>';
+    fetch('/api/hr/days/import', { method:'POST', body: fd })
+      .then(function(r){ return r.json(); })
+      .then(function(d){
+        if (d.error) {
+          $('ires').innerHTML = '<div class="msg">' + esc(d.error) + '</div>' +
+            unknownList(d.unknown);
+          return;
+        }
+        if (d.dryRun) {
+          looked = file;
+          $('ires').innerHTML =
+            '<div class="good">' + n0(d.rows) + ' days for ' + n0(d.people) +
+            ' people, ' + esc(d.from) + ' to ' + esc(d.to) + '.</div>' +
+            unknownList(d.unknown) +
+            '<div class="acts"><button class="solid" id="go">Bring it in</button>' +
+            '<button id="cancel">Leave it</button></div>';
+          $('go').addEventListener('click', function(){ send(looked, false); });
+          $('cancel').addEventListener('click', function(){ paintImport(); });
+          return;
+        }
+        $('ires').innerHTML = '<div class="good">' + n0(d.rows) + ' days written for ' +
+          n0(d.people) + ' people, ' + esc(d.from) + ' to ' + esc(d.to) + '.' +
+          (d.kept ? ' ' + n0(d.kept) + ' days somebody had already ruled on were left ' +
+            'as they were.' : '') +
+          (d.leaveApplied ? ' ' + n0(d.leaveApplied) + ' approved leave days put back on top.' : '') +
+          '</div>' + unknownList(d.unknown);
+        S.month = String(d.to || S.month).slice(0, 7);
+        load();
+      })
+      .catch(function(e){
+        $('ires').innerHTML = '<div class="msg">' + esc(e.message) + '</div>';
+      });
+  }
+
+  function unknownList(list){
+    if (!list || !list.length) return '';
+    return '<div class="warnbox">The sheet names ' + n0(list.length) +
+      ' people who are not on the staff list, and their days were left out: ' +
+      esc(list.map(function(u){
+        return (u.name || u.code) + ' (' + u.days + ')';
+      }).join(', ')) +
+      '. Add them on <a href="/employees">People</a> and bring the file in again.</div>';
+  }
+
+  /* ---------- leave ---------- */
+
+  function paintLeave(){
+    var h = '';
+    if (!S.mayApprove) {
+      h += '<div class="warnbox">You can record a leave here, but only ' +
+        esc((S.approvers || []).join(', ') || 'the administrator') +
+        ' may approve one.</div>';
+    }
+
+    h += '<div class="box"><h3>Record a leave' +
+      '<span class="aside">from the email it came in</span></h3>' +
+      '<div class="f"><div class="form">' +
+      '<div><label>Who</label><select id="lwho">' +
+        S.people.filter(function(p){ return p.status !== 'left'; }).map(function(p){
+          return '<option value="' + esc(p.emp_code) + '">' + esc(p.name) +
+            ' (' + esc(p.emp_code) + ')</option>';
+        }).join('') + '</select></div>' +
+      '<div><label>What kind</label><select id="lkind">' +
+        '<option value="leave">Leave, a whole day</option>' +
+        '<option value="half">Half day</option>' +
+        '<option value="late">Coming in late</option>' +
+        '<option value="wfh">Work from home</option></select></div>' +
+      '<div><label>From</label><input type="date" id="lfrom"></div>' +
+      '<div><label>To</label><input type="date" id="lto"></div>' +
+      '<div style="grid-column:1/-1"><label>Reason, and the email it came in</label>' +
+      '<input type="text" id="lwhy" placeholder="e.g. exam - email of 14 Sep"></div>' +
+      '</div><div class="acts"><button class="solid" id="ladd">Record it</button>' +
+      '</div></div></div>';
+
+    var waiting = S.leaves.filter(function(l){ return l.state === 'asked'; });
+    var done = S.leaves.filter(function(l){ return l.state !== 'asked'; });
+
+    h += '<div class="box"><h3>Waiting on an answer' +
+      '<span class="aside">' + n0(waiting.length) + '</span></h3>' +
+      (waiting.length ? leaveTable(waiting, true)
+        : '<div class="empty">Nothing waiting. An absence with no approved leave ' +
+          'against it is deducted.</div>') + '</div>';
+
+    h += '<div class="box"><h3>Answered' +
+      '<span class="aside">' + n0(done.length) + '</span></h3>' +
+      (done.length ? leaveTable(done, false) : '<div class="empty">Nothing yet.</div>') +
+      '</div>';
+
+    $('pane').innerHTML = h;
+
+    $('ladd').addEventListener('click', function(){
+      post('/api/hr/leaves/new', {
+        emp_code: $('lwho').value, kind: $('lkind').value,
+        from_day: $('lfrom').value, to_day: $('lto').value,
+        reason: $('lwhy').value
+      }).then(function(d){
+        if (d.error) return alert(d.error);
+        S.said = 'Recorded. It is waiting on an answer.';
+        load();
+      });
+    });
+
+    $('pane').querySelectorAll('button[data-id]').forEach(function(b){
+      b.addEventListener('click', function(){
+        post('/api/hr/leaves/decide', {
+          id: b.getAttribute('data-id'), state: b.getAttribute('data-state')
+        }).then(function(d){
+          if (d.error) return alert(d.error);
+          S.said = (d.leave.state === 'approved' ? 'Approved' : 'Refused') + ' - ' +
+            n0(d.days) + ' day' + (d.days === 1 ? '' : 's') + ' changed.';
+          load();
+        });
+      });
+    });
+  }
+
+  function leaveTable(rows, open){
+    var h = '<div class="lst"><table class="t"><thead><tr><th>Who</th><th>Kind</th>' +
+      '<th>From</th><th>To</th><th>Reason</th><th>State</th>' +
+      (open && S.mayApprove ? '<th></th>' : '<th>Answered by</th>') +
+      '</tr></thead><tbody>';
+    rows.forEach(function(l){
+      h += '<tr><td><b>' + esc(l.name) + '</b> <small style="color:var(--faint)">' +
+        esc(l.emp_code) + '</small></td>' +
+        '<td>' + esc(l.kind) + '</td>' +
+        '<td class="num">' + esc(l.from_day) + '</td>' +
+        '<td class="num">' + esc(l.to_day) + '</td>' +
+        '<td>' + esc(l.reason || '') + '</td>' +
+        '<td>' + (l.state === 'approved' ? '<span class="pill ok">approved</span>' :
+                  l.state === 'refused' ? '<span class="pill neg">refused</span>' :
+                  '<span class="pill warn">waiting</span>') + '</td>';
+      if (open && S.mayApprove) {
+        h += '<td style="white-space:nowrap">' +
+          '<button data-id="' + l.id + '" data-state="approved" ' +
+          'style="border:1px solid var(--ok);background:var(--ok-soft);color:var(--ok);' +
+          'border-radius:6px;padding:4px 10px;font:inherit;font-size:11.5px;cursor:pointer;' +
+          'width:auto;height:auto">Approve</button> ' +
+          '<button data-id="' + l.id + '" data-state="refused" ' +
+          'style="border:1px solid var(--neg);background:var(--neg-soft);color:var(--neg);' +
+          'border-radius:6px;padding:4px 10px;font:inherit;font-size:11.5px;cursor:pointer;' +
+          'width:auto;height:auto">Refuse</button></td>';
+      } else {
+        h += '<td><small style="color:var(--muted)">' + esc(l.decided_by || '') +
+          '</small></td>';
+      }
+      h += '</tr>';
+    });
+    return h + '</tbody></table></div>';
+  }
+
+  /* ---------- working away ---------- */
+
+  function paintAway(){
+    var away = S.people.filter(function(p){ return p.virtual && p.status !== 'left'; });
+    var typed = S.days.filter(function(d){ return d.source === 'self'; });
+
+    var h = '<div class="box"><h3>Staff who type their own check in and out' +
+      '<span class="aside">' + n0(away.length) + '</span></h3>';
+    if (!away.length) {
+      h += '<div class="empty">Nobody yet. Tick <b>Works away</b> on somebody\'s record ' +
+        'on <a href="/employees">People</a>, and the boxes appear on their own screen.</div>';
+    } else {
+      h += '<div class="lst"><table class="t"><thead><tr><th>Id</th><th>Name</th>' +
+        '<th>Department</th><th class="num">Days they have typed</th><th>Login</th>' +
+        '</tr></thead><tbody>' + away.map(function(p){
+          var n = typed.filter(function(d){ return d.emp_code === p.emp_code; }).length;
+          return '<tr><td class="num">' + esc(p.emp_code) + '</td>' +
+            '<td>' + esc(p.name) + '</td><td>' + esc(p.department || '') + '</td>' +
+            '<td class="num">' + n0(n) + '</td>' +
+            '<td>' + (p.user_sub ? '<span class="pill ok">yes</span>' :
+              '<span class="pill neg">they cannot sign in yet</span>') + '</td></tr>';
+        }).join('') + '</tbody></table></div>';
+    }
+    h += '</div>';
+
+    h += '<div class="box"><h3>What they typed this month' +
+      '<span class="aside">' + n0(typed.length) + ' days</span></h3>';
+    if (!typed.length) {
+      h += '<div class="empty">Nothing typed this month.</div>';
+    } else {
+      h += '<div class="lst"><table class="t"><thead><tr><th>Day</th><th>Who</th>' +
+        '<th>In</th><th>Out</th><th>What happened</th><th class="num">Late</th>' +
+        '<th>Remarks</th></tr></thead><tbody>' +
+        typed.slice().sort(function(a,b){ return a.day < b.day ? 1 : -1; })
+          .map(function(d){
+            return '<tr><td class="num">' + esc(d.day) + '</td>' +
+              '<td>' + esc(d.name) + '</td>' +
+              '<td class="num">' + esc(d.clock_in || '') + '</td>' +
+              '<td class="num">' + esc(d.clock_out || '') + '</td>' +
+              '<td>' + esc(S.statuses[d.status] || d.status) + '</td>' +
+              '<td class="num">' + (d.lateMin ? n0(d.lateMin) : '') + '</td>' +
+              '<td><small style="color:var(--muted)">' + esc(d.note || '') +
+              '</small></td></tr>';
+          }).join('') + '</tbody></table></div>';
+    }
+    h += '</div>';
+
+    $('pane').innerHTML = h;
+  }
+
+  S.month = monthNow();
+  window.APP.ready.then(function(){ load(); });
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,576 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>People</title>
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="manifest" href="/manifest.json">
+<meta name="theme-color" content="#222F34">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@600;700;800&family=Roboto:wght@400;500&family=Roboto+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/app.css">
+<style>
+  /* Not .bar: app.css keeps a 7px progress bar under that name. */
+  .cbar{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:16px}
+  .cbar input[type=text],.cbar select{border:1px solid var(--line);border-radius:7px;
+    padding:7px 9px;font:inherit;font-size:12.5px;background:#fff;height:auto;width:auto}
+  .cbar button{border:1px solid var(--line);background:#fff;border-radius:7px;padding:7px 12px;
+    font:inherit;font-size:12.5px;cursor:pointer;width:auto;height:auto;color:var(--ink)}
+  .cbar button:hover{border-color:var(--accent)}
+  .cbar .right{margin-left:auto;display:flex;gap:6px;align-items:center}
+
+  .ctabs{display:flex;gap:7px;flex-wrap:wrap;margin:0 0 14px}
+  .ctabs button{padding:6px 13px;border:1px solid var(--line);border-radius:20px;
+    font:inherit;font-size:12.5px;color:var(--muted);background:#fff;cursor:pointer;
+    white-space:nowrap;width:auto;height:auto}
+  .ctabs button:hover{border-color:var(--accent);color:var(--ink)}
+  .ctabs button.on{background:var(--accent);border-color:var(--accent);color:#fff;font-weight:600}
+  .ctabs button .ct{font-family:var(--mono);font-size:11px;opacity:.75;margin-left:5px}
+
+  .box{background:var(--panel);border:1px solid var(--line);border-radius:10px;
+    padding:16px 18px;margin-bottom:14px}
+  .box h3{margin:0 0 14px;font-size:13.5px;font-weight:600;display:flex;
+    align-items:baseline;gap:9px}
+  .box h3 .aside{margin-left:auto;font-size:11.5px;color:var(--faint);font-weight:400}
+
+  .cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(158px,1fr));gap:12px;
+    margin-bottom:16px}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:15px 17px}
+  .card .k{font-size:10.5px;letter-spacing:.08em;text-transform:uppercase;color:var(--faint)}
+  .card .v{font-family:var(--mono);font-size:22px;font-weight:500;margin-top:6px;line-height:1.1}
+  .card .n{font-size:11.5px;color:var(--muted);margin-top:4px}
+
+  table.t{width:100%;border-collapse:collapse;font-size:12.5px}
+  table.t th{text-align:left;font-size:10px;text-transform:uppercase;letter-spacing:.06em;
+    color:var(--faint);border-bottom:1px solid var(--line);padding:8px;font-weight:600;
+    position:sticky;top:0;background:var(--panel);z-index:1}
+  table.t td{padding:8px;border-bottom:1px solid var(--line);vertical-align:top}
+  table.t tr:last-child td{border-bottom:0}
+  table.t tr.pick{cursor:pointer}
+  table.t tr.pick:hover td{background:var(--panel-2)}
+  table.t tr.on td{background:var(--accent-soft)}
+  .num{font-family:var(--mono);text-align:right;font-variant-numeric:tabular-nums}
+  .lst{max-height:620px;overflow:auto}
+
+  .pill{display:inline-block;padding:2px 9px;border-radius:20px;font-size:10.5px;
+    font-weight:600;white-space:nowrap}
+  .pill.ok{background:var(--ok-soft);color:var(--ok)}
+  .pill.no{background:#F3F5F7;color:var(--faint)}
+  .pill.warn{background:var(--warn-soft);color:var(--warn)}
+  .pill.neg{background:var(--neg-soft);color:var(--neg)}
+
+  .form{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:12px 16px}
+  .f label{display:block;font-size:10.5px;letter-spacing:.06em;text-transform:uppercase;
+    color:var(--faint);margin-bottom:4px}
+  .f input,.f select,.f textarea{width:100%;border:1px solid var(--line);border-radius:7px;
+    padding:8px 10px;font:inherit;font-size:13px;background:#fff}
+  .f input:focus,.f select:focus{outline:none;border-color:var(--accent)}
+  .f .must input,.f .must select{border-color:var(--warn)}
+  .f small{font-size:11px;color:var(--faint)}
+  .acts{display:flex;gap:8px;flex-wrap:wrap;margin-top:16px;align-items:center}
+  .acts .grow{margin-left:auto}
+
+  .msg{padding:13px 15px;border-radius:8px;background:var(--neg-soft);
+    border:1px solid var(--neg);color:var(--neg);font-size:12.5px;margin-bottom:12px}
+  .good{padding:13px 15px;border-radius:8px;background:var(--ok-soft);
+    border:1px solid var(--ok);color:var(--ok);font-size:12.5px;margin-bottom:12px}
+  .warnbox{padding:11px 14px;border-radius:8px;background:var(--warn-soft);
+    border:1px solid var(--warn);color:var(--warn);font-size:12.5px;margin-bottom:12px}
+  .loading{color:var(--muted);font-size:12.5px;padding:22px 0}
+  .empty{color:var(--muted);font-size:12.5px;padding:16px 0}
+  .note{font-size:11.5px;color:var(--faint);margin-top:11px}
+</style>
+</head>
+<body>
+
+<div class="layout">
+  <aside class="rail"></aside>
+
+  <div class="main">
+    <div class="topline">
+      <div>
+        <h1>People</h1>
+        <div class="sub" id="sub">Who works here</div>
+      </div>
+    </div>
+
+    <div class="shell">
+      <div id="out"><div class="loading">One moment&hellip;</div></div>
+    </div>
+  </div>
+</div>
+
+<script src="/nav.js"></script>
+<script>
+(function(){
+  "use strict";
+  var $ = function(id){ return document.getElementById(id); };
+
+  function esc(s){
+    return String(s == null ? '' : s)
+      .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  }
+  function n0(v){ return Number(v||0).toLocaleString('en-US'); }
+  function rs(v){
+    var n = Number(v||0);
+    return n.toLocaleString('en-US', { minimumFractionDigits:0, maximumFractionDigits:0 });
+  }
+  function get(url){
+    return fetch(url, { cache:'no-store' }).then(function(r){ return r.json(); });
+  }
+  function post(url, body){
+    return fetch(url, { method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify(body || {}) }).then(function(r){ return r.json(); });
+  }
+
+  var S = { people:[], standing:[], heads:[], autoHeads:[], nextCode:'', policy:{},
+            admin:false, tab:'all', open:null, filter:'', said:'' };
+
+  var TAB = [
+    { k:'all',   label:'Everybody' },
+    { k:'new',   label:'Take somebody on' },
+    { k:'stand', label:'Standing amounts' },
+    { k:'left',  label:'Left' }
+  ];
+
+  // The joining form, and these are the boxes it asks for - the same ones the
+  // company's own Google form asks for. The ones marked must are not optional,
+  // on purpose: a record with no home address and no guardian is the exact
+  // thing that was asked not to happen.
+  var FIELDS = [
+    { k:'name',           label:'Name', must:true },
+    { k:'department',     label:'Department' },
+    { k:'designation',    label:'Designation' },
+    { k:'grade',          label:'Grade' },
+    { k:'employment',     label:'Employment', pick:['permanent','probation','intern','contract','third party'] },
+    { k:'joined_on',      label:'Joining date', date:true },
+    { k:'dob',            label:'Date of birth', date:true, must:true },
+    { k:'cnic',           label:'ID card no.', must:true },
+    { k:'phone',          label:'Phone', must:true },
+    { k:'email',          label:'Personal email' },
+    { k:'work_email',     label:'Work email' },
+    { k:'guardian',       label:'Guardian name and relation', must:true },
+    { k:'guardian_phone', label:'Guardian phone', must:true },
+    { k:'guardian_cnic',  label:'Guardian ID card no.', must:true },
+    { k:'address',        label:'Home address', must:true, wide:true },
+    { k:'bank_name',      label:'Bank' },
+    { k:'bank_account',   label:'Bank account / IBAN' },
+    { k:'pay_mode',       label:'Paid by', pick:['bank','cash'] },
+    { k:'basic',          label:'Basic salary', num:true },
+    { k:'scale',          label:'Pay scale' },
+    { k:'duty_from',      label:'On duty', time:true },
+    { k:'duty_to',        label:'Off duty', time:true },
+    { k:'ac_no',          label:'Biometric no.' },
+    { k:'timetable',      label:'Timetable' },
+    { k:'late_rule',      label:'Late fine worked out by',
+      pick:['', 'days', 'minutes', 'minutes2x'] },
+    { k:'late_count_over', label:'A day is late after (minutes)', num:true },
+    { k:'next_increment', label:'Next increment' },
+    { k:'photo_url',      label:'Photo (link)' },
+    { k:'id_card_url',    label:'ID card (link)' },
+    { k:'note',           label:'Note / duty station', wide:true }
+  ];
+
+  function load(){
+    return get('/api/hr/people?all=1').then(function(d){
+      if (d.error) { $('out').innerHTML = '<div class="msg">' + esc(d.error) + '</div>'; return; }
+      S.people = d.people || [];
+      S.standing = d.standing || [];
+      S.heads = d.heads || [];
+      S.autoHeads = d.autoHeads || [];
+      S.nextCode = d.nextCode || '';
+      S.policy = d.policy || {};
+      S.admin = !!d.admin;
+      paint();
+    }).catch(function(e){
+      $('out').innerHTML = '<div class="msg">Could not read the staff list: ' +
+        esc(e.message) + '</div>';
+    });
+  }
+
+  function here(){ return S.people.filter(function(p){ return p.status !== 'left'; }); }
+  function gone(){ return S.people.filter(function(p){ return p.status === 'left'; }); }
+
+  function paint(){
+    var h = '';
+    if (S.said) h += '<div class="good">' + esc(S.said) + '</div>';
+
+    var unverified = here().filter(function(p){ return p.form_state !== 'verified'; }).length;
+    var noLogin = here().filter(function(p){ return !p.user_sub; }).length;
+    var virtual = here().filter(function(p){ return p.virtual; }).length;
+
+    h += '<div class="cards">' +
+      card('On the staff', n0(here().length), gone().length ? n0(gone().length) + ' have left' : 'nobody has left') +
+      card('Form not verified', n0(unverified), unverified ? 'they have not confirmed their details' : 'everybody has confirmed') +
+      card('No login yet', n0(noLogin), noLogin ? 'they cannot see their own record' : 'everybody can sign in') +
+      card('Working away', n0(virtual), 'they type their own check in and out') +
+      '</div>';
+
+    h += '<div class="ctabs" id="ctabs">' + TAB.map(function(t){
+      var n = t.k === 'all' ? here().length : t.k === 'left' ? gone().length : null;
+      return '<button data-k="' + t.k + '" class="' + (S.tab === t.k ? 'on' : '') + '">' +
+        esc(t.label) + (n == null ? '' : '<span class="ct">' + n0(n) + '</span>') + '</button>';
+    }).join('') + '</div>';
+
+    h += '<div id="pane"></div>';
+    $('out').innerHTML = h;
+
+    $('ctabs').querySelectorAll('button').forEach(function(b){
+      b.addEventListener('click', function(){
+        S.tab = b.getAttribute('data-k'); S.said = ''; S.open = null; paint();
+      });
+    });
+
+    if (S.tab === 'new') paintNew();
+    else if (S.tab === 'stand') paintStanding();
+    else paintList(S.tab === 'left' ? gone() : here());
+  }
+
+  function card(k, v, n){
+    return '<div class="card"><div class="k">' + esc(k) + '</div>' +
+      '<div class="v">' + v + '</div><div class="n">' + esc(n) + '</div></div>';
+  }
+
+  /* ---------- everybody ---------- */
+
+  function paintList(rows){
+    var q = S.filter.trim().toLowerCase();
+    var list = q ? rows.filter(function(p){
+      return (p.name + ' ' + p.emp_code + ' ' + (p.department||'') + ' ' +
+              (p.designation||'')).toLowerCase().indexOf(q) > -1;
+    }) : rows;
+
+    var h = '<div class="cbar">' +
+      '<input type="text" id="q" placeholder="Name, id or department" value="' +
+        esc(S.filter) + '" autocomplete="off">' +
+      '<span class="right"><button id="csv">Download this list</button></span></div>';
+
+    h += '<div class="box"><h3>' + (S.tab === 'left' ? 'Left' : 'On the staff') +
+      '<span class="aside">' + n0(list.length) + ' of ' + n0(rows.length) + '</span></h3>' +
+      '<div class="lst"><table class="t"><thead><tr>' +
+      '<th>Id</th><th>Name</th><th>Department</th><th>Designation</th><th>Grade</th>' +
+      '<th>Joined</th><th class="num">Basic</th><th>Form</th><th>Login</th><th>Status</th>' +
+      '</tr></thead><tbody>';
+
+    if (!list.length) {
+      h += '<tr><td colspan="10"><div class="empty">Nobody here yet. ' +
+        'Take somebody on from the tab above.</div></td></tr>';
+    }
+
+    list.forEach(function(p){
+      h += '<tr class="pick' + (S.open === p.emp_code ? ' on' : '') +
+        '" data-code="' + esc(p.emp_code) + '">' +
+        '<td class="num">' + esc(p.emp_code) + '</td>' +
+        '<td><b>' + esc(p.name) + '</b>' + (p.virtual ?
+          ' <span class="pill warn">away</span>' : '') + '</td>' +
+        '<td>' + esc(p.department || '') + '</td>' +
+        '<td>' + esc(p.designation || '') + '</td>' +
+        '<td>' + esc(p.grade || '') + '</td>' +
+        '<td class="num">' + esc(p.joined_on || '') + '</td>' +
+        '<td class="num">' + rs(p.basic) + '</td>' +
+        '<td>' + formPill(p) + '</td>' +
+        '<td>' + (p.user_sub ? '<span class="pill ok">yes</span>' :
+          '<span class="pill no">no</span>') + '</td>' +
+        '<td>' + statusPill(p) + '</td></tr>';
+    });
+
+    h += '</tbody></table></div></div><div id="one"></div>';
+    $('pane').innerHTML = h;
+
+    $('q').addEventListener('input', function(){
+      S.filter = this.value;
+      var at = this.selectionStart;
+      paintList(rows);
+      var box = $('q');
+      if (box) { box.focus(); box.setSelectionRange(at, at); }
+    });
+    $('csv').addEventListener('click', function(){ download(list); });
+
+    $('pane').querySelectorAll('tr.pick').forEach(function(tr){
+      tr.addEventListener('click', function(){
+        var code = tr.getAttribute('data-code');
+        S.open = S.open === code ? null : code;
+        paintList(rows);
+      });
+    });
+
+    if (S.open) paintOne(S.open);
+  }
+
+  function formPill(p){
+    if (p.form_state === 'verified') return '<span class="pill ok">verified</span>';
+    if ((p.missing || []).length) {
+      return '<span class="pill warn">' + n0(p.missing.length) + ' to fill</span>';
+    }
+    return '<span class="pill no">not confirmed</span>';
+  }
+
+  function statusPill(p){
+    var s = p.status || 'working';
+    if (s === 'left') return '<span class="pill neg">left ' + esc(p.left_on || '') + '</span>';
+    if (s === 'working') return '<span class="pill ok">working</span>';
+    return '<span class="pill warn">' + esc(s) + '</span>';
+  }
+
+  /* ---------- one person ---------- */
+
+  function paintOne(code){
+    var p = S.people.filter(function(x){ return x.emp_code === code; })[0];
+    if (!p) { $('one').innerHTML = ''; return; }
+
+    var h = '<div class="box"><h3>' + esc(p.name) + ' (' + esc(p.emp_code) + ')' +
+      '<span class="aside">' + esc(p.department || 'no department') + '</span></h3>';
+
+    if ((p.missing || []).length) {
+      h += '<div class="warnbox">Still to fill in: ' + esc(p.missing.join(', ')) + '</div>';
+    }
+
+    h += '<div class="f"><div class="form" id="ff">' + FIELDS.map(function(f){
+      return field(f, p);
+    }).join('') + '</div>';
+
+    h += '<div class="acts">' +
+      '<button class="solid" id="save">Save</button>' +
+      '<label style="display:flex;gap:6px;align-items:center;font-size:12.5px;color:var(--muted)">' +
+        '<input type="checkbox" id="virt" style="width:auto" ' +
+        (p.virtual ? 'checked' : '') + '> Works away &mdash; types their own check in and out</label>' +
+      '<span class="grow"></span>' +
+      '<select id="st" style="width:auto">' +
+        ['working','probation','notice','suspended','left'].map(function(s){
+          return '<option value="' + s + '"' +
+            ((p.status||'working') === s ? ' selected' : '') + '>' + s + '</option>';
+        }).join('') + '</select>' +
+      '<button id="setst">Change status</button>' +
+      '</div>';
+
+    if (S.admin) {
+      h += '<hr style="border:0;border-top:1px solid var(--line);margin:18px 0">';
+      if (p.user_sub) {
+        h += '<div class="note">Signs in as <b>' + esc(p.user_sub) + '</b>. ' +
+          'Their password is set on <a href="/users">Manage users</a>.</div>';
+      } else {
+        h += '<h3 style="margin:0 0 12px">Give them a login</h3>' +
+          '<div class="form"><div class="f">' +
+          '<label>User ID</label><input type="text" id="lid" placeholder="e.g. ' +
+            esc(suggestId(p)) + '" value="' + esc(suggestId(p)) + '"></div>' +
+          '<div class="f"><label>Password</label>' +
+          '<input type="text" id="lpw" value="' + esc(madeUp()) + '"></div></div>' +
+          '<div class="acts"><button id="mklogin">Make the login</button>' +
+          '<span class="note" style="margin:0">They see their own record, time sheet, ' +
+          'leave and slips &mdash; nothing else, until it is ticked on Manage users.</span></div>';
+      }
+    }
+
+    h += '</div></div>';
+    $('one').innerHTML = h;
+
+    $('save').addEventListener('click', function(){ saveOne(p.emp_code, false); });
+    $('virt').addEventListener('change', function(){ saveOne(p.emp_code, false); });
+    $('setst').addEventListener('click', function(){
+      var st = $('st').value;
+      if (st === 'left' && !confirm('Mark ' + p.name + ' as left? Nothing is deleted - ' +
+          'every day they worked and every slip stays.')) return;
+      post('/api/hr/people/status', { emp_code: p.emp_code, status: st })
+        .then(function(d){
+          if (d.error) return alert(d.error);
+          S.said = p.name + ' is now ' + st + '.';
+          load();
+        });
+    });
+    var mk = $('mklogin');
+    if (mk) mk.addEventListener('click', function(){
+      post('/api/hr/people/login', { emp_code: p.emp_code,
+        login_id: $('lid').value, password: $('lpw').value })
+        .then(function(d){
+          if (d.error) return alert(d.error);
+          S.said = 'Login made: ' + d.loginId + ' with the password ' + d.password +
+            '. Write it down now - it is not shown again.';
+          load();
+        });
+    });
+  }
+
+  function field(f, p){
+    var v = p && p[f.k] != null ? p[f.k] : '';
+    var cls = 'f' + (f.must ? ' must' : '');
+    var style = f.wide ? ' style="grid-column:1/-1"' : '';
+    var inner;
+    if (f.pick) {
+      inner = '<select data-k="' + f.k + '">' + f.pick.map(function(o){
+        return '<option value="' + esc(o) + '"' + (String(v) === o ? ' selected' : '') +
+          '>' + esc(o || '(from the policy)') + '</option>';
+      }).join('') + '</select>';
+    } else {
+      var type = f.date ? 'date' : f.time ? 'time' : f.num ? 'number' : 'text';
+      inner = '<input type="' + type + '" data-k="' + f.k + '" value="' + esc(v) + '">';
+    }
+    return '<div class="' + cls + '"' + style + '><label>' + esc(f.label) +
+      (f.must ? ' *' : '') + '</label>' + inner + '</div>';
+  }
+
+  function gather(scope){
+    var body = {};
+    (scope || document).querySelectorAll('[data-k]').forEach(function(el){
+      body[el.getAttribute('data-k')] = el.value;
+    });
+    var v = $('virt');
+    if (v) body.virtual = v.checked;
+    return body;
+  }
+
+  function saveOne(code){
+    var body = gather($('one'));
+    body.emp_code = code;
+    post('/api/hr/people/save', body).then(function(d){
+      if (d.error) return alert(d.error);
+      S.said = 'Saved.';
+      load();
+    });
+  }
+
+  function suggestId(p){
+    var first = String(p.name || '').trim().split(/\s+/)[0] || 'staff';
+    return first.toLowerCase().replace(/[^a-z0-9]/g, '') + '-' +
+      String(p.emp_code).slice(-3);
+  }
+  function madeUp(){
+    var a = 'abcdefghjkmnpqrstuvwxyz', n = '23456789', out = '';
+    for (var i = 0; i < 4; i++) out += a[Math.floor(Math.random() * a.length)];
+    for (var j = 0; j < 4; j++) out += n[Math.floor(Math.random() * n.length)];
+    return out;
+  }
+
+  /* ---------- take somebody on ---------- */
+
+  function paintNew(){
+    var blank = { emp_code: S.nextCode, pay_mode:'bank', employment:'probation',
+                  duty_from: S.policy.dutyFrom || '09:00',
+                  duty_to: S.policy.dutyTo || '17:00' };
+    var h = '<div class="box"><h3>Take somebody on' +
+      '<span class="aside">their id will be ' + esc(S.nextCode) + '</span></h3>' +
+      '<div class="f"><div class="form">' +
+      FIELDS.map(function(f){ return field(f, blank); }).join('') +
+      '</div><div class="acts"><button class="solid" id="add">Add them</button>' +
+      '<span class="note" style="margin:0">A new id is never a returned one: ' +
+      'it is the highest there has ever been, plus one.</span></div></div></div>';
+    $('pane').innerHTML = h;
+
+    $('add').addEventListener('click', function(){
+      var body = gather($('pane'));
+      post('/api/hr/people/new', body).then(function(d){
+        if (d.error) return alert(d.error);
+        S.said = d.employee.name + ' is on the staff as ' + d.employee.emp_code + '.';
+        S.tab = 'all'; S.open = d.employee.emp_code;
+        load();
+      });
+    });
+  }
+
+  /* ---------- standing amounts ---------- */
+
+  function paintStanding(){
+    var heads = S.heads.filter(function(h){ return S.autoHeads.indexOf(h) < 0; });
+    var by = {};
+    S.standing.forEach(function(s){
+      by[s.emp_code] = by[s.emp_code] || {};
+      by[s.emp_code][s.head] = s;
+    });
+
+    var h = '<div class="box"><h3>Standing amounts' +
+      '<span class="aside">written into every month until they are changed</span></h3>' +
+      '<div class="cbar"><select id="sh">' + heads.map(function(x){
+        return '<option value="' + esc(x) + '">' + esc(x) + '</option>';
+      }).join('') + '</select>' +
+      '<span class="note" style="margin:0">Pick a head, then type the amount beside ' +
+      'each person. Nought takes it off.</span></div>' +
+      '<div class="lst"><table class="t"><thead><tr><th>Id</th><th>Name</th>' +
+      '<th>Department</th><th class="num">Amount</th><th>By the day</th>' +
+      '<th>Every other head they have</th></tr></thead><tbody>';
+
+    here().forEach(function(p){
+      var mine = by[p.emp_code] || {};
+      var others = Object.keys(mine).map(function(k){
+        return k + ' ' + rs(mine[k].amount);
+      }).join(', ');
+      h += '<tr data-code="' + esc(p.emp_code) + '">' +
+        '<td class="num">' + esc(p.emp_code) + '</td>' +
+        '<td>' + esc(p.name) + '</td>' +
+        '<td>' + esc(p.department || '') + '</td>' +
+        '<td class="num"><input type="number" class="sa" style="width:110px;text-align:right;' +
+          'border:1px solid var(--line);border-radius:6px;padding:5px 7px;font:inherit;' +
+          'font-size:12.5px" value=""></td>' +
+        '<td><input type="checkbox" class="sp" style="width:auto"></td>' +
+        '<td><small style="color:var(--muted)">' + esc(others) + '</small></td></tr>';
+    });
+
+    h += '</tbody></table></div>' +
+      '<div class="acts"><button class="solid" id="savestand">Save the amounts typed</button>' +
+      '<span class="note" style="margin:0">"By the day" shares the amount over the days ' +
+      'somebody was actually here, which is how a part month\'s food allowance comes out.' +
+      '</span></div></div>';
+
+    $('pane').innerHTML = h;
+
+    function fill(){
+      var head = $('sh').value;
+      $('pane').querySelectorAll('tr[data-code]').forEach(function(tr){
+        var mine = by[tr.getAttribute('data-code')] || {};
+        var s = mine[head];
+        tr.querySelector('.sa').value = s ? Number(s.amount) : '';
+        tr.querySelector('.sp').checked = !!(s && s.prorate);
+      });
+    }
+    $('sh').addEventListener('change', fill);
+    fill();
+
+    $('savestand').addEventListener('click', function(){
+      var head = $('sh').value;
+      var jobs = [];
+      $('pane').querySelectorAll('tr[data-code]').forEach(function(tr){
+        var code = tr.getAttribute('data-code');
+        var amt = tr.querySelector('.sa').value;
+        var pro = tr.querySelector('.sp').checked;
+        var mine = (by[code] || {})[head];
+        var was = mine ? String(Number(mine.amount)) : '';
+        var now = amt === '' ? '' : String(Number(amt));
+        if (now === was && (!mine || !!mine.prorate === pro)) return;
+        jobs.push(post('/api/hr/standing',
+          { emp_code: code, head: head, amount: amt === '' ? 0 : amt, prorate: pro }));
+      });
+      if (!jobs.length) return alert('Nothing was changed.');
+      Promise.all(jobs).then(function(){
+        S.said = jobs.length + ' standing amount' + (jobs.length > 1 ? 's' : '') +
+          ' saved for ' + head + '.';
+        load();
+      });
+    });
+  }
+
+  /* ---------- the list as a file ---------- */
+
+  function download(rows){
+    var cols = ['emp_code','name','department','designation','grade','employment',
+      'joined_on','left_on','status','dob','cnic','phone','email','work_email',
+      'guardian','guardian_phone','guardian_cnic','address','bank_name',
+      'bank_account','pay_mode','basic','scale','ac_no','timetable','form_state'];
+    var lines = [cols.join(',')];
+    rows.forEach(function(p){
+      lines.push(cols.map(function(c){
+        var v = p[c] == null ? '' : String(p[c]);
+        return /[",\n]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v;
+      }).join(','));
+    });
+    var blob = new Blob([lines.join('\r\n')], { type:'text/csv;charset=utf-8' });
+    var a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = 'staff.csv';
+    a.click();
+  }
+
+  window.APP.ready.then(function(){ load(); });
+})();
+</script>
+</body>
+</html>

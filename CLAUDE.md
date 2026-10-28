@@ -1857,8 +1857,255 @@ nightly sweep does a plain `VACUUM (ANALYZE)`; **Clean up now** does `VACUUM
 FULL`, which does give it back and locks each table for a moment - which is why
 it is only ever done when somebody asks for it.
 
+## HR: the process they already run, moved
+
+Asked for by **Sir Saim** on 28 Oct 2026, with the company's own September
+files in hand - the biometric log, the salary working with its formulas, the
+ledger, the management report, the slips and a time sheet. The rule given with
+them is the one to keep: *"sara kam hu ga standard per but hamri jo reports hy
+wo hum is format mein kry gy - system chahy jo bhe hu lkn calculation or
+presentation hum ny isi trha rakhni hy"*. **The system is new; the arithmetic
+and the paperwork are theirs, to the column.**
+
+The process, in the order it is actually done, and the screen that is now each
+step:
+
+| Step | Where |
+|---|---|
+| keep the staff records, hand out an employee id | `/employees` |
+| download the biometric report and read it in | `/attendance` → Bring the report in |
+| check the leave emails, approve or refuse | `/attendance` → Leave |
+| work the figures out under the report | `/payroll` → Working |
+| the bonuses and fines the management decides | `/payroll` → Bonuses and fines |
+| the combined report the management is sent | `/payroll` → Report |
+| a slip each, and a time sheet each | `/payroll` → Slips, Time sheets |
+| the ledger, and the final entry in QuickBooks | `/payroll` → Ledger, To QuickBooks |
+| what an employee sees of their own | `/my-hr` |
+
+| File | What it is |
+|---|---|
+| `hr.js` | the people, their days, their leave, the policy, and reading the biometric report |
+| `hrpay.js` | the month: the formulas, the pools, the ledger, the report, the slips, the time sheets, the journal |
+| `tools/hr-check.mjs` | `npm run check:hr` - every formula against their own September figures |
+
+Nothing in either file touches a finance or a courier table. The one place the
+two modules meet is the journal entry at the end, written through
+`postJournalEntry()` in `qb.js` like every other call to Intuit - so a change
+here cannot change an invoice, which is the standing rule
+([[modules-independent-one-erp]] in the notes, and the section at the top of
+this file).
+
+### The ledger is the only copy of the month's money
+
+`hr_pay_lines` is one row per employee per head, which is the shape their own
+workbook ends in - and the report, the slips and the QuickBooks entry are each
+a different **reading** of those rows, never a second total of their own. That
+is how two numbers for one thing are kept from disagreeing on one screen.
+
+A line's `source` says who put it there, and it is the whole of the safety:
+
+- **`auto`** is what Fusion worked out. Working the month out again rewrites it.
+- **`hand`** is a figure somebody typed. **Working the month out again leaves it
+  exactly as it is** - the performance bonus is a management decision and the
+  travelling allowance is agreed with the person, and neither is something a
+  formula should be guessing at. The working table shows a typed figure in teal.
+
+Beside it: `hr_standing` is an amount set once on a person and written into
+every month after (the logistics floor's food allowance, twenty people, every
+month), prorated by the days they were actually here where it is set to be;
+`hr_month_facts` holds what the month knows that the person's record does not -
+the days they were on the payroll, an extra day somebody was granted, a basic
+that changed mid-month.
+
+### The formulas, and the cells they came from
+
+Every one is off their Salary Working sheet, and `npm run check:hr` ties the
+three pools to the rupee against their September figures (11,181 / 7,959 /
+9,373.63). The policy holds every number, and `/payroll` → **How it runs**
+states each rule in a sentence with the number in it - the way the Shopify
+connector states its own. A rule that cannot be put on that page in one
+sentence is a special case, not a rule.
+
+| Head | The rule | Their cell |
+|---|---|---|
+| Basic Salary | `(basic / 30) * days on the payroll` | `P991` |
+| Overtime | `ROUNDUP((basic/30)/480 * OT minutes)`, and **only** for the departments named | `Q991` |
+| Attendance Bonus | one day's basic, but **nought** if there was any absence, any leave, or a part month | `R991` |
+| Parcel / Order Bonus | the pool, per person, for whoever is ticked | `T991 = $W$1059 / $I$1062` |
+| Late Fine | three rules, per department - see below | `AA991` |
+| Parcel Fine | half the month's fines, shared | `AB991 = -$N$1062` |
+| Absent Fine | `-ROUNDUP(basic/30 * absences)` | `AC991` |
+| Half Day Fine | half a day's basic for each half day nobody approved | `AD991` |
+
+- **The month is the 26th to the 25th**, written on their own sheet, and
+  `cycleOf()` is the only thing that knows it. Every per-day rate divides by
+  **30** whatever the calendar says - which is what makes two months
+  comparable, and why a 31-day cycle is written as 30 working days.
+- **Late begins after the grace, not at the duty time**: 09:10, not 09:00. A
+  day only *counts* as late over `lateCountOver` minutes, and every third late
+  day costs a whole day of basic.
+- **Overtime is the half hour after the duty ends and not a minute more** -
+  17:15 to 17:45, capped there, which is why `MIN(K, TIME(17,45,0))` is in
+  their formula and `Math.min(outMin, otTo)` is in ours.
+- **The late fine is three different rules and they are the departments' own.**
+  `days` cuts whole days after every third late day; `minutes` charges the
+  minutes at the minute rate; `minutes2x` charges the first hour once and
+  everything after it twice, which is the logistics floor's rule. Per
+  department in the policy, overridable per person, because one person on that
+  floor is on the plain minute rate.
+- **The report rolls the half-day fine into the absent fine**, because that is
+  how their own report prints it, and the two have to tie. The working sheet
+  keeps them apart, because that is where she checks them.
+- **The advance and the credit purchase are stated and not deducted.** What is
+  deducted is the loan deduction and the employee adjustment that recover them.
+  One of their September slips shows an advance of fifty thousand against a ten
+  thousand deduction, and the total deduction is the ten.
+- **The food allowance is earned and then subtracted again**, because it is
+  handed over in cash as the month goes. `Paid during the month` is that plus
+  any salary taken in advance, and `payable = net − paid` - which is how
+  a logistics slip with a food allowance on it nets down by exactly that much.
+
+### An approved day costs nothing and an absence costs a day
+
+That sentence is the whole module. It is why leave is a table of its own rather
+than a tick on a day, and why only three people may answer one.
+
+- `decideLeave()` writes the answer onto the days it covers at once, with the
+  source set to **`hand`** - so **the next biometric import leaves those days
+  alone**. The report says Absent, the email says it was approved, and the
+  person's answer wins. `applyApprovedLeave()` puts every approval back on top
+  after an import, because an approval made last week has to survive this
+  week's file.
+- **Who may approve is `policy.approvers`**, named logins, not names in a
+  source file - a person leaves and a constant does not. Fusion's own admin
+  always may; with nobody named yet, the company's administrator does.
+- An employee asking on `/my-hr` puts a notice on each approver's bell and an
+  email in their inbox, because a leave nobody has seen is an absence by Friday.
+
+### What the biometric report says, and what it does not
+
+Their export keeps its own words **in the clock-in column**: `Public holiday`,
+`WFH`, `Leave`, `Absent` sit exactly where `09:02` otherwise would, and
+`A. Half Day` against a plain `Half Day` in the Real time column is the
+difference between a half day somebody approved and one nobody did. So
+`statusFromWords()` reads the words first and the clock only when there is one.
+
+- **A day with neither is `pending` - "Verification pending", their own term.**
+  It is *not* an absence until somebody says it is, and the attendance screen
+  counts those separately under **Not accounted for** so they get looked at.
+- **A day the machine never printed has no row**, because the export leaves
+  Sundays out entirely and inventing a weekend that might have been a working
+  day is worse than saying nothing. The time sheet marks a missing weekday
+  `N/A` rather than guessing.
+- **The sheet is matched on the `No.` column** - which is the employee id,
+  15101 and up - then the biometric `AC-No.`, then the name. Anybody the sheet
+  names who is not on the staff list is **named back on the screen with their
+  day count**, and their days are left out rather than filed under somebody.
+- **Nothing of the file is kept.** The rows are read, the days are written, the
+  buffer goes - the same rule the invoice uploads have always had.
+
+**And the dates are read as numbers, not as moments.** The import asks SheetJS
+for `cellDates: false` on purpose, so a date cell arrives as the spreadsheet's
+own serial and `fromSerial()` turns it into ten characters by arithmetic. A
+`Date` built here can be the 25th of August on a server in the wrong place.
+This is the lesson `day()` in `statuses.js` already carries and `qb_start`
+learned the hard way: **a date is not a moment.** A whole number in a *clock*
+column is a date in the wrong column and is read as nothing at all, never as
+midnight.
+
+### An employee id is never a returned one
+
+`nextEmpCode()` is the highest that has ever existed plus one, across everybody
+including the people who have left - "her new employee ki id new generate hu".
+And **nothing is ever deleted**: hiring and firing are the same route, somebody
+who has left keeps every day they worked and every slip they were paid, because
+the month they left in still has to be readable next year.
+
+The joining form is the one the company already uses, and **the things that
+were asked not to be optional are not**: home address, guardian's name,
+relation, phone and ID card. `MUST_FILL` is that list, and a form is not
+verified while one of them is empty.
+
+### The first sign-in is a verification, not a blank form
+
+*"abhi bhe jab new login banay gy hum to us per bhe phli bar login per her
+employee ko apna form verify krna hu ga - already fill hu ga, koi changes hu ge
+to wo kry ga."* So `/my-hr` opens with everything known already in the boxes and
+asks the person to correct what is wrong and press **These are right**.
+
+What an employee may change about themselves is `SELF_FIELDS`, and their pay,
+their grade and their department are deliberately not on it: a form somebody
+fills in about themselves is their own details, not their terms.
+
+The login is the company's ordinary user id - HR gets no second kind of account
+- made from the People screen with `role: 'custom'` and **no rights at all**. A
+rail line carries a `need` and `/my-hr` carries none, so what that person sees
+is their own record, time sheet, leave and slips, and nothing else until
+somebody ticks more on `/users`. That is what was asked for.
+
+### Staff who work away type their own day
+
+`hr_employees.virtual`, ticked on their record - Saim decides who works that way
+- and the boxes appear on their own screen. The day is written with
+`source = 'self'`, so it is never mistaken for a reading off the machine, and
+the attendance screen has a tab showing every day they typed. A day in the
+future is refused.
+
+### The month is approved, and only then posted
+
+`hr_pay_runs` is `open` → `approved` → `posted`, and the three who approve are
+the same `policy.approvers`. Nothing reaches QuickBooks until the month is
+approved, a posted month cannot be worked out again or edited, and the journal
+id on the run is the only record of it - which is what stops a second entry.
+
+The entry is **one journal for the month**, not forty-four: debit each salary
+head, credit each deduction's account, credit salary payable with what is still
+owed. It balances by construction because the deductions are kept negative, and
+it is refused rather than sent if it does not. **Paying people is not something
+this app can do** - that is a payment against the payable, made in the books by
+hand.
+
+`runOf()` reads a month and does **not** create it. It used to upsert, and
+because every screen that shows a figure calls `workingOf()`, which asks for the
+run, that was a write on every page open - a database kept awake by people
+reading, which on Neon is the whole of the bill. A month nobody has touched is
+open with nobody's approval on it, and that needs no row to say so.
+
+### Where the ERP joins up
+
+One button, on the bonuses tab: **Bring the figures in from Fusion** reads the
+month's parcels out of `courier_orders` and the month's orders and sales out of
+`shopify_orders`, and fills the boxes. It is the only place HR reads another
+module, it **reads and never writes**, and nothing depends on it - no courier
+account and no shop is an empty answer, not a broken screen. Every figure it
+fills can be typed over, because the values and the choice of who shares in them
+are the management's: *"hum value khud bana kr daal dein gy, or selection... ye
+hamari choice apni hoti hai"*.
+
+### Rights, and the line through them
+
+Two groups in `RIGHT_GROUPS`, under a fourth area (`people`, "Staff and
+payroll"), and the line between them is money:
+
+| Right | What it opens |
+|---|---|
+| `hr` | `/employees`, `/attendance` - the records, the report, the leave |
+| `payroll` | `/payroll` - working the month out, approving it, posting it |
+
+`/my-hr` is in neither, on purpose. Changing the policy and making a login are
+held to the company's administrator (`requireAdmin`), not handed out as a right.
+
 ## Open items
 - Replace the copied old files with the new design once the user describes it.
+- HR: contracts are a field on the person, not documents yet - hiring and firing
+  move the `status` and keep everything. A contract to store, and a leave
+  allowance per year to count against, are the next two pieces.
+- HR: the parcel-fine categories (damaged / missing / wrong) are typed in. They
+  come off the CSR issue log, which is not a Fusion table yet - the day it is,
+  **Bring the figures in** fills those too.
+- HR: nobody has run the SQL yet. Every formula is tested (`npm run check:hr`),
+  the pages all parse, but the tables are made on the next boot and the first
+  real biometric file is the first time the queries have run.
 - Decide DigitalOcean settings: turn **Edge caching** and **Email obfuscation** Off (app shows
   live data).
 - Check the Neon dashboard for the real storage limit.

@@ -1,0 +1,1265 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Payroll</title>
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="manifest" href="/manifest.json">
+<meta name="theme-color" content="#222F34">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@600;700;800&family=Roboto:wght@400;500&family=Roboto+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/app.css">
+<style>
+  .cbar{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:16px}
+  .cbar input[type=text],.cbar input[type=month],.cbar input[type=number],.cbar select{
+    border:1px solid var(--line);border-radius:7px;padding:7px 9px;font:inherit;
+    font-size:12.5px;background:#fff;height:auto;width:auto}
+  .cbar button{border:1px solid var(--line);background:#fff;border-radius:7px;padding:7px 12px;
+    font:inherit;font-size:12.5px;cursor:pointer;width:auto;height:auto;color:var(--ink)}
+  .cbar button:hover{border-color:var(--accent)}
+  .cbar .right{margin-left:auto;display:flex;gap:6px;align-items:center;flex-wrap:wrap}
+
+  .ctabs{display:flex;gap:7px;flex-wrap:wrap;margin:0 0 14px}
+  .ctabs button{padding:6px 13px;border:1px solid var(--line);border-radius:20px;
+    font:inherit;font-size:12.5px;color:var(--muted);background:#fff;cursor:pointer;
+    white-space:nowrap;width:auto;height:auto}
+  .ctabs button:hover{border-color:var(--accent);color:var(--ink)}
+  .ctabs button.on{background:var(--accent);border-color:var(--accent);color:#fff;font-weight:600}
+  .ctabs button .ct{font-family:var(--mono);font-size:11px;opacity:.75;margin-left:5px}
+
+  .box{background:var(--panel);border:1px solid var(--line);border-radius:10px;
+    padding:16px 18px;margin-bottom:14px}
+  .box h3{margin:0 0 14px;font-size:13.5px;font-weight:600;display:flex;
+    align-items:baseline;gap:9px}
+  .box h3 .aside{margin-left:auto;font-size:11.5px;color:var(--faint);font-weight:400}
+
+  .cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;
+    margin-bottom:16px}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:15px 17px}
+  .card .k{font-size:10.5px;letter-spacing:.08em;text-transform:uppercase;color:var(--faint)}
+  .card .v{font-family:var(--mono);font-size:21px;font-weight:500;margin-top:6px;line-height:1.1}
+  .card .n{font-size:11.5px;color:var(--muted);margin-top:4px}
+
+  table.t{width:100%;border-collapse:collapse;font-size:12.5px}
+  table.t th{text-align:left;font-size:10px;text-transform:uppercase;letter-spacing:.06em;
+    color:var(--faint);border-bottom:1px solid var(--line);padding:7px 8px;font-weight:600;
+    position:sticky;top:0;background:var(--panel);z-index:1;white-space:nowrap}
+  table.t td{padding:7px 8px;border-bottom:1px solid var(--line);vertical-align:top}
+  table.t tfoot td{border-top:2px solid var(--ink);border-bottom:0;font-weight:600;
+    background:var(--panel-2)}
+  table.t tr.pick{cursor:pointer}
+  table.t tr.pick:hover td{background:var(--panel-2)}
+  table.t tr.on td{background:var(--accent-soft)}
+  .num{font-family:var(--mono);text-align:right;font-variant-numeric:tabular-nums;
+    white-space:nowrap}
+  .neg{color:var(--neg)}
+  .zero{color:#DDE5E5}
+  .hand{color:var(--accent-deep);font-weight:600}
+  .lst{max-height:620px;overflow:auto}
+  .wide{overflow:auto;max-height:640px}
+
+  .pill{display:inline-block;padding:2px 9px;border-radius:20px;font-size:10.5px;
+    font-weight:600;white-space:nowrap}
+  .pill.ok{background:var(--ok-soft);color:var(--ok)}
+  .pill.no{background:#F3F5F7;color:var(--faint)}
+  .pill.warn{background:var(--warn-soft);color:var(--warn)}
+  .pill.neg{background:var(--neg-soft);color:var(--neg)}
+
+  .f label{display:block;font-size:10.5px;letter-spacing:.06em;text-transform:uppercase;
+    color:var(--faint);margin-bottom:4px}
+  .f input,.f select{width:100%;border:1px solid var(--line);border-radius:7px;
+    padding:8px 10px;font:inherit;font-size:13px;background:#fff}
+  .form{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:12px 16px}
+  .acts{display:flex;gap:8px;flex-wrap:wrap;margin-top:16px;align-items:center}
+  .acts .grow{margin-left:auto}
+  input.cell{width:104px;text-align:right;border:1px solid var(--line);border-radius:6px;
+    padding:5px 7px;font:inherit;font-size:12.5px;font-family:var(--mono)}
+
+  /* the chain a pool is worked out by, shown as a chain so it can be argued with */
+  .chain{font-size:12.5px}
+  .chain div{display:flex;gap:10px;padding:5px 0;border-bottom:1px dashed var(--line)}
+  .chain div:last-child{border-bottom:0}
+  .chain .l{color:var(--muted)}
+  .chain .r{margin-left:auto;font-family:var(--mono)}
+  .chain .tot{border-top:1px solid var(--ink);border-bottom:0;font-weight:600;margin-top:4px}
+
+  .ticks{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:4px 14px;
+    max-height:260px;overflow:auto;padding:4px 0}
+  .ticks label{display:flex;gap:7px;align-items:center;font-size:12.5px}
+  .ticks input{width:auto}
+
+  /* their own slip, and their own report - these two are printed */
+  .slip{border:1px solid var(--line);border-radius:8px;padding:16px;margin-bottom:14px;
+    background:#fff;page-break-inside:avoid}
+  .slip h4{font-family:var(--head);font-size:14px;margin:0 0 3px;letter-spacing:.02em}
+  .slip .meta{font-size:11.5px;color:var(--muted);margin-bottom:12px;display:flex;
+    gap:16px;flex-wrap:wrap}
+  .slip .three{display:grid;grid-template-columns:1fr 1fr 1fr;gap:18px}
+  .slip table{width:100%;border-collapse:collapse;font-size:12px}
+  .slip table th{text-align:left;font-size:9.5px;text-transform:uppercase;
+    letter-spacing:.06em;color:var(--faint);border-bottom:1px solid var(--line);
+    padding:4px 0;font-weight:600}
+  .slip table td{padding:3px 0;border-bottom:1px dotted var(--line)}
+  .slip table td.num{width:46%}
+  .slip table tr.sum td{border-top:1px solid var(--ink);border-bottom:0;font-weight:600;
+    padding-top:6px}
+  .slip table tr.close td{border-top:1px solid var(--ink);
+    border-bottom:3px double var(--ink);font-weight:700}
+  .slip .sign{display:flex;justify-content:space-between;margin-top:22px;
+    font-size:11px;color:var(--faint)}
+  @media (max-width:800px){ .slip .three{grid-template-columns:1fr} }
+
+  /* the time sheet, as it is printed and handed over */
+  .ts{background:#fff;border:1px solid var(--line);border-radius:8px;padding:18px}
+  .ts h4{font-family:var(--head);text-align:center;font-size:14px;margin:0 0 12px;
+    letter-spacing:.06em}
+  .ts .who{display:grid;grid-template-columns:1fr 1fr;gap:3px 18px;font-size:12px;
+    margin-bottom:14px}
+  .ts table{width:100%;border-collapse:collapse;font-size:11.5px}
+  .ts th,.ts td{border:1px solid var(--line);padding:3px 6px}
+  .ts th{font-size:9.5px;text-transform:uppercase;letter-spacing:.05em;color:var(--faint)}
+  .ts .tally{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));
+    gap:2px 16px;font-size:12px;margin-top:12px}
+  .ts .tally span{display:flex}
+  .ts .tally b{margin-left:auto;font-family:var(--mono)}
+
+  .msg{padding:13px 15px;border-radius:8px;background:var(--neg-soft);
+    border:1px solid var(--neg);color:var(--neg);font-size:12.5px;margin-bottom:12px}
+  .good{padding:13px 15px;border-radius:8px;background:var(--ok-soft);
+    border:1px solid var(--ok);color:var(--ok);font-size:12.5px;margin-bottom:12px}
+  .warnbox{padding:11px 14px;border-radius:8px;background:var(--warn-soft);
+    border:1px solid var(--warn);color:var(--warn);font-size:12.5px;margin-bottom:12px}
+  .loading{color:var(--muted);font-size:12.5px;padding:22px 0}
+  .empty{color:var(--muted);font-size:12.5px;padding:16px 0}
+  .note{font-size:11.5px;color:var(--faint);margin-top:11px}
+
+  @media print{
+    .rail,.topline,.ctabs,.cbar,.cards,.noprint{display:none !important}
+    .main{margin-left:0}
+    .shell{padding:0;max-width:none}
+    .box{border:0;padding:0;margin:0}
+    body{background:#fff;font-size:11px}
+  }
+</style>
+</head>
+<body>
+
+<div class="layout">
+  <aside class="rail"></aside>
+
+  <div class="main">
+    <div class="topline">
+      <div>
+        <h1>Payroll</h1>
+        <div class="sub" id="sub">The month, worked out</div>
+      </div>
+    </div>
+
+    <div class="shell">
+      <div id="head"></div>
+      <div class="ctabs" id="ctabs"></div>
+      <div id="pane"><div class="loading">One moment&hellip;</div></div>
+    </div>
+  </div>
+</div>
+
+<script src="/nav.js"></script>
+<script>
+(function(){
+  "use strict";
+  var $ = function(id){ return document.getElementById(id); };
+
+  function esc(s){
+    return String(s == null ? '' : s)
+      .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  }
+  function n0(v){ return Number(v||0).toLocaleString('en-US'); }
+  // The books' own way of printing a figure: no decimals on a salary, and a
+  // deduction in brackets rather than with a minus in front of it.
+  function rs(v){
+    var n = Math.round(Number(v||0));
+    if (!n) return '<span class="zero">-</span>';
+    if (n < 0) return '<span class="neg">(' + n0(-n) + ')</span>';
+    return n0(n);
+  }
+  function plain(v){
+    var n = Math.round(Number(v||0));
+    return n < 0 ? '(' + n0(-n) + ')' : n0(n);
+  }
+  function get(url){
+    return fetch(url, { cache:'no-store' }).then(function(r){ return r.json(); });
+  }
+  function post(url, body){
+    return fetch(url, { method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify(body || {}) }).then(function(r){ return r.json(); });
+  }
+  function keep(k, v){ try { localStorage.setItem(k, v); } catch (e) { /* private window */ } }
+  function kept(k, d){ try { return localStorage.getItem(k) || d; } catch (e) { return d; } }
+
+  var S = { month:'', D:null, said:'', err:'', open:null, tsCode:'',
+            report:null, slips:null, ledger:null, journal:null, accounts:null,
+            tab: kept('fx.payroll.tab', 'working') };
+
+  var TAB = [
+    { k:'working', label:'Working' },
+    { k:'pools',   label:'Bonuses and fines' },
+    { k:'report',  label:'Report' },
+    { k:'slips',   label:'Slips' },
+    { k:'sheets',  label:'Time sheets' },
+    { k:'ledger',  label:'Ledger' },
+    { k:'qbo',     label:'To QuickBooks' },
+    { k:'how',     label:'How it runs' }
+  ];
+
+  function monthNow(){
+    var d = new Date();
+    return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0');
+  }
+  function monthName(m){
+    if (!m) return '';
+    var names = ['January','February','March','April','May','June','July','August',
+                 'September','October','November','December'];
+    return names[Number(m.slice(5, 7)) - 1] + '-' + m.slice(0, 4);
+  }
+
+  function load(){
+    S.err = '';
+    S.report = S.slips = S.ledger = S.journal = null;
+    return get('/api/hr/payroll?month=' + encodeURIComponent(S.month)).then(function(d){
+      if (d.error) { S.err = d.error; S.D = null; }
+      else { S.D = d; S.month = d.month; }
+      paint();
+    }).catch(function(e){
+      S.err = 'Could not read the month: ' + e.message;
+      paint();
+    });
+  }
+
+  function paint(){
+    var h = '';
+    if (S.err) h += '<div class="msg">' + esc(S.err) + '</div>';
+    if (S.said) h += '<div class="good">' + esc(S.said) + '</div>';
+
+    var D = S.D;
+    var t = D ? D.totals : { people:0, earn:0, deduct:0, paid:0, net:0, payable:0,
+                             bank:0, cash:0 };
+    var run = D ? D.run : null;
+
+    h += '<div class="cbar">' +
+      '<label style="font-size:12.5px;color:var(--muted)">Month</label>' +
+      '<input type="month" id="m" value="' + esc(S.month) + '">' +
+      '<span style="font-size:11.5px;color:var(--faint)">' +
+        (D ? esc(D.cycle.from) + ' to ' + esc(D.cycle.to) : '') + '</span>' +
+      (run ? ' ' + statePill(run) : '') +
+      '<span class="right">' +
+      '<button id="figure">Work the month out</button>' +
+      (D && D.mayApprove && run && run.state === 'open' ?
+        '<button id="approve">Approve the month</button>' : '') +
+      (D && D.admin && run && run.state === 'approved' ?
+        '<button id="reopen">Reopen it</button>' : '') +
+      '<a href="/attendance" style="font-size:12.5px;color:var(--accent-deep)">' +
+      '&larr; Attendance</a></span></div>';
+
+    h += '<div class="cards">' +
+      card('People', n0(t.people), D ? D.cycle.from + ' to ' + D.cycle.to : '') +
+      card('Salary and benefits', n0(Math.round(t.earn)), 'before anything is taken off') +
+      card('Fines and deductions', plain(Math.round(t.deduct)), 'late, absent, loans') +
+      card('Net salary', n0(Math.round(t.net)), 'what the month cost') +
+      card('Paid during the month', n0(Math.round(t.paid)), 'already handed over') +
+      card('Payable', n0(Math.round(t.payable)),
+           n0(Math.round(t.bank)) + ' bank, ' + n0(Math.round(t.cash)) + ' cash') +
+      '</div>';
+
+    $('head').innerHTML = h;
+
+    $('ctabs').innerHTML = TAB.map(function(x){
+      return '<button data-k="' + x.k + '" class="' + (S.tab === x.k ? 'on' : '') + '">' +
+        esc(x.label) + '</button>';
+    }).join('');
+    $('ctabs').querySelectorAll('button').forEach(function(b){
+      b.addEventListener('click', function(){
+        S.tab = b.getAttribute('data-k');
+        keep('fx.payroll.tab', S.tab);
+        S.said = ''; paint();
+      });
+    });
+
+    $('m').addEventListener('change', function(){
+      S.month = this.value || monthNow(); S.said = ''; S.open = null; load();
+    });
+    $('figure').addEventListener('click', function(){
+      $('figure').disabled = true;
+      post('/api/hr/payroll/figure', { month: S.month }).then(function(d){
+        if (d.error) { alert(d.error); $('figure').disabled = false; return; }
+        S.said = 'Worked out for ' + n0(d.people) + ' people. ' + n0(d.wrote) +
+          ' figures written' + (d.kept ? ', ' + n0(d.kept) + ' you had typed left alone' : '') + '.';
+        load();
+      });
+    });
+    var ap = $('approve');
+    if (ap) ap.addEventListener('click', function(){
+      post('/api/hr/payroll/approve', { month: S.month }).then(function(d){
+        if (d.error) return alert(d.error);
+        S.said = d.already ? 'You had already approved it.'
+          : (d.waiting ? 'Approved. Waiting on ' + d.waiting + ' more.'
+                       : 'Approved. It can go to QuickBooks now.');
+        load();
+      });
+    });
+    var ro = $('reopen');
+    if (ro) ro.addEventListener('click', function(){
+      if (!confirm('Reopen ' + monthName(S.month) + '? Every approval on it is cleared.')) return;
+      post('/api/hr/payroll/reopen', { month: S.month }).then(function(d){
+        if (d.error) return alert(d.error);
+        S.said = 'Reopened.';
+        load();
+      });
+    });
+
+    if (!D) { $('pane').innerHTML = ''; return; }
+
+    if (S.tab === 'pools') paintPools();
+    else if (S.tab === 'report') paintReport();
+    else if (S.tab === 'slips') paintSlips();
+    else if (S.tab === 'sheets') paintSheets();
+    else if (S.tab === 'ledger') paintLedger();
+    else if (S.tab === 'qbo') paintQbo();
+    else if (S.tab === 'how') paintHow();
+    else paintWorking();
+  }
+
+  function statePill(run){
+    if (run.state === 'posted') {
+      return '<span class="pill ok">in QuickBooks as ' + esc(run.qb_doc_number || run.qb_journal_id) + '</span>';
+    }
+    if (run.state === 'approved') return '<span class="pill ok">approved</span>';
+    var n = (run.approvals || []).length;
+    return '<span class="pill warn">open' + (n ? ', ' + n + ' approved' : '') + '</span>';
+  }
+
+  function card(k, v, n){
+    return '<div class="card"><div class="k">' + esc(k) + '</div>' +
+      '<div class="v">' + v + '</div><div class="n">' + esc(n) + '</div></div>';
+  }
+
+  /* ==================== working ==================== */
+
+  function paintWorking(){
+    var D = S.D;
+    var h = '<div class="box"><h3>The working' +
+      '<span class="aside">' + esc(monthName(S.month)) + ' &middot; click a row to change a figure</span></h3>' +
+      '<div class="wide"><table class="t"><thead><tr>' +
+      '<th>Id</th><th>Name</th><th>Dept</th>' +
+      '<th class="num">Basic</th><th class="num">Days</th>' +
+      '<th class="num">OT min</th><th class="num">Late min</th>' +
+      '<th class="num">Late days</th><th class="num">Cut</th>' +
+      '<th class="num">Absent</th><th class="num">Half</th><th class="num">A.half</th>' +
+      '<th class="num">Leave</th>' +
+      D.earn.map(function(x){ return '<th class="num">' + esc(x) + '</th>'; }).join('') +
+      D.deduct.map(function(x){ return '<th class="num">' + esc(x) + '</th>'; }).join('') +
+      '<th class="num">Net</th><th class="num">Paid</th><th class="num">Payable</th>' +
+      '</tr></thead><tbody>';
+
+    D.rows.forEach(function(r){
+      h += '<tr class="pick' + (S.open === r.code ? ' on' : '') +
+        '" data-code="' + esc(r.code) + '">' +
+        '<td class="num">' + esc(r.code) + '</td>' +
+        '<td style="white-space:nowrap"><b>' + esc(r.name) + '</b></td>' +
+        '<td>' + esc(r.department) + '</td>' +
+        '<td class="num">' + rs(r.basic) + '</td>' +
+        '<td class="num">' + n0(r.workDays) + '</td>' +
+        '<td class="num">' + n0(r.otMin) + '</td>' +
+        '<td class="num">' + n0(r.lateMin) + '</td>' +
+        '<td class="num">' + n0(r.lateDays) + '</td>' +
+        '<td class="num">' + (r.lateCut ? n0(r.lateCut) : '<span class="zero">-</span>') + '</td>' +
+        '<td class="num">' + (r.absent ? n0(r.absent) : '<span class="zero">-</span>') + '</td>' +
+        '<td class="num">' + (r.half ? n0(r.half) : '<span class="zero">-</span>') + '</td>' +
+        '<td class="num">' + (r.ahalf ? n0(r.ahalf) : '<span class="zero">-</span>') + '</td>' +
+        '<td class="num">' + (r.leaves ? n0(r.leaves) : '<span class="zero">-</span>') + '</td>' +
+        D.earn.concat(D.deduct).map(function(head){
+          var isHand = r.hand.indexOf(head) >= 0;
+          return '<td class="num' + (isHand ? ' hand' : '') + '">' +
+            rs(r.amount[head]) + '</td>';
+        }).join('') +
+        '<td class="num"><b>' + rs(r.net) + '</b></td>' +
+        '<td class="num">' + rs(r.paid) + '</td>' +
+        '<td class="num"><b>' + rs(r.payable) + '</b></td></tr>';
+    });
+
+    var t = D.totals;
+    h += '</tbody><tfoot><tr><td colspan="3">' + n0(t.people) + ' people</td>' +
+      '<td colspan="10"></td>' +
+      D.earn.concat(D.deduct).map(function(head){
+        return '<td class="num">' + rs(t.heads[head]) + '</td>';
+      }).join('') +
+      '<td class="num">' + rs(t.net) + '</td>' +
+      '<td class="num">' + rs(t.paid) + '</td>' +
+      '<td class="num">' + rs(t.payable) + '</td></tr></tfoot></table></div>' +
+      '<div class="note">A figure in teal is one somebody typed, and working the ' +
+      'month out again leaves it exactly as it is.</div></div><div id="one"></div>';
+
+    $('pane').innerHTML = h;
+
+    $('pane').querySelectorAll('tr.pick').forEach(function(tr){
+      tr.addEventListener('click', function(){
+        var code = tr.getAttribute('data-code');
+        S.open = S.open === code ? null : code;
+        paintWorking();
+      });
+    });
+    if (S.open) paintOne(S.open);
+  }
+
+  function paintOne(code){
+    var D = S.D;
+    var r = D.rows.filter(function(x){ return x.code === code; })[0];
+    if (!r) { $('one').innerHTML = ''; return; }
+    var locked = D.run && D.run.state === 'posted';
+
+    var h = '<div class="box"><h3>' + esc(r.name) + ' (' + esc(r.code) + ')' +
+      '<span class="aside">' + esc(r.department) + ' &middot; ' +
+      esc(r.lateRule === 'minutes2x' ? 'late charged by the minute, double after an hour'
+        : r.lateRule === 'minutes' ? 'late charged by the minute'
+        : 'late charged a day for every ' + (D.policy.latePer || 3)) +
+      (r.otAllowed ? '' : ' &middot; no overtime') +
+      (r.bonusAllowed ? '' : ' &middot; no regular bonus') + '</span></h3>';
+
+    if (locked) h += '<div class="warnbox">This month is in QuickBooks. Nothing can be changed.</div>';
+
+    h += '<div class="f"><div class="form">' +
+      '<div><label>Days on the payroll</label><input type="number" id="fdays" value="' +
+        esc(r.workDays) + '"></div>' +
+      '<div><label>Extra days of overtime</label><input type="number" id="fextra" value="' +
+        esc(r.extraDays) + '"></div>' +
+      '<div><label>Basic for this month</label><input type="number" id="fbasic" value="' +
+        esc(r.basic) + '"></div>' +
+      '<div><label>Paid by</label><select id="fmode">' +
+        ['bank','cash'].map(function(x){
+          return '<option value="' + x + '"' + (r.payMode === x ? ' selected' : '') +
+            '>' + x + '</option>';
+        }).join('') + '</select></div>' +
+      '</div><div class="acts"><button id="savefacts"' + (locked ? ' disabled' : '') +
+      '>Save these four</button></div></div>';
+
+    h += '<div class="lst" style="margin-top:18px"><table class="t"><thead><tr>' +
+      '<th>Head</th><th class="num">Worked out</th><th class="num">Use this instead</th>' +
+      '<th></th></tr></thead><tbody>';
+
+    D.heads.forEach(function(head){
+      var auto = r.auto[head];
+      var isHand = r.hand.indexOf(head) >= 0;
+      var kind = D.headKind[head];
+      h += '<tr><td>' + esc(head) +
+        (kind === 'deduct' ? ' <small style="color:var(--faint)">deduction</small>' : '') +
+        (kind === 'info' ? ' <small style="color:var(--faint)">said, not deducted</small>' : '') +
+        (kind === 'paid' ? ' <small style="color:var(--faint)">already paid</small>' : '') +
+        '</td>' +
+        '<td class="num">' + (auto === undefined ?
+          '<span class="zero">-</span>' : rs(auto)) + '</td>' +
+        '<td class="num"><input type="number" class="cell" data-head="' + esc(head) +
+          '" value="' + (isHand ? Math.abs(Number(r.amount[head])) : '') + '"' +
+          (locked ? ' disabled' : '') + '></td>' +
+        '<td>' + (isHand ? '<span class="pill warn">typed</span>' : '') + '</td></tr>';
+    });
+
+    h += '</tbody></table></div>' +
+      '<div class="acts"><button class="solid" id="savelines"' + (locked ? ' disabled' : '') +
+      '>Save the figures typed</button>' +
+      '<span class="note" style="margin:0">A deduction goes in as a plain number ' +
+      '&mdash; it is taken off whichever way it is typed. An empty box goes back to ' +
+      'the worked-out figure.</span></div></div>';
+
+    $('one').innerHTML = h;
+    $('one').scrollIntoView({ behavior:'smooth', block:'nearest' });
+
+    $('savefacts').addEventListener('click', function(){
+      post('/api/hr/payroll/facts', {
+        month: S.month, emp_code: code,
+        work_days: $('fdays').value, ot_extra_days: $('fextra').value,
+        basic: $('fbasic').value, pay_mode: $('fmode').value
+      }).then(function(d){
+        if (d.error) return alert(d.error);
+        S.said = 'Saved. Press Work the month out to put it through the figures.';
+        load();
+      });
+    });
+
+    $('savelines').addEventListener('click', function(){
+      var jobs = [];
+      $('one').querySelectorAll('input.cell').forEach(function(el){
+        var head = el.getAttribute('data-head');
+        var was = r.hand.indexOf(head) >= 0 ? String(Math.abs(Number(r.amount[head]))) : '';
+        if (String(el.value) === was) return;
+        jobs.push(post('/api/hr/payroll/line', {
+          month: S.month, emp_code: code, head: head,
+          amount: el.value === '' ? '' : el.value
+        }));
+      });
+      if (!jobs.length) return alert('Nothing was changed.');
+      Promise.all(jobs).then(function(out){
+        var bad = out.filter(function(x){ return x.error; });
+        if (bad.length) return alert(bad[0].error);
+        S.said = jobs.length + ' figure' + (jobs.length > 1 ? 's' : '') + ' saved.';
+        load();
+      });
+    });
+  }
+
+  /* ==================== bonuses and fines ==================== */
+
+  function paintPools(){
+    var D = S.D;
+    var h = '<div class="cbar"><button id="fill">Bring the figures in from Fusion</button>' +
+      '<span class="note" style="margin:0">It fills the boxes from the couriers and the ' +
+      'shop for these dates. Every one of them can be typed over.</span></div>';
+
+    h += poolBox('parcel', 'Parcel bonus', D.pools.parcel);
+    h += poolBox('parcelfine', 'Parcel fine', D.pools.parcelfine);
+    h += poolBox('order', 'Order bonus', D.pools.order);
+
+    $('pane').innerHTML = h;
+    wirePools();
+
+    $('fill').addEventListener('click', function(){
+      get('/api/hr/figures?month=' + encodeURIComponent(S.month)).then(function(d){
+        if (d.error) return alert(d.error);
+        if (d.parcels && d.parcels.length) {
+          var box = $('p-parcel-sources');
+          if (box) {
+            box.innerHTML = d.parcels.map(function(s, i){
+              return srcRow('parcel', i, s);
+            }).join('');
+          }
+        }
+        if (d.brands && d.brands.length) {
+          var bb = $('p-order-brands');
+          if (bb) {
+            bb.innerHTML = d.brands.map(function(b, i){
+              return brandRow(i, b);
+            }).join('');
+          }
+        }
+        wirePools();
+        S.said = (d.parcels || []).length + ' courier' +
+          ((d.parcels || []).length === 1 ? '' : 's') + ' and ' +
+          (d.brands || []).length + ' shop' + ((d.brands || []).length === 1 ? '' : 's') +
+          ' read in. Press Save under each box to keep them.' +
+          ((d.trouble || []).length ? ' ' + d.trouble.join('; ') : '');
+        $('head').scrollIntoView({ behavior:'smooth', block:'nearest' });
+        paintSaid();
+      });
+    });
+  }
+
+  function paintSaid(){
+    var box = $('head').querySelector('.good');
+    if (box) box.textContent = S.said;
+    else $('head').insertAdjacentHTML('afterbegin', '<div class="good">' + esc(S.said) + '</div>');
+  }
+
+  function srcRow(kind, i, s){
+    return '<div style="display:flex;gap:8px;margin-bottom:6px">' +
+      '<input type="text" class="pf" data-f="sources.' + i + '.name" value="' +
+        esc(s.name || '') + '" placeholder="where from" style="flex:1;border:1px solid ' +
+        'var(--line);border-radius:6px;padding:6px 8px;font:inherit;font-size:12.5px">' +
+      '<input type="number" class="pf" data-f="sources.' + i + '.count" value="' +
+        esc(s.count || 0) + '" style="width:120px;text-align:right;border:1px solid ' +
+        'var(--line);border-radius:6px;padding:6px 8px;font:inherit;font-size:12.5px;' +
+        'font-family:var(--mono)"></div>';
+  }
+
+  function brandRow(i, b){
+    return '<div style="display:flex;gap:8px;margin-bottom:6px">' +
+      '<input type="text" class="pf" data-f="brands.' + i + '.name" value="' +
+        esc(b.name || '') + '" placeholder="brand" style="flex:1;border:1px solid ' +
+        'var(--line);border-radius:6px;padding:6px 8px;font:inherit;font-size:12.5px">' +
+      '<input type="number" class="pf" data-f="brands.' + i + '.orders" value="' +
+        esc(b.orders || 0) + '" placeholder="orders" style="width:100px;text-align:right;' +
+        'border:1px solid var(--line);border-radius:6px;padding:6px 8px;font:inherit;' +
+        'font-size:12.5px;font-family:var(--mono)">' +
+      '<input type="number" class="pf" data-f="brands.' + i + '.amount" value="' +
+        esc(b.amount || 0) + '" placeholder="amount" style="width:140px;text-align:right;' +
+        'border:1px solid var(--line);border-radius:6px;padding:6px 8px;font:inherit;' +
+        'font-size:12.5px;font-family:var(--mono)"></div>';
+  }
+
+  function poolBox(kind, label, p){
+    var f = p.figures || {};
+    var body = '';
+
+    if (kind === 'parcel') {
+      body += '<div style="margin-bottom:10px"><label style="font-size:10.5px;' +
+        'letter-spacing:.06em;text-transform:uppercase;color:var(--faint)">' +
+        'Parcels in the month</label><div id="p-parcel-sources">' +
+        (p.sources || []).map(function(s, i){ return srcRow(kind, i, s); }).join('') +
+        '</div></div>';
+      body += '<div style="margin-bottom:10px"><label style="font-size:10.5px;' +
+        'letter-spacing:.06em;text-transform:uppercase;color:var(--faint)">Slabs</label>' +
+        (p.slabs || []).map(function(s, i){
+          return '<div style="display:flex;gap:8px;margin-bottom:6px;align-items:center">' +
+            '<span style="font-size:12.5px;color:var(--muted);flex:1">' +
+              (s.upto == null ? 'everything above' : 'up to') + '</span>' +
+            '<input type="number" class="pf" data-f="slabs.' + i + '.upto" value="' +
+              (s.upto == null ? '' : esc(s.upto)) + '" placeholder="no limit" ' +
+              'style="width:110px;text-align:right;border:1px solid var(--line);' +
+              'border-radius:6px;padding:6px 8px;font:inherit;font-size:12.5px;' +
+              'font-family:var(--mono)">' +
+            '<span style="font-size:12.5px;color:var(--muted)">at</span>' +
+            '<input type="number" step="0.01" class="pf" data-f="slabs.' + i + '.rate" value="' +
+              esc(s.rate) + '" style="width:90px;text-align:right;border:1px solid ' +
+              'var(--line);border-radius:6px;padding:6px 8px;font:inherit;font-size:12.5px;' +
+              'font-family:var(--mono)"></div>';
+        }).join('') + '</div>';
+      body += '<div class="chain">' +
+        (f.slabs || []).map(function(s){
+          return '<div><span class="l">' +
+            (s.upto == null ? 'above ' + n0(s.from) : 'first ' + n0(s.upto)) +
+            ' &mdash; ' + n0(s.parcels) + ' parcels at ' + s.rate + '</span>' +
+            '<span class="r">' + plain(s.amount) + '</span></div>';
+        }).join('') +
+        '<div class="tot"><span class="l">' + n0(f.count) + ' parcels in all</span>' +
+        '<span class="r">' + plain(f.total) + '</span></div>' +
+        '<div><span class="l">between ' + n0(f.people) + ' people</span>' +
+        '<span class="r"><b>' + plain(f.each) + ' each</b></span></div></div>';
+    }
+
+    if (kind === 'parcelfine') {
+      body += '<div style="margin-bottom:10px">' + (p.cats || []).map(function(c, i){
+        return '<div style="display:flex;gap:8px;margin-bottom:6px;align-items:center">' +
+          '<input type="text" class="pf" data-f="cats.' + i + '.name" value="' +
+            esc(c.name || '') + '" style="flex:1;border:1px solid var(--line);' +
+            'border-radius:6px;padding:6px 8px;font:inherit;font-size:12.5px">' +
+          '<input type="number" class="pf" data-f="cats.' + i + '.count" value="' +
+            esc(c.count || 0) + '" style="width:100px;text-align:right;border:1px solid ' +
+            'var(--line);border-radius:6px;padding:6px 8px;font:inherit;font-size:12.5px;' +
+            'font-family:var(--mono)">' +
+          '<span style="font-size:12.5px;color:var(--muted)">at</span>' +
+          '<input type="number" class="pf" data-f="cats.' + i + '.rate" value="' +
+            esc(c.rate || 0) + '" style="width:100px;text-align:right;border:1px solid ' +
+            'var(--line);border-radius:6px;padding:6px 8px;font:inherit;font-size:12.5px;' +
+            'font-family:var(--mono)"></div>';
+      }).join('') +
+      '<div style="display:flex;gap:8px;align-items:center;margin-top:8px">' +
+        '<span style="font-size:12.5px;color:var(--muted);flex:1">How much of it is charged</span>' +
+        '<input type="number" step="0.05" class="pf" data-f="share" value="' +
+          esc(p.share == null ? 0.5 : p.share) + '" style="width:90px;text-align:right;' +
+          'border:1px solid var(--line);border-radius:6px;padding:6px 8px;font:inherit;' +
+          'font-size:12.5px;font-family:var(--mono)"></div></div>';
+      body += '<div class="chain">' +
+        (f.cats || []).map(function(c){
+          return '<div><span class="l">' + esc(c.name) + ' &mdash; ' + n0(c.count) +
+            ' at ' + n0(c.rate) + '</span><span class="r">' + plain(c.amount) +
+            '</span></div>';
+        }).join('') +
+        '<div class="tot"><span class="l">the month\'s fines</span>' +
+        '<span class="r">' + plain(f.total) + '</span></div>' +
+        '<div><span class="l">' + Math.round((f.share || 0) * 100) +
+          '% of it, between ' + n0(f.people) + ' people</span>' +
+        '<span class="r"><b>' + plain(f.each) + ' each</b></span></div></div>';
+    }
+
+    if (kind === 'order') {
+      body += '<div style="margin-bottom:10px"><div id="p-order-brands">' +
+        (p.brands || []).map(function(b, i){ return brandRow(i, b); }).join('') +
+        '</div>' +
+        '<div style="display:flex;gap:8px;align-items:center;margin-top:8px">' +
+        '<span style="font-size:12.5px;color:var(--muted);flex:1">Rate on what was sold</span>' +
+        '<input type="number" step="0.001" class="pf" data-f="rate" value="' +
+          esc(p.rate == null ? 0.02 : p.rate) + '" style="width:90px;text-align:right;' +
+          'border:1px solid var(--line);border-radius:6px;padding:6px 8px;font:inherit;' +
+          'font-size:12.5px;font-family:var(--mono)"></div></div>';
+      body += '<div class="chain">' +
+        (f.brands || []).map(function(b){
+          return '<div><span class="l">' + esc(b.name || '(no name)') + ' &mdash; ' +
+            n0(b.orders) + ' orders, ' + n0(Math.round(b.amount)) + '</span>' +
+            '<span class="r">' + plain(b.bonus) + '</span></div>';
+        }).join('') +
+        '<div class="tot"><span class="l">at ' +
+          (Math.round((f.rate || 0) * 10000) / 100) + '%</span>' +
+        '<span class="r">' + plain(f.total) + '</span></div>' +
+        '<div><span class="l">between ' + n0(f.people) + ' people</span>' +
+        '<span class="r"><b>' + plain(f.each) + ' each</b></span></div></div>';
+    }
+
+    var picked = (p.persons || []).map(String);
+    body += '<div style="margin-top:14px"><label style="font-size:10.5px;' +
+      'letter-spacing:.06em;text-transform:uppercase;color:var(--faint)">' +
+      'Who shares in it</label><div class="ticks">' +
+      S.D.rows.map(function(r){
+        return '<label><input type="checkbox" class="pp" value="' + esc(r.code) + '"' +
+          (picked.indexOf(String(r.code)) >= 0 ? ' checked' : '') + '> ' +
+          esc(r.name) + ' <small style="color:var(--faint)">' + esc(r.department) +
+          '</small></label>';
+      }).join('') + '</div></div>';
+
+    return '<div class="box" data-pool="' + kind + '"><h3>' + esc(label) +
+      '<span class="aside">' + n0((p.persons || []).length) + ' people &middot; ' +
+      plain(f.each) + ' each</span></h3>' + body +
+      '<div class="acts"><button class="solid pS">Save ' + esc(label.toLowerCase()) +
+      '</button></div></div>';
+  }
+
+  function wirePools(){
+    $('pane').querySelectorAll('[data-pool]').forEach(function(box){
+      var kind = box.getAttribute('data-pool');
+      var btn = box.querySelector('.pS');
+      if (!btn || btn.dataset.wired) return;
+      btn.dataset.wired = '1';
+      btn.addEventListener('click', function(){
+        var data = JSON.parse(JSON.stringify(S.D.pools[kind]));
+        delete data.figures;
+        // Each box names where in the object it belongs, so the shapes stay the
+        // courier's and the brand's rather than becoming a flat list of numbers.
+        box.querySelectorAll('.pf').forEach(function(el){
+          var path = el.getAttribute('data-f').split('.');
+          var at = data;
+          for (var i = 0; i < path.length - 1; i++) {
+            var k = path[i];
+            if (/^[0-9]+$/.test(k)) k = Number(k);
+            if (at[k] == null) at[k] = /^[0-9]+$/.test(String(path[i+1])) ? [] : {};
+            at = at[k];
+          }
+          var last = path[path.length - 1];
+          var v = el.value;
+          if (el.type === 'number') v = v === '' ? null : Number(v);
+          at[last] = v;
+        });
+        data.persons = [];
+        box.querySelectorAll('.pp').forEach(function(cb){
+          if (cb.checked) data.persons.push(cb.value);
+        });
+        post('/api/hr/payroll/pool', { month: S.month, kind: kind, data: data })
+          .then(function(d){
+            if (d.error) return alert(d.error);
+            S.said = 'Saved &mdash; ' + plain(d.figures.each) + ' each, between ' +
+              data.persons.length + ' people. Press Work the month out to put it ' +
+              'into the salaries.';
+            load();
+          });
+      });
+    });
+  }
+
+  /* ==================== the report ==================== */
+
+  function paintReport(){
+    if (!S.report) {
+      $('pane').innerHTML = '<div class="loading">Reading the month&hellip;</div>';
+      get('/api/hr/report?month=' + encodeURIComponent(S.month)).then(function(d){
+        if (d.error) { $('pane').innerHTML = '<div class="msg">' + esc(d.error) + '</div>'; return; }
+        S.report = d; paintReport();
+      });
+      return;
+    }
+    var R = S.report;
+
+    var h = '<div class="cbar noprint">' +
+      '<button id="print">Print it</button>' +
+      '<button id="csv">Download it</button>' +
+      '<span class="note" style="margin:0">This is the sheet the management is sent.' +
+      '</span></div>';
+
+    h += '<div class="box"><h3>Salary Summary For The Month Of ' +
+      esc(monthName(R.month)) + '<span class="aside">' + esc(R.cycle.from) + ' to ' +
+      esc(R.cycle.to) + '</span></h3><div class="wide"><table class="t"><thead><tr>' +
+      '<th>Sr.</th><th>Name</th><th class="num">Net Salary</th><th class="num">Paid</th>' +
+      '<th class="num">Payable</th><th class="num">Bank</th><th class="num">Cash</th>' +
+      R.heads.map(function(x){ return '<th class="num">' + esc(x) + '</th>'; }).join('') +
+      '<th class="num">Total Salary</th><th class="num">Advance</th>' +
+      '<th class="num">Credit Purchase</th>' +
+      R.deducts.map(function(x){ return '<th class="num">' + esc(x) + '</th>'; }).join('') +
+      '<th class="num">Total Deduction</th></tr></thead><tbody>';
+
+    var sr = 0;
+    function body(rows){
+      return rows.map(function(r){
+        sr++;
+        return '<tr><td class="num">' + sr + '</td>' +
+          '<td style="white-space:nowrap">' + esc(r.name) + '</td>' +
+          '<td class="num"><b>' + rs(r.net) + '</b></td>' +
+          '<td class="num">' + rs(r.paid) + '</td>' +
+          '<td class="num">' + rs(r.payable) + '</td>' +
+          '<td class="num">' + rs(r.bank) + '</td>' +
+          '<td class="num">' + rs(r.cash) + '</td>' +
+          R.heads.map(function(x){ return '<td class="num">' + rs(r.earn[x]) + '</td>'; }).join('') +
+          '<td class="num">' + rs(r.totalSalary) + '</td>' +
+          '<td class="num">' + rs(r.advance) + '</td>' +
+          '<td class="num">' + rs(r.credit) + '</td>' +
+          R.deducts.map(function(x){ return '<td class="num">' + rs(r.deduct[x]) + '</td>'; }).join('') +
+          '<td class="num">' + rs(r.totalDeduct) + '</td></tr>';
+      }).join('');
+    }
+    function foot(label, t){
+      return '<tr style="background:var(--panel-2);font-weight:600">' +
+        '<td colspan="2">' + esc(label) + '</td>' +
+        '<td class="num">' + rs(t.net) + '</td><td class="num">' + rs(t.paid) + '</td>' +
+        '<td class="num">' + rs(t.payable) + '</td><td class="num">' + rs(t.bank) + '</td>' +
+        '<td class="num">' + rs(t.cash) + '</td>' +
+        R.heads.map(function(x){ return '<td class="num">' + rs(t.earn[x]) + '</td>'; }).join('') +
+        '<td class="num">' + rs(t.totalSalary) + '</td>' +
+        '<td class="num">' + rs(t.advance) + '</td>' +
+        '<td class="num">' + rs(t.credit) + '</td>' +
+        R.deducts.map(function(x){ return '<td class="num">' + rs(t.deduct[x]) + '</td>'; }).join('') +
+        '<td class="num">' + rs(t.totalDeduct) + '</td></tr>';
+    }
+
+    h += body(R.staff);
+    h += foot('Subtotal Employees', R.subtotal.staff);
+    if (R.management.length) {
+      h += body(R.management);
+      h += foot('Subtotal Management', R.subtotal.management);
+    }
+    h += '</tbody><tfoot>' + foot('Total', R.total).replace(/^<tr[^>]*>/, '<tr>') +
+      '</tfoot></table></div></div>';
+
+    $('pane').innerHTML = h;
+    $('print').addEventListener('click', function(){ window.print(); });
+    $('csv').addEventListener('click', function(){ reportCsv(R); });
+  }
+
+  function reportCsv(R){
+    var head = ['Sr','Name','Net Salary','Paid','Payable','Bank','Cash']
+      .concat(R.heads).concat(['Total Salary','Advance','Credit Purchase'])
+      .concat(R.deducts).concat(['Total Deduction']);
+    var lines = [head.join(',')];
+    var sr = 0;
+    R.staff.concat(R.management).forEach(function(r){
+      sr++;
+      var row = [sr, r.name, r.net, r.paid, r.payable, r.bank, r.cash]
+        .concat(R.heads.map(function(x){ return r.earn[x] || 0; }))
+        .concat([r.totalSalary, r.advance, r.credit])
+        .concat(R.deducts.map(function(x){ return r.deduct[x] || 0; }))
+        .concat([r.totalDeduct]);
+      lines.push(row.map(cell).join(','));
+    });
+    save(lines.join('\r\n'), 'salary-report-' + R.month + '.csv');
+  }
+
+  function cell(v){
+    var s = v == null ? '' : String(v);
+    return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
+  }
+
+  function save(text, name){
+    var blob = new Blob([text], { type:'text/csv;charset=utf-8' });
+    var a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = name;
+    a.click();
+  }
+
+  /* ==================== the slips ==================== */
+
+  function paintSlips(){
+    if (!S.slips) {
+      $('pane').innerHTML = '<div class="loading">Reading the month&hellip;</div>';
+      get('/api/hr/slips?month=' + encodeURIComponent(S.month)).then(function(d){
+        if (d.error) { $('pane').innerHTML = '<div class="msg">' + esc(d.error) + '</div>'; return; }
+        S.slips = d; paintSlips();
+      });
+      return;
+    }
+    var K = S.slips;
+    var earn = S.D.earn;
+    var ded = ['Advance','Credit Purchase','Loan Deduction','Late Fine','Parcel Fine',
+               'Absent Fine','Employee Adjustments'];
+
+    var h = '<div class="cbar noprint"><button id="print">Print them all</button>' +
+      '<span class="note" style="margin:0">' + n0(K.slips.length) + ' slips for ' +
+      esc(monthName(K.month)) + '</span></div>';
+
+    K.slips.forEach(function(s){
+      h += '<div class="slip"><h4>SALARY SLIP &mdash; ' + esc(s.name) +
+        ' (' + esc(s.code) + ')</h4>' +
+        '<div class="meta"><span>' + esc(s.designation || s.department || '') + '</span>' +
+        (s.grade ? '<span>' + esc(s.grade) + '</span>' : '') +
+        (s.joined ? '<span>Joined ' + esc(s.joined) + '</span>' : '') +
+        '<span>' + esc(monthName(K.month)) + '</span></div>' +
+        '<div class="three">' +
+        '<table><thead><tr><th>Salary Detail</th><th class="num">Rs.</th></tr></thead><tbody>' +
+          earn.map(function(x){
+            return '<tr><td>' + esc(x) + '</td><td class="num">' + rs(s.earn[x]) + '</td></tr>';
+          }).join('') +
+          '<tr class="sum"><td>Total Salary &amp; Benefits</td><td class="num">' +
+            rs(s.totalSalary) + '</td></tr></tbody></table>' +
+        '<table><thead><tr><th>Deductions</th><th class="num">Rs.</th></tr></thead><tbody>' +
+          ded.map(function(x){
+            return '<tr><td>' + esc(x) + '</td><td class="num">' + rs(s.deduct[x]) + '</td></tr>';
+          }).join('') +
+          '<tr><td>During Month Paid</td><td class="num">' + rs(s.paid) + '</td></tr>' +
+          '<tr class="sum"><td>Net Deduction</td><td class="num">' +
+            rs(s.netDeduct) + '</td></tr></tbody></table>' +
+        '<table><thead><tr><th>Summary</th><th class="num">Rs.</th></tr></thead><tbody>' +
+          '<tr><td>Gross Salary</td><td class="num">' + rs(s.gross) + '</td></tr>' +
+          '<tr><td>Less Deduction</td><td class="num">' + rs(s.netDeduct) + '</td></tr>' +
+          '<tr><td>Less Paid</td><td class="num">' + rs(-s.paid) + '</td></tr>' +
+          '<tr><td>Income Tax</td><td class="num"><span class="zero">-</span></td></tr>' +
+          '<tr><td>EOBI</td><td class="num"><span class="zero">-</span></td></tr>' +
+          '<tr class="close"><td>Net Payable</td><td class="num">' +
+            rs(s.netPayable) + '</td></tr></tbody></table></div>' +
+        '<div class="sign"><span>Signature</span><span>Receiver</span></div></div>';
+    });
+
+    if (!K.slips.length) h += '<div class="empty">Nobody on the payroll this month.</div>';
+
+    $('pane').innerHTML = h;
+    var p = $('print');
+    if (p) p.addEventListener('click', function(){ window.print(); });
+  }
+
+  /* ==================== the time sheets ==================== */
+
+  function paintSheets(){
+    if (!S.tsCode && S.D.rows.length) S.tsCode = S.D.rows[0].code;
+
+    var h = '<div class="cbar noprint">' +
+      '<label style="font-size:12.5px;color:var(--muted)">Whose</label>' +
+      '<select id="who">' + S.D.rows.map(function(r){
+        return '<option value="' + esc(r.code) + '"' +
+          (S.tsCode === r.code ? ' selected' : '') + '>' + esc(r.name) +
+          ' (' + esc(r.code) + ')</option>';
+      }).join('') + '</select>' +
+      '<button id="print">Print it</button></div><div id="ts">' +
+      '<div class="loading">Reading&hellip;</div></div>';
+    $('pane').innerHTML = h;
+
+    $('who').addEventListener('change', function(){
+      S.tsCode = this.value; paintSheets();
+    });
+    $('print').addEventListener('click', function(){ window.print(); });
+
+    get('/api/hr/timesheet?month=' + encodeURIComponent(S.month) +
+        '&code=' + encodeURIComponent(S.tsCode)).then(function(d){
+      if (d.error) { $('ts').innerHTML = '<div class="msg">' + esc(d.error) + '</div>'; return; }
+      $('ts').innerHTML = sheetHtml(d);
+    });
+  }
+
+  function sheetHtml(d){
+    return '<div class="ts"><h4>TIME SHEET OF STAFF</h4>' +
+      '<div class="who">' +
+      '<span><b>NAME:</b> ' + esc(d.employee.name) + '</span>' +
+      '<span><b>MONTH:</b> ' + esc(monthName(d.month)) + '</span>' +
+      '<span><b>DESIGNATION:</b> ' + esc(d.employee.designation || '') + '</span>' +
+      '<span><b>Duty Station:</b> ' + esc(d.employee.station || '') + '</span>' +
+      '<span><b>DEPARTMENT:</b> ' + esc(d.employee.department || '') + '</span>' +
+      '<span><b>Duty Time:</b> ' + esc(d.employee.dutyFrom) + ' to ' +
+        esc(d.employee.dutyTo) + '</span>' +
+      '</div>' +
+      '<table><thead><tr><th>Date</th><th>Days</th><th>Status</th><th>Check In</th>' +
+      '<th>Check Out</th><th>Remarks (if any)</th></tr></thead><tbody>' +
+      d.rows.map(function(r){
+        return '<tr><td style="text-align:right">' + r.dayNo + '</td>' +
+          '<td>' + esc(r.weekday) + '</td>' +
+          '<td style="text-align:center">' + esc(r.mark) + '</td>' +
+          '<td>' + esc(r.inAt) + '</td><td>' + esc(r.outAt) + '</td>' +
+          '<td>' + esc(r.remarks) + '</td></tr>';
+      }).join('') +
+      '</tbody></table>' +
+      '<div class="tally">' +
+      '<span>Total Month\'s Days<b>' + n0(d.tally.days) + '</b></span>' +
+      '<span>Working Days (X)<b>' + n0(d.tally.worked) + '</b></span>' +
+      '<span>Weekends (W)<b>' + n0(d.tally.weekend) + '</b></span>' +
+      '<span>Not Applicable<b>' + n0(d.tally.na) + '</b></span>' +
+      '<span>Leave (L)<b>' + n0(d.tally.leave) + '</b></span>' +
+      '<span>Holidays (H)<b>' + n0(d.tally.holiday) + '</b></span>' +
+      '<span>Absent (A)<b>' + n0(d.tally.absent) + '</b></span>' +
+      '<span>Half Leave (HF)<b>' + n0(d.tally.half) + '</b></span>' +
+      '<span>Man Month<b>' + d.manMonth.toFixed(2) + '</b></span></div>' +
+      '<div class="sign" style="display:flex;justify-content:space-between;' +
+      'margin-top:22px;font-size:11px;color:var(--faint)">' +
+      '<span>Signature of Claimant</span><span>Signature of Dept. Head</span></div></div>';
+  }
+
+  /* ==================== the ledger ==================== */
+
+  function paintLedger(){
+    if (!S.ledger) {
+      $('pane').innerHTML = '<div class="loading">Reading the ledger&hellip;</div>';
+      get('/api/hr/ledger?month=' + encodeURIComponent(S.month)).then(function(d){
+        if (d.error) { $('pane').innerHTML = '<div class="msg">' + esc(d.error) + '</div>'; return; }
+        S.ledger = d; paintLedger();
+      });
+      return;
+    }
+    var L = S.ledger;
+    var h = '<div class="cbar noprint"><button id="csv">Download the ledger</button>' +
+      '<span class="note" style="margin:0">One row a figure. This is what the ' +
+      'report, the slips and the QuickBooks entry are each a reading of.</span></div>';
+
+    h += '<div class="box"><h3>Ledger' +
+      '<span class="aside">' + n0(L.rows.length) + ' rows &middot; ' +
+      esc(monthName(L.month)) + '</span></h3><div class="lst"><table class="t"><thead><tr>' +
+      '<th>Month</th><th>Employee</th><th>Department</th><th>Head</th><th>Side</th>' +
+      '<th class="num">Amount</th></tr></thead><tbody>' +
+      L.rows.map(function(r){
+        return '<tr><td class="num">' + esc(r.month) + '</td>' +
+          '<td style="white-space:nowrap">' + esc(r.employee) + '</td>' +
+          '<td>' + esc(r.department) + '</td><td>' + esc(r.head) + '</td>' +
+          '<td>' + esc(r.side) + '</td>' +
+          '<td class="num">' + rs(r.amount) + '</td></tr>';
+      }).join('') +
+      '</tbody><tfoot><tr><td colspan="5">Net salary for the month</td>' +
+      '<td class="num">' + rs(L.totals.net) + '</td></tr></tfoot></table></div></div>';
+
+    $('pane').innerHTML = h;
+    $('csv').addEventListener('click', function(){
+      var lines = ['Month,Employee,Employee Id,Department,Head,Side,Amount'];
+      L.rows.forEach(function(r){
+        lines.push([r.month, r.employee, r.code, r.department, r.head, r.side, r.amount]
+          .map(cell).join(','));
+      });
+      save(lines.join('\r\n'), 'salary-ledger-' + L.month + '.csv');
+    });
+  }
+
+  /* ==================== to QuickBooks ==================== */
+
+  function paintQbo(){
+    if (!S.journal) {
+      $('pane').innerHTML = '<div class="loading">Working the entry out&hellip;</div>';
+      get('/api/hr/journal?month=' + encodeURIComponent(S.month)).then(function(d){
+        if (d.error) { $('pane').innerHTML = '<div class="msg">' + esc(d.error) + '</div>'; return; }
+        S.journal = d; paintQbo();
+      });
+      return;
+    }
+    var J = S.journal;
+    var run = J.run || {};
+
+    var h = '';
+    if (run.state === 'posted') {
+      h += '<div class="good">' + esc(monthName(J.month)) +
+        ' is in QuickBooks as journal entry ' + esc(run.qb_doc_number || '') +
+        ' (id ' + esc(run.qb_journal_id || '') + ').</div>';
+    } else if (run.state !== 'approved') {
+      h += '<div class="warnbox">The month has to be approved before it can be posted. ' +
+        'Press <b>Approve the month</b> at the top.</div>';
+    }
+    if (J.missing && J.missing.length) {
+      h += '<div class="warnbox">No account set yet for: ' + esc(J.missing.join(', ')) +
+        '. Set them under <b>How it runs</b>.</div>';
+    }
+    if (!J.balanced) {
+      h += '<div class="msg">The entry does not balance: ' + plain(J.debit) +
+        ' debit against ' + plain(J.credit) + ' credit. Nothing will be sent.</div>';
+    }
+
+    h += '<div class="box"><h3>The entry' +
+      '<span class="aside">SAL-' + esc(J.month) + ' dated ' + esc(J.cycle.to) +
+      '</span></h3><table class="t"><thead><tr><th>Head</th><th>Side</th>' +
+      '<th>Account</th><th class="num">Amount</th></tr></thead><tbody>' +
+      (J.lines || []).map(function(l){
+        return '<tr><td>' + esc(l.head) + '</td><td>' + esc(l.side) + '</td>' +
+          '<td class="num">' + esc(l.account) + '</td>' +
+          '<td class="num">' + rs(l.amount) + '</td></tr>';
+      }).join('') +
+      '</tbody><tfoot><tr><td colspan="3">Debit ' + plain(J.debit) + ', credit ' +
+      plain(J.credit) + '</td><td class="num">' +
+      (J.balanced ? '<span class="pill ok">balanced</span>'
+                  : '<span class="pill neg">out by ' +
+                    plain(Math.abs(J.debit - J.credit)) + '</span>') +
+      '</td></tr></tfoot></table>' +
+      '<div class="acts"><button class="solid" id="postit"' +
+      (run.state === 'approved' && J.balanced && !(J.missing || []).length ? '' : ' disabled') +
+      '>Post it to QuickBooks</button>' +
+      '<span class="note" style="margin:0">One entry for the month. Paying the staff ' +
+      'is a payment against the payable, made in the books by hand &mdash; this app ' +
+      'does not pay anybody.</span></div></div>';
+
+    $('pane').innerHTML = h;
+    $('postit').addEventListener('click', function(){
+      if (!confirm('Post ' + monthName(J.month) + ' to QuickBooks? It writes one ' +
+          'journal entry and cannot be undone from here.')) return;
+      $('postit').disabled = true;
+      post('/api/hr/post', { month: S.month }).then(function(d){
+        if (d.error) { alert(d.error); $('postit').disabled = false; return; }
+        S.said = 'Posted as ' + d.docNumber + ', ' + d.lines + ' lines.';
+        S.journal = null;
+        load();
+      });
+    });
+  }
+
+  /* ==================== how it runs ==================== */
+  //
+  // The statement of the system, the way the Shopify connector states its own:
+  // every rule the salary depends on, in a sentence, with the number in it.
+
+  function paintHow(){
+    var P = S.D.policy;
+    var admin = S.D.admin;
+
+    var h = '<div class="box"><h3>How the salary is worked out' +
+      '<span class="aside">' + (admin ? 'you may change these'
+        : 'only the administrator may change these') + '</span></h3>' +
+      '<div class="f"><div class="form">' +
+      numf('cycleStart', 'The month runs from this day', P.cycleStart) +
+      numf('monthDays', 'Every per-day rate divides by', P.monthDays) +
+      timef('dutyFrom', 'On duty at', P.dutyFrom) +
+      timef('dutyTo', 'Off duty at', P.dutyTo) +
+      numf('dutyMinutes', 'Minutes in a working day', P.dutyMinutes) +
+      numf('graceMinutes', 'Late starts after this many minutes', P.graceMinutes) +
+      numf('lateCountOver', 'A day counts as late over this many minutes', P.lateCountOver) +
+      numf('latePer', 'One day of basic goes every this many late days', P.latePer) +
+      timef('otFrom', 'Overtime starts at', P.otFrom) +
+      timef('otTo', 'And stops at', P.otTo) +
+      '<div><label>Late fine, by default</label><select data-p="lateRule">' +
+        ['days','minutes','minutes2x'].map(function(x){
+          return '<option value="' + x + '"' + (P.lateRule === x ? ' selected' : '') +
+            '>' + x + '</option>';
+        }).join('') + '</select></div>' +
+      '<div><label>Overtime is paid to (departments, commas)</label>' +
+        '<input type="text" data-p="otDepts" value="' +
+          esc((P.otDepts || []).join(', ')) + '"></div>' +
+      '<div><label>No regular bonus for (departments, commas)</label>' +
+        '<input type="text" data-p="noBonusDepts" value="' +
+          esc((P.noBonusDepts || []).join(', ')) + '"></div>' +
+      '<div><label>Late by the minute, doubled after an hour, for</label>' +
+        '<input type="text" data-p="lateRule2x" value="' +
+          esc(Object.keys(P.lateRuleByDept || {}).filter(function(k){
+            return P.lateRuleByDept[k] === 'minutes2x';
+          }).join(', ')) + '"></div>' +
+      '<div><label>Paid during the month (heads, commas)</label>' +
+        '<input type="text" data-p="paidDuringMonth" value="' +
+          esc((P.paidDuringMonth || ['Food Allowance']).join(', ')) + '"></div>' +
+      '<div style="grid-column:1/-1"><label>Who approves leave and the month ' +
+        '(emails, commas)</label><input type="text" data-p="approvers" value="' +
+          esc((P.approvers || []).join(', ')) + '"></div>' +
+      '</div>' +
+      '<div class="acts"><button class="solid" id="savepol"' +
+        (admin ? '' : ' disabled') + '>Save how it runs</button></div></div></div>';
+
+    h += '<div class="box"><h3>In words' +
+      '<span class="aside">what the figures above mean</span></h3>' +
+      '<table class="t"><tbody>' +
+      rule('1', 'The month is the ' + P.cycleStart + 'th to the ' +
+        ((P.cycleStart || 26) - 1) + 'th, and every per-day rate is the basic over ' +
+        P.monthDays + '.') +
+      rule('2', 'Late begins ' + P.graceMinutes + ' minutes after ' + P.dutyFrom +
+        '. A day counts as late over ' + P.lateCountOver + ' minutes, and every ' +
+        P.latePer + ' late days cost one day of basic.') +
+      rule('3', 'Overtime is the minutes between ' + P.otFrom + ' and ' + P.otTo +
+        ', at the basic per minute, and only for ' +
+        ((P.otDepts || []).join(' and ') || 'nobody') + '.') +
+      rule('4', 'A month with no absence and no leave earns one day of basic as the ' +
+        'regular bonus &mdash; everybody except ' +
+        ((P.noBonusDepts || []).join(' and ') || 'nobody') + '.') +
+      rule('5', 'An absence costs a day of basic. An unapproved half day costs half ' +
+        'of one. An approved leave costs nothing &mdash; which is why the approval is ' +
+        'the only thing between the two.') +
+      rule('6', 'The parcel bonus, the parcel fine and the order bonus are typed in ' +
+        'and shared between the people ticked. Nothing works them out by itself.') +
+      rule('7', 'Approved by ' + ((P.approvers || []).join(', ') ||
+        'the administrator of this company') + ', and nothing reaches QuickBooks ' +
+        'until they have.') +
+      '</tbody></table></div>';
+
+    h += '<div class="box"><h3>Where each head lands in QuickBooks' +
+      '<span class="aside">' + (S.accounts ? n0(S.accounts.length) + ' accounts'
+        : 'press read to fetch the chart') + '</span></h3>' +
+      '<div class="cbar"><button id="readacc">Read the chart of accounts</button></div>' +
+      '<div id="accmap">' + (S.accounts ? accMap(P) :
+        '<div class="empty">The chart has not been read yet.</div>') + '</div></div>';
+
+    $('pane').innerHTML = h;
+
+    $('savepol').addEventListener('click', savePolicy);
+    $('readacc').addEventListener('click', function(){
+      $('accmap').innerHTML = '<div class="loading">Asking QuickBooks&hellip;</div>';
+      get('/api/hr/accounts').then(function(d){
+        if (d.error) {
+          $('accmap').innerHTML = '<div class="msg">' + esc(d.error) + '</div>';
+          return;
+        }
+        S.accounts = d.accounts || [];
+        $('accmap').innerHTML = accMap(P);
+        wireAcc();
+      });
+    });
+    if (S.accounts) wireAcc();
+  }
+
+  function rule(n, text){
+    return '<tr><td class="num" style="width:30px;color:var(--faint)">' + n + '</td>' +
+      '<td>' + text + '</td></tr>';
+  }
+  function numf(k, label, v){
+    return '<div><label>' + esc(label) + '</label>' +
+      '<input type="number" data-p="' + k + '" value="' + esc(v == null ? '' : v) + '"></div>';
+  }
+  function timef(k, label, v){
+    return '<div><label>' + esc(label) + '</label>' +
+      '<input type="time" data-p="' + k + '" value="' + esc(v || '') + '"></div>';
+  }
+
+  function accMap(P){
+    var heads = S.D.earn.concat(S.D.deduct)
+      .concat(['Paid During Month', 'Salary payable']);
+    var acc = P.accounts || {};
+    return '<table class="t"><thead><tr><th>Head</th><th>Account</th></tr></thead><tbody>' +
+      heads.map(function(head){
+        var now = head === 'Salary payable' ? (P.payableAccount || '') : (acc[head] || '');
+        return '<tr><td>' + esc(head) + '</td><td><select class="am" data-head="' +
+          esc(head) + '" style="width:100%;border:1px solid var(--line);border-radius:6px;' +
+          'padding:6px 8px;font:inherit;font-size:12.5px">' +
+          '<option value="">(not set)</option>' +
+          S.accounts.map(function(a){
+            return '<option value="' + esc(a.id) + '"' +
+              (String(now) === String(a.id) ? ' selected' : '') + '>' +
+              esc(a.name) + ' &mdash; ' + esc(a.type) + '</option>';
+          }).join('') + '</select></td></tr>';
+      }).join('') +
+      '</tbody></table><div class="acts"><button class="solid" id="saveacc"' +
+      (S.D.admin ? '' : ' disabled') + '>Save where they land</button></div>';
+  }
+
+  function wireAcc(){
+    var b = $('saveacc');
+    if (!b) return;
+    b.addEventListener('click', function(){
+      var accounts = {}, payable = '';
+      $('accmap').querySelectorAll('select.am').forEach(function(sel){
+        var head = sel.getAttribute('data-head');
+        if (head === 'Salary payable') payable = sel.value;
+        else if (sel.value) accounts[head] = sel.value;
+      });
+      post('/api/hr/policy', { accounts: accounts, payableAccount: payable })
+        .then(function(d){
+          if (d.error) return alert(d.error);
+          S.said = 'Saved where each head lands.';
+          S.journal = null;
+          load();
+        });
+    });
+  }
+
+  function savePolicy(){
+    var body = {};
+    $('pane').querySelectorAll('[data-p]').forEach(function(el){
+      body[el.getAttribute('data-p')] = el.value;
+    });
+    ['otDepts','noBonusDepts','approvers','paidDuringMonth'].forEach(function(k){
+      body[k] = String(body[k] || '').split(',').map(function(x){ return x.trim(); })
+        .filter(Boolean);
+    });
+    var two = String(body.lateRule2x || '').split(',').map(function(x){ return x.trim(); })
+      .filter(Boolean);
+    delete body.lateRule2x;
+    body.lateRuleByDept = {};
+    two.forEach(function(d){ body.lateRuleByDept[d] = 'minutes2x'; });
+    post('/api/hr/policy', body).then(function(d){
+      if (d.error) return alert(d.error);
+      S.said = 'Saved. Press Work the month out to put it through the figures.';
+      load();
+    });
+  }
+
+  S.month = monthNow();
+  window.APP.ready.then(function(){ load(); });
+})();
+</script>
+</body>
+</html>

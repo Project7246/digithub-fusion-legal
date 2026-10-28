@@ -43,6 +43,22 @@ import {
   nudgeOrder, nudgeProduct, wireHooks, unwireHooks,
   reviewNewItems, makeNewItems
 } from './shopifysync.js';
+import {
+  initHr, hrPolicy, saveHrPolicy, HR_POLICY, cycleOf, monthText, thisMonth,
+  dayText,
+  listEmployees, employeeByCode, employeeOfUser, addEmployee, saveEmployee,
+  setEmployeeStatus, linkEmployeeUser, verifyOwnForm, nextEmpCode,
+  missingFrom, MUST_FILL, SELF_FIELDS,
+  daysOf, putDay, dayFigures, DAY_STATUS, importDays,
+  listLeaves, askLeave, decideLeave, mayApprove, hrSize
+} from './hr.js';
+import {
+  initHrPay, HEADS, EARN, DEDUCT, PAID, INFO, AUTO_HEADS, HEAD_KIND,
+  standingOf, setStanding, runOf as hrRunOf, listRuns as hrListRuns,
+  approveMonth, reopenMonth, poolsOf, savePool,
+  workingOf, figureMonth, setLine, setFacts, ledgerOf,
+  reportOf, slipsOf, timeSheetOf, journalOf, postMonth
+} from './hrpay.js';
 import { listCompanies } from './companies.js';
 import { listSheets, listTabs, readTab, paintRows, testConnection } from './sheets.js';
 import {
@@ -64,7 +80,8 @@ import {
 import { initPush, publicKey, addSub, dropSub, hasSub, pushTo } from './push.js';
 import {
   getAccessToken, getCompanyInfo, loadItems, loadTerms,
-  getOrCreateCustomer, postInvoice, qbQuery, qbReport, listAccounts as qbAccountList, forgetToken, deleteInvoice, foldItem, salesPrefs} from './qb.js';
+  getOrCreateCustomer, postInvoice, qbQuery, qbReport, listAccounts as qbAccountList, forgetToken, deleteInvoice, foldItem, salesPrefs,
+  postJournalEntry } from './qb.js';
 import {
   readItems, readItemSales, readValuation, readPurchases,
   buildRows as buildProductRows, summarise as summariseProducts,
@@ -526,7 +543,11 @@ const AREAS = [
   { key: 'purchases', label: 'Vendors and purchases',
     what: 'What is ordered, billed and paid out' },
   { key: 'items',     label: 'Products and stock',
-    what: 'What items cost, what is on hand, how they are named' }
+    what: 'What items cost, what is on hand, how they are named' },
+  // HR's own. A new module's rights are a group of their own, so a company can
+  // be given the staff without being given the books.
+  { key: 'people',    label: 'Staff and payroll',
+    what: 'Who works here, what they did, and what the month owes them' }
 ];
 const ROLE_KEYS = new Set(ROLES.map(r => r.key));
 
@@ -1279,6 +1300,12 @@ const USER_MAY_POST = new Set([
   '/auth/code', '/auth/signup', '/auth/in', '/auth/forgot', '/auth/reset',
   // a person's own bell: reading it and emptying it are their own business
   '/api/notifications/read', '/api/notifications/clear',
+  // their own HR record: their form, their check-in, their own leave. The
+  // employee is never taken from the request - it is looked up from who is
+  // signed in - so there is no address anybody can type to reach somebody else.
+  '/api/hr/me/save', '/api/hr/me/verify', '/api/hr/me/clock', '/api/hr/me/leave',
+  // and the policy, which the route itself holds to the company's administrator
+  '/api/hr/policy',
   // putting away the notice that offers staff user ids - their own answer
   '/api/me/staff-asked',
   // their own name and picture
@@ -1418,7 +1445,26 @@ const RIGHT_GROUPS = [
 
   { key: 'settings', area: 'items', label: 'SKU mappings',
     what: 'Remembered SKU-to-item matches',
-    paths: ['/api/mappings'] }
+    paths: ['/api/mappings'] },
+
+  // ---- HR ----
+  // Two groups, not one, and the line between them is money. Somebody keeps the
+  // staff records and brings the biometric report in; somebody else works the
+  // month out and posts it. The same person often does both, and that is a
+  // decision for whoever runs the company, not a thing to assume here.
+  { key: 'hr', area: 'people', label: 'People and attendance',
+    what: 'Staff records, the biometric report, leave',
+    paths: ['/api/hr/people/new', '/api/hr/people/save', '/api/hr/people/status',
+            '/api/hr/people/login', '/api/hr/people/link', '/api/hr/standing',
+            '/api/hr/days/import', '/api/hr/days/save',
+            '/api/hr/leaves/new', '/api/hr/leaves/decide'] },
+
+  { key: 'payroll', area: 'people', label: 'Payroll',
+    what: 'Work the month out, and post it to QuickBooks',
+    paths: ['/api/hr/payroll/figure', '/api/hr/payroll/line',
+            '/api/hr/payroll/facts', '/api/hr/payroll/pool',
+            '/api/hr/payroll/approve', '/api/hr/payroll/reopen',
+            '/api/hr/post'] }
 ];
 
 // Which page belongs to which job.
@@ -1467,7 +1513,12 @@ const PAGE_NEED = new Map(Object.entries({
   '/shopify.html': 'shopify',
   '/shopify-log.html': 'shopify',
   '/shopify-undo.html': 'shopify',
-  '/shopify-connect.html': 'shopify'
+  '/shopify-connect.html': 'shopify',
+  // HR. /my-hr is deliberately not here: it is a person's own record and
+  // belongs to whoever is signed in, not to a job somebody was given.
+  '/employees.html': 'hr',
+  '/attendance.html': 'hr',
+  '/payroll.html': 'payroll'
 }));
 
 // route -> the job it belongs to, worked out once
@@ -13129,6 +13180,713 @@ app.post('/api/audit/clear', async (req, res) => {
   res.json({ ok: true });
 });
 
+// ==================== HR ====================
+//
+// The people, their days, their leave and their month's pay. Every route here
+// is HR's own and touches no finance table: the one place the two meet is the
+// journal entry at the end, which is written through qb.js like everything
+// else. Changing anything in this block cannot change a courier or an invoice,
+// which is the point - "HR module ko change krny sy finance ky module mein fark
+// ni ana cheye".
+
+// Who is asking, in the shape mayApprove() wants.
+async function hrWho(req) {
+  const sub = currentUser(req);
+  const who = await whoIs(sub);
+  if (!who) return null;
+  return Object.assign({}, who, {
+    sub,
+    runsCompany: await runsCompany(sub, req.cookies.realm_id)
+  });
+}
+
+/* ---------- the people ---------- */
+
+app.get('/api/hr/people', async (req, res) => {
+  const realmId = await requireCompany(req, res);
+  if (!realmId) return;
+  try {
+    const policy = await hrPolicy(realmId);
+    const people = await listEmployees(realmId, { all: req.query.all === '1' });
+    const standing = await standingOf(realmId);
+    const who = await hrWho(req);
+    res.json({
+      people: people.map(p => Object.assign({}, p, { missing: missingFrom(p) })),
+      standing,
+      heads: HEADS, autoHeads: AUTO_HEADS,
+      nextCode: await nextEmpCode(realmId, policy),
+      policy,
+      mayApprove: mayApprove(policy, who),
+      admin: !!(who && (who.admin || who.runsCompany))
+    });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.post('/api/hr/people/new', async (req, res) => {
+  const realmId = await requireCompany(req, res);
+  if (!realmId) return;
+  try {
+    const policy = await hrPolicy(realmId);
+    const out = await addEmployee(realmId, req.body || {}, policy);
+    if (out.error) return res.status(400).json(out);
+    res.json(out);
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.post('/api/hr/people/save', async (req, res) => {
+  const realmId = await requireCompany(req, res);
+  if (!realmId) return;
+  try {
+    const out = await saveEmployee(realmId, (req.body || {}).emp_code, req.body || {});
+    if (out.error) return res.status(400).json(out);
+    res.json(out);
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// Hiring and firing are the same route and neither deletes anything. Somebody
+// who has left keeps every day they worked and every slip they were paid.
+app.post('/api/hr/people/status', async (req, res) => {
+  const realmId = await requireCompany(req, res);
+  if (!realmId) return;
+  try {
+    const b = req.body || {};
+    const out = await setEmployeeStatus(realmId, b.emp_code, b.status, b.day, b.note);
+    if (out.error) return res.status(400).json(out);
+    res.json(out);
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// A login for one employee, and the employee row tied to it in the same breath.
+// It is the same user id the company's administrator hands out on /users - HR
+// does not get a second kind of account - and the password is shown once.
+app.post('/api/hr/people/login', async (req, res) => {
+  const realmId = await requireAdmin(req, res);
+  if (!realmId) return;
+  try {
+    const b = req.body || {};
+    const emp = await employeeByCode(realmId, b.emp_code);
+    if (!emp) return res.status(400).json({ error: 'No such employee.' });
+    if (emp.user_sub) return res.status(400).json({ error: emp.name + ' already has a login.' });
+
+    const loginId = String(b.login_id || '').trim().toLowerCase();
+    const bad = loginIdComplaint(loginId);
+    if (bad) return res.status(400).json({ error: bad });
+    const pw = String(b.password || '').trim();
+    const pwBad = passwordComplaint(pw);
+    if (pwBad) return res.status(400).json({ error: pwBad });
+
+    if (await byLoginId(loginId)) {
+      return res.status(409).json({ error: 'That user ID is already taken. Try another.' });
+    }
+
+    const sub = await createMemberAccount({
+      loginId, name: emp.name, password: pw, realmId,
+      madeBy: currentUser(req),
+      // An employee sees their own screen and nothing else until somebody ticks
+      // more. That is what was asked for: "employee login kry ga usy time sheet
+      // policy attendance uski leaves etc wahi sb dikhy ga".
+      role: 'custom', rights: []
+    });
+    await linkCompany(sub, realmId);
+    await linkEmployeeUser(realmId, emp.emp_code, sub);
+    forgetSettled(sub);
+    forgetWho(sub);
+    res.json({ ok: true, loginId, password: pw, sub });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// Or tie an employee to a login that already exists, for everybody who was
+// signing in before this screen did.
+app.post('/api/hr/people/link', async (req, res) => {
+  const realmId = await requireAdmin(req, res);
+  if (!realmId) return;
+  try {
+    const b = req.body || {};
+    const out = await linkEmployeeUser(realmId, b.emp_code, b.sub || null);
+    if (out.error) return res.status(400).json(out);
+    res.json(out);
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.post('/api/hr/standing', async (req, res) => {
+  const realmId = await requireCompany(req, res);
+  if (!realmId) return;
+  try {
+    const b = req.body || {};
+    const out = await setStanding(realmId, b.emp_code, b.head, b.amount, b.prorate);
+    if (out.error) return res.status(400).json(out);
+    res.json(out);
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+/* ---------- the days ---------- */
+
+app.get('/api/hr/days', async (req, res) => {
+  const realmId = await requireCompany(req, res);
+  if (!realmId) return;
+  try {
+    const policy = await hrPolicy(realmId);
+    const month = monthText(req.query.month) || thisMonth();
+    const cycle = cycleOf(month, policy);
+    const people = await listEmployees(realmId, { all: true });
+    const byCode = new Map(people.map(p => [String(p.emp_code), p]));
+    const rows = await daysOf(realmId, cycle.from, cycle.to, req.query.code || null);
+    res.json({
+      month, cycle, statuses: DAY_STATUS,
+      days: rows.map(d => {
+        const g = dayFigures(d, policy, byCode.get(d.emp_code) || {});
+        const emp = byCode.get(d.emp_code) || {};
+        return Object.assign({}, d, {
+          name: emp.name || d.emp_code,
+          department: emp.department || '',
+          lateMin: g.late, otMin: g.ot, workMin: g.work, lateDay: g.lateDay
+        });
+      })
+    });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// The biometric report, as it comes off the machine. Nothing of the file is
+// kept: the rows are read, the days are written, and the buffer goes - the same
+// rule the uploaded invoice files have always had.
+app.post('/api/hr/days/import', upload.single('file'), async (req, res) => {
+  const realmId = await requireCompany(req, res);
+  if (!realmId) return;
+  try {
+    if (!req.file) return res.status(400).json({ error: 'No file was sent.' });
+    // Deliberately **not** cellDates. A date cell left as the spreadsheet's own
+    // number is read by arithmetic (fromSerial in hr.js) and carries no timezone
+    // with it; turned into a Date here, the 26th of August can come out as the
+    // 25th on a server in the wrong place. The couriers taught this once already.
+    const book = XLSX.read(req.file.buffer, { type: 'buffer', cellDates: false });
+    const sheet = book.Sheets[req.body.sheet || book.SheetNames[0]];
+    if (!sheet) return res.status(400).json({ error: 'That sheet is not in the file.' });
+    const grid = XLSX.utils.sheet_to_json(sheet, { header: 1, raw: true, defval: '' });
+    const out = await importDays(realmId, grid, {
+      dryRun: req.body.look === '1',
+      force: req.body.force === '1'
+    });
+    if (out.error) return res.status(400).json(out);
+    res.json(Object.assign({ sheets: book.SheetNames }, out));
+  } catch (e) {
+    res.status(400).json({ error: e.message });
+  }
+});
+
+app.post('/api/hr/days/save', async (req, res) => {
+  const realmId = await requireCompany(req, res);
+  if (!realmId) return;
+  try {
+    const b = req.body || {};
+    const who = await hrWho(req);
+    const out = await putDay(realmId, b.emp_code, b.day, b, (who && (who.email || who.sub)) || null);
+    if (out.error) return res.status(400).json(out);
+    res.json(out);
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+/* ---------- leave, and who approves it ---------- */
+
+app.get('/api/hr/leaves', async (req, res) => {
+  const realmId = await requireCompany(req, res);
+  if (!realmId) return;
+  try {
+    const policy = await hrPolicy(realmId);
+    const who = await hrWho(req);
+    const rows = await listLeaves(realmId, {
+      state: req.query.state || null,
+      code: req.query.code || null,
+      from: req.query.from || null,
+      to: req.query.to || null
+    });
+    const people = await listEmployees(realmId, { all: true });
+    const byCode = new Map(people.map(p => [String(p.emp_code), p]));
+    res.json({
+      leaves: rows.map(l => Object.assign({}, l, {
+        name: (byCode.get(l.emp_code) || {}).name || l.emp_code,
+        department: (byCode.get(l.emp_code) || {}).department || ''
+      })),
+      mayApprove: mayApprove(policy, who),
+      approvers: policy.approvers || []
+    });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.post('/api/hr/leaves/new', async (req, res) => {
+  const realmId = await requireCompany(req, res);
+  if (!realmId) return;
+  try {
+    const who = await hrWho(req);
+    const out = await askLeave(realmId, req.body || {}, (who && (who.email || who.sub)) || null);
+    if (out.error) return res.status(400).json(out);
+    res.json(out);
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// The hinge of the whole module. An approved day is a leave and costs nothing;
+// a refused one is an absence and is deducted - so only the three who were
+// named may answer, and the answer is written straight onto the days.
+app.post('/api/hr/leaves/decide', async (req, res) => {
+  const realmId = await requireCompany(req, res);
+  if (!realmId) return;
+  try {
+    const policy = await hrPolicy(realmId);
+    const who = await hrWho(req);
+    if (!mayApprove(policy, who)) {
+      return res.status(403).json({
+        error: 'Only ' + ((policy.approvers || []).join(', ') || 'the administrator') +
+               ' may approve a leave. Set who may under How it runs.'
+      });
+    }
+    const b = req.body || {};
+    const out = await decideLeave(realmId, b.id, b.state, (who.email || who.sub), b.note);
+    if (out.error) return res.status(400).json(out);
+    res.json(out);
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+/* ---------- the month ---------- */
+
+app.get('/api/hr/payroll', async (req, res) => {
+  const realmId = await requireCompany(req, res);
+  if (!realmId) return;
+  try {
+    const month = monthText(req.query.month) || thisMonth();
+    const w = await workingOf(realmId, month);
+    const who = await hrWho(req);
+    res.json({
+      month: w.month, cycle: w.cycle, run: w.run, rows: w.rows, totals: w.totals,
+      pools: w.pools, heads: HEADS, earn: EARN, deduct: DEDUCT, paid: PAID,
+      info: INFO, autoHeads: AUTO_HEADS, headKind: HEAD_KIND,
+      policy: w.policy,
+      months: await listRuns(realmId, 24),
+      mayApprove: mayApprove(w.policy, who),
+      admin: !!(who && (who.admin || who.runsCompany))
+    });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.post('/api/hr/payroll/figure', async (req, res) => {
+  const realmId = await requireCompany(req, res);
+  if (!realmId) return;
+  try {
+    const out = await figureMonth(realmId, (req.body || {}).month);
+    if (out.error) return res.status(400).json(out);
+    res.json(out);
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.post('/api/hr/payroll/line', async (req, res) => {
+  const realmId = await requireCompany(req, res);
+  if (!realmId) return;
+  try {
+    const b = req.body || {};
+    const out = await setLine(realmId, b.month, b.emp_code, b.head, b.amount, b.note);
+    if (out.error) return res.status(400).json(out);
+    res.json(out);
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.post('/api/hr/payroll/facts', async (req, res) => {
+  const realmId = await requireCompany(req, res);
+  if (!realmId) return;
+  try {
+    const b = req.body || {};
+    const out = await setFacts(realmId, b.month, b.emp_code, b);
+    if (out.error) return res.status(400).json(out);
+    res.json(out);
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.post('/api/hr/payroll/pool', async (req, res) => {
+  const realmId = await requireCompany(req, res);
+  if (!realmId) return;
+  try {
+    const b = req.body || {};
+    const out = await savePool(realmId, b.month, b.kind, b.data);
+    if (out.error) return res.status(400).json(out);
+    res.json(out);
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// The figures the rest of Fusion already holds, offered as a starting point for
+// the pools. This is the one place HR reads another module, it reads and never
+// writes, and nothing here depends on it: no courier accounts and no shop is an
+// empty answer, not a broken screen.
+app.get('/api/hr/figures', async (req, res) => {
+  const realmId = await requireCompany(req, res);
+  if (!realmId) return;
+  try {
+    const policy = await hrPolicy(realmId);
+    const month = monthText(req.query.month) || thisMonth();
+    const cycle = cycleOf(month, policy);
+    const out = { month, cycle, parcels: [], brands: [], trouble: [] };
+
+    try {
+      const p = await pool.query(
+        `SELECT courier, COUNT(*)::int AS parcels
+           FROM courier_orders
+          WHERE realm_id = $1 AND booked_on >= $2::date AND booked_on <= $3::date
+          GROUP BY courier ORDER BY courier`, [realmId, cycle.from, cycle.to]);
+      out.parcels = p.rows.map(r => ({ name: r.courier, count: r.parcels }));
+    } catch (e) { out.trouble.push('Couriers: ' + e.message); }
+
+    try {
+      const s = await pool.query(
+        `SELECT sh.label AS name,
+                COUNT(*)::int AS orders,
+                COALESCE(SUM(o.total), 0) AS amount
+           FROM shopify_orders o
+           JOIN shopify_shops sh ON sh.id = o.shop_id AND sh.realm_id = o.realm_id
+          WHERE o.realm_id = $1
+            AND o.cancelled = FALSE
+            AND (o.placed_at AT TIME ZONE 'Asia/Karachi')::date >= $2::date
+            AND (o.placed_at AT TIME ZONE 'Asia/Karachi')::date <= $3::date
+          GROUP BY sh.label ORDER BY sh.label`, [realmId, cycle.from, cycle.to]);
+      out.brands = s.rows.map(r => ({
+        name: r.name, orders: r.orders, amount: Number(r.amount) || 0
+      }));
+    } catch (e) { out.trouble.push('Shopify: ' + e.message); }
+
+    res.json(out);
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.post('/api/hr/payroll/approve', async (req, res) => {
+  const realmId = await requireCompany(req, res);
+  if (!realmId) return;
+  try {
+    const policy = await hrPolicy(realmId);
+    const who = await hrWho(req);
+    if (!mayApprove(policy, who)) {
+      return res.status(403).json({
+        error: 'The month is approved by ' +
+               ((policy.approvers || []).join(', ') || 'the administrator') + '.'
+      });
+    }
+    const out = await approveMonth(realmId, (req.body || {}).month, who, policy);
+    if (out.error) return res.status(400).json(out);
+    res.json(out);
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.post('/api/hr/payroll/reopen', async (req, res) => {
+  const realmId = await requireAdmin(req, res);
+  if (!realmId) return;
+  try {
+    const out = await reopenMonth(realmId, (req.body || {}).month);
+    if (out.error) return res.status(400).json(out);
+    res.json(out);
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+/* ---------- the four things that come out of it ---------- */
+
+app.get('/api/hr/report', async (req, res) => {
+  const realmId = await requireCompany(req, res);
+  if (!realmId) return;
+  try {
+    res.json(await reportOf(realmId, req.query.month));
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.get('/api/hr/slips', async (req, res) => {
+  const realmId = await requireCompany(req, res);
+  if (!realmId) return;
+  try {
+    res.json(await slipsOf(realmId, req.query.month, req.query.code || null));
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.get('/api/hr/timesheet', async (req, res) => {
+  const realmId = await requireCompany(req, res);
+  if (!realmId) return;
+  try {
+    const out = await timeSheetOf(realmId, req.query.month, req.query.code);
+    if (out.error) return res.status(400).json(out);
+    res.json(out);
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.get('/api/hr/ledger', async (req, res) => {
+  const realmId = await requireCompany(req, res);
+  if (!realmId) return;
+  try {
+    res.json(await ledgerOf(realmId, req.query.month));
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+/* ---------- and into QuickBooks ---------- */
+
+app.get('/api/hr/journal', async (req, res) => {
+  const realmId = await requireCompany(req, res);
+  if (!realmId) return;
+  try {
+    res.json(await journalOf(realmId, req.query.month));
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// The chart of accounts, for saying where each head lands. Read live, because a
+// list of accounts kept here would be the one thing out of date on the screen.
+app.get('/api/hr/accounts', async (req, res) => {
+  const realmId = await requireCompany(req, res);
+  if (!realmId) return;
+  try {
+    const token = await getAccessToken(realmId);
+    res.json({ accounts: await qbAccountList(realmId, token) });
+  } catch (e) {
+    res.status(400).json({ error: e.message });
+  }
+});
+
+app.post('/api/hr/post', async (req, res) => {
+  const realmId = await requireCompany(req, res);
+  if (!realmId) return;
+  try {
+    const out = await postMonth(realmId, (req.body || {}).month,
+                                { getAccessToken, postJournalEntry });
+    if (out.error) return res.status(400).json(out);
+    res.json(out);
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+/* ---------- how it runs ---------- */
+//
+// The statement of the system, the way the Shopify connector states its own.
+// Only the administrator of the company changes it - "policy check policy
+// change ky access super admin set kry ga" - and Fusion's own admin always may.
+
+app.get('/api/hr/policy', async (req, res) => {
+  const realmId = await requireCompany(req, res);
+  if (!realmId) return;
+  try {
+    const who = await hrWho(req);
+    res.json({
+      policy: await hrPolicy(realmId),
+      blank: HR_POLICY,
+      heads: HEADS, earn: EARN, deduct: DEDUCT,
+      size: await hrSize(realmId),
+      admin: !!(who && (who.admin || who.runsCompany))
+    });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.post('/api/hr/policy', async (req, res) => {
+  const realmId = await requireAdmin(req, res);
+  if (!realmId) return;
+  try {
+    res.json({ ok: true, policy: await saveHrPolicy(realmId, req.body || {}) });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+/* ---------- the employee's own screen ---------- */
+//
+// Everything here is about the person asking and nobody else, which is why none
+// of it needs a right: an employee signs in and sees their own form, their own
+// time sheet, their own leave and their own slips. The code is never taken from
+// the request - it is looked up from who is signed in - so there is no address
+// anybody can type to read somebody else's.
+
+async function meEmployee(req, res) {
+  const realmId = await requireCompany(req, res);
+  if (!realmId) return null;
+  const sub = currentUser(req);
+  const emp = await employeeOfUser(realmId, sub);
+  if (!emp) {
+    res.status(404).json({
+      error: 'This sign-in is not tied to an employee record yet. ' +
+             'Ask HR to link it on the People screen.'
+    });
+    return null;
+  }
+  return { realmId, emp, sub };
+}
+
+app.get('/api/hr/me', async (req, res) => {
+  const me = await meEmployee(req, res);
+  if (!me) return;
+  try {
+    const policy = await hrPolicy(me.realmId);
+    const month = monthText(req.query.month) || thisMonth();
+    const sheet = await timeSheetOf(me.realmId, month, me.emp.emp_code);
+    const slips = await slipsOf(me.realmId, month, me.emp.emp_code);
+    const leaves = await listLeaves(me.realmId, { code: me.emp.emp_code, limit: 60 });
+    // A slip is only shown once the month has been approved. Half a month's
+    // figures are not a payslip, and a figure somebody saw and then saw change
+    // is worse than one they waited a day for.
+    const open = !slips.run || slips.run.state === 'open';
+    res.json({
+      employee: Object.assign({}, me.emp, { missing: missingFrom(me.emp) }),
+      mustFill: MUST_FILL, canEdit: SELF_FIELDS,
+      month, cycle: sheet.cycle, sheet,
+      slip: open ? null : (slips.slips[0] || null),
+      slipHeld: open,
+      leaves, policy: {
+        dutyFrom: policy.dutyFrom, dutyTo: policy.dutyTo,
+        graceMinutes: policy.graceMinutes, lateCountOver: policy.lateCountOver,
+        latePer: policy.latePer, otFrom: policy.otFrom, otTo: policy.otTo,
+        monthDays: policy.monthDays, cycleStart: policy.cycleStart,
+        yearLeaves: policy.yearLeaves
+      },
+      months: (await listRuns(me.realmId, 12)).map(r => ({ month: r.month, state: r.state }))
+    });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.post('/api/hr/me/save', async (req, res) => {
+  const me = await meEmployee(req, res);
+  if (!me) return;
+  try {
+    const out = await saveEmployee(me.realmId, me.emp.emp_code, req.body || {}, SELF_FIELDS);
+    if (out.error) return res.status(400).json(out);
+    res.json({ ok: true, employee: out.employee, missing: missingFrom(out.employee) });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// The first sign-in is a verification, not a blank form: what is known is
+// already in the boxes and the person corrects what is wrong. Nothing is
+// verified while a must-fill is empty.
+app.post('/api/hr/me/verify', async (req, res) => {
+  const me = await meEmployee(req, res);
+  if (!me) return;
+  try {
+    if (req.body && Object.keys(req.body).length) {
+      await saveEmployee(me.realmId, me.emp.emp_code, req.body, SELF_FIELDS);
+    }
+    const out = await verifyOwnForm(me.realmId, me.emp.emp_code);
+    if (out.missing) {
+      return res.status(400).json({
+        error: 'Still to fill in: ' + out.missing.join(', ') + '.', missing: out.missing
+      });
+    }
+    if (out.error) return res.status(400).json(out);
+    res.json(out);
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// A virtual employee's own check in and check out. Only somebody who has been
+// given it may - Saim decides who works this way - and the day is written with
+// the source saying it came from the person, not from the machine, so it is
+// never mistaken for a biometric reading.
+app.post('/api/hr/me/clock', async (req, res) => {
+  const me = await meEmployee(req, res);
+  if (!me) return;
+  try {
+    if (!me.emp.virtual) {
+      return res.status(403).json({
+        error: 'Your attendance comes from the biometric machine. ' +
+               'Typing a check-in is for staff who work away from the office.'
+      });
+    }
+    const b = req.body || {};
+    const day = dayText(b.day) || todayText();
+    if (day > todayText()) {
+      return res.status(400).json({ error: 'That day has not happened yet.' });
+    }
+    const out = await putDay(me.realmId, me.emp.emp_code, day, {
+      clock_in: b.clock_in, clock_out: b.clock_out,
+      status: b.status || 'present', note: b.note, source: 'self'
+    }, me.sub);
+    if (out.error) return res.status(400).json(out);
+    res.json(out);
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.post('/api/hr/me/leave', async (req, res) => {
+  const me = await meEmployee(req, res);
+  if (!me) return;
+  try {
+    const b = Object.assign({}, req.body || {}, { emp_code: me.emp.emp_code });
+    const out = await askLeave(me.realmId, b, me.sub);
+    if (out.error) return res.status(400).json(out);
+    // The people who approve are told at once, on their bell and by email,
+    // because a leave nobody has seen is an absence by Friday.
+    try {
+      const policy = await hrPolicy(me.realmId);
+      const to = (policy.approvers || []).filter(x => String(x).indexOf('@') > 0);
+      const line = me.emp.name + ' has asked for ' + out.leave.kind + ' from ' +
+                   out.leave.from_day + ' to ' + out.leave.to_day +
+                   (out.leave.reason ? ' - ' + out.leave.reason : '');
+      if (to.length && mailReady()) {
+        await sendMail(to.join(','), 'Leave to approve: ' + me.emp.name,
+          [line, '', 'Approve or refuse it on ' + BASE_URL + '/attendance']);
+      }
+      const them = await usersByEmails(to);
+      for (const u of them) {
+        await notify(u.sub, { kind: 'hr', title: 'Leave to approve', body: line,
+                              link: '/attendance' });
+      }
+    } catch (e) { console.error('leave notice:', e.message); }
+    res.json(out);
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 // ==================== Start ====================
 const PORT = process.env.PORT || 3000;
 
@@ -13146,6 +13904,8 @@ initDb()
   .then(() => initCache())
   .then(() => initCouriers())
   .then(() => initShopify())
+  .then(() => initHr())
+  .then(() => initHrPay())
   .then(() => initHooks())
     .then(() => import('./jobstore.js').then(m => m.initJobStore()))
   .then(() => initRecatStore())

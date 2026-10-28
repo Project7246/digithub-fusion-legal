@@ -1,0 +1,542 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>My record</title>
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="manifest" href="/manifest.json">
+<meta name="theme-color" content="#222F34">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@600;700;800&family=Roboto:wght@400;500&family=Roboto+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/app.css">
+<style>
+  .cbar{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:16px}
+  .cbar input,.cbar select{border:1px solid var(--line);border-radius:7px;padding:7px 9px;
+    font:inherit;font-size:12.5px;background:#fff;height:auto;width:auto}
+  .cbar button{border:1px solid var(--line);background:#fff;border-radius:7px;padding:7px 12px;
+    font:inherit;font-size:12.5px;cursor:pointer;width:auto;height:auto;color:var(--ink)}
+  .cbar button:hover{border-color:var(--accent)}
+  .cbar .right{margin-left:auto;display:flex;gap:6px;align-items:center}
+
+  .ctabs{display:flex;gap:7px;flex-wrap:wrap;margin:0 0 14px}
+  .ctabs button{padding:6px 13px;border:1px solid var(--line);border-radius:20px;
+    font:inherit;font-size:12.5px;color:var(--muted);background:#fff;cursor:pointer;
+    white-space:nowrap;width:auto;height:auto}
+  .ctabs button:hover{border-color:var(--accent);color:var(--ink)}
+  .ctabs button.on{background:var(--accent);border-color:var(--accent);color:#fff;font-weight:600}
+
+  .box{background:var(--panel);border:1px solid var(--line);border-radius:10px;
+    padding:16px 18px;margin-bottom:14px}
+  .box h3{margin:0 0 14px;font-size:13.5px;font-weight:600;display:flex;
+    align-items:baseline;gap:9px}
+  .box h3 .aside{margin-left:auto;font-size:11.5px;color:var(--faint);font-weight:400}
+
+  .cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(148px,1fr));gap:12px;
+    margin-bottom:16px}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:15px 17px}
+  .card .k{font-size:10.5px;letter-spacing:.08em;text-transform:uppercase;color:var(--faint)}
+  .card .v{font-family:var(--mono);font-size:21px;font-weight:500;margin-top:6px;line-height:1.1}
+  .card .n{font-size:11.5px;color:var(--muted);margin-top:4px}
+
+  table.t{width:100%;border-collapse:collapse;font-size:12.5px}
+  table.t th{text-align:left;font-size:10px;text-transform:uppercase;letter-spacing:.06em;
+    color:var(--faint);border-bottom:1px solid var(--line);padding:7px 8px;font-weight:600}
+  table.t td{padding:7px 8px;border-bottom:1px solid var(--line)}
+  table.t tr:last-child td{border-bottom:0}
+  .num{font-family:var(--mono);text-align:right;font-variant-numeric:tabular-nums}
+  .neg{color:var(--neg)}
+  .zero{color:#DDE5E5}
+  .lst{max-height:620px;overflow:auto}
+
+  .pill{display:inline-block;padding:2px 9px;border-radius:20px;font-size:10.5px;
+    font-weight:600;white-space:nowrap}
+  .pill.ok{background:var(--ok-soft);color:var(--ok)}
+  .pill.no{background:#F3F5F7;color:var(--faint)}
+  .pill.warn{background:var(--warn-soft);color:var(--warn)}
+  .pill.neg{background:var(--neg-soft);color:var(--neg)}
+
+  .f label{display:block;font-size:10.5px;letter-spacing:.06em;text-transform:uppercase;
+    color:var(--faint);margin-bottom:4px}
+  .f input,.f select{width:100%;border:1px solid var(--line);border-radius:7px;
+    padding:8px 10px;font:inherit;font-size:13px;background:#fff}
+  .f .must input{border-color:var(--warn)}
+  .form{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px 16px}
+  .acts{display:flex;gap:8px;flex-wrap:wrap;margin-top:16px;align-items:center}
+  .read{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:10px 18px}
+  .read div{font-size:12.5px}
+  .read span{display:block;font-size:10.5px;letter-spacing:.06em;text-transform:uppercase;
+    color:var(--faint)}
+
+  .ts table{width:100%;border-collapse:collapse;font-size:11.5px}
+  .ts th,.ts td{border:1px solid var(--line);padding:3px 6px}
+  .ts th{font-size:9.5px;text-transform:uppercase;letter-spacing:.05em;color:var(--faint)}
+  .tally{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));
+    gap:2px 16px;font-size:12px;margin-top:12px}
+  .tally span{display:flex}
+  .tally b{margin-left:auto;font-family:var(--mono)}
+
+  .slip table{width:100%;border-collapse:collapse;font-size:12px}
+  .slip table th{text-align:left;font-size:9.5px;text-transform:uppercase;
+    letter-spacing:.06em;color:var(--faint);border-bottom:1px solid var(--line);
+    padding:4px 0;font-weight:600}
+  .slip table td{padding:3px 0;border-bottom:1px dotted var(--line)}
+  .slip .three{display:grid;grid-template-columns:1fr 1fr 1fr;gap:18px}
+  .slip table tr.sum td{border-top:1px solid var(--ink);border-bottom:0;font-weight:600}
+  .slip table tr.close td{border-top:1px solid var(--ink);
+    border-bottom:3px double var(--ink);font-weight:700}
+  @media (max-width:800px){ .slip .three{grid-template-columns:1fr} }
+
+  .msg{padding:13px 15px;border-radius:8px;background:var(--neg-soft);
+    border:1px solid var(--neg);color:var(--neg);font-size:12.5px;margin-bottom:12px}
+  .good{padding:13px 15px;border-radius:8px;background:var(--ok-soft);
+    border:1px solid var(--ok);color:var(--ok);font-size:12.5px;margin-bottom:12px}
+  .warnbox{padding:11px 14px;border-radius:8px;background:var(--warn-soft);
+    border:1px solid var(--warn);color:var(--warn);font-size:12.5px;margin-bottom:12px}
+  .loading{color:var(--muted);font-size:12.5px;padding:22px 0}
+  .empty{color:var(--muted);font-size:12.5px;padding:16px 0}
+  .note{font-size:11.5px;color:var(--faint);margin-top:11px}
+
+  @media print{
+    .rail,.topline,.ctabs,.cbar,.cards,.noprint{display:none !important}
+    .main{margin-left:0}
+    .shell{padding:0;max-width:none}
+    .box{border:0;padding:0}
+    body{background:#fff;font-size:11px}
+  }
+</style>
+</head>
+<body>
+
+<div class="layout">
+  <aside class="rail"></aside>
+
+  <div class="main">
+    <div class="topline">
+      <div>
+        <h1>My record</h1>
+        <div class="sub" id="sub">Your own details, days and salary</div>
+      </div>
+    </div>
+
+    <div class="shell">
+      <div id="out"><div class="loading">One moment&hellip;</div></div>
+    </div>
+  </div>
+</div>
+
+<script src="/nav.js"></script>
+<script>
+(function(){
+  "use strict";
+  var $ = function(id){ return document.getElementById(id); };
+
+  function esc(s){
+    return String(s == null ? '' : s)
+      .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  }
+  function n0(v){ return Number(v||0).toLocaleString('en-US'); }
+  function rs(v){
+    var n = Math.round(Number(v||0));
+    if (!n) return '<span class="zero">-</span>';
+    if (n < 0) return '<span class="neg">(' + n0(-n) + ')</span>';
+    return n0(n);
+  }
+  function get(url){
+    return fetch(url, { cache:'no-store' }).then(function(r){ return r.json(); });
+  }
+  function post(url, body){
+    return fetch(url, { method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify(body || {}) }).then(function(r){ return r.json(); });
+  }
+
+  var S = { D:null, tab:'form', month:'', said:'', err:'' };
+
+  var TAB = [
+    { k:'form',  label:'My details' },
+    { k:'sheet', label:'My time sheet' },
+    { k:'pay',   label:'My salary' },
+    { k:'leave', label:'My leave' },
+    { k:'clock', label:'Check in and out' }
+  ];
+
+  // The boxes an employee fills in about themselves. Their pay, their grade and
+  // their department are not here: a form somebody fills in about themselves is
+  // their own details, not their terms.
+  var FIELDS = [
+    { k:'dob',            label:'Date of birth', date:true, must:true },
+    { k:'cnic',           label:'ID card no.', must:true },
+    { k:'phone',          label:'Phone', must:true },
+    { k:'email',          label:'Personal email' },
+    { k:'guardian',       label:'Guardian name and relation', must:true },
+    { k:'guardian_phone', label:'Guardian phone', must:true },
+    { k:'guardian_cnic',  label:'Guardian ID card no.', must:true },
+    { k:'address',        label:'Home address', must:true, wide:true },
+    { k:'bank_name',      label:'Bank' },
+    { k:'bank_account',   label:'Bank account / IBAN' },
+    { k:'photo_url',      label:'Photo (link)' },
+    { k:'id_card_url',    label:'ID card, front and back (link)' }
+  ];
+
+  function monthNow(){
+    var d = new Date();
+    return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0');
+  }
+  function monthName(m){
+    if (!m) return '';
+    var names = ['January','February','March','April','May','June','July','August',
+                 'September','October','November','December'];
+    return names[Number(m.slice(5, 7)) - 1] + '-' + m.slice(0, 4);
+  }
+  function today(){
+    var d = new Date();
+    return d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' +
+      String(d.getDate()).padStart(2,'0');
+  }
+
+  function load(){
+    S.err = '';
+    return get('/api/hr/me?month=' + encodeURIComponent(S.month)).then(function(d){
+      if (d.error) { S.err = d.error; S.D = null; }
+      else { S.D = d; S.month = d.month; }
+      paint();
+    }).catch(function(e){
+      S.err = 'Could not read your record: ' + e.message;
+      paint();
+    });
+  }
+
+  function paint(){
+    if (S.err) {
+      $('out').innerHTML = '<div class="box"><h3>Your record is not linked yet</h3>' +
+        '<div class="msg">' + esc(S.err) + '</div></div>';
+      return;
+    }
+    var D = S.D;
+    if (!D) { $('out').innerHTML = '<div class="loading">One moment&hellip;</div>'; return; }
+    var e = D.employee;
+
+    var h = '';
+    if (S.said) h += '<div class="good">' + esc(S.said) + '</div>';
+
+    // The first sign-in is a verification, not a blank form. Everything known is
+    // already in the boxes; what is wrong gets corrected.
+    if (e.form_state !== 'verified') {
+      h += '<div class="warnbox"><b>Please check your details.</b> ' +
+        'Everything we hold is already filled in below. Correct whatever is wrong and ' +
+        'press <b>These are right</b>.' +
+        ((e.missing || []).length ? ' Still empty: ' + esc(e.missing.join(', ')) + '.' : '') +
+        '</div>';
+    }
+
+    h += '<div class="cards">' +
+      card('Employee id', esc(e.emp_code), esc(e.designation || e.department || '')) +
+      card('Working days', n0(D.sheet.tally.worked), 'of ' + n0(D.sheet.tally.days) +
+        ' in ' + monthName(D.month)) +
+      card('Absent', n0(D.sheet.tally.absent),
+        D.sheet.tally.absent ? 'each one is deducted' : 'none') +
+      card('Leave', n0(D.sheet.tally.leave), 'approved') +
+      card('Man month', D.sheet.manMonth.toFixed(2), 'of the month worked') +
+      '</div>';
+
+    h += '<div class="ctabs" id="ctabs">' + TAB.filter(function(t){
+      return t.k !== 'clock' || e.virtual;
+    }).map(function(t){
+      return '<button data-k="' + t.k + '" class="' + (S.tab === t.k ? 'on' : '') + '">' +
+        esc(t.label) + '</button>';
+    }).join('') + '</div><div id="pane"></div>';
+
+    $('out').innerHTML = h;
+    $('ctabs').querySelectorAll('button').forEach(function(b){
+      b.addEventListener('click', function(){
+        S.tab = b.getAttribute('data-k'); S.said = ''; paint();
+      });
+    });
+
+    if (S.tab === 'sheet') paintSheet();
+    else if (S.tab === 'pay') paintPay();
+    else if (S.tab === 'leave') paintLeave();
+    else if (S.tab === 'clock') paintClock();
+    else paintForm();
+  }
+
+  function card(k, v, n){
+    return '<div class="card"><div class="k">' + esc(k) + '</div>' +
+      '<div class="v">' + v + '</div><div class="n">' + n + '</div></div>';
+  }
+
+  /* ---------- my details ---------- */
+
+  function paintForm(){
+    var e = S.D.employee;
+    var h = '<div class="box"><h3>What the company holds about you' +
+      '<span class="aside">' + (e.form_state === 'verified'
+        ? 'you confirmed these on ' + String(e.verified_at || '').slice(0, 10)
+        : 'not confirmed yet') + '</span></h3>' +
+      '<div class="read">' +
+      ro('Name', e.name) + ro('Employee id', e.emp_code) +
+      ro('Department', e.department) + ro('Designation', e.designation) +
+      ro('Grade', e.grade) + ro('Joining date', e.joined_on) +
+      ro('On duty', (e.duty_from || S.D.policy.dutyFrom) + ' to ' +
+        (e.duty_to || S.D.policy.dutyTo)) +
+      ro('Work email', e.work_email) +
+      '</div>' +
+      '<div class="note">These are your terms, and HR changes them &mdash; not this ' +
+      'screen. Everything below is yours.</div></div>';
+
+    h += '<div class="box"><h3>Your own details' +
+      '<span class="aside">* cannot be left empty</span></h3>' +
+      '<div class="f"><div class="form">' + FIELDS.map(function(f){
+        var v = e[f.k] == null ? '' : e[f.k];
+        return '<div class="' + (f.must ? 'must' : '') + '"' +
+          (f.wide ? ' style="grid-column:1/-1"' : '') + '>' +
+          '<label>' + esc(f.label) + (f.must ? ' *' : '') + '</label>' +
+          '<input type="' + (f.date ? 'date' : 'text') + '" data-k="' + f.k +
+          '" value="' + esc(v) + '"></div>';
+      }).join('') + '</div>' +
+      '<div class="acts"><button id="save">Save</button>' +
+      '<button class="solid" id="verify">These are right</button>' +
+      '<span class="note" style="margin:0">Press <b>These are right</b> once and HR ' +
+      'knows your form is checked.</span></div></div></div>';
+
+    $('pane').innerHTML = h;
+
+    $('save').addEventListener('click', function(){
+      post('/api/hr/me/save', gather()).then(function(d){
+        if (d.error) return alert(d.error);
+        S.said = 'Saved.';
+        load();
+      });
+    });
+    $('verify').addEventListener('click', function(){
+      post('/api/hr/me/verify', gather()).then(function(d){
+        if (d.error) return alert(d.error);
+        S.said = 'Thank you - your details are confirmed.';
+        load();
+      });
+    });
+  }
+
+  function ro(label, v){
+    return '<div><span>' + esc(label) + '</span>' + esc(v || '-') + '</div>';
+  }
+
+  function gather(){
+    var body = {};
+    $('pane').querySelectorAll('[data-k]').forEach(function(el){
+      body[el.getAttribute('data-k')] = el.value;
+    });
+    return body;
+  }
+
+  /* ---------- my time sheet ---------- */
+
+  function paintSheet(){
+    var d = S.D.sheet;
+    var h = '<div class="cbar noprint">' + monthPicker() +
+      '<button id="print">Print it</button></div>';
+
+    h += '<div class="box ts"><h3>TIME SHEET OF STAFF' +
+      '<span class="aside">' + esc(monthName(d.month)) + ' &middot; ' +
+      esc(d.cycle.from) + ' to ' + esc(d.cycle.to) + '</span></h3>' +
+      '<table><thead><tr><th>Date</th><th>Days</th><th>Status</th><th>Check In</th>' +
+      '<th>Check Out</th><th>Remarks</th></tr></thead><tbody>' +
+      d.rows.map(function(r){
+        return '<tr><td style="text-align:right">' + r.dayNo + '</td>' +
+          '<td>' + esc(r.weekday) + '</td>' +
+          '<td style="text-align:center">' + esc(r.mark) + '</td>' +
+          '<td>' + esc(r.inAt) + '</td><td>' + esc(r.outAt) + '</td>' +
+          '<td>' + esc(r.remarks) + '</td></tr>';
+      }).join('') + '</tbody></table>' +
+      '<div class="tally">' +
+      '<span>Total Month\'s Days<b>' + n0(d.tally.days) + '</b></span>' +
+      '<span>Working Days (X)<b>' + n0(d.tally.worked) + '</b></span>' +
+      '<span>Weekends (W)<b>' + n0(d.tally.weekend) + '</b></span>' +
+      '<span>Not Applicable<b>' + n0(d.tally.na) + '</b></span>' +
+      '<span>Leave (L)<b>' + n0(d.tally.leave) + '</b></span>' +
+      '<span>Holidays (H)<b>' + n0(d.tally.holiday) + '</b></span>' +
+      '<span>Absent (A)<b>' + n0(d.tally.absent) + '</b></span>' +
+      '<span>Half Leave (HF)<b>' + n0(d.tally.half) + '</b></span>' +
+      '<span>Man Month<b>' + d.manMonth.toFixed(2) + '</b></span></div></div>';
+
+    $('pane').innerHTML = h;
+    wireMonth();
+    $('print').addEventListener('click', function(){ window.print(); });
+  }
+
+  function monthPicker(){
+    return '<label style="font-size:12.5px;color:var(--muted)">Month</label>' +
+      '<input type="month" id="m" value="' + esc(S.month) + '">';
+  }
+  function wireMonth(){
+    var m = $('m');
+    if (m) m.addEventListener('change', function(){
+      S.month = this.value || monthNow(); S.said = ''; load();
+    });
+  }
+
+  /* ---------- my salary ---------- */
+
+  function paintPay(){
+    var h = '<div class="cbar noprint">' + monthPicker() +
+      (S.D.slip ? '<button id="print">Print it</button>' : '') + '</div>';
+
+    if (S.D.slipHeld || !S.D.slip) {
+      h += '<div class="box"><h3>' + esc(monthName(S.month)) + '</h3>' +
+        '<div class="empty">Your slip is shown once the month has been approved. ' +
+        'Half a month\'s figures are not a payslip.</div></div>';
+      $('pane').innerHTML = h;
+      wireMonth();
+      return;
+    }
+
+    var s = S.D.slip;
+    var earn = ['Basic Salary','Overtime','Attendance Bonus','Performance Bonus',
+      'Parcel / Order Bonus','Managerial Allowance','Travelling Allowance',
+      'Food Allowance','Occasional Bonus'];
+    var ded = ['Advance','Credit Purchase','Loan Deduction','Late Fine','Parcel Fine',
+      'Absent Fine','Employee Adjustments'];
+
+    h += '<div class="box slip"><h3>SALARY SLIP &mdash; ' + esc(monthName(S.month)) +
+      '<span class="aside">' + esc(s.name) + ' (' + esc(s.code) + ')</span></h3>' +
+      '<div class="three">' +
+      '<table><thead><tr><th>Salary Detail</th><th class="num">Rs.</th></tr></thead><tbody>' +
+      earn.map(function(x){
+        return '<tr><td>' + esc(x) + '</td><td class="num">' + rs(s.earn[x]) + '</td></tr>';
+      }).join('') +
+      '<tr class="sum"><td>Total Salary &amp; Benefits</td><td class="num">' +
+        rs(s.totalSalary) + '</td></tr></tbody></table>' +
+      '<table><thead><tr><th>Deductions</th><th class="num">Rs.</th></tr></thead><tbody>' +
+      ded.map(function(x){
+        return '<tr><td>' + esc(x) + '</td><td class="num">' + rs(s.deduct[x]) + '</td></tr>';
+      }).join('') +
+      '<tr><td>During Month Paid</td><td class="num">' + rs(s.paid) + '</td></tr>' +
+      '<tr class="sum"><td>Net Deduction</td><td class="num">' + rs(s.netDeduct) +
+        '</td></tr></tbody></table>' +
+      '<table><thead><tr><th>Summary</th><th class="num">Rs.</th></tr></thead><tbody>' +
+      '<tr><td>Gross Salary</td><td class="num">' + rs(s.gross) + '</td></tr>' +
+      '<tr><td>Less Deduction</td><td class="num">' + rs(s.netDeduct) + '</td></tr>' +
+      '<tr><td>Less Paid</td><td class="num">' + rs(-s.paid) + '</td></tr>' +
+      '<tr><td>Income Tax</td><td class="num"><span class="zero">-</span></td></tr>' +
+      '<tr><td>EOBI</td><td class="num"><span class="zero">-</span></td></tr>' +
+      '<tr class="close"><td>Net Payable</td><td class="num">' + rs(s.netPayable) +
+        '</td></tr></tbody></table></div></div>';
+
+    $('pane').innerHTML = h;
+    wireMonth();
+    var p = $('print');
+    if (p) p.addEventListener('click', function(){ window.print(); });
+  }
+
+  /* ---------- my leave ---------- */
+
+  function paintLeave(){
+    var L = S.D.leaves || [];
+    var h = '<div class="box"><h3>Ask for leave' +
+      '<span class="aside">it goes to whoever approves</span></h3>' +
+      '<div class="f"><div class="form">' +
+      '<div><label>What kind</label><select id="lkind">' +
+        '<option value="leave">Leave, a whole day</option>' +
+        '<option value="half">Half day</option>' +
+        '<option value="late">Coming in late</option>' +
+        '<option value="wfh">Work from home</option></select></div>' +
+      '<div><label>From</label><input type="date" id="lfrom" value="' + today() + '"></div>' +
+      '<div><label>To</label><input type="date" id="lto" value="' + today() + '"></div>' +
+      '<div style="grid-column:1/-1"><label>Reason</label>' +
+      '<input type="text" id="lwhy"></div></div>' +
+      '<div class="acts"><button class="solid" id="lask">Send it</button>' +
+      '<span class="note" style="margin:0">A day with no approved leave against it is ' +
+      'an absence, and an absence is deducted.</span></div></div></div>';
+
+    h += '<div class="box"><h3>What you have asked for' +
+      '<span class="aside">' + n0(L.length) + '</span></h3>' +
+      (L.length ? '<div class="lst"><table class="t"><thead><tr><th>Kind</th>' +
+        '<th>From</th><th>To</th><th>Reason</th><th>State</th>' +
+        '</tr></thead><tbody>' + L.map(function(l){
+          return '<tr><td>' + esc(l.kind) + '</td>' +
+            '<td class="num">' + esc(l.from_day) + '</td>' +
+            '<td class="num">' + esc(l.to_day) + '</td>' +
+            '<td>' + esc(l.reason || '') + '</td>' +
+            '<td>' + (l.state === 'approved' ? '<span class="pill ok">approved</span>' :
+              l.state === 'refused' ? '<span class="pill neg">refused</span>' :
+              '<span class="pill warn">waiting</span>') + '</td></tr>';
+        }).join('') + '</tbody></table></div>'
+        : '<div class="empty">Nothing yet.</div>') + '</div>';
+
+    $('pane').innerHTML = h;
+
+    $('lask').addEventListener('click', function(){
+      post('/api/hr/me/leave', {
+        kind: $('lkind').value, from_day: $('lfrom').value,
+        to_day: $('lto').value, reason: $('lwhy').value
+      }).then(function(d){
+        if (d.error) return alert(d.error);
+        S.said = 'Sent. It is waiting on an answer.';
+        load();
+      });
+    });
+  }
+
+  /* ---------- check in and out ---------- */
+  //
+  // Only for somebody who has been given it. Their day is written with the
+  // source saying it came from them, so it is never mistaken for a reading off
+  // the biometric machine.
+
+  function paintClock(){
+    var mine = (S.D.sheet.rows || []).filter(function(r){
+      return r.status !== 'weekend';
+    }).slice().reverse();
+
+    var h = '<div class="box"><h3>Your own check in and out' +
+      '<span class="aside">you work away from the office</span></h3>' +
+      '<div class="f"><div class="form">' +
+      '<div><label>Day</label><input type="date" id="cday" value="' + today() +
+        '" max="' + today() + '"></div>' +
+      '<div><label>Checked in at</label><input type="time" id="cin"></div>' +
+      '<div><label>Checked out at</label><input type="time" id="cout"></div>' +
+      '<div><label>Or say what happened</label><select id="cst">' +
+        '<option value="present">I worked</option>' +
+        '<option value="half">Half day</option>' +
+        '<option value="leave">On leave</option>' +
+        '<option value="absent">Absent</option>' +
+        '<option value="wfh">Worked from home</option></select></div>' +
+      '<div style="grid-column:1/-1"><label>Remarks</label>' +
+      '<input type="text" id="cnote" placeholder="e.g. WFH 9pm-11pm"></div></div>' +
+      '<div class="acts"><button class="solid" id="csave">Save the day</button>' +
+      '<span class="note" style="margin:0">A day you type is yours to say and ' +
+      'everybody sees it on the attendance screen.</span></div></div></div>';
+
+    h += '<div class="box"><h3>This month, day by day' +
+      '<span class="aside">' + esc(monthName(S.month)) + '</span></h3>' +
+      '<div class="lst"><table class="t"><thead><tr><th>Date</th><th>Day</th>' +
+      '<th>Status</th><th>In</th><th>Out</th><th>Remarks</th></tr></thead><tbody>' +
+      mine.map(function(r){
+        return '<tr><td class="num">' + esc(r.day) + '</td>' +
+          '<td>' + esc(r.weekday) + '</td>' +
+          '<td>' + esc(r.mark) + '</td><td class="num">' + esc(r.inAt) + '</td>' +
+          '<td class="num">' + esc(r.outAt) + '</td>' +
+          '<td>' + esc(r.remarks) + '</td></tr>';
+      }).join('') + '</tbody></table></div></div>';
+
+    $('pane').innerHTML = h;
+
+    $('csave').addEventListener('click', function(){
+      post('/api/hr/me/clock', {
+        day: $('cday').value, clock_in: $('cin').value, clock_out: $('cout').value,
+        status: $('cst').value, note: $('cnote').value
+      }).then(function(d){
+        if (d.error) return alert(d.error);
+        S.said = $('cday').value + ' saved.';
+        load();
+      });
+    });
+  }
+
+  S.month = monthNow();
+  window.APP.ready.then(function(){ load(); });
+})();
+</script>
+</body>
+</html>
