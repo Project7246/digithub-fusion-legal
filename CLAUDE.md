@@ -1870,7 +1870,9 @@ step:
 |---|---|
 | `hr.js` | the people, their days, their leave, the policy, and reading the biometric report |
 | `hrpay.js` | the month: the formulas, the pools, the ledger, the report, the slips, the time sheets, the journal |
+| `hrimport.js` | reading their own staff master, joining form and ledger in |
 | `tools/hr-check.mjs` | `npm run check:hr` - every formula against their own September figures |
+| `tools/hr-files-check.mjs` | `npm run check:hr-files -- <folder>` - the importers over the real files |
 
 Nothing in either file touches a finance or a courier table. The one place the
 two modules meet is the journal entry at the end, written through
@@ -2066,6 +2068,145 @@ fills can be typed over, because the values and the choice of who shares in them
 are the management's: *"hum value khud bana kr daal dein gy, or selection... ye
 hamari choice apni hoti hai"*.
 
+### Their own books, brought in
+
+Asked for the day after the module was built: *"wo data already tha... employees
+ki detail information bhe thi... usko data mein fetch krdo na, taky ye sara mein
+module mein dkh sko, test kr sko."* Fair, and the right instinct - a payroll
+nobody can see last year in is a payroll nobody will trust.
+
+`hrimport.js`, and the two files are read as they are:
+
+| Screen | Reads | What it writes |
+|---|---|---|
+| `/employees` → Bring our records in | the staff master sheet, or the joining form responses | `hr_employees` |
+| `/payroll` → Ledger → Bring the old ledger in | the ledger sheet | `hr_pay_lines` for every month it holds |
+
+**The reading is pure and the writing is not, and they are separate functions on
+purpose.** `readStaff()` and `readLedger()` take a grid and give back what is in
+it, touching no database - which is what lets `npm run check:hr-files` run the
+real parsers over the company's real files before anybody's data is touched. A
+parser nobody can run against the actual file is a parser nobody can trust.
+
+### Nothing of theirs goes in this repository
+
+Said by the tooling before it was said by anybody else, and it was right: a
+staff name beside a salary figure has no business in a file that is pushed to
+GitHub. So:
+
+- **No real name, no real pay figure, in any tracked file** - not in source, not
+  in a comment, not in a test, not in this file. Where an example is needed, it
+  is described ("a logistics slip with a food allowance on it") or made up.
+- `tools/hr-files-check.mjs` checks the **shape** of their sheets - the columns
+  found, the months, the counts, whether every head was recognised, whether every
+  date came out as ten characters. The figures that tie it to their own printed
+  report live in **`hr-expect.json` beside the data files**, outside this
+  repository, and those checks are skipped with a line saying so when it is not
+  there.
+- The uploaded files themselves are never stored, the same rule the invoice
+  uploads have always had.
+
+Two sentences in this file and one test comment had real names and amounts in
+them before the rule existed. They are gone, but they are in the history of this
+repository, which is the thing to remember: it is easier not to write it than to
+take it back.
+
+### The ledger's two columns, and which one means what
+
+Their ledger holds the whole of the money since early last year, and its meaning
+is split across two columns, both of which are needed:
+
+| | |
+|---|---|
+| **Debit Head** | the salary head - Basic Salary, Late Fine, Food Allowance |
+| **Credit Head** | the side: **Payable** (owed to them), **Receivable** (owed by them), **Paid** (handed over during the month) |
+
+Their own report reads it as `SUMIF` on the debit head for the salary columns,
+`-SUMIF` for the deduction columns, and `SUMIF` on the **credit** head for the
+Paid column - so that is exactly how this reads it, and the figures that come out
+are the figures on the report they already send.
+
+`npm run check:hr-files` ties five people's total salary, total deduction, net,
+paid and payable to their printed September report, to the rupee, and the
+month's Paid total with them. The month's **net does not tie, and should not**:
+the ledger file is newer than the printed report, and four people account for
+all of the difference - two bonuses added after it was printed, one fine halved,
+and one person on no line of it at all. The check prints both totals side by side
+and asserts neither, because a test that demands a figure from a PDF printed
+before the sheet was finished goes red for the wrong reason. What the difference
+is, and why, is in `hr-expect.json`'s own note.
+
+### Three things the real files taught, and all three were bugs
+
+- **A row that is nothing but a name is not a person.** The tail of their staff
+  master is a hundred and fifty-five names kept there to fill a dropdown with.
+  The first reader took all of them and would have made a hundred and fifty-five
+  employees with new ids and nothing in them. A real row carries an employee id,
+  or at least one detail besides the name, and the ones left out are named back
+  on the screen so it is clear they were seen rather than missed.
+- **The two files disagree about slashes.** The biometric machine exports
+  `8/26/2026` and the joining form writes `17/02/2025`. Where one number is over
+  twelve the numbers decide; where neither is - `05/07/2021` - only a hint can,
+  and getting it wrong moved a joining date by two months. So `dayText(v, order)`
+  takes one: the staff files are read **day first**, the biometric log **month
+  first**, and each reader says which it used.
+- **Three ids in the master have no name against them** - reserved, nobody in
+  them yet. Those are skipped and said so, rather than quietly becoming three
+  blank employees.
+
+### What an import may and may not overwrite
+
+`hr_pay_lines.source` is one of three things, and the order of precedence is the
+whole of the safety:
+
+| `source` | what it is | who may overwrite it |
+|---|---|---|
+| `auto` | the calculation worked it out | the calculation, and an import |
+| `import` | it came out of the old ledger | an import, and a person typing |
+| `hand` | a person typed it here | only that person |
+
+So working the month out again never disturbs an imported figure, and an import
+never disturbs a figure somebody typed. The working table shows a typed figure in
+teal and an imported one in italics, because "this is your figure" and "this is
+last year's book" are two different things to be looking at.
+
+**A month brought in can be taken back off**, per month, from the Ledger tab -
+which is the only way to try the calculation on a month the old sheet already
+answered. It removes only what the import wrote.
+
+### Two things the import fills in by itself, and says so
+
+- **Everybody's basic salary**, from the newest month the ledger holds for them,
+  for anybody still sitting at nought. It is the one figure the staff master does
+  not carry and the one the whole calculation turns on, so leaving it empty would
+  have meant every figure worked out after the import came to nothing.
+- **Nobody is verified.** An imported record is `form_state = 'pending'`, so
+  every one of them confirms their own details the first time they sign in -
+  which is what was asked for in the first place.
+
+### Advance and credit purchase are balances, not a month's figure
+
+Found while reading their report's own formulas, and it had been wrong here:
+
+```
+  Advance         = every advance up to and including this month
+                    less every loan deduction in the months before it
+  Credit Purchase = every credit purchase up to and including this month
+                    less every employee adjustment in the months before it
+```
+
+They answer *what does this person still owe*, which is why a slip can show an
+advance of fifty thousand against a ten thousand deduction in the same month.
+`balancesOf()` works them out from the ledger on every report and every slip
+rather than storing them, because a stored balance goes out of date the moment
+anything behind it changes. Neither is in Total Deduction - the recovery is, as
+Loan Deduction and Employee Adjustments.
+
+And **`Paid During Month` is a head of its own** now, not a sum worked out at the
+last moment. In their ledger it is every row whose credit side says Paid; in a
+month this app works out, it is the heads named in `policy.paidDuringMonth` (the
+food allowance) plus `Advance Salary Paid` - which is their AI = W + AE, exactly.
+
 ### Rights, and the line through them
 
 Two groups in `RIGHT_GROUPS`, under a fourth area (`people`, "Staff and
@@ -2088,8 +2229,9 @@ held to the company's administrator (`requireAdmin`), not handed out as a right.
   come off the CSR issue log, which is not a Fusion table yet - the day it is,
   **Bring the figures in** fills those too.
 - HR: nobody has run the SQL yet. Every formula is tested (`npm run check:hr`),
-  the pages all parse, but the tables are made on the next boot and the first
-  real biometric file is the first time the queries have run.
+  both importers are tested against the company's own files
+  (`npm run check:hr-files`), and the pages all parse - but the tables are made
+  on the next boot and the first import is the first time the queries have run.
 - Decide DigitalOcean settings: turn **Edge caching** and **Email obfuscation** Off (app shows
   live data).
 - Check the Neon dashboard for the real storage limit.

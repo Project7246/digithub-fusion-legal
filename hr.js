@@ -23,7 +23,15 @@ import { getSetting, setSetting } from './settings.js';
 const pad2 = n => String(n).padStart(2, '0');
 
 // Ten characters, YYYY-MM-DD, or null. Not sliced, not guessed.
-export function dayText(v) {
+//
+// `order` is which way round a slash date is written, and it is needed because
+// the two files this reads disagree: the biometric machine exports `8/26/2026`
+// (month first) and the Google joining form writes `17/02/2025` (day first).
+// Where one of the numbers is over twelve the numbers decide and the hint is
+// ignored; where neither is - `05/07/2021` - only the hint can tell, and
+// getting it wrong moves somebody's joining date by two months. The default is
+// month-first, which is what the machine sends.
+export function dayText(v, order) {
   if (v == null) return null;
   if (typeof v === 'number') return fromSerial(v);
   if (v instanceof Date) {
@@ -32,14 +40,14 @@ export function dayText(v) {
   const s = String(v).trim();
   let m = s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);
   if (m) return inRange(+m[1], +m[2], +m[3]);
-  // 8/26/2026 and 26/08/2026 both arrive from exports. Where either number is
-  // over 12 the numbers decide; where neither is, the biometric report is a
-  // month-first machine, so month-first is the guess.
   m = s.match(/^(\d{1,2})[/.-](\d{1,2})[/.-](\d{4})/);
   if (m) {
-    let a = +m[1], b = +m[2];
-    let mo = a, d = b;
-    if (a > 12 && b <= 12) { mo = b; d = a; }
+    const a = +m[1], b = +m[2];
+    let mo, d;
+    if (a > 12 && b <= 12) { mo = b; d = a; }          // 26/08 - the numbers say
+    else if (b > 12 && a <= 12) { mo = a; d = b; }     // 8/26  - the numbers say
+    else if (order === 'dmy') { d = a; mo = b; }       // 05/07 - only the hint can
+    else { mo = a; d = b; }
     return inRange(+m[3], mo, d);
   }
   return null;

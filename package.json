@@ -7,6 +7,7 @@
     "start": "node server.js",
     "check": "node tools/check-pages.js",
     "check:hr": "node tools/hr-check.mjs",
+    "check:hr-files": "node tools/hr-files-check.mjs",
     "postinstall": "node buildstamp.js"
   },
   "dependencies": {

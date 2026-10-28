@@ -72,6 +72,10 @@
   .acts{display:flex;gap:8px;flex-wrap:wrap;margin-top:16px;align-items:center}
   .acts .grow{margin-left:auto}
 
+  .drop{border:2px dashed var(--line-2);border-radius:10px;padding:26px;text-align:center;
+    color:var(--muted);font-size:13px;cursor:pointer;background:var(--panel-2)}
+  .drop:hover{border-color:var(--accent);color:var(--ink)}
+
   .msg{padding:13px 15px;border-radius:8px;background:var(--neg-soft);
     border:1px solid var(--neg);color:var(--neg);font-size:12.5px;margin-bottom:12px}
   .good{padding:13px 15px;border-radius:8px;background:var(--ok-soft);
@@ -132,7 +136,8 @@
     { k:'all',   label:'Everybody' },
     { k:'new',   label:'Take somebody on' },
     { k:'stand', label:'Standing amounts' },
-    { k:'left',  label:'Left' }
+    { k:'left',  label:'Left' },
+    { k:'bring', label:'Bring our records in' }
   ];
 
   // The joining form, and these are the boxes it asks for - the same ones the
@@ -224,6 +229,7 @@
     });
 
     if (S.tab === 'new') paintNew();
+    else if (S.tab === 'bring') paintBring();
     else if (S.tab === 'stand') paintStanding();
     else paintList(S.tab === 'left' ? gone() : here());
   }
@@ -546,6 +552,118 @@
         load();
       });
     });
+  }
+
+  /* ---------- bringing our own records in ---------- */
+  //
+  // The staff master and the Google form are the same shape to this screen:
+  // both name a person and carry their details, and the columns in either are
+  // recognised by name. A row with an employee id updates that person; a row
+  // without one is matched on the name, which is what makes a form somebody
+  // filled in twice correct itself rather than appear twice.
+
+  var bringing = null;
+
+  function paintBring(){
+    var h = '<div class="box"><h3>Our own staff records' +
+      '<span class="aside">the master sheet, or the joining form responses</span></h3>' +
+      '<div class="drop" id="drop">Choose the file &mdash; .xlsx or .csv' +
+      '<input type="file" id="file" accept=".xlsx,.xls,.csv" style="display:none"></div>' +
+      '<div id="ires"></div>' +
+      '<div class="note">An empty box in the sheet leaves whatever is in Fusion ' +
+      'alone, so nothing is lost by bringing a file in twice. Everybody who comes ' +
+      'in this way still confirms their own details the first time they sign in.' +
+      '</div></div>';
+    $('pane').innerHTML = h;
+    $('drop').addEventListener('click', function(){ $('file').click(); });
+    $('file').addEventListener('change', function(){
+      if (this.files && this.files[0]) bring(this.files[0], true, '');
+    });
+  }
+
+  function bring(file, lookFirst, sheet){
+    var fd = new FormData();
+    fd.append('file', file);
+    if (lookFirst) fd.append('look', '1');
+    if (sheet) fd.append('sheet', sheet);
+    $('ires').innerHTML = '<div class="loading">Reading the sheet&hellip;</div>';
+    fetch('/api/hr/people/import', { method:'POST', body: fd })
+      .then(function(r){ return r.json(); })
+      .then(function(d){
+        if (d.error) {
+          $('ires').innerHTML = '<div class="msg">' + esc(d.error) + '</div>';
+          return;
+        }
+        var pick = (d.sheets || []).length > 1
+          ? '<div class="cbar"><label style="font-size:12.5px;color:var(--muted)">' +
+            'Sheet</label><select id="sh">' + d.sheets.map(function(n){
+              return '<option value="' + esc(n) + '"' + (n === d.sheet ? ' selected' : '') +
+                '>' + esc(n) + '</option>';
+            }).join('') + '</select></div>'
+          : '';
+
+        var body = '<div class="good">' +
+          n0((d.made || []).length) + ' new, ' + n0((d.changed || []).length) +
+          ' already here. Columns recognised: ' + esc((d.columns || []).join(', ')) +
+          '.</div>' + pick +
+          lists(d);
+
+        if (d.dryRun) {
+          bringing = file;
+          body += '<div class="acts"><button class="solid" id="go">Bring them in</button>' +
+            '<button id="cancel">Leave it</button></div>';
+        }
+        $('ires').innerHTML = body;
+
+        var sh = $('sh');
+        if (sh) sh.addEventListener('change', function(){
+          bring(file, true, this.value);
+        });
+        var go = $('go');
+        if (go) go.addEventListener('click', function(){
+          bring(bringing, false, sh ? sh.value : '');
+        });
+        var ca = $('cancel');
+        if (ca) ca.addEventListener('click', function(){ paintBring(); });
+
+        if (!d.dryRun) { S.said = n0((d.made || []).length) + ' people added, ' +
+          n0((d.changed || []).length) + ' brought up to date.'; load(); }
+      })
+      .catch(function(e){
+        $('ires').innerHTML = '<div class="msg">' + esc(e.message) + '</div>';
+      });
+  }
+
+  function lists(d){
+    var out = '';
+    function block(label, arr, cls){
+      if (!arr || !arr.length) return '';
+      return '<div class="' + cls + '" style="margin-bottom:10px"><b>' + esc(label) +
+        ' (' + n0(arr.length) + ')</b><div style="font-size:11.5px;margin-top:5px">' +
+        esc(arr.slice(0, 40).join(', ')) +
+        (arr.length > 40 ? ' and ' + n0(arr.length - 40) + ' more' : '') + '</div></div>';
+    }
+    out += block('New to Fusion', d.made, 'good');
+    out += block('Already here, brought up to date', d.changed, 'box');
+    out += block('Left out', d.skipped, 'warnbox');
+    // The tail of a staff master is often a long list of names kept there to
+    // fill a dropdown with. Those are not people and are said so by name, so it
+    // is clear they were seen and not simply missed.
+    if ((d.thin || []).length) {
+      out += '<div class="box" style="margin-bottom:10px"><b>Only a name, so left out (' +
+        n0(d.thin.length) + ')</b><div style="font-size:11.5px;margin-top:5px;' +
+        'color:var(--muted)">A row with a name and nothing else is a list, not a ' +
+        'person. ' + esc(d.thin.slice(0, 12).join(', ')) +
+        (d.thin.length > 12 ? ' and ' + n0(d.thin.length - 12) + ' more' : '') +
+        '</div></div>';
+    }
+    out += block('Could not be done', d.trouble, 'msg');
+    if (d.dateOrder) {
+      out += '<div class="note">A date written with slashes is read day first &mdash; ' +
+        '05/07/2021 is the 5th of July. Where the sheet holds real date cells, ' +
+        'nothing is being guessed at all.</div>';
+    }
+    return out;
   }
 
   /* ---------- the list as a file ---------- */

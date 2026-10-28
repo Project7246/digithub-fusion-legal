@@ -36,9 +36,14 @@ export const DEDUCT = [
 ];
 
 // Money that moved during the month and so is not payable at the end of it.
-// Theirs is the food allowance, handed over in cash as the month goes, plus
-// whatever salary was taken in advance.
-export const PAID = ['Advance Salary Paid'];
+//
+// `Paid During Month` is their own Paid column, and in their ledger it is not a
+// figure anybody types: it is every row whose credit side says **Paid** - the
+// food allowance handed over in cash as the month goes, plus whatever salary was
+// taken in advance. So it is worked out from the heads named in the policy plus
+// `Advance Salary Paid`, which mirrors their AI = W + AE exactly, and an import
+// of the old ledger writes it straight from those Paid rows.
+export const PAID = ['Advance Salary Paid', 'Paid During Month'];
 
 // Said on the report and the slip, and deducted by neither: what the advance
 // stands at, and what was bought on the company's account. The recovery of
@@ -53,7 +58,8 @@ export const HEADS = [...EARN, ...DEDUCT, ...PAID, ...INFO];
 // neither is something a formula should be guessing at.
 export const AUTO_HEADS = [
   'Basic Salary', 'Overtime', 'Attendance Bonus', 'Parcel / Order Bonus',
-  'Late Fine', 'Parcel Fine', 'Absent Fine', 'Half Day Fine'
+  'Late Fine', 'Parcel Fine', 'Absent Fine', 'Half Day Fine',
+  'Paid During Month'
 ];
 
 export const HEAD_KIND = {};
@@ -471,22 +477,26 @@ export async function workingOf(realmId, month) {
       auto[head] = n2(s.prorate && mdays ? (amt / mdays) * workDays : amt);
     });
 
-    // What is actually on the ledger. A figure a person typed is a decision and
-    // is never written over by the calculation - that is the whole reason the
-    // line carries who put it there.
+    // What is actually on the ledger. A figure a person typed, or one brought in
+    // from the old sheet, is a decision and is never written over by the
+    // calculation - which is the whole reason the line carries who put it there.
     const amount = {};
-    HEADS.forEach(h => {
+    const onLedger = h => {
       const l = held[h];
-      if (l && l.source === 'hand') amount[h] = Number(l.amount) || 0;
-      else if (auto[h] !== undefined) amount[h] = auto[h];
-      else if (l) amount[h] = Number(l.amount) || 0;
-      else amount[h] = 0;
-    });
+      if (l && l.source !== 'auto') return Number(l.amount) || 0;
+      if (auto[h] !== undefined) return auto[h];
+      return l ? Number(l.amount) || 0 : 0;
+    };
+    HEADS.forEach(h => { if (h !== 'Paid During Month') amount[h] = onLedger(h); });
+
+    // And the one head worked out from the others, so it has to come last.
+    auto['Paid During Month'] = n2(paidDuring(policy)
+      .reduce((a, h) => a + Math.abs(amount[h] || 0), 0));
+    amount['Paid During Month'] = Math.abs(onLedger('Paid During Month'));
 
     const earn = EARN.reduce((a, h) => a + (amount[h] || 0), 0);
     const ded = DEDUCT.reduce((a, h) => a + (amount[h] || 0), 0);
-    const paidHeads = paidDuring(policy);
-    const paid = paidHeads.reduce((a, h) => a + Math.abs(amount[h] || 0), 0);
+    const paid = amount['Paid During Month'];
 
     return {
       code, name: emp.name, department: emp.department || '',
@@ -505,8 +515,13 @@ export async function workingOf(realmId, month) {
       otAllowed, bonusAllowed, lateRule: rule,
 
       auto, amount,
-      // which heads a person has overruled, so the screen can say so
-      hand: Object.keys(held).filter(h => held[h].source === 'hand'),
+      // Which heads the calculation is not allowed to touch, and which of those
+      // a person typed as against which came out of the old sheet - the screen
+      // says so, because "this is your figure" and "this is last year's book"
+      // are two different things to be looking at.
+      hand: Object.keys(held).filter(h => held[h].source !== 'auto'),
+      typed: Object.keys(held).filter(h => held[h].source === 'hand'),
+      imported: Object.keys(held).filter(h => held[h].source === 'import'),
 
       earn: n2(earn), deduct: n2(ded), paid: n2(paid),
       // Report C5 =Q5+Y5 - the salary less what was taken off it
@@ -525,7 +540,7 @@ export async function workingOf(realmId, month) {
 function paidDuring(policy) {
   const named = Array.isArray(policy && policy.paidDuringMonth)
     ? policy.paidDuringMonth : ['Food Allowance'];
-  return [...new Set([...named, ...PAID])];
+  return [...new Set([...named, 'Advance Salary Paid'])];
 }
 
 function sameWord(a, b) {
@@ -582,6 +597,7 @@ export async function figureMonth(realmId, month) {
       for (const head of HEADS) {
         const isAuto = r.auto[head] !== undefined;
         if (!isAuto) continue;
+        // typed, or brought in from the old sheet: either way not ours to move
         if (r.hand.indexOf(head) >= 0) { kept++; continue; }
         const amt = n2(r.auto[head]);
         if (!amt) {
@@ -715,7 +731,57 @@ export const REPORT_EARN = EARN;
 export const REPORT_DEDUCT = ['Late Fine', 'Parcel Fine', 'Absent Fine',
                               'Loan Deduction', 'Employee Adjustments'];
 
-function reportRow(r) {
+/* ---------- the advance and the credit purchase are balances ---------- */
+//
+// These two are not the month's own figures and were wrong as such. On their
+// report they are **running balances**, and the formula says so:
+//
+//   Advance         = every advance up to and including this month
+//                     less every loan deduction in the months before it
+//   Credit Purchase = every credit purchase up to and including this month
+//                     less every employee adjustment in the months before it
+//
+// So they answer "what does this person still owe", which is why a slip can
+// show an advance of fifty thousand against a ten thousand deduction in the
+// same month. Worked out from the
+// ledger rather than stored, because a balance that is stored is a balance that
+// goes out of date the moment anything behind it changes.
+export async function balancesOf(realmId, month) {
+  const m = monthText(month);
+  const out = new Map();
+  if (!m) return out;
+  const r = await pool.query(
+    `SELECT emp_code, head, month, SUM(amount) AS amt
+       FROM hr_pay_lines
+      WHERE realm_id = $1 AND month <= $2
+        AND head IN ('Advance', 'Credit Purchase', 'Loan Deduction',
+                     'Employee Adjustments')
+      GROUP BY emp_code, head, month`, [realmId, m]);
+
+  const got = new Map();
+  r.rows.forEach(x => {
+    const o = got.get(x.emp_code) ||
+      { advance: 0, credit: 0, loanBefore: 0, adjBefore: 0 };
+    const a = Number(x.amt) || 0;
+    if (x.head === 'Advance') o.advance += a;
+    else if (x.head === 'Credit Purchase') o.credit += a;
+    else if (x.month < m) {
+      // only the months **before** this one, which is what their "<" does
+      if (x.head === 'Loan Deduction') o.loanBefore += Math.abs(a);
+      else o.adjBefore += Math.abs(a);
+    }
+    got.set(x.emp_code, o);
+  });
+
+  got.forEach((o, code) => out.set(String(code), {
+    advance: n2(o.advance - o.loanBefore),
+    credit: n2(o.credit - o.adjBefore)
+  }));
+  return out;
+}
+
+function reportRow(r, bal) {
+  const b = bal || { advance: 0, credit: 0 };
   const d = {};
   REPORT_DEDUCT.forEach(h => { d[h] = r.amount[h] || 0; });
   // their Absent Fine column carries the half days too
@@ -728,8 +794,8 @@ function reportRow(r) {
     cash: r.payMode === 'cash' ? r.payable : 0,
     earn: REPORT_EARN.reduce((o, h) => { o[h] = r.amount[h] || 0; return o; }, {}),
     totalSalary: r.earn,
-    advance: r.amount['Advance'] || 0,
-    credit: r.amount['Credit Purchase'] || 0,
+    advance: b.advance || 0,
+    credit: b.credit || 0,
     deduct: d, totalDeduct: n2(total)
   };
 }
@@ -743,8 +809,9 @@ export async function reportOf(realmId, month) {
   const mgmt = (policy.managementDepts || ['Management']).map(x => String(x).toLowerCase());
   const isMgmt = r => mgmt.indexOf(String(r.department || '').toLowerCase()) >= 0;
 
-  const staff = w.rows.filter(r => !isMgmt(r)).map(reportRow);
-  const management = w.rows.filter(isMgmt).map(reportRow);
+  const bal = await balancesOf(realmId, w.month);
+  const staff = w.rows.filter(r => !isMgmt(r)).map(r => reportRow(r, bal.get(r.code)));
+  const management = w.rows.filter(isMgmt).map(r => reportRow(r, bal.get(r.code)));
 
   return {
     month: w.month, cycle: w.cycle, run: w.run,
@@ -792,13 +859,17 @@ export async function slipsOf(realmId, month, code) {
   const rows = code ? w.rows.filter(r => String(r.code) === String(code)) : w.rows;
   const people = await listEmployees(realmId, { all: true });
   const by = new Map(people.map(p => [String(p.emp_code), p]));
+  const bal = await balancesOf(realmId, w.month);
 
   return {
     month: w.month, cycle: w.cycle, run: w.run,
     slips: rows.map(r => {
       const emp = by.get(r.code) || {};
+      const b = bal.get(r.code) || { advance: 0, credit: 0 };
       const d = {};
       SLIP_DEDUCT.forEach(h => { d[h] = r.amount[h] || 0; });
+      d['Advance'] = b.advance;
+      d['Credit Purchase'] = b.credit;
       d['Absent Fine'] = n2((r.amount['Absent Fine'] || 0) + (r.amount['Half Day Fine'] || 0));
       // the advance and the credit purchase are said, not deducted
       const net = n2(['Loan Deduction', 'Late Fine', 'Parcel Fine', 'Absent Fine',

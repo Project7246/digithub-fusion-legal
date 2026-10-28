@@ -57,6 +57,7 @@
   .neg{color:var(--neg)}
   .zero{color:#DDE5E5}
   .hand{color:var(--accent-deep);font-weight:600}
+  .imp{color:var(--warn);font-style:italic}
   .lst{max-height:620px;overflow:auto}
   .wide{overflow:auto;max-height:640px}
 
@@ -124,6 +125,10 @@
     gap:2px 16px;font-size:12px;margin-top:12px}
   .ts .tally span{display:flex}
   .ts .tally b{margin-left:auto;font-family:var(--mono)}
+
+  .drop{border:2px dashed var(--line-2);border-radius:10px;padding:24px;text-align:center;
+    color:var(--muted);font-size:13px;cursor:pointer;background:var(--panel-2)}
+  .drop:hover{border-color:var(--accent);color:var(--ink)}
 
   .msg{padding:13px 15px;border-radius:8px;background:var(--neg-soft);
     border:1px solid var(--neg);color:var(--neg);font-size:12.5px;margin-bottom:12px}
@@ -198,7 +203,7 @@
   function keep(k, v){ try { localStorage.setItem(k, v); } catch (e) { /* private window */ } }
   function kept(k, d){ try { return localStorage.getItem(k) || d; } catch (e) { return d; } }
 
-  var S = { month:'', D:null, said:'', err:'', open:null, tsCode:'',
+  var S = { month:'', D:null, said:'', err:'', open:null, tsCode:'', imported:null,
             report:null, slips:null, ledger:null, journal:null, accounts:null,
             tab: kept('fx.payroll.tab', 'working') };
 
@@ -227,9 +232,14 @@
   function load(){
     S.err = '';
     S.report = S.slips = S.ledger = S.journal = null;
-    return get('/api/hr/payroll?month=' + encodeURIComponent(S.month)).then(function(d){
+    return Promise.all([
+      get('/api/hr/payroll?month=' + encodeURIComponent(S.month)),
+      S.imported ? Promise.resolve({ months: S.imported }) : get('/api/hr/imported')
+    ]).then(function(r){
+      var d = r[0];
       if (d.error) { S.err = d.error; S.D = null; }
       else { S.D = d; S.month = d.month; }
+      if (!r[1].error) S.imported = r[1].months || [];
       paint();
     }).catch(function(e){
       S.err = 'Could not read the month: ' + e.message;
@@ -379,9 +389,9 @@
         '<td class="num">' + (r.ahalf ? n0(r.ahalf) : '<span class="zero">-</span>') + '</td>' +
         '<td class="num">' + (r.leaves ? n0(r.leaves) : '<span class="zero">-</span>') + '</td>' +
         D.earn.concat(D.deduct).map(function(head){
-          var isHand = r.hand.indexOf(head) >= 0;
-          return '<td class="num' + (isHand ? ' hand' : '') + '">' +
-            rs(r.amount[head]) + '</td>';
+          var cls = (r.typed || []).indexOf(head) >= 0 ? ' hand'
+                  : (r.imported || []).indexOf(head) >= 0 ? ' imp' : '';
+          return '<td class="num' + cls + '">' + rs(r.amount[head]) + '</td>';
         }).join('') +
         '<td class="num"><b>' + rs(r.net) + '</b></td>' +
         '<td class="num">' + rs(r.paid) + '</td>' +
@@ -397,8 +407,9 @@
       '<td class="num">' + rs(t.net) + '</td>' +
       '<td class="num">' + rs(t.paid) + '</td>' +
       '<td class="num">' + rs(t.payable) + '</td></tr></tfoot></table></div>' +
-      '<div class="note">A figure in teal is one somebody typed, and working the ' +
-      'month out again leaves it exactly as it is.</div></div><div id="one"></div>';
+      '<div class="note">A figure in teal is one somebody typed; one in italics ' +
+      'came out of the old ledger. Working the month out again leaves both exactly ' +
+      'as they are.</div></div><div id="one"></div>';
 
     $('pane').innerHTML = h;
 
@@ -461,7 +472,11 @@
         '<td class="num"><input type="number" class="cell" data-head="' + esc(head) +
           '" value="' + (isHand ? Math.abs(Number(r.amount[head])) : '') + '"' +
           (locked ? ' disabled' : '') + '></td>' +
-        '<td>' + (isHand ? '<span class="pill warn">typed</span>' : '') + '</td></tr>';
+        '<td>' + ((r.typed || []).indexOf(head) >= 0
+          ? '<span class="pill warn">typed</span>'
+          : (r.imported || []).indexOf(head) >= 0
+            ? '<span class="pill no">from the old ledger</span>' : '') +
+        '</td></tr>';
     });
 
     h += '</tbody></table></div>' +
@@ -1004,7 +1019,10 @@
       '</tbody><tfoot><tr><td colspan="5">Net salary for the month</td>' +
       '<td class="num">' + rs(L.totals.net) + '</td></tr></tfoot></table></div></div>';
 
+    h += oldLedgerBox();
+
     $('pane').innerHTML = h;
+    wireOldLedger();
     $('csv').addEventListener('click', function(){
       var lines = ['Month,Employee,Employee Id,Department,Head,Side,Amount'];
       L.rows.forEach(function(r){
@@ -1013,6 +1031,154 @@
       });
       save(lines.join('\r\n'), 'salary-ledger-' + L.month + '.csv');
     });
+  }
+
+  /* ---------- the years of ledger they already have ---------- */
+  //
+  // Their own ledger is the whole of the money since February 2025, in exactly
+  // this shape - employee, head, side, amount - so it is read in as it is. The
+  // side is what carries the meaning: Payable is owed to them, Receivable is
+  // owed by them, and Paid is what was handed over during the month.
+  //
+  // A month brought in this way can be taken back off again, which is the only
+  // way to try the calculation on a month the old sheet already answered.
+
+  var oldFile = null;
+
+  function oldLedgerBox(){
+    var done = (S.imported || []).map(function(m){
+      return '<tr><td class="num">' + esc(m.month) + '</td>' +
+        '<td class="num">' + n0(m.people) + '</td>' +
+        '<td class="num">' + n0(m.lines) + '</td>' +
+        '<td><button class="oc" data-m="' + esc(m.month) + '" style="border:1px solid ' +
+        'var(--line);background:#fff;border-radius:6px;padding:4px 10px;font:inherit;' +
+        'font-size:11.5px;cursor:pointer;width:auto;height:auto">Take it back off</button>' +
+        '</td></tr>';
+    }).join('');
+
+    return '<div class="box noprint"><h3>Bring the old ledger in' +
+      '<span class="aside">every month it holds, in one go</span></h3>' +
+      '<div class="drop" id="odrop">Choose the salary workbook &mdash; the Ledger sheet' +
+      '<input type="file" id="ofile" accept=".xlsx,.xls,.csv" style="display:none"></div>' +
+      '<div id="ores"></div>' +
+      (done ? '<div class="lst" style="margin-top:14px"><table class="t"><thead><tr>' +
+        '<th>Month</th><th class="num">People</th><th class="num">Figures</th><th></th>' +
+        '</tr></thead><tbody>' + done + '</tbody></table></div>' : '') +
+      '<div class="note">A figure somebody has typed here is never overruled by an ' +
+      'import. Taking a month back off removes only what the import wrote.</div></div>';
+  }
+
+  function wireOldLedger(){
+    var d = $('odrop');
+    if (!d) return;
+    d.addEventListener('click', function(){ $('ofile').click(); });
+    $('ofile').addEventListener('change', function(){
+      if (this.files && this.files[0]) bringLedger(this.files[0], true, '');
+    });
+    $('pane').querySelectorAll('button.oc').forEach(function(b){
+      b.addEventListener('click', function(){
+        var m = b.getAttribute('data-m');
+        if (!confirm('Take ' + m + ' back off? Only the figures the import wrote go; ' +
+            'anything typed here stays.')) return;
+        post('/api/hr/imported/clear', { month: m }).then(function(r){
+          if (r.error) return alert(r.error);
+          S.said = n0(r.cleared) + ' imported figures taken off ' + m + '.';
+          S.ledger = null; S.imported = null; load();
+        });
+      });
+    });
+  }
+
+  function bringLedger(file, lookFirst, sheet){
+    var fd = new FormData();
+    fd.append('file', file);
+    if (lookFirst) fd.append('look', '1');
+    if (sheet) fd.append('sheet', sheet);
+    $('ores').innerHTML = '<div class="loading">Reading the ledger&hellip;</div>';
+    fetch('/api/hr/payroll/import', { method:'POST', body: fd })
+      .then(function(r){ return r.json(); })
+      .then(function(d){
+        if (d.error) {
+          $('ores').innerHTML = '<div class="msg">' + esc(d.error) + '</div>' + oddities(d);
+          return;
+        }
+        var pick = (d.sheets || []).length > 1
+          ? '<div class="cbar"><label style="font-size:12.5px;color:var(--muted)">' +
+            'Sheet</label><select id="osh">' + d.sheets.map(function(n){
+              return '<option value="' + esc(n) + '"' + (n === d.sheet ? ' selected' : '') +
+                '>' + esc(n) + '</option>';
+            }).join('') + '</select></div>'
+          : '';
+
+        var body = '<div class="good">' + n0(d.rows) + ' figures across ' +
+          n0((d.months || []).length) + ' months' +
+          (d.written != null ? ', ' + n0(d.written) + ' written' +
+            (d.kept ? ' and ' + n0(d.kept) + ' left as you had typed them' : '') : '') +
+          (d.basics ? '. ' + n0(d.basics) + ' basic salaries filled in from it' : '') +
+          '.</div>' + pick + monthsTable(d.summary) + oddities(d);
+
+        if (d.dryRun) {
+          oldFile = file;
+          body += '<div class="acts"><button class="solid" id="ogo">Bring it all in' +
+            '</button><button id="ocancel">Leave it</button></div>';
+        }
+        $('ores').innerHTML = body;
+
+        var sh = $('osh');
+        if (sh) sh.addEventListener('change', function(){
+          bringLedger(file, true, this.value);
+        });
+        var go = $('ogo');
+        if (go) go.addEventListener('click', function(){
+          bringLedger(oldFile, false, sh ? sh.value : '');
+        });
+        var ca = $('ocancel');
+        if (ca) ca.addEventListener('click', function(){ S.ledger = null; paintLedger(); });
+
+        if (!d.dryRun) {
+          S.said = n0(d.written) + ' figures brought in across ' +
+            n0((d.months || []).length) + ' months.';
+          S.ledger = null; S.imported = null; load();
+        }
+      })
+      .catch(function(e){
+        $('ores').innerHTML = '<div class="msg">' + esc(e.message) + '</div>';
+      });
+  }
+
+  function monthsTable(summary){
+    if (!summary || !summary.length) return '';
+    return '<div class="lst" style="max-height:260px"><table class="t"><thead><tr>' +
+      '<th>Month</th><th class="num">People</th><th class="num">Net salary</th>' +
+      '</tr></thead><tbody>' + summary.map(function(m){
+        return '<tr><td class="num">' + esc(m.month) + '</td>' +
+          '<td class="num">' + n0(m.people) + '</td>' +
+          '<td class="num">' + rs(m.net) + '</td></tr>';
+      }).join('') + '</tbody></table></div>';
+  }
+
+  function oddities(d){
+    var out = '';
+    if ((d.unknownWho || []).length) {
+      out += '<div class="warnbox">The ledger names ' + n0(d.unknownWho.length) +
+        ' people who are not on the staff list, and their figures were left out: ' +
+        esc(d.unknownWho.map(function(u){
+          return (u.code ? u.name + ' (' + u.code + ')' : u.name) + ' - ' + u.rows;
+        }).join(', ')) +
+        '. Add them on <a href="/employees">People</a> and bring the file in again.</div>';
+    }
+    if ((d.unknownHeads || []).length) {
+      out += '<div class="warnbox">These words are not heads this app knows, so their ' +
+        'rows were left out rather than guessed at: ' +
+        esc(d.unknownHeads.map(function(u){
+          return u.word + ' (' + u.rows + ')';
+        }).join(', ')) + '</div>';
+    }
+    if (d.noMonth) {
+      out += '<div class="note">' + n0(d.noMonth) + ' rows carried no month and were ' +
+        'left out.</div>';
+    }
+    return out;
   }
 
   /* ==================== to QuickBooks ==================== */

@@ -59,6 +59,9 @@ import {
   workingOf, figureMonth, setLine, setFacts, ledgerOf,
   reportOf, slipsOf, timeSheetOf, journalOf, postMonth
 } from './hrpay.js';
+import {
+  importStaff, importLedger, clearImported, importedMonths
+} from './hrimport.js';
 import { listCompanies } from './companies.js';
 import { listSheets, listTabs, readTab, paintRows, testConnection } from './sheets.js';
 import {
@@ -1456,6 +1459,7 @@ const RIGHT_GROUPS = [
     paths: ['/api/hr/people/new', '/api/hr/people/save', '/api/hr/people/status',
             '/api/hr/people/login', '/api/hr/people/link', '/api/hr/standing',
             '/api/hr/days/import', '/api/hr/days/save',
+            '/api/hr/people/import',
             '/api/hr/leaves/new', '/api/hr/leaves/decide'] },
 
   { key: 'payroll', area: 'people', label: 'Payroll',
@@ -1463,6 +1467,7 @@ const RIGHT_GROUPS = [
     paths: ['/api/hr/payroll/figure', '/api/hr/payroll/line',
             '/api/hr/payroll/facts', '/api/hr/payroll/pool',
             '/api/hr/payroll/approve', '/api/hr/payroll/reopen',
+            '/api/hr/payroll/import', '/api/hr/imported/clear',
             '/api/hr/post'] }
 ];
 
@@ -13660,6 +13665,89 @@ app.post('/api/hr/policy', async (req, res) => {
     res.status(500).json({ error: e.message });
   }
 });
+
+
+/* ---------- bringing the old books in ---------- */
+//
+// The company has been running this by hand for years and the files are the
+// files: a staff master with everybody on it, the Google form each new joiner
+// fills in, and a ledger holding every rupee paid since February 2025. None of
+// that is history to throw away - it is what the module has to be able to show
+// before anybody will trust it. Both routes read the sheet as it is; neither
+// reshapes it, and neither overrules a figure somebody has typed here.
+
+app.post('/api/hr/people/import', upload.single('file'), async (req, res) => {
+  const realmId = await requireCompany(req, res);
+  if (!realmId) return;
+  try {
+    if (!req.file) return res.status(400).json({ error: 'No file was sent.' });
+    const book = XLSX.read(req.file.buffer, { type: 'buffer', cellDates: false });
+    const name = req.body.sheet || pickSheet(book, ['employees record', 'record',
+      'form responses', 'staff']);
+    const sheet = book.Sheets[name];
+    if (!sheet) return res.status(400).json({ error: 'That sheet is not in the file.' });
+    const grid = XLSX.utils.sheet_to_json(sheet, { header: 1, raw: true, defval: '' });
+    const out = await importStaff(realmId, grid, { dryRun: req.body.look === '1' });
+    if (out.error) return res.status(400).json(out);
+    res.json(Object.assign({ sheets: book.SheetNames, sheet: name }, out));
+  } catch (e) {
+    res.status(400).json({ error: e.message });
+  }
+});
+
+app.post('/api/hr/payroll/import', upload.single('file'), async (req, res) => {
+  const realmId = await requireCompany(req, res);
+  if (!realmId) return;
+  try {
+    if (!req.file) return res.status(400).json({ error: 'No file was sent.' });
+    const book = XLSX.read(req.file.buffer, { type: 'buffer', cellDates: false });
+    const name = req.body.sheet || pickSheet(book, ['ledger', 'salary ledger']);
+    const sheet = book.Sheets[name];
+    if (!sheet) return res.status(400).json({ error: 'That sheet is not in the file.' });
+    const grid = XLSX.utils.sheet_to_json(sheet, { header: 1, raw: true, defval: '' });
+    const out = await importLedger(realmId, grid, { dryRun: req.body.look === '1' });
+    if (out.error) return res.status(400).json(out);
+    res.json(Object.assign({ sheets: book.SheetNames, sheet: name }, out));
+  } catch (e) {
+    res.status(400).json({ error: e.message });
+  }
+});
+
+// What has been brought in, and taking a month of it back off so the
+// calculation can be tried on a month the old sheet already answered.
+app.get('/api/hr/imported', async (req, res) => {
+  const realmId = await requireCompany(req, res);
+  if (!realmId) return;
+  try {
+    res.json({ months: await importedMonths(realmId) });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.post('/api/hr/imported/clear', async (req, res) => {
+  const realmId = await requireCompany(req, res);
+  if (!realmId) return;
+  try {
+    const out = await clearImported(realmId, (req.body || {}).month);
+    if (out.error) return res.status(400).json(out);
+    res.json(out);
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// A workbook holds a dozen sheets and only one of them is the one wanted, so
+// the name is guessed from the words in it rather than taking the first - which
+// in their salary workbook is a working sheet, not the ledger.
+function pickSheet(book, want) {
+  const names = book.SheetNames || [];
+  for (const w of want) {
+    const hit = names.find(n => String(n).toLowerCase().indexOf(w) >= 0);
+    if (hit) return hit;
+  }
+  return names[0];
+}
 
 /* ---------- the employee's own screen ---------- */
 //
