@@ -6,6 +6,46 @@
 - After every piece of work: commit and push to `main` without asking (DigitalOcean auto-deploys).
 - Never put secrets (DATABASE_URL, tokens, keys) in git, in chat, or in this file.
 
+## Whose instruction is this, and which module it may touch
+
+Given on 28 Oct 2026, and it stands for every instruction after it. Each one has
+an owner, and the owner is what says which module is being changed:
+
+| Who | Their side |
+|---|---|
+| **Rani** | **Finance** - QuickBooks books, invoices, the Shopify to QuickBooks connector, the couriers' money (COD, charges, CPRs, receivables), the finance reports |
+| **Sir Saim** | **HR, Operations** and every other module |
+
+She may write "ye Rani ki instruction hy" and she may equally forget to, so
+**a finance task is assumed to be Rani's whether her name is on it or not**.
+An instruction arriving without a name is not a free hand over the whole app.
+
+### Both deploy, neither disturbs the other
+
+Two owners work in parallel, so **changing the HR module must make no
+difference whatever to the Finance module** - that was said in those words, as
+the example. A change made for one of them cannot break the other's screens
+between deploys.
+
+- A module's work goes in **its own files** - its own page, its own `*.js` -
+  never as edits inside another module's file.
+- **Shared ground is shared on purpose, never by accident**: `:root` in
+  `public/app.css`, `nav.js`, `realm_id` company scoping,
+  `whoIs()` / `PAGE_NEED` / `RIGHT_OF_PATH`, and `compute.js`'s budget. Touching
+  one of those reaches every module, and which ones must be said out loud.
+- A new module's rights are **their own group** in `RIGHT_GROUPS`, so a company
+  can be given HR without being given the books.
+- A new module's tables carry `realm_id`, like everything else here.
+- After a change, the other module is checked and named as checked.
+
+### It ends as one ERP
+
+The destination is explicit: every module **linked in one place** - one
+sign-in, one company scope, one set of figures. So each module is built as a
+part of an ERP from its first line, not bolted on afterwards. That is why the
+separation above is about files and rights rather than about data: the data is
+meant to meet.
+
 ## What this app is
 A second app, built the same way as the user's first app (`qb-invoice-uploader`, at
 `C:\Users\ASUS-1\Desktop\qb-invoice-uploader`, GitHub `availityltd`, hosted on Render).
