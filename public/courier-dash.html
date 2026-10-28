@@ -265,6 +265,12 @@
     background:linear-gradient(180deg,#FDF9F0,#fff 68%)}
   .kpi .k1.c-cpr{--bar:#3C7FBF;border-color:#D3E2F0;
     background:linear-gradient(180deg,#F3F8FC,#fff 68%)}
+  .kpi .k1.c-ok{--bar:#4FB477;border-color:#D6E9DC;
+    background:linear-gradient(180deg,#F4FAF6,#fff 68%)}
+  .kpi .k1.c-bad{--bar:#C9453F;border-color:#EBD2D0;
+    background:linear-gradient(180deg,#FDF6F5,#fff 68%)}
+  .kpi .k1.c-ok .vl{color:#2E7D4F}
+  .kpi .k1.c-bad .vl{color:#A5302B}
   .kpi .k1.c-net .vl{color:#0E7F7C}
   .kpi .k1.c-cod .vl{color:#2E7D4F}
   .kpi .k1.c-chg .vl{color:#8A5E12}
@@ -895,6 +901,10 @@
     var F = { statement:'', months:'', ageing:'', carriers:'', cprs:'',
               pending:'', cities:'' };
 
+    // Parcels is six screens too, for the same reason Finance is: one long
+    // scroll of ten tables is not a picture of anything.
+    var Pz = { summary:'', days:'', status:'', cities:'', handed:'', carriers:'' };
+
     var period = esc(d.from) + ' \u2192 ' + esc(d.to);
 
     /* ---------- Statement ---------- */
@@ -1142,7 +1152,7 @@
             (c.delivered + c.returned ? pc(c.successRate) : '\u2014') + '</td></tr>';
       }).join('');
 
-      T.parcels += '<div class="box" style="margin-bottom:13px"><h3>' +
+      Pz.carriers += '<div class="box" style="margin-bottom:13px"><h3>' +
         'Each courier company' +
         '<span class="aside">' + esc(d.from) + ' &rarr; ' + esc(d.to) + '</span></h3>' +
         '<table class="t"><tr><th>Courier</th><th class="r">Parcels</th>' +
@@ -1210,11 +1220,53 @@
         'text-transform:uppercase;color:var(--faint)">Where they ended up</td></tr>' +
       ends.map(stageRow).join('');
 
+    // Four figures, and each one a different question. There were eight
+    // tiles here and most of them said what the table above already said:
+    // "where the parcels went" was the stage table in a bar, "best and worst
+    // city" was the city table in two numbers, and the delivery and return
+    // rates are two sides of one figure.
+    Pz.summary +=
+      '<div class="kpi">' +
+        '<div class="k1 c-cod open" data-group="">' +
+          '<div class="lb">Booked in this period</div>' +
+          '<div class="vl">' + n0(t.orders) + '</div>' +
+          '<div class="fn">handed to the courier</div>' +
+        '</div>' +
+        '<div class="k1 c-ok open" data-group="delivered">' +
+          '<div class="lb">Delivered</div>' +
+          '<div class="vl">' + n0(gc('delivered')) + '</div>' +
+          '<div class="fn">' + pc(deliveredRate) + ' of ' + n0(settled) + ' settled</div>' +
+        '</div>' +
+        '<div class="k1 c-bad open" data-group="returned">' +
+          '<div class="lb">Returned</div>' +
+          '<div class="vl">' + n0(gc('returned')) + '</div>' +
+          '<div class="fn">' + pc(returnRate) + ' of settled</div>' +
+        '</div>' +
+        '<div class="k1 c-cpr open" data-group="unbooked,booked,transit,review,returning">' +
+          '<div class="lb">Still moving</div>' +
+          '<div class="vl">' + n0(moving) + '</div>' +
+          '<div class="fn">not settled either way yet</div>' +
+        '</div>' +
+      '</div>';
+
+    // Only when there is something wrong to show. An empty card saying
+    // "nothing lost or damaged" is a card to read and then ignore.
+    if (lost) {
+      Pz.summary +=
+        '<div class="kpi" style="margin-bottom:13px">' +
+          '<div class="k1 c-bad open" data-group="lost,damaged">' +
+            '<div class="lb">Lost or damaged</div>' +
+            '<div class="vl">' + n0(lost) + '</div>' +
+            '<div class="fn">' + pc(lostRate) + ' of booked &middot; to claim for</div>' +
+          '</div>' +
+        '</div>';
+    }
+
     // No money column, deliberately. This table answers "where did the
     // parcels get to"; what each stage is worth is the Finance tab's
     // question, and it was on here too - which is how one page ends up
     // answering neither question properly.
-    T.parcels += '<div class="box" style="margin-bottom:13px"><h3>' +
+    Pz.summary += '<div class="box" style="margin-bottom:13px"><h3>' +
       'What happened to them' +
       '<span class="aside">' + esc(d.from) + ' &rarr; ' + esc(d.to) + '</span>' +
       '<button class="dl" id="dlBooked">Download the lot</button></h3>' +
@@ -1222,95 +1274,10 @@
       '<th class="r">Of booked</th></tr>' + trackRows +
       '</table></div>';
 
-    /* --- one grid, every tile the same --- */
-
-    var mix = [
-      { l:'Delivered', n:gc('delivered'), c:'#4FB477' },
-      { l:'Returned',  n:gc('returned'),  c:'#E48B85' },
-      { l:'Moving',    n:moving,          c:'#7FA8D4' },
-      { l:'Lost',      n:lost,            c:'#B3453F' },
-      { l:'Expired',   n:expired,         c:'#B9A24A' }
-    ];
-
-    T.parcels += '<div class="mini">';
-
-    // Receipts lead. Everything else on this row says where parcels got to;
-    // this one is the courier's own written admission of what it has paid,
-    // which is what the figures above are chased with.
-    var newCprs = cprs.slice(0, 4).map(function(c){
-      var st = String(c.status || '').toUpperCase();
-      return '<div class="r1"><div><div class="a">' + esc(c.cpr) + '</div>' +
-             '<div class="b2">' + esc(c.createdOn || '') + ' · ' +
-             (c.qbPaymentId ? 'in QuickBooks' : 'not received') + '</div></div>' +
-             '<div><div class="c1">' + full(c.netAmount) + '</div>' +
-             '<div class="d1">' + esc(st || '') + '</div></div></div>';
-    }).join('');
-
-    T.parcels += panel('Booked', 'in the dates on screen',
-      '<div class="big">' + n0(t.orders) + '</div>' +
-      '<div class="sub2">parcels handed to the courier</div>' +
-      more('cd-days', 'Day by day'));
-
-    T.parcels += panel('Delivery rate', n0(settled) + ' settled',
-      '<div class="big" style="color:' + gradeColour(deliveredRate) + '">' +
-      pc(deliveredRate) + '</div>' +
-      '<div class="sub2">' + n0(gc('delivered')) + ' delivered of ' + n0(settled) + '</div>' +
-      meter([{ n:gc('delivered'), c:'#4FB477' }, { n:gc('returned'), c:'#E48B85' }]) +
-      more('cd-status', 'Every status'));
-
-    T.parcels += panel('Return rate', n0(gc('returned')) + ' came back',
-      '<div class="big" style="color:' + gradeColour(100 - returnRate) + '">' +
-      pc(returnRate) + '</div>' +
-      '<div class="sub2">of everything that settled</div>' +
-      more('cd-status', 'Every status'));
-
-    T.parcels += panel('Where the parcels went', n0(t.orders) + ' booked',
-      meter(mix) + legend(mix) + more('cd-status', 'Every status'));
-
-    T.parcels += panel('Lost or damaged', lost ? pc(lostRate) + ' of booked' : '',
-      '<div class="big">' + n0(lost) + '</div>' +
-      '<div class="sub2">' + (lost ? 'parcels to claim for' : 'nothing lost or damaged') +
-      '</div>' +
-      more('cd-status', 'Every status'),
-      lost ? 'warn2' : '');
-
-    var cities = (d.cities || []).filter(function(c){ return c.settled >= 5; });
-    var best  = cities.slice().sort(function(a, b){ return b.rate - a.rate; })[0];
-    var worst = cities.slice().sort(function(a, b){ return a.rate - b.rate; })[0];
-
-    T.parcels += panel('Best and worst city', n0((d.cities || []).length) + ' in range',
-      (best
-        ? '<div class="split">' +
-            '<div><div class="n2" style="color:' + gradeColour(best.rate) + '">' +
-              pc(best.rate) + '</div><div class="l2">' + esc(best.city) + '</div></div>' +
-            '<div><div class="n2" style="color:' + gradeColour(worst.rate) + '">' +
-              pc(worst.rate) + '</div><div class="l2">' + esc(worst.city) + '</div></div>' +
-          '</div><div class="sub2" style="margin-top:9px">' +
-          'Delivery rate, cities with 5 or more settled</div>'
-        : '<div class="sub2">Not enough settled orders yet to rank cities.</div>') +
-      more('cd-cities', 'Every city'));
-
-    var recent4 = (d.recent || []).slice(0, 4).map(function(o){
-      return '<div class="r1"><div><div class="a">' + esc(o.tracking) + '</div>' +
-             '<div class="b2">' + esc(o.orderRef || '') + ' · ' + esc(o.city || '') + '</div></div>' +
-             '<div><div class="d1">' + esc(o.on || '') + '</div></div></div>';
-    }).join('');
-
-    T.parcels += panel('Latest deliveries', n0((d.recent || []).length) + ' newest',
-      '<div class="rows">' + (recent4 ||
-        '<div class="sub2">Nothing delivered yet.</div>') + '</div>' +
-      more('cd-recent', 'See detail'));
-
     var pickTotal = picks.reduce(function(a, p){ return a + p.parcels; }, 0);
-    T.parcels += panel('Handed over', picks.length + ' days',
-      '<div class="big">' + n0(pickTotal) + '</div>' +
-      '<div class="sub2">parcels given to the courier</div>' +
-      more('cd-picked', 'Handed over'));
-
-    T.parcels += '</div>';
 
     /* the chart and the newest deliveries belong with the orders, not the summary */
-    T.parcels += '<div class="box" id="cd-days" style="margin-bottom:13px"><h3>Day by day' +
+    Pz.days += '<div class="box" id="cd-days" style="margin-bottom:13px"><h3>Day by day' +
       '<span class="aside">' + esc(d.from) + ' → ' + esc(d.to) + '</span></h3>' +
       dayChart(days) + '</div>';
 
@@ -1321,7 +1288,7 @@
              '<div><div class="dt">' + esc(o.on || '') + '</div></div></a>';
     }).join('');
 
-    T.parcels += '<div class="box" id="cd-recent" style="margin-bottom:13px"><h3>Latest deliveries' +
+    Pz.summary += '<div class="box" id="cd-recent" style="margin-bottom:13px"><h3>Latest deliveries' +
       '<span class="aside">newest first</span></h3>' +
       '<div class="tx">' + (tx || '<div class="note">Nothing yet.</div>') + '</div></div>';
 
@@ -1338,7 +1305,7 @@
                '<div class="m">' + pc(pct(s.count, t.orders)) + ' of booked</div></button>';
     });
 
-    T.parcels += '<div class="box" id="cd-status" style="margin-bottom:13px"><h3>Every status' +
+    Pz.status += '<div class="box" id="cd-status" style="margin-bottom:13px"><h3>Every status' +
                 '<span class="aside">click any number to see the parcels</span></h3>' +
                 '<div class="grid">' + cells + '</div></div>';
 
@@ -1367,12 +1334,13 @@
                '<td class="r">' + n0(dt.returned) + '</td>' +
                '<td class="r">' + (dts ? pc(pct(dt.delivered, dts)) : '—') + '</td></tr>';
 
-    T.parcels += '<div class="box" style="margin-bottom:13px"><h3>Every day, in numbers' +
-                '<span class="aside">parcels, not money</span></h3>' +
+    Pz.days += '<div class="box" style="margin-bottom:13px"><h3>Every day, in numbers' +
+                '<span class="aside">what happened on each day</span></h3>' +
                 '<div style="max-height:360px;overflow:auto"><table class="t">' +
-                '<tr><th>Day</th><th class="r">Booked</th><th class="r">Picked up</th>' +
-                '<th class="r">Delivered</th>' +
-                '<th class="r">Returned</th><th class="r">Rate</th></tr>' +
+                '<tr><th>Day</th><th class="r">Booked that day</th>' +
+                '<th class="r">Picked up that day</th>' +
+                '<th class="r">Delivered that day</th>' +
+                '<th class="r">Returned that day</th><th class="r">Rate</th></tr>' +
                 dayRows + '</table></div></div>';
 
     var pickRows = picks.map(function(p){
@@ -1384,7 +1352,7 @@
              '</td></tr>';
     }).join('');
 
-    T.parcels += '<div class="box" id="cd-picked" style="margin-bottom:13px"><h3>Handed over' +
+    Pz.handed += '<div class="box" id="cd-picked" style="margin-bottom:13px"><h3>Handed over' +
                 '<a href="/pickups' + (account ? '?account='+account : '') +
                 '">View every day</a></h3>' +
                 '<table class="t"><tr><th>Day</th><th class="r">Parcels</th>' +
@@ -1558,7 +1526,7 @@
              '<td class="r">' + (c.settled ? pc(c.returnRate) : '—') + '</td></tr>';
     }).join('');
 
-    T.parcels += '<div class="box" id="cd-cities" style="margin-bottom:13px"><h3>Every city' +
+    Pz.cities += '<div class="box" id="cd-cities" style="margin-bottom:13px"><h3>Every city' +
       '<span class="aside">rate is delivered out of settled · click a row for the parcels' +
       '</span></h3>' +
       '<div style="max-height:560px;overflow:auto"><table class="t">' +
@@ -1600,7 +1568,7 @@
         '<span class="num">' + n0(c.count) + ' · ' + pc(c.rate) + '</span></div>';
     }).join('');
 
-    T.parcels += '<div class="box" style="margin-bottom:13px"><h3>Busiest cities' +
+    Pz.cities += '<div class="box" style="margin-bottom:13px"><h3>Busiest cities' +
       '<span class="aside">bar is volume, colour is delivery rate</span></h3>' +
       '<div class="bars">' + (bars || '<div class="note">No cities.</div>') + '</div></div>';
 
@@ -1626,7 +1594,7 @@
                  ';font-weight:600">' + pc(a.successRate) + '</td></tr>';
       }).join('');
 
-      T.parcels += '<div class="box"><h3>Accounts side by side' +
+      Pz.carriers += '<div class="box"><h3>Accounts side by side' +
               '<span class="aside">every account on its own line, kept apart</span></h3>' +
               '<table class="t">' + head +
               '<th class="r">Parcels</th><th class="r">Delivered</th>' +
@@ -1637,6 +1605,31 @@
     }
 
     /* ==================== put it together ==================== */
+
+    // Parcels, the same way: one table a screen.
+    var PTABS = [
+      { k:'summary',  l:'Summary' },
+      { k:'days',     l:'Day by day' },
+      { k:'status',   l:'Every status' },
+      { k:'cities',   l:'Cities' },
+      { k:'handed',   l:'Handed over' },
+      { k:'carriers', l:'By carrier' }
+    ].filter(function(x){ return Pz[x.k]; });
+
+    if (PTABS.length) {
+      var wantP = localStorage.getItem('cdParTab');
+      if (!PTABS.some(function(x){ return x.k === wantP; })) wantP = PTABS[0].k;
+
+      T.parcels =
+        '<div class="subtabs">' + PTABS.map(function(x){
+          return '<button data-ptab="' + x.k + '"' +
+                 (x.k === wantP ? ' class="on"' : '') + '>' + esc(x.l) + '</button>';
+        }).join('') + '</div>' +
+        PTABS.map(function(x){
+          return '<div class="fpane' + (x.k === wantP ? ' on' : '') +
+                 '" data-ppane="' + x.k + '">' + Pz[x.k] + '</div>';
+        }).join('');
+    }
 
     // Finance is six screens, not one scroll. Said in as many words:
     // "finance ke tab ko itna complicated na banao... sab tab bhi to ban
@@ -1698,6 +1691,20 @@
       });
     }
 
+    // the parcels sub-tabs
+    $('out').querySelectorAll('button[data-ptab]').forEach(function(b){
+      b.addEventListener('click', function(){
+        var k = b.getAttribute('data-ptab');
+        localStorage.setItem('cdParTab', k);
+        $('out').querySelectorAll('button[data-ptab]').forEach(function(x){
+          x.classList.toggle('on', x.getAttribute('data-ptab') === k);
+        });
+        $('out').querySelectorAll('.fpane[data-ppane]').forEach(function(x){
+          x.classList.toggle('on', x.getAttribute('data-ppane') === k);
+        });
+      });
+    });
+
     // the finance sub-tabs
     $('out').querySelectorAll('button[data-ftab]').forEach(function(b){
       b.addEventListener('click', function(){
@@ -1706,7 +1713,7 @@
         $('out').querySelectorAll('button[data-ftab]').forEach(function(x){
           x.classList.toggle('on', x.getAttribute('data-ftab') === k);
         });
-        $('out').querySelectorAll('.fpane').forEach(function(x){
+        $('out').querySelectorAll('.fpane[data-fpane]').forEach(function(x){
           x.classList.toggle('on', x.getAttribute('data-fpane') === k);
         });
       });
