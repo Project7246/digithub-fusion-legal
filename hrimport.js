@@ -459,9 +459,16 @@ export async function importLedger(realmId, grid, opts) {
              unknownWho: read.unknownWho };
   }
 
-  // One transaction a month. Twenty months in one is a long lock on a table
-  // other people are reading, and a month that fails is a month to do again -
-  // not a reason to lose the nineteen that worked.
+  // **One query a month, not one a figure.** The first version wrote each line
+  // with its own INSERT, which for twenty months of their ledger is some two
+  // thousand round trips to Neon - and the import died of old age partway
+  // through the fifth month, leaving a quarter of the history in and no sign of
+  // why. Twenty queries do the same work.
+  //
+  // It is still one transaction a month rather than one for the lot: twenty
+  // months in a single transaction is a long lock on a table other people are
+  // reading, and a month that fails is a month to do again, not a reason to
+  // lose the nineteen that worked.
   let written = 0, kept = 0;
   const done = [];
   const shutOut = [];
@@ -469,35 +476,52 @@ export async function importLedger(realmId, grid, opts) {
     // A month already signed off is the month. An import of an old sheet does
     // not get to move it - it is named back instead, so nothing is silent.
     if (whyShut(await runOf(realmId, month))) { shutOut.push(month); continue; }
+
+    // every figure this month holds, flattened into one list
+    const rows = [];
+    for (const [code, mine] of read.book.get(month)) {
+      const lines = Object.assign({}, mine.heads);
+      if (mine.paid) lines['Paid During Month'] = mine.paid;
+      Object.keys(lines).forEach(head => {
+        // Already signed by the credit side (see sideOf). Nothing re-signs it
+        // here: a fine that was given back stays given back.
+        const amount = lines[head];
+        if (!amount) return;
+        rows.push([code, head, Math.round(amount * 100) / 100]);
+      });
+    }
+    if (!rows.length) { done.push(month); continue; }
+
+    // Every placeholder is cast. A VALUES list carries no type information of
+    // its own, so without these Postgres refuses the whole statement with
+    // "could not determine data type of parameter".
+    const args = [realmId, month];
+    const holes = rows.map(x => {
+      args.push(x[0], x[1], x[2]);
+      const n = args.length;
+      return '($1::text,$2::text,$' + (n - 2) + '::text,$' +
+             (n - 1) + '::text,$' + n + '::numeric)';
+    }).join(',');
+
     const client = await pool.connect();
     try {
       await client.query('BEGIN');
-      for (const [code, mine] of read.book.get(month)) {
-        const lines = Object.assign({}, mine.heads);
-        if (mine.paid) lines['Paid During Month'] = mine.paid;
-
-        for (const head of Object.keys(lines)) {
-          // Already signed by the credit side (see sideOf). Nothing re-signs it
-          // here: a fine that was given back stays given back.
-          const amount = lines[head];
-          if (!amount) continue;
-
-          // A figure somebody has typed in Fusion is theirs and an import does
-          // not overrule it. Anything else - a blank month, or a month brought
-          // in before - takes the sheet's figure.
-          const r = await client.query(
-            `INSERT INTO hr_pay_lines
-               (realm_id, month, emp_code, head, amount, source, note)
-             VALUES ($1,$2,$3,$4,$5,'import','brought in from the old ledger')
-             ON CONFLICT (realm_id, month, emp_code, head) DO UPDATE SET
-               amount = $5, source = 'import', updated_at = NOW()
-               WHERE hr_pay_lines.source <> 'hand'
-             RETURNING head`,
-            [realmId, month, code, head, Math.round(amount * 100) / 100]);
-          if (r.rowCount) written++; else kept++;
-        }
-      }
+      // A figure somebody has typed in Fusion is theirs and an import does not
+      // overrule it - that is what the WHERE on the conflict is for. Anything
+      // else - a blank month, or a month brought in before - takes the sheet's.
+      const r = await client.query(
+        `INSERT INTO hr_pay_lines
+           (realm_id, month, emp_code, head, amount, source, note)
+         SELECT v.realm_id, v.month, v.emp_code, v.head, v.amount,
+                'import', 'brought in from the old ledger'
+           FROM (VALUES ${holes}) AS v(realm_id, month, emp_code, head, amount)
+         ON CONFLICT (realm_id, month, emp_code, head) DO UPDATE SET
+           amount = EXCLUDED.amount, source = 'import', updated_at = NOW()
+           WHERE hr_pay_lines.source <> 'hand'`,
+        args);
       await client.query('COMMIT');
+      written += r.rowCount;
+      kept += rows.length - r.rowCount;
       done.push(month);
     } catch (e) {
       try { await client.query('ROLLBACK'); } catch (e2) { /* over anyway */ }

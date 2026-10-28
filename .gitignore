@@ -10,3 +10,13 @@ docs/chat-notes.md
 
 # the build stamp, written fresh by the build step on every deploy
 .build-id
+
+# A real company's payroll never goes in this repository. The staff master, the
+# salary ledger and the biometric export are read through the import screens and
+# nothing of them is kept - see "Nothing of theirs goes in this repository" in
+# CLAUDE.md. This is the belt as well as the braces: a spreadsheet dropped in
+# here to be uploaded cannot be committed by accident.
+hr-files/
+*.xlsx
+*.xls
+*.csv

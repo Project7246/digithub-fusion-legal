@@ -2374,8 +2374,16 @@ app.get('/auth/status', async (req, res) => {
     adminCount: ADMIN_EMAILS.size,
     // The role itself is not sent. The pages have no use for its name, and the
     // person it belongs to is not told it - what they may do shows in what opens.
-    // a standard user has every job; anyone else has what was ticked
-    rights: (who && who.role === 'standard')
+    // Whoever runs Fusion, and whoever was given the whole of the books, has
+    // every job; anybody else has what was ticked.
+    //
+    // The admin used to fall through to the row's own `rights`, which for an
+    // address nobody has ever ticked anything for is empty - so /auth/status
+    // reported the super admin as having no job at all. Nothing broke, because
+    // `limited` is false for an admin and `APP.may()` asks `s.admin` first, but
+    // it is a wrong answer sitting where the next page to read it would believe
+    // it.
+    rights: (who && (who.admin || who.role === 'admin' || who.role === 'standard'))
       ? RIGHT_GROUPS.map(g => g.key)
       : ((who && who.rights) || []),
     jobs: RIGHT_GROUPS.map(g => g.key),
