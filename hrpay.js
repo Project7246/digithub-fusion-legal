@@ -133,6 +133,34 @@ export async function setStanding(realmId, code, head, amount, prorate) {
 
 /* ==================== the month itself ==================== */
 
+// Is this month finished with?
+//
+// **A month that has been signed off is the month, for ever.** Until then every
+// screen works the figures out again from the attendance, the pools and the
+// policy, which is what makes the working a working. The moment it is signed
+// off that has to stop: a policy changed in November cannot be allowed to move
+// October's slips, and an employee opening last March must see what they were
+// actually paid in March.
+//
+// So from `approved` onwards the stored lines **are** the answer and nothing
+// recalculates. That is what "final and submit" means here.
+export function isFinal(run) {
+  return !!run && (run.state === 'approved' || run.state === 'posted');
+}
+
+export function whyShut(run) {
+  if (!run) return null;
+  if (run.state === 'posted') {
+    return 'That month is in QuickBooks as ' + (run.qb_doc_number || 'an entry') +
+           '. Nothing in it can change.';
+  }
+  if (run.state === 'approved') {
+    return 'That month has been signed off, so its figures are fixed. ' +
+           'Reopen it if something in it has to change.';
+  }
+  return null;
+}
+
 // A month, read. It does **not** write one: every screen that shows figures
 // calls workingOf(), and workingOf() asks for the run - so an upsert here was a
 // write on every page open, which on Neon is a database kept awake by people
@@ -171,6 +199,16 @@ export async function approveMonth(realmId, month, who, policy) {
   const run = await runOf(realmId, month, true);
   if (!run) return { error: 'That is not a month.' };
   if (run.state === 'posted') return { error: 'That month is already in QuickBooks.' };
+  // Signing off freezes the stored lines, so a month nobody has worked out
+  // would be frozen at nothing at all. That is the one thing this must refuse.
+  const has = await pool.query(
+    `SELECT 1 FROM hr_pay_lines WHERE realm_id = $1 AND month = $2 LIMIT 1`,
+    [realmId, run.month]);
+  if (!has.rowCount) {
+    return { error: 'There is nothing in that month yet. Press ' +
+                    '"Work the month out" first, then sign it off.' };
+  }
+
   const need = ((policy && policy.approvers) || []).length;
   const list = Array.isArray(run.approvals) ? run.approvals.slice() : [];
   const me = String((who && (who.email || who.sub)) || '').toLowerCase();
@@ -252,6 +290,8 @@ export async function savePool(realmId, month, kind, data) {
   const m = monthText(month);
   if (!m) return { error: 'That is not a month.' };
   if (POOL_KINDS.indexOf(kind) < 0) return { error: 'That is not a pool.' };
+  const shut = whyShut(await runOf(realmId, m));
+  if (shut) return { error: shut };
   const clean = Object.assign(JSON.parse(JSON.stringify(POOL_BLANK[kind])), data || {});
   clean.persons = (clean.persons || []).map(String);
   await pool.query(
@@ -384,6 +424,9 @@ export async function workingOf(realmId, month) {
 
   const mdays = Number(policy.monthDays) || 30;
   const dutyMin = Number(policy.dutyMinutes) || 480;
+  // signed off, so the stored figures are the month and nothing is worked out
+  // over the top of them
+  const frozen = isFinal(run);
 
   const rows = people.map(emp => {
     const code = String(emp.emp_code);
@@ -467,12 +510,20 @@ export async function workingOf(realmId, month) {
       auto[head] = n2(st.prorate && mdays ? (amt / mdays) * workDays : amt);
     });
 
-    // What is actually on the ledger. A figure a person typed, or one brought in
-    // from the old sheet, is a decision and is never written over by the
-    // calculation - which is the whole reason the line carries who put it there.
+    // What is actually on the ledger.
+    //
+    // Two different months, two different answers, and the run's state is what
+    // decides which:
+    //
+    //   open     the figures are worked out again every time this is read, so
+    //            approving a leave or fixing a clock-in shows up at once. A
+    //            figure somebody typed is still theirs and is never moved.
+    //   final    the stored lines are the month. Nothing is recalculated, so
+    //            next year's policy cannot move last year's slips.
     const amount = {};
     const onLedger = h => {
       const l = held[h];
+      if (frozen) return l ? Number(l.amount) || 0 : 0;
       if (l && l.source !== 'auto') return Number(l.amount) || 0;
       if (auto[h] !== undefined) return auto[h];
       return l ? Number(l.amount) || 0 : 0;
@@ -530,7 +581,8 @@ export async function workingOf(realmId, month) {
   rows.sort((a, b) => (a.department || '').localeCompare(b.department || '') ||
                       String(a.code).localeCompare(String(b.code)));
 
-  return { month: m, cycle, policy, run, pools, rows, totals: totalsOf(rows) };
+  return { month: m, cycle, policy, run, pools, rows, frozen,
+           shut: whyShut(run), totals: totalsOf(rows) };
 }
 
 function paidDuring(policy) {
@@ -577,9 +629,8 @@ export async function linesOf(realmId, month, code) {
 // leave is approved does not throw away an evening's typing.
 export async function figureMonth(realmId, month) {
   const w = await workingOf(realmId, month);
-  if (w.run && w.run.state === 'posted') {
-    return { error: 'That month is already in QuickBooks. Reopen it to work it out again.' };
-  }
+  const shut = whyShut(w.run);
+  if (shut) return { error: shut };
 
   // Working the month out is the first thing that happens to it, so this is
   // where the run row is made.
@@ -634,7 +685,8 @@ export async function setLine(realmId, month, code, head, amount, note) {
   if (!m) return { error: 'That is not a month.' };
   if (HEADS.indexOf(head) < 0) return { error: 'That is not a head.' };
   const run = await runOf(realmId, m);
-  if (run.state === 'posted') return { error: 'That month is in QuickBooks.' };
+  const shut = whyShut(run);
+  if (shut) return { error: shut };
 
 
   if (amount === '' || amount === null) {
@@ -672,6 +724,8 @@ export async function monthFacts(realmId, month) {
 export async function setFacts(realmId, month, code, body) {
   const m = monthText(month);
   if (!m) return { error: 'That is not a month.' };
+  const shut = whyShut(await runOf(realmId, m));
+  if (shut) return { error: shut };
   const num = v => (v === '' || v == null ? null : Number(v));
   await pool.query(
     `INSERT INTO hr_month_facts

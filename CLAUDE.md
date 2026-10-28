@@ -2298,6 +2298,91 @@ last moment. In their ledger it is every row whose credit side says Paid; in a
 month this app works out, it is the heads named in `policy.paidDuringMonth` (the
 food allowance) plus `Advance Salary Paid` - which is their AI = W + AE, exactly.
 
+### Final and submit, and what a month is after it
+
+Asked for in as many words, and it is the thing that makes this a system rather
+than a spreadsheet with a web page on it: *"wo working jab mein final and submit
+kro ga to wo meri us month ki report ka part ban kr database mein save hu jay
+ge... employee bhe apni kisi bhe month ki salary nikal sky ga slip apny login
+sy... hum bhe kisi bhe month ka data dkh sky gy"*.
+
+So a month has exactly two lives, and `hr_pay_runs.state` is which one it is in:
+
+| | what the figures are | what may change them |
+|---|---|---|
+| **open** | worked out again on every read, from the attendance, the pools and the policy | approving a leave, fixing a clock-in, typing a figure, editing the policy - all of it shows up at once |
+| **final** (`approved`, then `posted`) | **the stored lines, and nothing else** | nothing. Reopening is the only way back |
+
+`isFinal()` and `whyShut()` in `hrpay.js` are the whole of it, and every door
+asks: `figureMonth`, `setLine`, `setFacts`, `savePool` and the ledger import all
+refuse a final month and say which sentence applies. The import names the months
+it was not allowed to move rather than skipping them quietly.
+
+**This was wrong until it was asked about.** Only a *posted* month was protected,
+so an approved month was still being recalculated on every read - which means a
+policy changed in November would have moved October's slips, and an employee
+opening last March would have seen March worked out by today's rules. A payroll
+that can change behind you is not a payroll. Now the sign-off is what freezes it.
+
+Two guards come with it:
+
+- **A month with nothing in it cannot be signed off.** Freezing happens against
+  the stored lines, so signing off a month nobody had worked out would have
+  frozen it at nothing at all. `approveMonth()` refuses and says to work the
+  month out first.
+- **Reopening says what it does** - that the figures start being worked out again
+  and every sign-off is cleared - because that is a bigger thing than the word
+  "reopen" sounds.
+
+### What has to be uploaded, and what never does
+
+Worth stating plainly, because it is the question that was actually asked:
+*"kia mjy her ber sheet upload krni pary ge?"*
+
+| | how often | why |
+|---|---|---|
+| the old salary ledger | **once** | twenty months of history, and then never again |
+| the staff master | **once** | and after that people are added on `/employees` |
+| the biometric attendance export | **once a month** | the machine is a separate device and does not answer to anything; somebody has to export it |
+| everything else | **never** | |
+
+Everything after that upload is done in Fusion and nowhere else: fixing a
+clock-in, marking a leave or an absence, **adding a day the machine never
+recorded at all** (a missing day shows in the grid as a dot and opens the same
+editor), the whole working, the bonuses and fines, the report, the slips, the
+time sheets and the QuickBooks entry.
+
+And **a virtual employee needs no upload at any point** - they type their own
+check-in and check-out, it lands in `hr_days` with `source = 'self'`, and the
+month's working picks it up beside everybody else's. That is the half of the
+attendance that is already fully inside Fusion.
+
+### What an employee can see, and from when
+
+Nothing on `/my-hr` waits on a sheet: it reads `hr_days` and `hr_pay_lines`
+straight out of the database. Their own details, their time sheet for any month
+they pick, their leave and - once the month is final - their slip. The month
+picker is a plain month box, so **any** month that is in the database opens,
+this year or two years ago.
+
+The one deliberate wait is the slip: it appears when the month is signed off and
+not before. Half a month's figures are not a payslip, and a figure somebody saw
+and then saw change is worse than one they waited a day for.
+
+### Every company's HR is its own
+
+Asked about, and it was true from the first line: *"ye app bht sary business ky
+liye hy, her company ka record bhe seprate he hu ga"*.
+
+Every HR table carries `realm_id` - `hr_employees`, `hr_days`, `hr_leaves`,
+`hr_pay_runs`, `hr_pay_lines`, `hr_month_facts`, `hr_pools`, `hr_standing` - and
+the policy lives in `app_settings`, which is keyed on the company too. So one
+client's staff, their days, their leave, their months and their rules are
+readable only inside that client's company, and `deleteCompany()` and
+`graduateWorkspace()` find all of them from `information_schema` rather than a
+written-out list, which is why a table added next month is not left behind
+holding rows nobody can reach.
+
 ### Rights, and the line through them
 
 Two groups in `RIGHT_GROUPS`, under a fourth area (`people`, "Staff and

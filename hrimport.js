@@ -3,7 +3,7 @@ import {
   dayText, monthText, listEmployees, addEmployee, saveEmployee, nextEmpCode,
   hrPolicy
 } from './hr.js';
-import { HEADS, HEAD_KIND } from './hrpay.js';
+import { HEADS, HEAD_KIND, runOf, whyShut } from './hrpay.js';
 
 // ==================== Bringing the old books in ====================
 //
@@ -464,7 +464,11 @@ export async function importLedger(realmId, grid, opts) {
   // not a reason to lose the nineteen that worked.
   let written = 0, kept = 0;
   const done = [];
+  const shutOut = [];
   for (const month of read.months) {
+    // A month already signed off is the month. An import of an old sheet does
+    // not get to move it - it is named back instead, so nothing is silent.
+    if (whyShut(await runOf(realmId, month))) { shutOut.push(month); continue; }
     const client = await pool.connect();
     try {
       await client.query('BEGIN');
@@ -510,7 +514,8 @@ export async function importLedger(realmId, grid, opts) {
   // would mean every figure worked out after this import came to nothing.
   const basics = await fillBasics(realmId);
 
-  return Object.assign({ ok: true, written, kept, basics }, out, { months: done });
+  return Object.assign({ ok: true, written, kept, basics, shutOut }, out,
+                       { months: done });
 }
 
 async function fillBasics(realmId) {

@@ -284,6 +284,12 @@
     var h = '';
     if (S.err) h += '<div class="msg">' + esc(S.err) + '</div>';
     if (S.said) h += '<div class="good">' + esc(S.said) + '</div>';
+    // A signed-off month is read, not worked on, and the screen has to say so
+    // before somebody types into it and wonders why nothing happened.
+    if (D && D.frozen) {
+      h += '<div class="good">' + esc(D.shut || 'This month is final.') +
+        ' Everything below is what was actually paid.</div>';
+    }
 
     var D = S.D;
     var t = D ? D.totals : { people:0, earn:0, deduct:0, paid:0, net:0, payable:0,
@@ -299,7 +305,7 @@
       '<span class="right">' +
       '<button id="figure">Work the month out</button>' +
       (D && D.mayApprove && run && run.state === 'open' ?
-        '<button id="approve">Approve the month</button>' : '') +
+        '<button id="approve">Final and submit</button>' : '') +
       (D && D.admin && run && run.state === 'approved' ?
         '<button id="reopen">Reopen it</button>' : '') +
       '<a href="/attendance" style="font-size:12.5px;color:var(--accent-deep)">' +
@@ -345,15 +351,18 @@
     if (ap) ap.addEventListener('click', function(){
       post('/api/hr/payroll/approve', { month: S.month }).then(function(d){
         if (d.error) return alert(d.error);
-        S.said = d.already ? 'You had already approved it.'
-          : (d.waiting ? 'Approved. Waiting on ' + d.waiting + ' more.'
-                       : 'Approved. It can go to QuickBooks now.');
+        S.said = d.already ? 'You had already signed this month off.'
+          : (d.waiting ? 'Signed off by you. Waiting on ' + d.waiting + ' more.'
+                       : 'Done. ' + monthName(S.month) + ' is final: its figures are ' +
+                         'fixed, the slips are open to the staff, and it can go to ' +
+                         'QuickBooks.');
         load();
       });
     });
     var ro = $('reopen');
     if (ro) ro.addEventListener('click', function(){
-      if (!confirm('Reopen ' + monthName(S.month) + '? Every approval on it is cleared.')) return;
+      if (!confirm('Reopen ' + monthName(S.month) + '? Its figures start being ' +
+          'worked out again and every sign-off on it is cleared.')) return;
       post('/api/hr/payroll/reopen', { month: S.month }).then(function(d){
         if (d.error) return alert(d.error);
         S.said = 'Reopened.';
@@ -1167,7 +1176,14 @@
           (d.written != null ? ', ' + n0(d.written) + ' written' +
             (d.kept ? ' and ' + n0(d.kept) + ' left as you had typed them' : '') : '') +
           (d.basics ? '. ' + n0(d.basics) + ' basic salaries filled in from it' : '') +
-          '.</div>' + pick + monthsTable(d.summary) + oddities(d);
+          '.</div>' +
+          ((d.shutOut || []).length
+            ? '<div class="warnbox">' + n0(d.shutOut.length) + ' month' +
+              (d.shutOut.length === 1 ? '' : 's') + ' already signed off here, so ' +
+              'the sheet was not allowed to move them: ' + esc(d.shutOut.join(', ')) +
+              '. Reopen a month if its figures really have to change.</div>'
+            : '') +
+          pick + monthsTable(d.summary) + oddities(d);
 
         if (d.dryRun) {
           oldFile = file;

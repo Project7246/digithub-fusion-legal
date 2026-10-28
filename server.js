@@ -13414,6 +13414,9 @@ app.get('/api/hr/payroll', async (req, res) => {
     const who = await hrWho(req);
     res.json({
       month: w.month, cycle: w.cycle, run: w.run, rows: w.rows, totals: w.totals,
+      // whether this month is signed off and therefore fixed, and the sentence
+      // that says so
+      frozen: w.frozen, shut: w.shut,
       pools: w.pools, heads: HEADS, earn: EARN, deduct: DEDUCT, paid: PAID,
       info: INFO, autoHeads: AUTO_HEADS, headKind: HEAD_KIND,
       policy: w.policy,

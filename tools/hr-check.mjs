@@ -6,7 +6,7 @@
 //
 // It touches no database - the arithmetic is deliberately pure, which is what
 // makes it checkable at all.
-import { figurePool, workDaysOf, journalFor } from '../hrpay.js';
+import { figurePool, workDaysOf, journalFor, isFinal, whyShut } from '../hrpay.js';
 import { dayFigures, cycleOf, dayText, minutesOf, eachDay, HR_POLICY, lateRuleFor } from '../hr.js';
 import { worksheet, figureAll, explainAll, RULES, lateDaysLost,
          exampleSheet } from '../hrrules.js';
@@ -173,6 +173,19 @@ is('full cycle is the month days, not 31',
 is('joined on the 7th', workDaysOf({ joined_on:'2026-09-07' }, c, 30), 19);
 is('left mid cycle', workDaysOf({ joined_on:'2020-01-01', left_on:'2026-09-07' }, c, 30), 13);
 is('joined after the cycle', workDaysOf({ joined_on:'2026-11-01' }, c, 30), 0);
+
+// ---- a month that has been signed off is shut ----
+// The figures of a finished month are the figures. A policy changed in November
+// must not move October's slips, and that is what these two answer.
+is('an open month is not final', isFinal({ state: 'open' }), false);
+is('a signed-off month is final', isFinal({ state: 'approved' }), true);
+is('a posted month is final', isFinal({ state: 'posted' }), true);
+is('an open month has nothing to say', whyShut({ state: 'open' }), 'null');
+is('a signed-off month says why it is shut',
+   /signed off/.test(whyShut({ state: 'approved' })), true);
+is('a posted month names its entry',
+   /SAL-2026-09/.test(whyShut({ state: 'posted', qb_doc_number: 'SAL-2026-09' })), true);
+is('nothing at all is not a month', whyShut(null), 'null');
 
 // ---- the journal balances ----
 // earn 128304, deductions -20500, so net 107804 and 100000 still owed
