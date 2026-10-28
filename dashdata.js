@@ -353,43 +353,66 @@ export async function dashboard(realmId, opts) {
 // this one out" - PostEx says so on its payment call, Trax on its payment
 // webhook, M&P by handing back a PaymentID - and a receipt number on the row
 // says the same thing a second way, so either counts.
-// When is a delivered parcel paid for?
+// ==================== the money ====================
 //
-// A CPR number on a parcel is not payment, and reading it as one was wrong.
-// PostEx issues a CPR as APPROVED when it means to pay and marks it CLOSED
-// once it has, and that is how the merchant reads it: "jis cpr k agy status
-// close likha hoa h is ka mtlb un cprs ki paymnt hmy receive ho gai... bs jis
-// k agy approve likha hoa h us ki payment show ho gi". So an approved CPR is
-// still money to come, and it belongs in the receivable.
+// The whole of it, in her words, and the code follows this line for line:
 //
-// A cpr number we hold no advice for stays paid, which is how Trax and M&P
-// arrive: their payment webhook and M&P's PaymentID are written only once the
-// money is out, and there is no CPR document on our side to read a status off.
-const CLOSED_CPR = `UPPER(COALESCE(c.status, '')) = 'CLOSED'`;
-const OPEN_CPR = `EXISTS (SELECT 1 FROM courier_cprs c
-                           WHERE c.realm_id = o.realm_id
-                             AND c.account_id = o.account_id
-                             AND c.cpr_number = o.cpr_number
-                             AND NOT (${CLOSED_CPR}))`;
-const PAID_SQL =
-  `(o.settled IS TRUE OR (o.cpr_number IS NOT NULL AND o.cpr_number <> ''
-     AND NOT ${OPEN_CPR}))`;
+//   "jo parcels delivered hoy un ki payment ko minus krna h un sy jis ki
+//    payment cpr k through hmy received hoi - ye hmra net receivable ka
+//    formula h. ap taxes ko dkh lyna sth kiu k courier wly apna tax cut kr k
+//    hmy payment dyty hn. delivered parcals hn un ki payment cpr k through
+//    receive ni hoi - ye lazmi show krna."
+//
+// For any period:
+//
+//   parcels delivered in it      the COD the courier took at the door
+//   less its charges             what it keeps for carrying them
+//   less its tax                 it cuts this before it pays us
+//   = receivable
+//   less received on closed CPRs
+//   = net receivable
+//
+// A CPR that is CLOSED is money received. OPEN or APPROVED is a CPR written
+// and not yet paid. And the delivered parcels in **no** CPR at all are the
+// ones to watch: "courier wly parcals ko delivered to show krwa dyty hn likn
+// us ki payment hmy ni dyty."
+//
+// Three states, and every delivered parcel is in exactly one, so the three
+// add back to what was delivered:
+//
+//   received   a closed CPR, or the courier's own settled flag
+//   pending    a CPR exists for it and has not been paid
+//   noCpr      no CPR at all. Delivered, and nothing said about the money.
 
-// One ageing bucket: how many parcels are in it and what is still receivable
-// on them. The amount is the COD less that parcel's own charges, which is the
-// same arithmetic as the statement above it - so the buckets add up to the net
-// receivable exactly, and a column of figures that does not tie out is a
-// column nobody trusts.
-function agePair(name, when, paid) {
-  const open = `o.status_group = 'delivered' AND NOT ${paid}`;
+const CPR_CLOSED = `EXISTS (SELECT 1 FROM courier_cprs c
+                             WHERE c.realm_id = o.realm_id
+                               AND c.account_id = o.account_id
+                               AND c.cpr_number = o.cpr_number
+                               AND UPPER(COALESCE(c.status, '')) = 'CLOSED')`;
+
+const HAS_CPR = `(o.cpr_number IS NOT NULL AND o.cpr_number <> '')`;
+
+// Received: a closed CPR, or the courier's own settled flag - which is how
+// Trax and M&P pay, neither of them issuing a CPR at all.
+const GOT_SQL     = `(o.settled IS TRUE OR (${HAS_CPR} AND ${CPR_CLOSED}))`;
+const PENDING_SQL = `(NOT ${GOT_SQL} AND ${HAS_CPR})`;
+const NOCPR_SQL   = `(NOT ${GOT_SQL} AND NOT ${HAS_CPR})`;
+const PAID_SQL    = GOT_SQL;      // the name moneyWhere() knows it by
+
+// One ageing band of what is still to come, by how long ago it was delivered.
+function agePair(name, when) {
+  const open = `NOT ${GOT_SQL}`;
   return `COUNT(*) FILTER (WHERE ${open} AND ${when}) AS ${name}_n,
           COALESCE(SUM(o.amount - o.fee - o.tax) FILTER (WHERE ${open} AND ${when}),0) AS ${name}_v`;
 }
 
-async function owedQuery(realmId, opts, dates) {
+// The statement for one period. `dates` cuts it on the **delivery** date,
+// because that is the day the courier took the cash: a parcel booked in
+// September and delivered in October is October's money.
+async function parcelMoney(realmId, opts, dates) {
   const base = scope(realmId, opts);
   const args = base.args.slice();
-  let where = base.where.join(' AND ');
+  let where = base.where.join(' AND ') + ` AND o.status_group = 'delivered'`;
 
   if (dates && dates.from && dates.to) {
     args.push(dates.from); const a = args.length;
@@ -397,85 +420,71 @@ async function owedQuery(realmId, opts, dates) {
     where += ` AND o.delivered_on >= $${a} AND o.delivered_on <= $${b}`;
   }
 
-  const paid = PAID_SQL;
+  const net = `(o.amount - o.fee - o.tax)`;
+  const pair = (name, when) =>
+    `COUNT(*) FILTER (WHERE ${when}) AS ${name}_n,
+     COALESCE(SUM(${net}) FILTER (WHERE ${when}),0) AS ${name}_v`;
 
   const r = await pool.query(
-    `SELECT COUNT(*) FILTER (WHERE o.status_group = 'delivered') AS delivered_n,
-            COALESCE(SUM(o.amount) FILTER (WHERE o.status_group = 'delivered'),0) AS cod,
-            COALESCE(SUM(o.fee + o.tax) FILTER (WHERE o.status_group = 'delivered'),0) AS charges,
+    `SELECT COUNT(*) AS n,
+            COALESCE(SUM(o.amount),0) AS cod,
+            COALESCE(SUM(o.fee),0)    AS fee,
+            COALESCE(SUM(o.tax),0)    AS tax,
 
-            COUNT(*) FILTER (WHERE o.status_group = 'delivered' AND ${paid}) AS paid_n,
-            COALESCE(SUM(o.amount) FILTER (WHERE o.status_group = 'delivered' AND ${paid}),0) AS paid_cod,
-            COALESCE(SUM(o.fee + o.tax) FILTER (WHERE o.status_group = 'delivered' AND ${paid}),0) AS paid_charges,
+            ${pair('got',     GOT_SQL)},
+            ${pair('pending', PENDING_SQL)},
+            ${pair('nocpr',   NOCPR_SQL)},
 
-            COUNT(*) FILTER (WHERE o.status_group = 'delivered' AND NOT ${paid}) AS due_n,
-            COALESCE(SUM(o.amount) FILTER (WHERE o.status_group = 'delivered' AND NOT ${paid}),0) AS due_cod,
-            COALESCE(SUM(o.fee + o.tax) FILTER (WHERE o.status_group = 'delivered' AND NOT ${paid}),0) AS due_charges,
+            COUNT(DISTINCT o.cpr_number) FILTER (WHERE ${HAS_CPR}) AS cprs_n,
+            MIN(o.delivered_on) FILTER (WHERE NOT ${GOT_SQL}) AS oldest_due,
 
-            MIN(o.delivered_on) FILTER (WHERE o.status_group = 'delivered' AND NOT ${paid}) AS oldest_due,
-            MIN(o.delivered_on) FILTER (WHERE o.status_group = 'delivered') AS first_delivery,
-
-            COUNT(*) FILTER (WHERE o.status_group = 'delivered' AND o.settled IS NULL
-              AND (o.cpr_number IS NULL OR o.cpr_number = '')) AS unchecked_n,
-            COALESCE(SUM(o.amount) FILTER (WHERE o.status_group = 'delivered'
-              AND o.settled IS NULL
-              AND (o.cpr_number IS NULL OR o.cpr_number = '')),0) AS unchecked_v,
-
-            COUNT(DISTINCT o.cpr_number) FILTER (WHERE o.status_group = 'delivered'
-              AND ${paid} AND o.cpr_number IS NOT NULL AND o.cpr_number <> '') AS cpr_n,
-
-            COALESCE(SUM(o.amount) FILTER (WHERE o.status_group = 'delivered' AND NOT ${paid}
-              AND o.delivered_on < CURRENT_DATE - 14),0) AS late_cod,
-            COUNT(*) FILTER (WHERE o.status_group = 'delivered' AND NOT ${paid}
+            COUNT(*) FILTER (WHERE NOT ${GOT_SQL}
               AND o.delivered_on < CURRENT_DATE - 14) AS late_n,
+            COALESCE(SUM(${net}) FILTER (WHERE NOT ${GOT_SQL}
+              AND o.delivered_on < CURRENT_DATE - 14),0) AS late_v,
 
-            -- The ageing of what is still receivable, by how long ago the
-            -- parcel was delivered. This is how a receivable is read in any
-            -- set of books: not one figure but five, because money a week old
-            -- and money three months old are not the same money. The buckets
-            -- are cut on the delivery date, since that is the day the courier
-            -- took our cash and the debt began.
-            ${agePair('a1', `o.delivered_on >= CURRENT_DATE - 7`, paid)},
-            ${agePair('a2', `o.delivered_on < CURRENT_DATE - 7 AND o.delivered_on >= CURRENT_DATE - 14`, paid)},
-            ${agePair('a3', `o.delivered_on < CURRENT_DATE - 14 AND o.delivered_on >= CURRENT_DATE - 30`, paid)},
-            ${agePair('a4', `o.delivered_on < CURRENT_DATE - 30 AND o.delivered_on >= CURRENT_DATE - 60`, paid)},
-            ${agePair('a5', `o.delivered_on < CURRENT_DATE - 60`, paid)},
-            ${agePair('a0', `o.delivered_on IS NULL`, paid)}
+            ${agePair('a1', `o.delivered_on >= CURRENT_DATE - 7`)},
+            ${agePair('a2', `o.delivered_on < CURRENT_DATE - 7 AND o.delivered_on >= CURRENT_DATE - 14`)},
+            ${agePair('a3', `o.delivered_on < CURRENT_DATE - 14 AND o.delivered_on >= CURRENT_DATE - 30`)},
+            ${agePair('a4', `o.delivered_on < CURRENT_DATE - 30 AND o.delivered_on >= CURRENT_DATE - 60`)},
+            ${agePair('a5', `o.delivered_on < CURRENT_DATE - 60`)},
+            ${agePair('a0', `o.delivered_on IS NULL`)}
        FROM courier_orders o
       WHERE ${where}`, args);
 
   const x = r.rows[0] || {};
-  const cod = r2(x.cod), charges = r2(x.charges);
-  const paidCod = r2(x.paid_cod), paidCharges = r2(x.paid_charges);
-  const dueCod = r2(x.due_cod), dueCharges = r2(x.due_charges);
+  const cod = r2(x.cod), fee = r2(x.fee), tax = r2(x.tax);
+  const receivable = r2(cod - fee - tax);
+  const got = r2(x.got_v);
 
   return {
-    delivered: Number(x.delivered_n || 0),
-    cod,
-    charges,
-    net: r2(cod - charges),
-    paidOrders: Number(x.paid_n || 0),
-    // what the parcels themselves say has been paid; moneyOwed() replaces
-    // `paid` with the CPRs' own figure and keeps this one to reconcile against
-    paid: r2(paidCod - paidCharges),
-    dueOrders: Number(x.due_n || 0),
-    dueCod,
-    dueCharges,
-    due: r2(dueCod - dueCharges),
+    delivered: Number(x.n || 0),
+    cod, fee, tax,
+    charges: r2(fee + tax),
+    receivable,
+
+    gotOrders: Number(x.got_n || 0),
+    got,
+    pendingOrders: Number(x.pending_n || 0),
+    pending: r2(x.pending_v),
+    noCprOrders: Number(x.nocpr_n || 0),
+    noCpr: r2(x.nocpr_v),
+
+    due: r2(receivable - got),
+    dueOrders: Number(x.pending_n || 0) + Number(x.nocpr_n || 0),
+
+    cprsSeen: Number(x.cprs_n || 0),
     oldestDue: day(x.oldest_due),
-    firstDelivery: day(x.first_delivery),
-    uncheckedOrders: Number(x.unchecked_n || 0),
-    uncheckedCod: r2(x.unchecked_v),
-    cprCount: Number(x.cpr_n || 0),
     lateOrders: Number(x.late_n || 0),
-    lateCod: r2(x.late_cod),
+    lateAmount: r2(x.late_v),
+
     ageing: [
-      { label: '0 – 7 days',    n: Number(x.a1_n || 0), amount: r2(x.a1_v) },
-      { label: '8 – 14 days',   n: Number(x.a2_n || 0), amount: r2(x.a2_v) },
-      { label: '15 – 30 days',  n: Number(x.a3_n || 0), amount: r2(x.a3_v) },
-      { label: '31 – 60 days',  n: Number(x.a4_n || 0), amount: r2(x.a4_v) },
-      { label: 'Over 60 days',  n: Number(x.a5_n || 0), amount: r2(x.a5_v), old: true },
-      { label: 'Delivery date not given', n: Number(x.a0_n || 0), amount: r2(x.a0_v), unknown: true }
+      { label: '0 \u2013 7 days',   n: Number(x.a1_n || 0), amount: r2(x.a1_v) },
+      { label: '8 \u2013 14 days',  n: Number(x.a2_n || 0), amount: r2(x.a2_v) },
+      { label: '15 \u2013 30 days', n: Number(x.a3_n || 0), amount: r2(x.a3_v) },
+      { label: '31 \u2013 60 days', n: Number(x.a4_n || 0), amount: r2(x.a4_v) },
+      { label: 'Over 60 days',      n: Number(x.a5_n || 0), amount: r2(x.a5_v), old: true },
+      { label: 'No delivery date',  n: Number(x.a0_n || 0), amount: r2(x.a0_v), unknown: true }
     ]
   };
 }
@@ -540,6 +549,8 @@ async function receiptsOwed(realmId, opts) {
 // The parcels still answer their own question - how many went out, what they
 // were worth, how they are doing - and that is what the Parcels tab and the
 // COD figures are for. They are not the receivable.
+// The CPRs themselves, for the same period: how many the courier issued in
+// it, how many of those it has paid, how many are still open.
 function cprScope(realmId, opts) {
   const where = [`c.realm_id = $1`];
   const args = [realmId];
@@ -567,10 +578,7 @@ async function cprMoney(realmId, opts, dates) {
             COALESCE(SUM(c.net_amount) FILTER (WHERE ${CLOSED}),0) AS paid_v,
             COUNT(*) FILTER (WHERE NOT ${CLOSED}) AS due_n,
             COALESCE(SUM(c.net_amount) FILTER (WHERE NOT ${CLOSED}),0) AS due_v,
-            MIN(c.created_on) FILTER (WHERE NOT ${CLOSED}) AS oldest_due,
-            COUNT(*) FILTER (WHERE c.received_on IS NOT NULL) AS in_books_n,
-            COALESCE(SUM(COALESCE(c.received_amount, c.net_amount))
-              FILTER (WHERE c.received_on IS NOT NULL),0) AS in_books_v
+            MIN(c.created_on) FILTER (WHERE NOT ${CLOSED}) AS oldest_due
        FROM courier_cprs c
       WHERE ${where.join(' AND ')}`, args);
 
@@ -582,120 +590,64 @@ async function cprMoney(realmId, opts, dates) {
     paid: r2(x.paid_v),
     dueCprs: Number(x.due_n || 0),
     due: r2(x.due_v),
-    oldestDue: day(x.oldest_due),
-    inBooks: Number(x.in_books_n || 0),
-    inBooksAmount: r2(x.in_books_v)
+    oldestDue: day(x.oldest_due)
   };
 }
 
-// How long each unpaid CPR has been sitting, counted from the day it was
-// issued. The bands add up to the net receivable, which is the whole point of
-// putting them on the same tab.
-async function cprAgeing(realmId, opts) {
-  const base = cprScope(realmId, opts);
-  const open = `NOT ${CLOSED}`;
-  const band = (name, when) =>
-    `COUNT(*) FILTER (WHERE ${open} AND ${when}) AS ${name}_n,
-     COALESCE(SUM(c.net_amount) FILTER (WHERE ${open} AND ${when}),0) AS ${name}_v`;
-
-  const r = await pool.query(
-    `SELECT ${band('a1', `c.created_on >= CURRENT_DATE - 7`)},
-            ${band('a2', `c.created_on < CURRENT_DATE - 7 AND c.created_on >= CURRENT_DATE - 14`)},
-            ${band('a3', `c.created_on < CURRENT_DATE - 14 AND c.created_on >= CURRENT_DATE - 30`)},
-            ${band('a4', `c.created_on < CURRENT_DATE - 30 AND c.created_on >= CURRENT_DATE - 60`)},
-            ${band('a5', `c.created_on < CURRENT_DATE - 60`)},
-            ${band('a0', `c.created_on IS NULL`)}
-       FROM courier_cprs c
-      WHERE ${base.where.join(' AND ')}`, base.args);
-
-  const x = r.rows[0] || {};
-  const one = (k, label, extra) =>
-    Object.assign({ label, n: Number(x[k + '_n'] || 0), amount: r2(x[k + '_v']) }, extra || {});
-
-  return [
-    one('a1', '0 \u2013 7 days'),
-    one('a2', '8 \u2013 14 days'),
-    one('a3', '15 \u2013 30 days'),
-    one('a4', '31 \u2013 60 days'),
-    one('a5', 'Over 60 days', { old: true }),
-    one('a0', 'No issue date', { unknown: true })
-  ];
-}
-
-// Month by month. The parcels sit in the month they were delivered - that is
-// when the cash was taken - and the CPRs in the month the carrier issued them.
-// Both are stated, so "which month is this COD from" and "which month are
-// these CPRs from" are answered side by side rather than argued about.
+// Month by month, on the same rule: the parcels delivered in that month, and
+// what has and has not come back on them.
 async function byMonth(realmId, opts) {
   const base = scope(realmId, opts);
-  const cbase = cprScope(realmId, opts);
+  const net = `(o.amount - o.fee - o.tax)`;
 
-  const [a, b] = await Promise.all([
-    pool.query(
-      `SELECT to_char(date_trunc('month', o.delivered_on), 'YYYY-MM') AS m,
-              COUNT(*) AS n,
-              COALESCE(SUM(o.amount),0) AS cod,
-              COALESCE(SUM(o.fee + o.tax),0) AS charges
-         FROM courier_orders o
-        WHERE ${base.where.join(' AND ')}
-          AND o.status_group = 'delivered'
-          AND o.delivered_on IS NOT NULL
-        GROUP BY 1`, base.args),
-    pool.query(
-      `SELECT to_char(date_trunc('month', c.created_on), 'YYYY-MM') AS m,
-              COUNT(*) AS n,
-              COALESCE(SUM(c.net_amount),0) AS v,
-              COUNT(*) FILTER (WHERE ${CLOSED}) AS paid_n,
-              COALESCE(SUM(c.net_amount) FILTER (WHERE ${CLOSED}),0) AS paid_v,
-              COUNT(*) FILTER (WHERE NOT ${CLOSED}) AS due_n,
-              COALESCE(SUM(c.net_amount) FILTER (WHERE NOT ${CLOSED}),0) AS due_v
-         FROM courier_cprs c
-        WHERE ${cbase.where.join(' AND ')}
-          AND c.created_on IS NOT NULL
-        GROUP BY 1`, cbase.args)
-  ]);
+  const r = await pool.query(
+    `SELECT to_char(date_trunc('month', o.delivered_on), 'YYYY-MM') AS m,
+            COUNT(*) AS n,
+            COALESCE(SUM(o.amount),0) AS cod,
+            COALESCE(SUM(o.fee + o.tax),0) AS charges,
+            COUNT(*) FILTER (WHERE ${GOT_SQL}) AS got_n,
+            COALESCE(SUM(${net}) FILTER (WHERE ${GOT_SQL}),0) AS got_v,
+            COUNT(*) FILTER (WHERE ${PENDING_SQL}) AS pending_n,
+            COALESCE(SUM(${net}) FILTER (WHERE ${PENDING_SQL}),0) AS pending_v,
+            COUNT(*) FILTER (WHERE ${NOCPR_SQL}) AS nocpr_n,
+            COALESCE(SUM(${net}) FILTER (WHERE ${NOCPR_SQL}),0) AS nocpr_v
+       FROM courier_orders o
+      WHERE ${base.where.join(' AND ')}
+        AND o.status_group = 'delivered'
+        AND o.delivered_on IS NOT NULL
+      GROUP BY 1
+      ORDER BY 1 DESC`, base.args);
 
-  const months = new Map();
-  const get = m => {
-    if (!months.has(m)) {
-      months.set(m, { month: m, parcels: 0, cod: 0, charges: 0,
-                      cprs: 0, paidCprs: 0, paid: 0, dueCprs: 0, due: 0 });
-    }
-    return months.get(m);
-  };
-
-  for (const x of a.rows) {
-    if (!x.m) continue;
-    const row = get(x.m);
-    row.parcels = Number(x.n || 0);
-    row.cod = r2(x.cod);
-    row.charges = r2(x.charges);
-  }
-  for (const x of b.rows) {
-    if (!x.m) continue;
-    const row = get(x.m);
-    row.cprs = Number(x.n || 0);
-    row.paidCprs = Number(x.paid_n || 0);
-    row.paid = r2(x.paid_v);
-    row.dueCprs = Number(x.due_n || 0);
-    row.due = r2(x.due_v);
-  }
-
-  return [...months.values()].sort((p, q) => (p.month < q.month ? 1 : -1));
+  return r.rows.map(x => {
+    const cod = r2(x.cod), charges = r2(x.charges);
+    const receivable = r2(cod - charges);
+    const got = r2(x.got_v);
+    return {
+      month: x.m,
+      parcels: Number(x.n || 0),
+      cod, charges, receivable,
+      gotOrders: Number(x.got_n || 0),
+      got,
+      pendingOrders: Number(x.pending_n || 0),
+      pending: r2(x.pending_v),
+      noCprOrders: Number(x.nocpr_n || 0),
+      noCpr: r2(x.nocpr_v),
+      due: r2(receivable - got)
+    };
+  });
 }
 
 export async function moneyOwed(realmId, opts, dates) {
-  const [range, ever, cprRange, cprEver, ageing, months, receipts] = await Promise.all([
-    owedQuery(realmId, opts, dates),
-    owedQuery(realmId, opts, null),
+  const [range, ever, cprRange, cprEver, months, receipts] = await Promise.all([
+    parcelMoney(realmId, opts, dates),
+    parcelMoney(realmId, opts, null),
     cprMoney(realmId, opts, dates).catch(() => null),
     cprMoney(realmId, opts, null).catch(() => null),
-    cprAgeing(realmId, opts).catch(() => []),
     byMonth(realmId, opts).catch(() => []),
     receiptsOwed(realmId, opts).catch(() => null)
   ]);
 
-  return { range, ever, cprRange, cprEver, ageing, months, receipts };
+  return { range, ever, cprRange, cprEver, months, receipts };
 }
 
 /* ==================== the receipts ==================== */
@@ -1040,41 +992,51 @@ const AGE_WHERE = {
   a0: `o.delivered_on IS NULL`
 };
 
-function moneyWhere(opts, where) {
+function moneyWhere(opts, where, args) {
   let opened = false;
   const open = () => {
     if (opened) return;
     opened = true;
     where.push(`o.status_group = 'delivered'`);
-    where.push(`NOT ${PAID_SQL}`);
+    where.push(`NOT ${GOT_SQL}`);
   };
 
+  // still to come: delivered, and no closed CPR has paid for it
   if (opts.due === '1' || opts.due === 1) open();
+
+  // received: a closed CPR, or the courier's own settled flag
   if (opts.due === '0' || opts.due === 0) {
     where.push(`o.status_group = 'delivered'`);
-    where.push(PAID_SQL);
+    where.push(GOT_SQL);
   }
+
+  // in a CPR, and that CPR has not been paid yet
+  if (opts.pending === '1' || opts.pending === 1) {
+    where.push(`o.status_group = 'delivered'`);
+    where.push(PENDING_SQL);
+  }
+
+  // delivered and in no CPR at all - the ones the courier has said nothing
+  // about, which is the list she asked to be able to see
+  if (opts.nocpr === '1' || opts.nocpr === 1) {
+    where.push(`o.status_group = 'delivered'`);
+    where.push(NOCPR_SQL);
+  }
+
   if (opts.late === '1' || opts.late === 1) {
     open();
     where.push(`o.delivered_on < CURRENT_DATE - 14`);
   }
-  // delivered, and the carrier has never been asked about the money on it
-  if (opts.unchecked === '1' || opts.unchecked === 1) {
-    where.push(`o.status_group = 'delivered'`);
-    where.push(`o.settled IS NULL`);
-    where.push(`(o.cpr_number IS NULL OR o.cpr_number = '')`);
-  }
-  // one month of deliveries, from the month-by-month table
-  if (opts.dfrom) { args.push(opts.dfrom); where.push(`o.delivered_on >= $${args.length}`); }
-  if (opts.dto)   { args.push(opts.dto);   where.push(`o.delivered_on <= $${args.length}`); }
-  // every parcel sitting under one CPR, paid or not
-  if (opts.cprStatus === 'open' || opts.cprStatus === 'closed') {
-    where.push(`o.cpr_number IS NOT NULL AND o.cpr_number <> ''`);
-    where.push(opts.cprStatus === 'closed' ? `NOT ${OPEN_CPR}` : OPEN_CPR);
-  }
+
   if (opts.age && AGE_WHERE[String(opts.age)]) {
     open();
     where.push(AGE_WHERE[String(opts.age)]);
+  }
+
+  // one span of delivery dates, which is how every money figure is cut
+  if (args) {
+    if (opts.dfrom) { args.push(opts.dfrom); where.push(`o.delivered_on >= $${args.length}`); }
+    if (opts.dto)   { args.push(opts.dto);   where.push(`o.delivered_on <= $${args.length}`); }
   }
 }
 
@@ -1098,7 +1060,7 @@ export async function eachOrder(realmId, opts, onBatch) {
     if (opts.city)   { args.push(opts.city);   where.push(`o.city = $${args.length}`); }
     if (opts.cpr)    { args.push(opts.cpr);    where.push(`o.cpr_number = $${args.length}`); }
 
-    moneyWhere(opts, where);
+    moneyWhere(opts, where, args);
     if (opts.picked === '1' || opts.picked === 1) where.push(`o.picked_on IS NOT NULL`);
     if (opts.picked === '0' || opts.picked === 0) where.push(`o.picked_on IS NULL`);
 
@@ -1182,7 +1144,7 @@ export async function ordersBy(realmId, opts) {
   if (opts.picked === '0' || opts.picked === 0) where.push(`o.picked_on IS NULL`);
   if (opts.cpr)    { args.push(opts.cpr);    where.push(`o.cpr_number = $${args.length}`); }
   // and the money ones, the same as the download uses
-  moneyWhere(opts, where);
+  moneyWhere(opts, where, args);
 
   const r = await pool.query(
     `SELECT o.tracking, o.order_ref, o.amount, o.fee, o.tax, o.status, o.status_group,

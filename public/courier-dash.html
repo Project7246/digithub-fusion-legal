@@ -797,113 +797,142 @@
     // reason to leave it off the screen. The dates get their own line under
     // it so both questions are answered at once.
     var M = d.money || {};
-    var ever = M.ever || {}, inRange = M.range || {}, rec = M.receipts || null;
-    var C = M.cprEver || {}, CR = M.cprRange || {};
+    var P = M.range || {}, EV = M.ever || {};
+    var C = M.cprRange || {}, CE = M.cprEver || {};
+    var rec = M.receipts || null;
 
     /* ==================== Finance ====================
 
-       The receivable is the CPRs, and nothing else. Said four times before it
-       went in, the last time with the patience gone: "net receivble mn to bs
-       wohi payment ay gai jis cprs ki payment ka status closed ni hoa. simple
-       si bat h."
+       Her formula, given in full and followed line for line:
 
-       It is. The carrier writes a CPR for what it has collected; CLOSED means
-       it has paid us, anything else means it has not. Every version before
-       this one built the receivable out of the parcels and then tried to
-       reconcile it to the CPRs - which needs every parcel matched to a CPR
-       before it can be right, and until then is wrong by millions in whichever
-       direction the gap happens to fall. One of them printed minus 28 million.
+         "jo parcels delivered hoy un ki payment ko minus krna h un sy jis ki
+          payment cpr k through hmy received hoi - ye hmra net receivable ka
+          formula h. ap taxes ko dkh lyna sth kiu k courier wly apna tax cut
+          kr k hmy payment dyty hn. delivered parcals hn un ki payment cpr k
+          through receive ni hoi - ye lazmi show krna."
 
-       The parcels answer the parcels' questions - how many went, what they
-       were worth, where they got to. They are not the receivable.            */
+       And the dates drive all of it: "today pr today ka result ay ga, 7 days
+       pr 7 din k parcals or un k cprs ka record show ho ga." So the period is
+       the first column and the one everything is read from; all time sits
+       beside it for the running total.                                     */
 
     function amt(v, kind){
       if(v === null || v === undefined) return DASH;
-      var s = full(Math.abs(Number(v) || 0));
-      return kind === 'less' ? '<span class="neg">(' + s + ')</span>' : s;
+      var t = full(Math.abs(Number(v) || 0));
+      return kind === 'less' ? '<span class="neg">(' + t + ')</span>' : t;
     }
     function pcs(n){ return (n === null || n === undefined) ? '' : n0(n); }
 
-    function sRow(label, a, b, cls, attr, kind){
+    // one line: its parcels, this period, and all time
+    function sRow(label, nn, a, b, cls, attr, kind){
       return '<tr' + (cls ? ' class="' + cls + '"' : '') + (attr || '') + '>' +
         '<td class="lbl">' + label + '</td>' +
-        '<td class="n">' + pcs(a.n) + '</td>' +
-        '<td class="v">' + amt(a.v, kind) + '</td>' +
-        '<td class="v">' + amt(b.v, kind) + '</td></tr>';
+        '<td class="n">' + pcs(nn) + '</td>' +
+        '<td class="v">' + amt(a, kind) + '</td>' +
+        '<td class="v">' + amt(b, kind) + '</td></tr>';
     }
-
-    var netRec = C.due || 0;
 
     var F = { statement:'', months:'', ageing:'', carriers:'', cprs:'',
               pending:'', cities:'' };
+
+    var period = esc(d.from) + ' \u2192 ' + esc(d.to);
 
     /* ---------- Statement ---------- */
 
     F.statement +=
       '<div class="kpi">' +
-        '<div class="k1 c-net open" data-gotab="cprs">' +
+        '<div class="k1 c-net open" data-due="1">' +
           '<div class="lb">Net receivable</div>' +
-          '<div class="vl">' + full(netRec) + '</div>' +
-          '<div class="fn">' + n0(C.dueCprs || 0) + ' CPRs not closed' +
-          (C.oldestDue ? ' &middot; oldest ' + esc(C.oldestDue) : '') + '</div>' +
+          '<div class="vl">' + full(P.due || 0) + '</div>' +
+          '<div class="fn">' + n0(P.dueOrders || 0) + ' parcels not received' + '</div>' +
         '</div>' +
-        '<div class="k1 c-cod open" data-due="" data-alltime="1">' +
-          '<div class="lb">COD collected by courier</div>' +
-          '<div class="vl">' + full(ever.cod || 0) + '</div>' +
-          '<div class="fn">' + n0(ever.delivered || 0) + ' delivered</div>' +
+        '<div class="k1 c-cod open" data-group="delivered">' +
+          '<div class="lb">Delivered in this period</div>' +
+          '<div class="vl">' + n0(P.delivered || 0) + '</div>' +
+          '<div class="fn">COD ' + full(P.cod || 0) + '</div>' +
         '</div>' +
         '<div class="k1 c-chg">' +
-          '<div class="lb">Courier charges &amp; GST</div>' +
-          '<div class="vl">' + full(ever.charges || 0) + '</div>' +
-          '<div class="fn">' + pc(pct(ever.charges || 0, ever.cod || 0)) + ' of COD</div>' +
+          '<div class="lb">Charges &amp; tax</div>' +
+          '<div class="vl">' + full(P.charges || 0) + '</div>' +
+          '<div class="fn">' + full(P.fee || 0) + ' + tax ' + full(P.tax || 0) + '</div>' +
         '</div>' +
-        '<div class="k1 c-cpr open" data-gotab="cprs">' +
-          '<div class="lb">Received against CPR</div>' +
-          '<div class="vl">' + full(C.paid || 0) + '</div>' +
-          '<div class="fn">' + n0(C.paidCprs || 0) + ' CPRs closed</div>' +
+        '<div class="k1 c-cpr open" data-due="0">' +
+          '<div class="lb">Received on closed CPRs</div>' +
+          '<div class="vl">' + full(P.got || 0) + '</div>' +
+          '<div class="fn">' + n0(P.gotOrders || 0) + ' parcels</div>' +
         '</div>' +
       '</div>';
 
     F.statement +=
       '<div class="sched">' +
         '<h3>Receivable from couriers' +
-          '<span class="aside">click a line to see the CPRs</span></h3>' +
+          '<span class="aside">click a line for its parcels</span></h3>' +
         '<table class="stmt">' +
-          '<tr><th>&nbsp;</th><th>CPRs</th><th>All time (Rs)</th>' +
-            '<th>' + esc(d.from) + ' &rarr; ' + esc(d.to) + ' (Rs)</th></tr>' +
+          '<tr><th>&nbsp;</th><th>Parcels</th><th>' + period + ' (Rs)</th>' +
+            '<th>All time (Rs)</th></tr>' +
 
-          sRow('CPRs issued by the courier',
-               { n: C.cprs, v: C.worth }, { v: CR.worth },
-               'open', ' data-gotab="cprs"') +
-
-          sRow('Less: paid \u2014 status closed',
-               { n: C.paidCprs, v: C.paid }, { v: CR.paid },
-               'less open', ' data-gotab="cprs"', 'less') +
-
-          sRow('<b>Net receivable \u2014 not closed</b>',
-               { n: C.dueCprs, v: C.due }, { v: CR.due },
-               'close open', ' data-gotab="cprs"') +
+          sRow('Parcels delivered &mdash; COD collected', P.delivered,
+               P.cod, EV.cod, 'open', ' data-group="delivered"') +
+          sRow('Less: courier charges', null,
+               P.fee, EV.fee, 'less', '', 'less') +
+          sRow('Less: tax', null,
+               P.tax, EV.tax, 'less', '', 'less') +
+          sRow('<b>Receivable</b>', null,
+               P.receivable, EV.receivable, 'sub') +
+          sRow('Less: received on closed CPRs', P.gotOrders,
+               P.got, EV.got, 'less open', ' data-due="0"', 'less') +
+          sRow('<b>Net receivable</b>', P.dueOrders,
+               P.due, EV.due, 'close open', ' data-due="1"') +
         '</table>' +
+      '</div>';
 
-        '<div class="kpi" style="margin:14px 0 0">' +
-          '<div class="k1 c-cod">' +
-            '<div class="lb">Delivered parcels</div>' +
-            '<div class="vl">' + n0(ever.delivered || 0) + '</div>' +
-            '<div class="fn">COD ' + full(ever.cod || 0) + '</div>' +
-          '</div>' +
-          '<div class="k1 c-chg">' +
-            '<div class="lb">Charges &amp; GST on them</div>' +
-            '<div class="vl">' + full(ever.charges || 0) + '</div>' +
-            '<div class="fn">net ' + full(ever.net || 0) + '</div>' +
-          '</div>' +
-          (rec && rec.notInBooks
-            ? '<div class="k1 c-cpr open" data-gotab="cprs">' +
-                '<div class="lb">Not in QuickBooks yet</div>' +
-                '<div class="vl">' + full(rec.notInBooksAmount || 0) + '</div>' +
-                '<div class="fn">' + n0(rec.notInBooks) + ' CPRs to post</div>' +
-              '</div>'
-            : '') +
-        '</div>' +
+    // The two halves of what is still to come, and the second one is the
+    // point: "courier wly parcals ko delivered to show krwa dyty hn likn us
+    // ki payment hmy ni dyty."
+    F.statement +=
+      '<div class="sched">' +
+        '<h3>What is still to come' +
+          '<span class="aside">' + period + '</span></h3>' +
+        '<table class="stmt">' +
+          '<tr><th>&nbsp;</th><th>Parcels</th><th>' + period + ' (Rs)</th>' +
+            '<th>All time (Rs)</th></tr>' +
+          sRow('In a CPR, not paid yet', P.pendingOrders,
+               P.pending, EV.pending, 'open', ' data-pending="1"') +
+          sRow('<b>In no CPR at all</b>', P.noCprOrders,
+               P.noCpr, EV.noCpr, 'open', ' data-nocpr="1"') +
+          sRow('<b>Net receivable</b>', P.dueOrders,
+               P.due, EV.due, 'close open', ' data-due="1"') +
+        '</table>' +
+        (P.lateOrders
+          ? '<div class="lateline click" data-late="1" style="margin-top:13px">' +
+              '<b>' + n0(P.lateOrders) + ' parcels</b> delivered over a fortnight ' +
+              'ago and still not received \u2014 ' + full(P.lateAmount) + '.' +
+            '</div>'
+          : '') +
+      '</div>';
+
+    // The CPRs the courier issued in these same dates.
+    F.statement +=
+      '<div class="sched">' +
+        '<h3>CPRs issued in this period' +
+          '<a href="/receipts' + (account ? '?account=' + account : '') +
+          '">Open the receipt book</a></h3>' +
+        '<table class="stmt">' +
+          '<tr><th>&nbsp;</th><th>CPRs</th><th>' + period + ' (Rs)</th>' +
+            '<th>All time (Rs)</th></tr>' +
+          '<tr class="open" data-gotab="cprs"><td class="lbl">Paid &mdash; status closed</td>' +
+            '<td class="n">' + n0(C.paidCprs || 0) + '</td>' +
+            '<td class="v">' + full(C.paid || 0) + '</td>' +
+            '<td class="v">' + full(CE.paid || 0) + '</td></tr>' +
+          '<tr class="open" data-gotab="cprs"><td class="lbl">Not paid &mdash; open or approved</td>' +
+            '<td class="n">' + n0(C.dueCprs || 0) + '</td>' +
+            '<td class="v">' + full(C.due || 0) + '</td>' +
+            '<td class="v">' + full(CE.due || 0) + '</td></tr>' +
+          '<tr class="close"><td class="lbl">CPRs issued</td>' +
+            '<td class="n">' + n0(C.cprs || 0) + '</td>' +
+            '<td class="v">' + full(C.worth || 0) + '</td>' +
+            '<td class="v">' + full(CE.worth || 0) + '</td></tr>' +
+        '</table>' +
       '</div>';
 
     /* ---------- month by month ---------- */
@@ -917,73 +946,71 @@
     }
 
     var ms = M.months || [];
-    var mt = { parcels:0, cod:0, charges:0, cprs:0, paid:0, due:0, dueCprs:0 };
+    var mt = { parcels:0, cod:0, charges:0, receivable:0, got:0, pending:0,
+               nocpr:0, due:0 };
     var mRows = ms.map(function(x){
       mt.parcels += x.parcels; mt.cod += x.cod; mt.charges += x.charges;
-      mt.cprs += x.cprs; mt.paid += x.paid; mt.due += x.due;
-      mt.dueCprs += x.dueCprs;
+      mt.receivable += x.receivable; mt.got += x.got; mt.pending += x.pending;
+      mt.nocpr += x.noCpr; mt.due += x.due;
       return '<tr class="open" data-month="' + esc(x.month) + '">' +
         '<td class="lbl">' + monthLabel(x.month) + '</td>' +
-        '<td class="n">' + (x.parcels ? n0(x.parcels) : '') + '</td>' +
-        '<td class="v">' + (x.cod ? full(x.cod) : DASH) + '</td>' +
-        '<td class="v">' + (x.charges
-          ? '<span class="neg">(' + full(x.charges) + ')</span>' : DASH) + '</td>' +
-        '<td class="n">' + (x.cprs ? n0(x.cprs) : '') + '</td>' +
-        '<td class="v">' + (x.paid ? full(x.paid) : DASH) + '</td>' +
-        '<td class="n">' + (x.dueCprs ? n0(x.dueCprs) : '') + '</td>' +
-        '<td class="v"' + (x.due ? ' style="font-weight:600"' : '') + '>' +
-          (x.due ? full(x.due) : DASH) + '</td></tr>';
+        '<td class="n">' + n0(x.parcels) + '</td>' +
+        '<td class="v">' + full(x.cod) + '</td>' +
+        '<td class="v"><span class="neg">(' + full(x.charges) + ')</span></td>' +
+        '<td class="v">' + full(x.receivable) + '</td>' +
+        '<td class="v"><span class="neg">(' + full(x.got) + ')</span></td>' +
+        '<td class="n">' + (x.noCprOrders ? n0(x.noCprOrders) : '') + '</td>' +
+        '<td class="v" style="font-weight:600">' + full(x.due) + '</td></tr>';
     }).join('');
 
     F.months +=
       '<div class="sched">' +
       '<h3>Month by month' +
-        '<span class="aside">parcels by delivery date &middot; CPRs by issue date' +
-        '</span></h3>' +
+        '<span class="aside">by the month the parcel was delivered</span></h3>' +
       '<table class="stmt">' +
       '<tr><th class="l">Month</th><th>Delivered</th><th>COD collected</th>' +
-      '<th>Charges &amp; GST</th><th>CPRs</th><th>Paid (closed)</th>' +
-      '<th>Not closed</th><th>Receivable</th></tr>' +
+      '<th>Charges &amp; tax</th><th>Receivable</th><th>Received on CPR</th>' +
+      '<th>In no CPR</th><th>Net receivable</th></tr>' +
       (mRows || '<tr><td colspan="8" style="color:var(--muted);padding:14px 10px">' +
-        'Nothing here yet.</td></tr>') +
+        'Nothing delivered yet.</td></tr>') +
       (mRows
         ? '<tr class="close"><td class="lbl">Total</td>' +
           '<td class="n">' + n0(mt.parcels) + '</td>' +
           '<td class="v">' + full(mt.cod) + '</td>' +
           '<td class="v"><span class="neg">(' + full(mt.charges) + ')</span></td>' +
-          '<td class="n">' + n0(mt.cprs) + '</td>' +
-          '<td class="v">' + full(mt.paid) + '</td>' +
-          '<td class="n">' + n0(mt.dueCprs) + '</td>' +
+          '<td class="v">' + full(mt.receivable) + '</td>' +
+          '<td class="v"><span class="neg">(' + full(mt.got) + ')</span></td>' +
+          '<td class="n"></td>' +
           '<td class="v">' + full(mt.due) + '</td></tr>'
         : '') +
       '</table></div>';
 
-    /* ---------- Ageing: the CPRs that are not closed ---------- */
+    /* ---------- Ageing ---------- */
 
     var AGE_KEY = ['a1','a2','a3','a4','a5','a0'];
-    var ageAll = M.ageing || [];
-    var ageMax = ageAll.reduce(function(m, a){ return Math.max(m, Math.abs(a.amount)); }, 0) || 1;
-    var ageHtml = ageAll.map(function(a, i){
-      if(!a.n) return '';
-      var col = a.old ? '#C9453F' : (a.unknown ? '#B0B7BE' : (i >= 2 ? '#C98B1E' : '#4FB477'));
-      return '<div class="a1" style="cursor:default">' +
-        '<div>' + esc(a.label) + '</div>' +
+    var ageAll = EV.ageing || [];
+    var ageMax = ageAll.reduce(function(m, x){ return Math.max(m, Math.abs(x.amount)); }, 0) || 1;
+    var ageHtml = ageAll.map(function(x, i){
+      if(!x.n) return '';
+      var col = x.old ? '#C9453F' : (x.unknown ? '#B0B7BE' : (i >= 2 ? '#C98B1E' : '#4FB477'));
+      return '<div class="a1" data-age="' + AGE_KEY[i] + '">' +
+        '<div>' + esc(x.label) + '</div>' +
         '<div class="tr2"><i class="fl" style="width:' +
-          (100 * Math.abs(a.amount) / ageMax).toFixed(1) + '%;background:' + col + '"></i></div>' +
-        '<div class="nn">' + n0(a.n) + ' CPRs</div>' +
-        '<div class="vv">' + full(a.amount) + '</div></div>';
+          (100 * Math.abs(x.amount) / ageMax).toFixed(1) + '%;background:' + col + '"></i></div>' +
+        '<div class="nn">' + n0(x.n) + ' pcs</div>' +
+        '<div class="vv">' + full(x.amount) + '</div></div>';
     }).join('');
 
     F.ageing +=
       '<div class="sched">' +
       '<h3>How long the money has been outstanding' +
-        '<span class="aside">CPRs not closed, by the day they were issued</span></h3>' +
+        '<span class="aside">all time, from the day each parcel was delivered</span></h3>' +
       '<div class="age">' + (ageHtml ||
         '<div class="a1" style="cursor:default;color:var(--muted)">' +
-        '<div>Every CPR is closed.</div><div></div><div></div><div></div></div>') +
+        '<div>Nothing outstanding.</div><div></div><div></div><div></div></div>') +
         '<div class="a1 sum"><div>Net receivable</div><div></div>' +
-          '<div class="nn">' + n0(C.dueCprs || 0) + ' CPRs</div>' +
-          '<div class="vv">' + full(netRec) + '</div></div>' +
+          '<div class="nn">' + n0(EV.dueOrders || 0) + ' pcs</div>' +
+          '<div class="vv">' + full(EV.due || 0) + '</div></div>' +
       '</div></div>';
 
     /* --- each courier company, by its own name --- */
@@ -1299,20 +1326,21 @@
     // statement at the top now does in two columns. Two tables saying one
     // thing is how a page stops being read.
 
-    // Paid and not paid, in the carrier's own two words. CLOSED is money that
-    // has reached us; anything else - APPROVED, PENDING, OPEN - is a CPR the
-    // carrier has written out and not yet paid, and it is still receivable.
-    if (C.cprs) {
+    // The CPR tab is the documents themselves - every CPR this courier has
+    // issued, what it is worth, and whether it has been paid. The statement
+    // works from the parcels; this is the paperwork behind it.
+    if (CE.cprs) {
       F.cprs += '<div class="kpi">' +
         '<div class="k1 c-net">' +
-          '<div class="lb">Net receivable &middot; not closed</div>' +
-          '<div class="vl">' + full(C.due || 0) + '</div>' +
-          '<div class="fn">' + n0(C.dueCprs || 0) + ' of ' + n0(C.cprs) + ' CPRs</div>' +
+          '<div class="lb">Not paid &middot; open or approved</div>' +
+          '<div class="vl">' + full(CE.due || 0) + '</div>' +
+          '<div class="fn">' + n0(CE.dueCprs || 0) + ' of ' + n0(CE.cprs) + ' CPRs' +
+          (CE.oldestDue ? ' &middot; oldest ' + esc(CE.oldestDue) : '') + '</div>' +
         '</div>' +
         '<div class="k1 c-cod">' +
           '<div class="lb">Paid &middot; closed</div>' +
-          '<div class="vl">' + full(C.paid || 0) + '</div>' +
-          '<div class="fn">' + n0(C.paidCprs || 0) + ' of ' + n0(C.cprs) + ' CPRs</div>' +
+          '<div class="vl">' + full(CE.paid || 0) + '</div>' +
+          '<div class="fn">' + n0(CE.paidCprs || 0) + ' of ' + n0(CE.cprs) + ' CPRs</div>' +
         '</div>' +
         (rec && rec.notInBooks
           ? '<div class="k1 c-cpr">' +
@@ -1323,22 +1351,24 @@
           : '') +
       '</div>';
 
-      F.cprs += '<div class="sched">' +
-        '<h3>CPRs against QuickBooks' +
-        '<a href="/receipts' + (account ? '?account=' + account : '') +
-        '">Open the receipt book</a></h3>' +
-        '<table class="stmt">' +
-        '<tr><th>&nbsp;</th><th>CPRs</th><th>Amount (Rs)</th></tr>' +
-        '<tr><td class="lbl">CPRs issued by carriers</td>' +
-          '<td class="n">' + n0(C.cprs) + '</td>' +
-          '<td class="v">' + full(C.worth) + '</td></tr>' +
-        '<tr class="less"><td class="lbl">Less: posted in QuickBooks</td>' +
-          '<td class="n">' + n0(C.inBooks) + '</td>' +
-          '<td class="v"><span class="neg">(' + full(C.inBooksAmount) + ')</span></td></tr>' +
-        '<tr class="close"><td class="lbl">Not in QuickBooks yet</td>' +
-          '<td class="n">' + n0(C.cprs - C.inBooks) + '</td>' +
-          '<td class="v">' + full(C.worth - C.inBooksAmount) + '</td></tr>' +
-        '</table></div>';
+      if (rec && rec.receipts) {
+        F.cprs += '<div class="sched">' +
+          '<h3>CPRs against QuickBooks' +
+          '<a href="/receipts' + (account ? '?account=' + account : '') +
+          '">Open the receipt book</a></h3>' +
+          '<table class="stmt">' +
+          '<tr><th>&nbsp;</th><th>CPRs</th><th>Amount (Rs)</th></tr>' +
+          '<tr><td class="lbl">CPRs issued by the courier</td>' +
+            '<td class="n">' + n0(rec.receipts) + '</td>' +
+            '<td class="v">' + full(rec.worth) + '</td></tr>' +
+          '<tr class="less"><td class="lbl">Less: posted in QuickBooks</td>' +
+            '<td class="n">' + n0(rec.inBooks) + '</td>' +
+            '<td class="v"><span class="neg">(' + full(rec.inBooksAmount) + ')</span></td></tr>' +
+          '<tr class="close"><td class="lbl">Not in QuickBooks yet</td>' +
+            '<td class="n">' + n0(rec.notInBooks) + '</td>' +
+            '<td class="v">' + full(rec.notInBooksAmount) + '</td></tr>' +
+          '</table></div>';
+      }
     }
 
     var accs = d.accounts || [];
@@ -1617,37 +1647,50 @@
         });
       });
     });
-    // The money lines. due=1 is what is still owed, due=0 what has been paid,
-    // late=1 the ones old enough to chase - the same three the figures above
-    // are made of, so every number on this page opens into its own parcels.
+    // Every money figure opens into its own parcels, and it opens into the
+    // same period the figure was read from: the dates on screen, cut on the
+    // delivery date, because that is what the figure was cut on.
+    function moneyList(what, title){
+      what.dfrom = fromEl.value;
+      what.dto = toEl.value;
+      // the dates go in as delivery dates, so the booking-date filter must
+      // not come along as well or the drawer shows fewer than the figure did
+      what.allTime = true;
+      what.title = title;
+      openList(what);
+    }
+
     $('out').querySelectorAll('[data-due]').forEach(function(el){
       el.addEventListener('click', function(){
         var due = el.getAttribute('data-due');
-        openList({
-          due: due,
-          allTime: el.getAttribute('data-alltime') === '1',
-          title: due === '1' ? 'Net receivable — not received yet'
-                             : 'Received against CPR'
-        });
+        moneyList({ due: due }, due === '1'
+          ? 'Net receivable \u2014 delivered, not received'
+          : 'Received on closed CPRs');
       });
     });
-    $('out').querySelectorAll('[data-unchecked]').forEach(function(el){
+    $('out').querySelectorAll('[data-pending]').forEach(function(el){
       el.addEventListener('click', function(){
-        openList({ unchecked: '1', allTime: true,
-                   title: 'Delivered, no payment answer from the carrier yet' });
+        moneyList({ pending: '1' }, 'In a CPR, not paid yet');
+      });
+    });
+    $('out').querySelectorAll('[data-nocpr]').forEach(function(el){
+      el.addEventListener('click', function(){
+        moneyList({ nocpr: '1' }, 'Delivered, in no CPR at all');
       });
     });
     $('out').querySelectorAll('tr[data-month]').forEach(function(tr){
       tr.addEventListener('click', function(){
         var m = tr.getAttribute('data-month');
-        openList({ dfrom: m + '-01', dto: m + '-31',
-                   title: 'Delivered in ' + m });
+        var y = Number(m.split('-')[0]), mm = Number(m.split('-')[1]);
+        var last = new Date(y, mm, 0).getDate();
+        openList({ dfrom: m + '-01', dto: m + '-' + String(last),
+                   allTime: true, title: 'Delivered in ' + m });
       });
     });
     $('out').querySelectorAll('[data-late]').forEach(function(el){
       el.addEventListener('click', function(){
-        openList({ late: '1', allTime: true,
-                   title: 'Delivered over a fortnight ago, not received' });
+        moneyList({ late: '1' },
+                  'Delivered over a fortnight ago, not received');
       });
     });
     // a CPR figure opens into the CPRs themselves
@@ -1664,7 +1707,7 @@
         openList({
           age: el.getAttribute('data-age'),
           allTime: true,
-          title: 'Not received yet — ' +
+          title: 'Not received yet \u2014 ' +
                  (el.firstChild ? el.firstChild.textContent : 'this band')
         });
       });
