@@ -281,9 +281,10 @@ async function run(realmId, job, carrying) {
     job.monthsTotal = job.orders.length;
 
     if (!job.orders.length) {
-      throw new Error('There are no Shopify orders here between ' +
-        job.ourOrders.from + ' and ' + job.ourOrders.to + ', so there is ' +
-        'nothing to ask the courier about. Use their export file instead.');
+      throw new Error('Between ' + job.ourOrders.from + ' and ' +
+        job.ourOrders.to + ' there is no Shopify order here that some courier ' +
+        'has not already accounted for - so there is nothing left to ask ' +
+        'about. Use their export file if parcels are still missing.');
     }
   }
 
@@ -494,8 +495,9 @@ async function askByOrder(realmId, job, acc, a, extra) {
   await keep();
 
   if (misses) {
-    say(job, `${misses} of our orders the courier has nothing against - ` +
-             'most likely they went with another courier');
+    say(job, `${misses} of our orders this courier has nothing against. ` +
+             'A day is split between several couriers, so most of those went ' +
+             'with one of the others.');
   }
 }
 

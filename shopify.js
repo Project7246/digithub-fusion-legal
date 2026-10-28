@@ -1178,20 +1178,36 @@ export async function listOrders(realmId, { from, to, shop, state, limit }) {
 // are the numbers that went on the load sheet, so they are the numbers the
 // courier booked against. Nothing else about the order is read - this is a
 // list of names to ask with, not a report.
+//
+// **And only the ones no courier has already owned up to.** A day's orders are
+// split between several couriers, so asking one of them about all of them is
+// mostly asking about parcels that went to somebody else - thousands of calls
+// to be told "not mine". Where a parcel already carries this order number,
+// there is nothing left to learn: we either know whose it is, or we already
+// hold it. What comes back is what is genuinely unaccounted for.
 export async function orderNames(realmId, { from, to, limit }) {
-  const where = ['realm_id = $1'];
+  const where = ['o.realm_id = $1'];
   const args = [realmId];
 
-  if (from) { args.push(from); where.push(`placed_at >= $${args.length}::date`); }
-  if (to)   { args.push(to);   where.push(`placed_at < ($${args.length}::date + 1)`); }
+  if (from) { args.push(from); where.push(`o.placed_at >= $${args.length}::date`); }
+  if (to)   { args.push(to);   where.push(`o.placed_at < ($${args.length}::date + 1)`); }
 
   args.push(Math.min(Number(limit) || 20000, 50000));
 
   const r = await pool.query(
-    `SELECT name, number, placed_at
-       FROM shopify_orders
+    `SELECT o.name, o.number, o.placed_at
+       FROM shopify_orders o
       WHERE ${where.join(' AND ')}
-      ORDER BY placed_at ASC NULLS LAST
+        AND NOT EXISTS (
+          SELECT 1 FROM courier_orders c
+           WHERE c.realm_id = o.realm_id
+             AND c.order_ref IS NOT NULL
+             AND UPPER(REGEXP_REPLACE(c.order_ref, '^#', '')) IN (
+                   UPPER(REGEXP_REPLACE(COALESCE(o.name, ''), '^#', '')),
+                   UPPER(COALESCE(o.number, ''))
+                 )
+        )
+      ORDER BY o.placed_at ASC NULLS LAST
       LIMIT $${args.length}`,
     args
   );
