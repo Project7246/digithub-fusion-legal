@@ -20,6 +20,7 @@ import {
   needCpr, savePayments
 } from './couriers.js';
 import { adapterFor } from './adapters.js';
+import { chaseMoney } from './courierlive.js';
 import {
   beginBackground, endBackground, nextGapMinutes, mayRun, computeState
 } from './compute.js';
@@ -183,11 +184,22 @@ async function catchUpOne(realmId, acc) {
   // deliveries sat here for ever as "still to receive" while the money was in
   // the bank, and no receipt of theirs ever appeared on the receipts page.
   //
-  // Only couriers that can be asked about parcels in bulk are chased here:
-  // M&P take 200 consignments in one call, which is cheap enough to do on
-  // every sweep. PostEx answers one parcel at a time, and that chase belongs
-  // on the receipts page where somebody asked for it.
-  if (a.lists !== false && typeof a.refreshKnown === 'function') {
+  // Every courier is chased here, in whichever way it answers.
+  //
+  // It used to be only the ones that answer in bulk - M&P take 200
+  // consignments in one call - and PostEx, which names a receipt one parcel at
+  // a time, was left to "the receipts page where somebody asked for it". So
+  // PostEx parcels were never asked about unless a person opened that one
+  // page, and the dashboard reported a month of deliveries as unpaid while
+  // PostEx had plainly paid seven CPRs in the same month. Asking the courier
+  // whether it has paid is the sweep's job, not a person's.
+  if (typeof a.refreshKnown !== 'function' && typeof a.fetchPayment === 'function') {
+    try {
+      mine.settled = (await chaseMoney(realmId, acc)) || 0;
+    } catch (e) {
+      mine.settleError = e.message;
+    }
+  } else if (a.lists !== false && typeof a.refreshKnown === 'function') {
     try {
       const want = await needCpr(realmId, acc.id, Number(process.env.SETTLE_CAP) || 200);
       if (want.length) {

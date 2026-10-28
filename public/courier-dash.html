@@ -304,6 +304,11 @@
   .gloss dd{margin:0;color:var(--muted)}
   @media(max-width:620px){.gloss dl{grid-template-columns:1fr}}
 
+  /* how far the courier has been asked - a fact, not a thing to press */
+  .chasebar{background:#F4F7FA;border:1px solid #D8E1E9;border-radius:9px;
+    padding:12px 15px;margin:0 0 13px;font-size:12.5px;color:#45535F}
+  .chasebar .meter{height:6px}
+
   .note{font-size:11.5px;color:var(--faint);margin-top:11px}
   .msg{padding:13px 15px;border-radius:8px;background:#FDF3F3;border:1px solid var(--bad);
     color:var(--bad);font-size:12.5px}
@@ -377,6 +382,40 @@
 (function(){
   "use strict";
   var $ = function(id){ return document.getElementById(id); };
+
+  var chaseTimer = null;
+
+  // Watch the asking finish. Every twenty seconds while anything is left, and
+  // only while somebody is looking; when the count stops falling for a few
+  // rounds it gives up rather than polling for ever.
+  function watchChase(was){
+    var stuck = 0;
+    function look(){
+      chaseTimer = null;
+      if(document.hidden){ chaseTimer = setTimeout(look, 20000); return; }
+      fetch('/api/courier/cpr-progress?account=' + encodeURIComponent(account || ''),
+            { cache:'no-store' })
+        .then(function(r){ return r.json(); })
+        .then(function(pg){
+          if(!pg || pg.error) return;
+          var bar = document.querySelector('.chasebar');
+          if(bar && pg.delivered){
+            var left = pg.left, donePc = Math.round(100 * (pg.delivered - left) / pg.delivered);
+            bar.innerHTML = '<div><b>' + n0(left) + '</b> of ' + n0(pg.delivered) +
+              ' delivered parcels have not been matched to a CPR yet. Asking the courier now.</div>' +
+              '<div class="meter" style="margin-top:9px"><i style="width:' + donePc +
+              '%;background:#4FB477"></i></div>';
+          }
+          if(pg.left <= 0){ load(); return; }
+          stuck = (pg.left >= was) ? stuck + 1 : 0;
+          was = pg.left;
+          if(stuck >= 5) return;               // nothing is moving; stop looking
+          chaseTimer = setTimeout(look, 20000);
+        })
+        .catch(function(){ chaseTimer = setTimeout(look, 60000); });
+    }
+    chaseTimer = setTimeout(look, 20000);
+  }
 
   var qs = new URLSearchParams(location.search);
   var account = qs.get('account');
@@ -875,22 +914,23 @@
         '</div>' +
       '</div>';
 
-    // "In no CPR at all" is only true once the courier has been asked. PostEx
-    // names the receipt one parcel at a time, so until that has run for every
-    // delivered parcel the figure below is the question, not the answer - and
-    // it has to say so, with the button that finishes the asking.
+    // "In no CPR at all" is only true once the courier has been asked, and
+    // PostEx names a receipt one parcel at a time. The asking is the app's
+    // own job - the sweep does it and so does opening this tab - so the strip
+    // only says how far it has got. It had a button on it for one version and
+    // that was wrong: "asking by the courier krna zarori h? result khud show
+    // kiu ni ho jata?"
     var prog = d.cprProgress || null;
     if (prog && prog.left > 0) {
+      var pcDone = prog.delivered
+        ? Math.round(100 * (prog.delivered - prog.left) / prog.delivered) : 0;
       F.statement +=
-        '<div class="lateline" id="chaseBar" style="margin:0 0 13px;cursor:default;' +
-        'background:#F4F7FA;border-color:#D8E1E9;color:#45535F">' +
-          '<b>' + n0(prog.left) + ' of ' + n0(prog.delivered) + ' delivered parcels</b> ' +
-          'have not been matched to a CPR yet. Until they are, they count as ' +
-          'not received.' +
-          '<button id="btnChase" style="margin-left:12px;border:1px solid var(--line);' +
-          'background:#fff;border-radius:7px;padding:5px 12px;font:inherit;' +
-          'font-size:12px;cursor:pointer;width:auto;height:auto">Ask the courier now</button>' +
-          '<span id="chaseSaid" style="margin-left:10px"></span>' +
+        '<div class="chasebar">' +
+          '<div><b>' + n0(prog.left) + '</b> of ' + n0(prog.delivered) +
+          ' delivered parcels have not been matched to a CPR yet \u2014 ' +
+          'they count as not received until they are. Asking the courier now.</div>' +
+          '<div class="meter" style="margin-top:9px"><i style="width:' + pcDone +
+          '%;background:#4FB477"></i></div>' +
         '</div>';
     }
 
@@ -1724,29 +1764,13 @@
                   'Delivered over a fortnight ago, not received');
       });
     });
-    var bc = document.getElementById('btnChase');
-    if (bc) {
-      bc.addEventListener('click', function(){
-        bc.disabled = true;
-        bc.textContent = 'Asking\u2026';
-        var said = document.getElementById('chaseSaid');
-        ask('/api/courier/cpr-chase', { account: account || '' })
-          .then(function(r){
-            var pg = r && r.progress;
-            if (said) {
-              said.textContent = pg
-                ? n0(pg.left) + ' still to ask about \u2014 reload in a minute'
-                : 'asking\u2026';
-            }
-            bc.textContent = 'Asking in the background';
-          })
-          .catch(function(e){
-            bc.disabled = false;
-            bc.textContent = 'Ask the courier now';
-            if (said) said.textContent = e.message;
-          });
-      });
-    }
+    // While a chase is running the figures on this page are still filling in,
+    // so it watches one small count until there is nothing left to ask about
+    // and then redraws itself. It is tied to that job and stops with it, and
+    // it holds off while the tab is in the background - an always-on poller is
+    // a standing charge on the month.
+    if (chaseTimer) { clearTimeout(chaseTimer); chaseTimer = null; }
+    if (prog && prog.left > 0) watchChase(prog.left);
 
     // a CPR figure opens into the CPRs themselves
     $('out').querySelectorAll('[data-gotab]').forEach(function(el){

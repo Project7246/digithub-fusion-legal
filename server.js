@@ -7455,6 +7455,19 @@ app.get('/api/courier/cpr', async (req, res) => {
   }
 });
 
+// How far the asking has got. One small count, so the dashboard can watch a
+// chase it started finish without re-reading the whole page every few seconds.
+app.get('/api/courier/cpr-progress', async (req, res) => {
+  const realmId = await requireCompany(req, res);
+  if (!realmId) return;
+  try {
+    res.setHeader('Cache-Control', 'no-store');
+    res.json(await cprProgress(realmId, req.query.account || null));
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 // a nudge, for the button on the page
 app.post('/api/courier/cpr-chase', async (req, res) => {
   const realmId = await requireCompany(req, res);

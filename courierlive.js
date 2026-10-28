@@ -57,30 +57,57 @@ async function askAboutMoney(acc) {
     const a = adapterFor(acc.courier);
     if (!a || !a.fetchPayment) return;
 
-    // How many to ask about in one visit.
+    // Keep going until there is nothing left to ask about.
     //
-    // It was 120, and the only screen that ever started it was /receipts - so
-    // a company with five thousand delivered parcels needed forty-five visits
-    // to that one page before its receivable meant anything. What it showed
-    // instead was the whole lot under "in no CPR at all", for a month, while
-    // PostEx had plainly paid seven CPRs worth fifteen million in the same
-    // thirty days. The report was not lying; nobody had ever asked.
-    const CAP = Math.max(20, Number(process.env.CPR_CHASE_CAP) || 600);
+    // It used to do one batch and stop, and only /receipts ever started it -
+    // so a company with five thousand delivered parcels needed forty-five
+    // visits to one page before its receivable meant anything, and the screen
+    // meanwhile said the courier had paid nothing for a month while the same
+    // screen listed seven CPRs it had paid. Asking is not something a person
+    // should have to remember to do.
+    //
+    // The run is bounded by time rather than by a count, so a huge backlog
+    // simply takes two or three goes rather than holding a worker for ever,
+    // and the `asking` set means only one is ever in flight per account.
+    const STEP    = Math.max(20, Number(process.env.CPR_CHASE_STEP) || 240);
+    const SECONDS = Math.max(10, Number(process.env.CPR_CHASE_SECONDS) || 240);
+    const until = Date.now() + SECONDS * 1000;
 
-    const list = await needCpr(acc.realm_id, acc.id, CAP);
-    if (!list.length) return;
+    let done = 0;
+    for (;;) {
+      const list = await needCpr(acc.realm_id, acc.id, STEP);
+      if (!list.length) break;
 
-    // eight at a time is quick without leaning on the courier
-    for (let i = 0; i < list.length; i += 8) {
-      const chunk = list.slice(i, i + 8);
-      const answers = await Promise.all(
-        chunk.map(t => a.fetchPayment(acc.token, t, credsOf(acc)).catch(() => null))
-      );
-      await savePayments(acc.realm_id, acc.id, answers.filter(Boolean));
+      // eight at a time is quick without leaning on the courier
+      for (let i = 0; i < list.length; i += 8) {
+        const chunk = list.slice(i, i + 8);
+        const answers = await Promise.all(
+          chunk.map(t => a.fetchPayment(acc.token, t, credsOf(acc)).catch(() => null))
+        );
+        await savePayments(acc.realm_id, acc.id, answers.filter(Boolean));
+        done += chunk.length;
+      }
+
+      if (Date.now() > until) break;
     }
+    return done;
   } finally {
     asking.delete(acc.id);
   }
+}
+
+// Is a chase already running for this account? The screen asks, so it can say
+// "asking now" rather than offering a button that does nothing.
+export function chasing(accountId) {
+  return asking.has(Number(accountId));
+}
+
+// The sweep'''s way in: ask this one account about its money and say how many
+// parcels were asked about. Same work, same guard, no page involved.
+export async function chaseMoney(realmId, acc) {
+  if (!acc || !acc.id) return 0;
+  // listAccounts does not carry the realm, so the sweep hands it over
+  return (await askAboutMoney(Object.assign({}, acc, { realm_id: realmId }))) || 0;
 }
 
 export function forget(accountId) {

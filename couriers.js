@@ -521,24 +521,32 @@ export async function needCpr(realmId, accountId, limit) {
   return r.rows.map(x => x.tracking);
 }
 
-// what the courier said about one parcel's money
+// What the courier said about these parcels' money, written in one query.
+//
+// It was one UPDATE per parcel in a loop. For a backlog of five thousand
+// delivered parcels that is five thousand round trips to Neon, which is slow
+// enough that the catching-up never finished and dear enough that it is a
+// charge on the month's compute every time it runs.
 export async function savePayments(realmId, accountId, rows) {
-  if (!rows.length) return 0;
+  const good = (rows || []).filter(p => p && p.tracking);
+  if (!good.length) return 0;
 
-  for (const p of rows) {
-    if (!p || !p.tracking) continue;
-    await pool.query(
-      `UPDATE courier_orders
-          SET settled = $3, settled_on = $4, cpr_number = $5
-        WHERE realm_id = $1 AND account_id = $2 AND tracking = $6`,
-      [realmId, accountId,
-       p.settled === true,
-       p.settledOn || null,
-       p.cprNumber || null,
-       p.tracking]
-    );
-  }
-  return rows.length;
+  await pool.query(
+    `UPDATE courier_orders o
+        SET settled    = v.settled,
+            settled_on = v.settled_on,
+            cpr_number = v.cpr_number
+       FROM (SELECT * FROM unnest(
+               $3::text[], $4::boolean[], $5::date[], $6::text[]
+             ) AS t(tracking, settled, settled_on, cpr_number)) v
+      WHERE o.realm_id = $1 AND o.account_id = $2 AND o.tracking = v.tracking`,
+    [realmId, accountId,
+     good.map(p => p.tracking),
+     good.map(p => p.settled === true),
+     good.map(p => p.settledOn || null),
+     good.map(p => p.cprNumber || null)]
+  );
+  return good.length;
 }
 
 // the receipts themselves, built from the orders that carry their number
