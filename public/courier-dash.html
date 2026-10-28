@@ -875,11 +875,20 @@
     function pcs(n){ return (n === null || n === undefined) ? '' : n0(n); }
 
     // one line: its parcels, this period, and all time
-    function sRow(label, nn, a, b, cls, attr, kind){
+    // One count per column, because the two columns count different parcels.
+    //
+    // It used to be a single Parcels column beside a period amount and an
+    // all-time amount, which on Today read "0 parcels - 0.00 - 8,136.00": a
+    // count that belonged to one column sitting next to an amount from the
+    // other. "tu kia ye paid ho gy jo net receiveble mn show ni ho rhy? ye
+    // ksy pta chla?" - it could not be worked out from the row, and that is
+    // the row's fault.
+    function sRow(label, na, a, nb, b, cls, attr, kind){
       return '<tr' + (cls ? ' class="' + cls + '"' : '') + (attr || '') + '>' +
         '<td class="lbl">' + label + '</td>' +
-        '<td class="n">' + pcs(nn) + '</td>' +
+        '<td class="n">' + pcs(na) + '</td>' +
         '<td class="v">' + amt(a, kind) + '</td>' +
+        '<td class="n">' + pcs(nb) + '</td>' +
         '<td class="v">' + amt(b, kind) + '</td></tr>';
     }
 
@@ -892,10 +901,14 @@
 
     F.statement +=
       '<div class="kpi">' +
-        '<div class="k1 c-net open" data-due="1">' +
-          '<div class="lb">Net receivable</div>' +
-          '<div class="vl">' + full(P.due || 0) + '</div>' +
-          '<div class="fn">' + n0(P.dueOrders || 0) + ' parcels not received' + '</div>' +
+        // The first card is a **balance** and is all-time on purpose: what
+        // the courier still owes does not become nought because the dates on
+        // screen say today. It said 0.00 over a table whose own closing line
+        // said 8,136.00, which is one screen giving two answers.
+        '<div class="k1 c-net open" data-due="1" data-alltime="1">' +
+          '<div class="lb">Net receivable &middot; all time</div>' +
+          '<div class="vl">' + full(EV.due || 0) + '</div>' +
+          '<div class="fn">' + n0(EV.dueOrders || 0) + ' parcels not received</div>' +
         '</div>' +
         '<div class="k1 c-cod open" data-group="delivered">' +
           '<div class="lb">Delivered in this period</div>' +
@@ -903,12 +916,12 @@
           '<div class="fn">COD ' + full(P.cod || 0) + '</div>' +
         '</div>' +
         '<div class="k1 c-chg">' +
-          '<div class="lb">Charges &amp; tax</div>' +
+          '<div class="lb">Charges &amp; tax &middot; this period</div>' +
           '<div class="vl">' + full(P.charges || 0) + '</div>' +
           '<div class="fn">' + full(P.fee || 0) + ' + tax ' + full(P.tax || 0) + '</div>' +
         '</div>' +
         '<div class="k1 c-cpr open" data-due="0">' +
-          '<div class="lb">Received on closed CPRs</div>' +
+          '<div class="lb">Received on CPRs &middot; this period</div>' +
           '<div class="vl">' + full(P.got || 0) + '</div>' +
           '<div class="fn">' + n0(P.gotOrders || 0) + ' parcels</div>' +
         '</div>' +
@@ -940,20 +953,22 @@
           '<span class="aside">click a line for its parcels</span></h3>' +
         '<table class="stmt">' +
           '<tr><th>&nbsp;</th><th>Parcels</th><th>' + period + ' (Rs)</th>' +
-            '<th>All time (Rs)</th></tr>' +
+            '<th>Parcels</th><th>All time (Rs)</th></tr>' +
 
-          sRow('Parcels delivered &mdash; COD collected', P.delivered,
-               P.cod, EV.cod, 'open', ' data-group="delivered"') +
-          sRow('Less: courier charges', null,
-               P.fee, EV.fee, 'less', '', 'less') +
-          sRow('Less: tax', null,
-               P.tax, EV.tax, 'less', '', 'less') +
-          sRow('<b>Receivable</b>', null,
-               P.receivable, EV.receivable, 'sub') +
-          sRow('Less: received on closed CPRs', P.gotOrders,
-               P.got, EV.got, 'less open', ' data-due="0"', 'less') +
-          sRow('<b>Net receivable</b>', P.dueOrders,
-               P.due, EV.due, 'close open', ' data-due="1"') +
+          sRow('Parcels delivered &mdash; COD collected',
+               P.delivered, P.cod, EV.delivered, EV.cod,
+               'open', ' data-group="delivered"') +
+          sRow('Less: courier charges', null, P.fee, null, EV.fee,
+               'less', '', 'less') +
+          sRow('Less: tax', null, P.tax, null, EV.tax,
+               'less', '', 'less') +
+          sRow('<b>Receivable</b>', null, P.receivable, null, EV.receivable, 'sub') +
+          sRow('Less: received on closed CPRs',
+               P.gotOrders, P.got, EV.gotOrders, EV.got,
+               'less open', ' data-due="0"', 'less') +
+          sRow('<b>Net receivable</b>',
+               P.dueOrders, P.due, EV.dueOrders, EV.due,
+               'close open', ' data-due="1"') +
         '</table>' +
       '</div>';
 
@@ -966,13 +981,16 @@
           '<span class="aside">' + period + '</span></h3>' +
         '<table class="stmt">' +
           '<tr><th>&nbsp;</th><th>Parcels</th><th>' + period + ' (Rs)</th>' +
-            '<th>All time (Rs)</th></tr>' +
-          sRow('In a CPR, not paid yet', P.pendingOrders,
-               P.pending, EV.pending, 'open', ' data-pending="1"') +
-          sRow('<b>In no CPR at all</b>', P.noCprOrders,
-               P.noCpr, EV.noCpr, 'open', ' data-nocpr="1"') +
-          sRow('<b>Net receivable</b>', P.dueOrders,
-               P.due, EV.due, 'close open', ' data-due="1"') +
+            '<th>Parcels</th><th>All time (Rs)</th></tr>' +
+          sRow('In a CPR, not paid yet',
+               P.pendingOrders, P.pending, EV.pendingOrders, EV.pending,
+               'open', ' data-pending="1"') +
+          sRow('<b>In no CPR at all</b>',
+               P.noCprOrders, P.noCpr, EV.noCprOrders, EV.noCpr,
+               'open', ' data-nocpr="1"') +
+          sRow('<b>Net receivable</b>',
+               P.dueOrders, P.due, EV.dueOrders, EV.due,
+               'close open', ' data-due="1"') +
         '</table>' +
         (P.lateOrders
           ? '<div class="lateline click" data-late="1" style="margin-top:13px">' +
@@ -990,18 +1008,21 @@
           '">Open the receipt book</a></h3>' +
         '<table class="stmt">' +
           '<tr><th>&nbsp;</th><th>CPRs</th><th>' + period + ' (Rs)</th>' +
-            '<th>All time (Rs)</th></tr>' +
+            '<th>CPRs</th><th>All time (Rs)</th></tr>' +
           '<tr class="open" data-gotab="cprs"><td class="lbl">Paid &mdash; status closed</td>' +
             '<td class="n">' + n0(C.paidCprs || 0) + '</td>' +
             '<td class="v">' + full(C.paid || 0) + '</td>' +
+            '<td class="n">' + n0(CE.paidCprs || 0) + '</td>' +
             '<td class="v">' + full(CE.paid || 0) + '</td></tr>' +
           '<tr class="open" data-gotab="cprs"><td class="lbl">Not paid &mdash; open or approved</td>' +
             '<td class="n">' + n0(C.dueCprs || 0) + '</td>' +
             '<td class="v">' + full(C.due || 0) + '</td>' +
+            '<td class="n">' + n0(CE.dueCprs || 0) + '</td>' +
             '<td class="v">' + full(CE.due || 0) + '</td></tr>' +
           '<tr class="close"><td class="lbl">CPRs issued</td>' +
             '<td class="n">' + n0(C.cprs || 0) + '</td>' +
             '<td class="v">' + full(C.worth || 0) + '</td>' +
+            '<td class="n">' + n0(CE.cprs || 0) + '</td>' +
             '<td class="v">' + full(CE.worth || 0) + '</td></tr>' +
         '</table>' +
       '</div>';
@@ -1734,6 +1755,11 @@
     $('out').querySelectorAll('[data-due]').forEach(function(el){
       el.addEventListener('click', function(){
         var due = el.getAttribute('data-due');
+        if (el.getAttribute('data-alltime') === '1') {
+          openList({ due: due, allTime: true,
+                     title: 'Net receivable \u2014 all time' });
+          return;
+        }
         moneyList({ due: due }, due === '1'
           ? 'Net receivable \u2014 delivered, not received'
           : 'Received on closed CPRs');
