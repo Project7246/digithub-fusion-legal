@@ -62,6 +62,9 @@ import {
 import {
   importStaff, importLedger, clearImported, importedMonths
 } from './hrimport.js';
+import {
+  RULES, LATE_RULES, explainAll, exampleSheet, EXAMPLE_SAYS
+} from './hrrules.js';
 import { listCompanies } from './companies.js';
 import { listSheets, listTabs, readTab, paintRows, testConnection } from './sheets.js';
 import {
@@ -13644,12 +13647,23 @@ app.get('/api/hr/policy', async (req, res) => {
   if (!realmId) return;
   try {
     const who = await hrWho(req);
+    const policy = await hrPolicy(realmId);
     res.json({
-      policy: await hrPolicy(realmId),
+      policy,
       blank: HR_POLICY,
       heads: HEADS, earn: EARN, deduct: DEDUCT,
       size: await hrSize(realmId),
-      admin: !!(who && (who.admin || who.runsCompany))
+      admin: !!(who && (who.admin || who.runsCompany)),
+      // How the salary is worked out, straight out of the rules themselves -
+      // so the screen cannot say one thing while the code does another. Each
+      // rule brings its own name, what it is in a sentence, how it is worked
+      // out, and the same sum with numbers in it.
+      rules: explainAll(exampleSheet(policy)).map((r, i) => Object.assign({}, r, {
+        no: i + 1,
+        kind: HEAD_KIND[r.head]
+      })),
+      exampleSays: EXAMPLE_SAYS,
+      lateRules: LATE_RULES
     });
   } catch (e) {
     res.status(500).json({ error: e.message });

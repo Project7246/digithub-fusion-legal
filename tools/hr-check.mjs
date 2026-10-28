@@ -8,6 +8,8 @@
 // makes it checkable at all.
 import { figurePool, workDaysOf, journalFor } from '../hrpay.js';
 import { dayFigures, cycleOf, dayText, minutesOf, eachDay, HR_POLICY, lateRuleFor } from '../hr.js';
+import { worksheet, figureAll, explainAll, RULES, lateDaysLost,
+         exampleSheet } from '../hrrules.js';
 
 let fails = 0;
 function is(label, got, want) {
@@ -56,6 +58,85 @@ is('absent has no lateness', dayFigures({ status:'absent', clock_in:'Absent' }, 
 is('half day is half', dayFigures({ status:'ahalf', clock_in:'08:54', clock_out:'13:59' }, p, csr).days, 0.5);
 is('logistics late rule', lateRuleFor(p, { department:'Logistic' }), 'minutes2x');
 is('CSR late rule', lateRuleFor(p, { department:'CSR' }), 'days');
+
+
+// ---- the rules, each against a figure off their September sheet ----
+//
+// This is the proof that moving the arithmetic into hrrules.js moved no money.
+// Every expected number below is one the company's own working sheet printed,
+// and the person it belonged to is deliberately not named.
+
+function sheetOf(o) { return worksheet(Object.assign({ monthDays: 30, dutyMinutes: 480 }, o)); }
+const money = (o, head) => figureAll(sheetOf(o))[head];
+
+// an office salary, a full clear month, an hour and three quarters of overtime
+const office = { basic: 40000, workDays: 30, overtimeMinutes: 103,
+                 overtimePaid: true, bonusPaid: true, lateRule: 'days' };
+is('basic for a full month', money(office, 'Basic Salary'), 40000);
+is('overtime at the minute rate', money(office, 'Overtime'), 287);
+is('one clear month is one day of basic',
+   Math.round(money(office, 'Attendance Bonus') * 100) / 100, 1333.33);
+
+// the same month with one day absent: the bonus goes entirely
+is('one absence takes the whole bonus',
+   money(Object.assign({}, office, { absentDays: 1 }), 'Attendance Bonus'), 0);
+is('one day of leave takes it too',
+   money(Object.assign({}, office, { leaveDays: 1 }), 'Attendance Bonus'), 0);
+is('a part month does not earn it',
+   money(Object.assign({}, office, { workDays: 19 }), 'Attendance Bonus'), 0);
+
+// the logistics floor: by the minute, doubled past the first hour
+const floor = { basic: 27500, workDays: 30, lateRule: 'minutes2x', lateMinutes: 90,
+                absentDays: 3, halfDays: 1 };
+is('late by the minute, doubled past an hour', money(floor, 'Late Fine'), 230);
+is('three days absent', money(floor, 'Absent Fine'), 2750);
+is('one unapproved half day',
+   Math.round(money(floor, 'Half Day Fine') * 100) / 100, 458.33);
+is('seventeen minutes late on the floor',
+   money({ basic: 25000, workDays: 30, lateRule: 'minutes2x', lateMinutes: 17 }, 'Late Fine'), 30);
+
+// the office rule: a whole day of basic after every third late arrival
+const three = { basic: 100000, workDays: 30, lateRule: 'days', lateDays: 3 };
+is('three late days cost one day', money(three, 'Late Fine'), 3334);
+is('two late days cost nothing yet',
+   money(Object.assign({}, three, { lateDays: 2 }), 'Late Fine'), 0);
+is('six late days cost two',
+   money(Object.assign({}, three, { lateDays: 6 }), 'Late Fine'), 6667);
+is('the whole days lost are counted, not the remainder',
+   lateDaysLost(sheetOf({ lateDays: 8, latePer: 3 })), 2);
+
+// an office salary with two absences and a half day
+const two = { basic: 25000, workDays: 30, lateRule: 'days', absentDays: 2, halfDays: 1 };
+is('two days absent', money(two, 'Absent Fine'), 1667);
+is('and the half day',
+   Math.round(money(two, 'Half Day Fine') * 100) / 100, 416.67);
+
+// no overtime unless the department is paid for it
+is('a floor packer is paid no overtime',
+   money({ basic: 25000, workDays: 30, overtimeMinutes: 200, overtimePaid: false }, 'Overtime'), 0);
+is('an extra day granted is paid whatever the department',
+   money({ basic: 30000, workDays: 30, overtimePaid: false, extraOvertimeDays: 1 }, 'Overtime'), 1000);
+
+// **Every rule gives a positive amount.** The sign is the head's kind and is
+// applied in one place - their sheet put a minus inside some fine formulas and
+// not others, which is how a fine gets added on one row and taken off the next.
+const everything = sheetOf({ basic: 30000, workDays: 30, lateMinutes: 90, lateDays: 3,
+  overtimeMinutes: 60, absentDays: 1, halfDays: 1, overtimePaid: true,
+  bonusPaid: true, lateRule: 'days', parcelFineShare: 500 });
+const all = figureAll(everything);
+is('no rule returns a negative', Object.keys(all).every(h => all[h] >= 0), true);
+is('every rule answered', Object.keys(all).length, RULES.length);
+
+// every rule can say what it is and show its own sum, for any employee
+const why = explainAll(everything);
+is('every rule says what it is', why.every(x => x.what && x.what.length > 20), true);
+is('every rule shows its sum', why.every(x => x.sum && x.sum.length > 3), true);
+is('every rule says how', why.every(x => x.how && x.how.length > 10), true);
+
+// and the policy screen's made-up example works out without throwing
+const ex = explainAll(exampleSheet(HR_POLICY));
+is('the worked example is complete', ex.length, RULES.length);
+is('the worked example has figures', ex.some(x => x.amount > 0), true);
 
 // ---- the pools, against their September sheet ----
 const parcel = figurePool('parcel', {

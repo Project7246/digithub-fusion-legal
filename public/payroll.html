@@ -130,6 +130,38 @@
     color:var(--muted);font-size:13px;cursor:pointer;background:var(--panel-2)}
   .drop:hover{border-color:var(--accent);color:var(--ink)}
 
+  /* every rule as its own card: name, what it is, how, and the sum */
+  .rules{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:12px}
+  .rule{border:1px solid var(--line);border-radius:9px;padding:13px 15px;
+    background:var(--panel-2)}
+  .rule .rh{display:flex;align-items:center;gap:9px;margin-bottom:7px}
+  .rule .rn{font-family:var(--mono);font-size:10.5px;color:#fff;background:var(--ink);
+    border-radius:20px;width:19px;height:19px;display:flex;align-items:center;
+    justify-content:center;flex:0 0 19px}
+  .rule .rh b{font-size:13px}
+  .rule .rk{margin-left:auto;font-size:10px;letter-spacing:.06em;text-transform:uppercase;
+    padding:2px 8px;border-radius:20px;font-weight:600}
+  .rule .rk.on{background:var(--ok-soft);color:var(--ok)}
+  .rule .rk.off{background:var(--neg-soft);color:var(--neg)}
+  .rule .rw{font-size:12.5px;line-height:1.5}
+  .rule .rm{font-size:12px;color:var(--muted);margin-top:7px;font-style:italic}
+  .rule .rnote{font-size:11.5px;color:var(--warn);margin-top:6px}
+  .rule .rex{font-family:var(--mono);font-size:11.5px;margin-top:9px;padding-top:8px;
+    border-top:1px dashed var(--line);color:var(--ink)}
+  .exsays{font-size:11.5px;color:var(--faint);margin-top:12px}
+
+  /* one person's own arithmetic, figure by figure */
+  .why{margin-top:18px;border-top:1px solid var(--line);padding-top:14px}
+  .why .wht{font-size:10.5px;letter-spacing:.07em;text-transform:uppercase;
+    color:var(--faint);margin-bottom:8px}
+  .why .wr{display:flex;gap:12px;align-items:baseline;padding:5px 0;
+    border-bottom:1px dashed var(--line);font-size:12.5px}
+  .why .wr:last-child{border-bottom:0}
+  .why .wh{min-width:160px;font-weight:600}
+  .why .ws{flex:1;font-family:var(--mono);font-size:11.5px;color:var(--muted)}
+  .why .wa{font-family:var(--mono);text-align:right;min-width:90px}
+  @media (max-width:760px){ .why .wr{flex-wrap:wrap} .why .wh{min-width:0} }
+
   .msg{padding:13px 15px;border-radius:8px;background:var(--neg-soft);
     border:1px solid var(--neg);color:var(--neg);font-size:12.5px;margin-bottom:12px}
   .good{padding:13px 15px;border-radius:8px;background:var(--ok-soft);
@@ -204,6 +236,7 @@
   function kept(k, d){ try { return localStorage.getItem(k) || d; } catch (e) { return d; } }
 
   var S = { month:'', D:null, said:'', err:'', open:null, tsCode:'', imported:null,
+            rules:null, exampleSays:'', lateRules:null,
             report:null, slips:null, ledger:null, journal:null, accounts:null,
             tab: kept('fx.payroll.tab', 'working') };
 
@@ -338,6 +371,10 @@
     else if (S.tab === 'qbo') paintQbo();
     else if (S.tab === 'how') paintHow();
     else paintWorking();
+  }
+
+  function HEADKIND(head){
+    return (S.D && S.D.headKind && S.D.headKind[head]) || 'earn';
   }
 
   function statePill(run){
@@ -479,8 +516,23 @@
         '</td></tr>';
     });
 
-    h += '</tbody></table></div>' +
-      '<div class="acts"><button class="solid" id="savelines"' + (locked ? ' disabled' : '') +
+    h += '</tbody></table></div>';
+
+    // Why each worked-out figure is what it is, in this person's own numbers.
+    // "Why is my absent fine 2,750" is the question a payroll gets asked every
+    // month, and the answer should be on the screen rather than in somebody's
+    // head.
+    if ((r.why || []).length) {
+      h += '<div class="why"><div class="wht">Why these figures</div>' +
+        r.why.map(function(x){
+          return '<div class="wr"><span class="wh">' + esc(x.head) + '</span>' +
+            '<span class="ws">' + esc(x.sum) + '</span>' +
+            '<span class="wa">' + rs(HEADKIND(x.head) === 'deduct' ?
+              -Math.abs(x.amount) : x.amount) + '</span></div>';
+        }).join('') + '</div>';
+    }
+
+    h += '<div class="acts"><button class="solid" id="savelines"' + (locked ? ' disabled' : '') +
       '>Save the figures typed</button>' +
       '<span class="note" style="margin:0">A deduction goes in as a plain number ' +
       '&mdash; it is taken off whichever way it is typed. An empty box goes back to ' +
@@ -1258,6 +1310,18 @@
     var P = S.D.policy;
     var admin = S.D.admin;
 
+    // The rules are read once per visit to this tab, not on every page open:
+    // it is a screen somebody opens to read, not a poll.
+    if (!S.rules) {
+      get('/api/hr/policy').then(function(d){
+        if (d.error) { S.rules = []; paintHow(); return; }
+        S.rules = d.rules || [];
+        S.exampleSays = d.exampleSays || '';
+        S.lateRules = d.lateRules || [];
+        paintHow();
+      });
+    }
+
     var h = '<div class="box"><h3>How the salary is worked out' +
       '<span class="aside">' + (admin ? 'you may change these'
         : 'only the administrator may change these') + '</span></h3>' +
@@ -1272,11 +1336,15 @@
       numf('latePer', 'One day of basic goes every this many late days', P.latePer) +
       timef('otFrom', 'Overtime starts at', P.otFrom) +
       timef('otTo', 'And stops at', P.otTo) +
-      '<div><label>Late fine, by default</label><select data-p="lateRule">' +
-        ['days','minutes','minutes2x'].map(function(x){
-          return '<option value="' + x + '"' + (P.lateRule === x ? ' selected' : '') +
-            '>' + x + '</option>';
-        }).join('') + '</select></div>' +
+      '<div style="grid-column:1/-1"><label>How lateness is charged, by default</label>' +
+        '<select data-p="lateRule">' +
+        (S.lateRules || [{ key:'days', name:'A whole day, after every third late arrival' },
+                          { key:'minutes', name:'By the minute' },
+                          { key:'minutes2x', name:'By the minute, doubled past the first hour' }])
+          .map(function(x){
+            return '<option value="' + esc(x.key) + '"' +
+              (P.lateRule === x.key ? ' selected' : '') + '>' + esc(x.name) + '</option>';
+          }).join('') + '</select></div>' +
       '<div><label>Overtime is paid to (departments, commas)</label>' +
         '<input type="text" data-p="otDepts" value="' +
           esc((P.otDepts || []).join(', ')) + '"></div>' +
@@ -1298,30 +1366,7 @@
       '<div class="acts"><button class="solid" id="savepol"' +
         (admin ? '' : ' disabled') + '>Save how it runs</button></div></div></div>';
 
-    h += '<div class="box"><h3>In words' +
-      '<span class="aside">what the figures above mean</span></h3>' +
-      '<table class="t"><tbody>' +
-      rule('1', 'The month is the ' + P.cycleStart + 'th to the ' +
-        ((P.cycleStart || 26) - 1) + 'th, and every per-day rate is the basic over ' +
-        P.monthDays + '.') +
-      rule('2', 'Late begins ' + P.graceMinutes + ' minutes after ' + P.dutyFrom +
-        '. A day counts as late over ' + P.lateCountOver + ' minutes, and every ' +
-        P.latePer + ' late days cost one day of basic.') +
-      rule('3', 'Overtime is the minutes between ' + P.otFrom + ' and ' + P.otTo +
-        ', at the basic per minute, and only for ' +
-        ((P.otDepts || []).join(' and ') || 'nobody') + '.') +
-      rule('4', 'A month with no absence and no leave earns one day of basic as the ' +
-        'regular bonus &mdash; everybody except ' +
-        ((P.noBonusDepts || []).join(' and ') || 'nobody') + '.') +
-      rule('5', 'An absence costs a day of basic. An unapproved half day costs half ' +
-        'of one. An approved leave costs nothing &mdash; which is why the approval is ' +
-        'the only thing between the two.') +
-      rule('6', 'The parcel bonus, the parcel fine and the order bonus are typed in ' +
-        'and shared between the people ticked. Nothing works them out by itself.') +
-      rule('7', 'Approved by ' + ((P.approvers || []).join(', ') ||
-        'the administrator of this company') + ', and nothing reaches QuickBooks ' +
-        'until they have.') +
-      '</tbody></table></div>';
+    h += rulesBox();
 
     h += '<div class="box"><h3>Where each head lands in QuickBooks' +
       '<span class="aside">' + (S.accounts ? n0(S.accounts.length) + ' accounts'
@@ -1346,6 +1391,37 @@
       });
     });
     if (S.accounts) wireAcc();
+  }
+
+  /* ---------- every rule, drawn from the rules themselves ---------- */
+  //
+  // This list is not written here. It comes off `hrrules.js` through
+  // /api/hr/policy, so the screen and the code are the same thing said once.
+  // Each rule shows its name, what it is in a sentence, how it is worked out,
+  // and the same sum with numbers in it - because a figure nobody can see the
+  // arithmetic behind is a figure nobody can argue with.
+
+  function rulesBox(){
+    if (!S.rules) {
+      return '<div class="box"><h3>How each figure is worked out</h3>' +
+        '<div class="loading">Reading the rules&hellip;</div></div>';
+    }
+    return '<div class="box"><h3>How each figure is worked out' +
+      '<span class="aside">' + n0(S.rules.length) + ' rules</span></h3>' +
+      '<div class="rules">' + S.rules.map(function(r){
+        return '<div class="rule">' +
+          '<div class="rh"><span class="rn">' + r.no + '</span>' +
+            '<b>' + esc(r.head) + '</b>' +
+            '<span class="rk ' + (r.kind === 'deduct' ? 'off' : 'on') + '">' +
+              (r.kind === 'deduct' ? 'taken off' : 'added') + '</span></div>' +
+          '<div class="rw">' + esc(r.what) + '</div>' +
+          '<div class="rm"><span>' + esc(r.how) + '</span></div>' +
+          (r.note ? '<div class="rnote">' + esc(r.note) + '</div>' : '') +
+          '<div class="rex">' + esc(r.sum) + '</div>' +
+        '</div>';
+      }).join('') + '</div>' +
+      '<div class="exsays">Worked out on: ' + esc(S.exampleSays || '') + '</div>' +
+      '</div>';
   }
 
   function rule(n, text){

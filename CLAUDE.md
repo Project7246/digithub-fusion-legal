@@ -1869,7 +1869,8 @@ step:
 | File | What it is |
 |---|---|
 | `hr.js` | the people, their days, their leave, the policy, and reading the biometric report |
-| `hrpay.js` | the month: the formulas, the pools, the ledger, the report, the slips, the time sheets, the journal |
+| `hrrules.js` | **one rule per entry** - its name, what it is, how it is worked out, and the same sum with numbers in it. The How it runs screen is drawn from this list |
+| `hrpay.js` | the month: the pools, the ledger, the report, the slips, the time sheets, the journal |
 | `hrimport.js` | reading their own staff master, joining form and ledger in |
 | `tools/hr-check.mjs` | `npm run check:hr` - every formula against their own September figures |
 | `tools/hr-files-check.mjs` | `npm run check:hr-files -- <folder>` - the importers over the real files |
@@ -1903,14 +1904,104 @@ month), prorated by the days they were actually here where it is set to be;
 the days they were on the payroll, an extra day somebody was granted, a basic
 that changed mid-month.
 
+### One rule, one named function, one worked example
+
+Asked for once the first version was working, and it is the instruction that
+shapes the whole module: *"system ko itna complex na bnao, simple bnao, taky koi
+layman bhe dkh kr smjh jay ky ye function kis chez ka hy"* - and with it the
+thing that matters more: *"formula sheet calculation mein mistake hu skti hy q ky
+man made hy... ab tm isko restructure kr rhy hu to achy sy kro, jo
+recommendation hy wasy kro, standard ky mutabiq"*.
+
+So the sheet is **where the rules came from, not what they are**. `hrrules.js`
+is one list, `RULES`, and each entry is one rule carrying:
+
+| | |
+|---|---|
+| `head` | the name on the slip |
+| `what` | what it is, in a sentence a manager reads once |
+| `how` | how it is worked out, in words - no cell references |
+| `note` | the one thing about it that is easy to get wrong, where there is one |
+| `figure(sheet)` | the amount |
+| `sum(sheet)` | **the same sum with the numbers in it** |
+| `cell` | the cell on their sheet it came from, for checking against |
+
+Two things follow from that shape, and both were the point:
+
+- **The How it runs screen is drawn from the list.** `/api/hr/policy` returns
+  `explainAll(exampleSheet(policy))` and the page renders it card by card. The
+  screen cannot say one thing while the code does another, because there is only
+  one place either of them is written.
+- **Every figure on a person's panel shows its own arithmetic.** The working row
+  carries `why` - each rule's sum in that person's numbers - so *"why is my
+  absent fine 2,750"* is answered on the screen rather than in somebody's head.
+  A payroll is argued with every month, and a figure nobody can see behind is a
+  figure nobody will accept.
+
+`worksheet()` is what a rule is handed, and every name in it is the plain word
+for the thing: `dayRate`, `lateMinutes`, `absentDays`, `overtimePaid`. A rule
+reads as a sentence - `sheet.dayRate * sheet.workDays` - with nothing a reader
+has to look up. `AUTO_HEADS` is taken from `RULES`, never written out twice.
+
+**The three late-fine rules are named in words, not in code words.** `days`,
+`minutes` and `minutes2x` meant nothing to anybody reading them for the first
+time, so `LATE_RULES` carries "A whole day, after every third late arrival",
+"By the minute" and "By the minute, doubled past the first hour", and that is
+what the policy dropdown offers. All three are real policy rather than an
+accident: the office loses a whole day after the third late arrival, while a
+packer twenty minutes late is twenty minutes of parcels nobody packed.
+
+### Where the sheet is wrong, and why it was wrong
+
+Two accidents, both the same accident, and both now fixed rather than copied.
+
+**A rule gives a positive amount and the head's kind decides the sign**, in one
+place. Their sheet writes a minus inside some of its fine formulas and not
+others (`AA991` has one, `AD991` gets it from dividing by -30), which is how a
+fine ends up taken off on one row and added on the next. There is nowhere left
+for that to happen: `figureAll()` returns magnitudes and `hrpay.js` signs them
+once.
+
+**In the ledger, the credit side decides the sign - not the head.** This is the
+bigger one. Their report reads every salary column as `SUMIF` on the *debit
+head* and ignores the credit side completely, so:
+
+| A row saying | Their report does | What it means |
+|---|---|---|
+| `Parcel Fine | Payable | 500` | adds 500 to the fine | a fine being **given back** |
+| `Advance | Receivable | 5,000` | makes the advance 5,000 **bigger** | an advance being **recovered** |
+
+Sixty-five rows in their ledger are of the first kind. `sideOf()` in
+`hrimport.js` is the whole of the fix, and it is three lines because a ledger
+only has three sides:
+
+```
+  Payable     the company owes it to them        adds
+  Receivable  they owe it to the company         takes off
+  Paid        it was handed over in the month    adds, and counts as paid
+```
+
+One rule, no exceptions per head - which is also why nothing downstream has to
+know which heads are fines. On their September data this moves the month's net
+by 1,533 against their printed report, and **every one of the five people the
+check ties to that report still ties exactly**: the figures agree where the
+sheet was right and are corrected where it was not. That is the whole intent of
+*"karna ab Fusion sy hy"* - the same work, done properly.
+
+`npm run check:hr` now exercises each rule against a figure off their own
+September working sheet - the office's overtime, the floor's doubled minutes,
+three late days costing one, two absences, a half day - plus the three things
+that are easy to get wrong by hand: one absence takes the whole attendance
+bonus, a part month earns none of it, and no rule anywhere returns a negative.
+
 ### The formulas, and the cells they came from
 
-Every one is off their Salary Working sheet, and `npm run check:hr` ties the
-three pools to the rupee against their September figures (11,181 / 7,959 /
-9,373.63). The policy holds every number, and `/payroll` → **How it runs**
-states each rule in a sentence with the number in it - the way the Shopify
-connector states its own. A rule that cannot be put on that page in one
-sentence is a special case, not a rule.
+Every one came off their Salary Working sheet, and the cell is named beside it
+so the two can be checked against each other. `npm run check:hr` ties the three
+pools to the rupee against their September figures (11,181 / 7,959 / 9,373.63).
+The policy holds every number, and `/payroll` → **How it runs** is generated
+from the rules themselves - see the section above. A rule that cannot be put on
+that page in one sentence is a special case, not a rule.
 
 | Head | The rule | Their cell |
 |---|---|---|

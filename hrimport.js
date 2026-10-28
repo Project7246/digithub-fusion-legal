@@ -320,15 +320,36 @@ export function whoFrom(cell) {
   return { code: null, name: s };
 }
 
-// What one month of one person comes to, by their report's own arithmetic:
-// earnings as they are, deductions negated. An information head - the advance,
-// the credit purchase - is in neither, because it is a balance worked out
-// later and not part of this month's pay.
+// Which way a row moves the money, and it is the **credit side that says so** -
+// not the head.
+//
+// This is where their sheet is wrong, and it is wrong by accident rather than
+// by policy. Their report reads every salary column as `SUMIF` on the *debit
+// head* and ignores the credit side entirely, so a `Parcel Fine | Payable` row -
+// a fine being given back - is added to the fine instead of taken off it, and
+// an `Advance | Receivable` row - an advance being recovered - makes the advance
+// bigger. Sixty-five rows in their ledger are of the first kind.
+//
+// A ledger has three sides and they mean what they say:
+//
+//   Payable     the company owes it to them        adds
+//   Receivable  they owe it to the company         takes off
+//   Paid        it was handed over in the month    adds, and counts as paid
+//
+// One rule, no exceptions per head, which is also why nothing downstream has to
+// know which heads are fines.
+export function sideOf(credit) {
+  return credit === 'receivable' ? -1 : 1;
+}
+
+// What one month of one person comes to. The amounts are already signed by the
+// side, so this is a plain sum - an information head (the advance, the credit
+// purchase) is left out, because it is a balance worked out later and not part
+// of this month's pay.
 function netOf(heads) {
   let n = 0;
   Object.keys(heads).forEach(h => {
-    if (HEAD_KIND[h] === 'earn') n += heads[h];
-    else if (HEAD_KIND[h] === 'deduct') n -= Math.abs(heads[h]);
+    if (HEAD_KIND[h] === 'earn' || HEAD_KIND[h] === 'deduct') n += heads[h];
   });
   return n;
 }
@@ -390,10 +411,13 @@ export function readLedger(grid, find) {
     months.add(month);
     read++;
 
+    const credit = at.credit != null ? words(row[at.credit]) : '';
+    const signed = amt * sideOf(credit);
+
     const atMonth = book.get(month) || new Map();
     const mine = atMonth.get(String(code)) || { heads: {}, paid: 0 };
-    if (head) mine.heads[head] = (mine.heads[head] || 0) + amt;
-    if (at.credit != null && words(row[at.credit]) === 'paid') mine.paid += amt;
+    if (head) mine.heads[head] = (mine.heads[head] || 0) + signed;
+    if (credit === 'paid') mine.paid += amt;
     atMonth.set(String(code), mine);
     book.set(month, atMonth);
   }
@@ -449,13 +473,9 @@ export async function importLedger(realmId, grid, opts) {
         if (mine.paid) lines['Paid During Month'] = mine.paid;
 
         for (const head of Object.keys(lines)) {
-          const raw = lines[head];
-          // Earnings as they are, deductions negated - which is exactly what
-          // their report's `-SUMIF` does to the same number. An information
-          // head (the advance, the credit purchase) is left as the ledger has
-          // it, because the balance is worked out from those rows later.
-          const kind = HEAD_KIND[head];
-          const amount = kind === 'deduct' ? -Math.abs(raw) : raw;
+          // Already signed by the credit side (see sideOf). Nothing re-signs it
+          // here: a fine that was given back stays given back.
+          const amount = lines[head];
           if (!amount) continue;
 
           // A figure somebody has typed in Fusion is theirs and an import does

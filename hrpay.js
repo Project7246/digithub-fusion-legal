@@ -3,6 +3,9 @@ import {
   hrPolicy, cycleOf, monthText, thisMonth, dayText, todayText, eachDay,
   listEmployees, daysOf, dayFigures, lateRuleFor, minutesOf, clockOf
 } from './hr.js';
+import {
+  worksheet, figureAll, explainAll, lateDaysLost, RULE_HEADS, lateRuleNamed
+} from './hrrules.js';
 
 // ==================== HR: what the month is worth ====================
 //
@@ -56,11 +59,14 @@ export const HEADS = [...EARN, ...DEDUCT, ...PAID, ...INFO];
 // A head nobody calculates is not a gap - the performance bonus is decided by
 // the management and the travelling allowance is agreed with the person, and
 // neither is something a formula should be guessing at.
-export const AUTO_HEADS = [
-  'Basic Salary', 'Overtime', 'Attendance Bonus', 'Parcel / Order Bonus',
-  'Late Fine', 'Parcel Fine', 'Absent Fine', 'Half Day Fine',
-  'Paid During Month'
-];
+// Which heads this app works out for itself. **Taken from the rules list**, not
+// written out again here - a head on one list and off the other is how a figure
+// comes out as nought with nothing to explain it.
+//
+// A head that is not here is a person's to type: the performance bonus is a
+// management decision and the travelling allowance is agreed with the person,
+// and neither is something a formula should be guessing at.
+export const AUTO_HEADS = [...RULE_HEADS, 'Paid During Month'];
 
 export const HEAD_KIND = {};
 EARN.forEach(h => { HEAD_KIND[h] = 'earn'; });
@@ -405,76 +411,60 @@ export async function workingOf(realmId, month) {
       if (count[d.status] != null) count[d.status]++;
     });
 
-    const dayRate = mdays ? basic / mdays : 0;
-    const minRate = dutyMin ? dayRate / dutyMin : 0;
-
-    // I991 =IF(ISNUMBER(H991), INT(H991/3), "") - every third late day is a day
-    const latePer = Number(policy.latePer) || 3;
-    const lateCut = Math.floor(lateDays / latePer);
-
+    // Who is paid overtime and who gets the regular bonus is a department's
+    // business, set in the policy, overridable per person.
     const otAllowed = emp.ot_allowed != null
       ? !!emp.ot_allowed
       : (policy.otDepts || []).some(x => sameWord(x, emp.department));
     const bonusAllowed = !(policy.noBonusDepts || []).some(x => sameWord(x, emp.department));
+    const lateRule = lateRuleFor(policy, emp);
+    const inPool = (which) =>
+      (pools[which].persons || []).map(String).indexOf(code) >= 0;
 
+    // Everything a rule is allowed to see, with every name the plain word for
+    // the thing. One object, built here, read by `hrrules.js`.
+    const sheet = worksheet({
+      basic,
+      monthDays: mdays,
+      workDays,
+      dutyMinutes: dutyMin,
+      lateMinutes: lateMin,
+      lateDays,
+      overtimeMinutes: otMin,
+      absentDays: count.absent,
+      halfDays: count.half,
+      approvedHalfDays: count.ahalf,
+      leaveDays: count.leave,
+      overtimePaid: otAllowed,
+      bonusPaid: bonusAllowed,
+      lateRule,
+      extraOvertimeDays: Number(f.ot_extra_days) || 0,
+      parcelBonusShare: inPool('parcel') ? pools.parcel.figures.each : 0,
+      orderBonusShare: inPool('order') ? pools.order.figures.each : 0,
+      parcelFineShare: inPool('parcelfine') ? pools.parcelfine.figures.each : 0,
+      latePer: policy.latePer,
+      halfDayFine: policy.halfDayFine
+    });
+
+    // **Every rule gives a positive amount, and the head's kind decides the
+    // sign** - in one place, here. Their sheet writes a minus inside some of
+    // its fine formulas and not others, which is how a fine is taken off on one
+    // row and added on the next; there is nowhere for that to happen now.
     const auto = {};
+    const figured = figureAll(sheet);
+    Object.keys(figured).forEach(head => {
+      auto[head] = HEAD_KIND[head] === 'deduct'
+        ? n2(-Math.abs(figured[head]))
+        : n2(figured[head]);
+    });
 
-    // P991 =(N991/$O$989)*O991
-    auto['Basic Salary'] = n2(dayRate * workDays);
-
-    // Q991 =ROUNDUP((N991/$O$989)/(480)*(F991),0), plus whatever extra days
-    // somebody was granted (their "Extra day adjustment")
-    const extraDays = Number(f.ot_extra_days) || 0;
-    auto['Overtime'] = otAllowed
-      ? n2(up(minRate * otMin) + dayRate * extraDays)
-      : n2(dayRate * extraDays);
-
-    // R991 =IF(OR(J991<>0, M991<>0, O991<30), 0, N991/O991) - a whole month
-    // with nothing missed is worth one day's basic
-    auto['Attendance Bonus'] = (bonusAllowed && !count.absent && !count.leave &&
-                                workDays >= mdays && workDays)
-      ? n2(basic / workDays) : 0;
-
-    // T991 =$W$1059 for CSR, =$I$1062 for logistics - whichever pool names them
-    let pb = 0;
-    if ((pools.order.persons || []).map(String).indexOf(code) >= 0) {
-      pb += pools.order.figures.each;
-    }
-    if ((pools.parcel.persons || []).map(String).indexOf(code) >= 0) {
-      pb += pools.parcel.figures.each;
-    }
-    auto['Parcel / Order Bonus'] = n2(pb);
-
-    // AA991. Three rules, and which one is theirs is their department's:
-    //   days      =-ROUNDUP((N/$F$989)*I,0)
-    //   minutes   =-ROUNDUP((N/$F$989)/480*G,0)
-    //   minutes2x =-ROUNDUP(((N/$F$989)/480)*(MIN(G,60)+MAX(G-60,0)*2),0)
-    const rule = lateRuleFor(policy, emp);
-    let lateFine = 0;
-    if (rule === 'minutes') lateFine = up(minRate * lateMin);
-    else if (rule === 'minutes2x') {
-      lateFine = up(minRate * (Math.min(lateMin, 60) + Math.max(lateMin - 60, 0) * 2));
-    } else lateFine = up(dayRate * lateCut);
-    auto['Late Fine'] = n2(-lateFine);
-
-    // AB991 =-$N$1062 - half the month's parcel fine, shared
-    auto['Parcel Fine'] = (pools.parcelfine.persons || []).map(String).indexOf(code) >= 0
-      ? n2(-pools.parcelfine.figures.each) : 0;
-
-    // AC991 =-ROUNDUP((N991/$F$989)*J991,0)
-    auto['Absent Fine'] = n2(-up(dayRate * count.absent));
-
-    // AD991 =K991*((N991/-30)/2) - half a day for each half day nobody approved
-    auto['Half Day Fine'] = policy.halfDayFine === false
-      ? 0 : n2(count.half * -(dayRate / 2));
-
-    // Every standing amount this person has, written in as the month's own -
-    // prorated where it is set to be, which is how a part month's food
-    // allowance comes out as (3902/30)*13.
+    // A standing amount is not a rule - it is a figure set once on the person
+    // (the logistics floor's food allowance) and written into every month after,
+    // shared over the days they were actually here where it is set to be.
     Object.keys(stand).forEach(head => {
-      const s = stand[head];
-      const amt = Number(s.amount) || 0;
-      auto[head] = n2(s.prorate && mdays ? (amt / mdays) * workDays : amt);
+      const st = stand[head];
+      const amt = Number(st.amount) || 0;
+      auto[head] = n2(st.prorate && mdays ? (amt / mdays) * workDays : amt);
     });
 
     // What is actually on the ledger. A figure a person typed, or one brought in
@@ -508,13 +498,19 @@ export async function workingOf(realmId, month) {
       virtual: !!emp.virtual,
 
       basic: n2(basic), workDays, monthDays: mdays,
-      otMin, lateMin, lateDays, lateCut, extraDays,
+      otMin, lateMin, lateDays, lateCut: lateDaysLost(sheet),
+      extraDays: sheet.extraOvertimeDays,
       absent: count.absent, half: count.half, ahalf: count.ahalf,
       leaves: count.leave, present: count.present, wfh: count.wfh,
       holiday: count.holiday, pending: count.pending,
-      otAllowed, bonusAllowed, lateRule: rule,
+      otAllowed, bonusAllowed,
+      lateRule, lateRuleName: lateRuleNamed(lateRule).name,
 
       auto, amount,
+      // Each rule's own arithmetic, in words, with this person's numbers in it.
+      // A figure nobody can see the sum behind is a figure nobody can argue
+      // with - and a payroll is argued with every month.
+      why: explainAll(sheet),
       // Which heads the calculation is not allowed to touch, and which of those
       // a person typed as against which came out of the old sheet - the screen
       // says so, because "this is your figure" and "this is last year's book"
