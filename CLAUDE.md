@@ -2704,3 +2704,68 @@ there for every company at the same moment.
 workspace called "Fusion Demo" (no sign-up needed). Every page opens, every POST is
 refused (viewer role). `DEMO=off` in DigitalOcean switches it off. Terms and Privacy
 (`/eula`, `/privacy`) are in the Fusion brand and give `support@availity.pk`.
+
+## Banking: the banks, and what moves through them
+
+Asked for on 30 Oct 2026, with the reason attached: the management wants one
+live report - every bank account, what is in it, what is still to come, what
+has been paid and received **during the tax year** - instead of assembling it
+by hand from fifty accounts.
+
+**It is Fusion's own.** Every route asks `requireBoss`, `/banking.html` is
+`'__boss__'` in `PAGE_NEED` (the one value that is not a right and cannot be
+handed out), and the tile and the rail line are drawn for nobody else. A
+client's own administrator is `admin` but not `boss`, and that is the
+difference this uses.
+
+Three feeds and no more, which is the whole design:
+
+| | where it comes from |
+|---|---|
+| **opening** | typed once, with the day it is true of. **Nothing before that day is ever counted** - "wo balance ky pichy wali transaction bank na uthay" - so the figure typed in stays the figure |
+| **in** | the couriers: a receipt that has been paid |
+| **out** | the spending sheet the company already keeps, read live from its published CSV |
+
+and two by hand, because no feed can know them: a transfer between two banks
+and an adjustment.
+
+### A courier's money lands where it landed, not where it lands now
+
+`bank_links` is one dated row per change, never edited. A deposit is written
+against the bank that account was paying into **on the day the receipt was
+paid**, so changing the bank on 1 November does not move October's money - and
+the rows themselves are the change log the screen shows, with who made each
+change and when.
+
+- **One receipt is one deposit anywhere.** The unique key is
+  `(realm_id, source, ref)` and deliberately **not** the bank: with the bank in
+  it, correcting the date a bank was changed from would leave the old deposit
+  where it was and write a second one, and the same money would sit in two
+  accounts.
+- A payment that landed in the account a courier was told to stop using is
+  **moved bank to bank** (`/api/bank/move`), not adjusted away.
+- Receipts with nowhere to land are named rather than dropped: `homeless()`
+  says which account, how much, and which of the two reasons it is - no bank
+  set yet, or paid before the bank's opening date.
+
+### The spending sheet is read, not retyped
+
+`sheet_url` on a bank is a Google Sheet published as CSV. The headings are
+found by their words (a date, an amount, something saying what it was for), the
+CSV is parsed with quotes understood - `"Fuel, Lahore"` is one column - and the
+date is read **day first, by hand**, never through `new Date()`.
+
+A row's key is its day, its amount and its words, so **a row taken out of the
+sheet comes off the bank too**: the sheet stays the record rather than becoming
+a one-way import. The trade is that two genuinely identical payments on one day
+are one row here, which is the price of not needing a column nobody keeps.
+
+### The tax year
+
+**1 July to 30 June, named by the year it ends in** - 1 July 2025 to 30 June
+2026 is tax year 2026. `taxYear()` is the only thing that knows it, and every
+"during the year" figure is cut by that and nothing else.
+
+**What we owe is not in this app**, so the report says `payable: null` rather
+than nought. A nought is a figure nobody can argue with and nobody should
+trust.
