@@ -117,6 +117,22 @@ export async function initCouriers() {
     )
   `);
 
+  // Where the courier actually sent the money. M&P name it on every payment -
+  // the beneficiary, the bank and the IBAN - and that is worth columns of its
+  // own rather than a corner of `raw`: it is how the app can say "they are
+  // paying into a different account now" instead of somebody noticing it by
+  // eye on a statement a month later.
+  await pool.query(`
+    ALTER TABLE courier_cprs
+      ADD COLUMN IF NOT EXISTS paid_to_name    TEXT,
+      ADD COLUMN IF NOT EXISTS paid_to_bank    TEXT,
+      ADD COLUMN IF NOT EXISTS paid_to_account TEXT,
+      ADD COLUMN IF NOT EXISTS instrument      TEXT,
+      ADD COLUMN IF NOT EXISTS pay_mode        TEXT,
+      ADD COLUMN IF NOT EXISTS gross_amount    NUMERIC(14,2),
+      ADD COLUMN IF NOT EXISTS charge_amount   NUMERIC(14,2)
+  `);
+
   await pool.query(`
     CREATE UNIQUE INDEX IF NOT EXISTS courier_cprs_key
       ON courier_cprs (realm_id, account_id, cpr_number)
@@ -152,8 +168,10 @@ export async function saveCprs(realmId, accountId, courier, rows) {
     await pool.query(
       `INSERT INTO courier_cprs
          (realm_id, account_id, courier, cpr_number, remote_id, status, status_id,
-          net_amount, created_on, approved_on, raw, seen_at)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11, NOW())
+          net_amount, created_on, approved_on, raw,
+          paid_to_name, paid_to_bank, paid_to_account, instrument, pay_mode,
+          gross_amount, charge_amount, seen_at)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18, NOW())
        ON CONFLICT (realm_id, account_id, cpr_number) DO UPDATE SET
          remote_id   = EXCLUDED.remote_id,
          status      = EXCLUDED.status,
@@ -162,11 +180,24 @@ export async function saveCprs(realmId, accountId, courier, rows) {
          created_on  = EXCLUDED.created_on,
          approved_on = EXCLUDED.approved_on,
          raw         = EXCLUDED.raw,
+         -- a courier that said nothing about where it paid does not erase
+         -- where it said it paid last time
+         paid_to_name    = COALESCE(EXCLUDED.paid_to_name, courier_cprs.paid_to_name),
+         paid_to_bank    = COALESCE(EXCLUDED.paid_to_bank, courier_cprs.paid_to_bank),
+         paid_to_account = COALESCE(EXCLUDED.paid_to_account, courier_cprs.paid_to_account),
+         instrument      = COALESCE(EXCLUDED.instrument, courier_cprs.instrument),
+         pay_mode        = COALESCE(EXCLUDED.pay_mode, courier_cprs.pay_mode),
+         gross_amount    = COALESCE(EXCLUDED.gross_amount, courier_cprs.gross_amount),
+         charge_amount   = COALESCE(EXCLUDED.charge_amount, courier_cprs.charge_amount),
          seen_at     = NOW()`,
       [realmId, accountId, courier, c.cprNumber, c.remoteId || null,
        c.status || null, c.statusId || null, c.netAmount || 0,
        c.createdOn || null, c.approvedOn || null,
-       JSON.stringify(c.raw || {})]
+       JSON.stringify(c.raw || {}),
+       c.paidToName || null, c.paidToBank || null, c.paidToAccount || null,
+       c.instrument || null, c.mode || null,
+       c.grossAmount == null ? null : Number(c.grossAmount),
+       c.chargeAmount == null ? null : Number(c.chargeAmount)]
     );
   }
 

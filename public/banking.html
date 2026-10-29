@@ -101,7 +101,7 @@
 (function(){
   var $ = function(id){ return document.getElementById(id); };
   var NAMES = { postex:'PostEx', trax:'Trax', mnp:'M&P' };
-  var S = { tab:'report', report:null, links:null, today:'', editing:null };
+  var S = { tab:'report', report:null, links:null, drift:[], today:'', editing:null };
 
   function esc(s){
     return String(s == null ? '' : s)
@@ -219,6 +219,25 @@
       byAccount[l.accountId].push(l);
     });
 
+    // What the couriers themselves say about where they are paying. M&P name
+    // the account on every payment, so a bank changed with the courier turns
+    // up here by itself.
+    var drift = (S.drift || []).map(function(x){
+      if(x.state === 'unset'){
+        return '<div class="warn"><b>' + esc(x.label) + '</b> is paying into ' +
+          esc(x.bank || 'a bank') + ' · <span class="mono">' + esc(x.account) +
+          '</span>' + (x.name ? ' (' + esc(x.name) + ')' : '') +
+          ' — and no bank is set for it here. ' +
+          '<button class="mini" data-follow="' + x.accountId + '">Use this bank</button></div>';
+      }
+      return '<div class="warn"><b>' + esc(x.label) + ' has started paying somewhere else.</b> ' +
+        esc(x.courier.toUpperCase()) + ' say the money went to <span class="mono">' +
+        esc(x.account) + '</span> at ' + esc(x.bank || 'another bank') +
+        (x.on ? ' on ' + esc(x.on) : '') +
+        ', and Fusion has it against <b>' + esc(x.bankName) + '</b>. ' +
+        '<button class="mini" data-follow="' + x.accountId + '">Follow the change</button></div>';
+    }).join('');
+
     var waiting = (d.waiting || []).filter(function(w){ return w.net > 0; });
     var warn = waiting.length
       ? '<div class="warn"><b>' + waiting.length + ' courier account' +
@@ -268,7 +287,7 @@
       '</div>';
     }).join('');
 
-    return warn +
+    return drift + warn +
       '<div class="sheet" style="margin-bottom:16px"><div class="sec">' +
         '<h2>How this works<span class="aside">read once</span></h2>' +
         '<p class="hint" style="margin:0">A courier payment goes into the bank that ' +
@@ -467,6 +486,21 @@
       });
     });
 
+    // "Follow the change" only ever takes you to the account's own card with
+    // today's date in it. It does not set the bank by itself: which of your
+    // banks that account number is, and from what day, is a decision about
+    // money and is not one to guess at from an IBAN.
+    v.querySelectorAll('[data-follow]').forEach(function(b){
+      b.addEventListener('click', function(){
+        var acc = b.getAttribute('data-follow');
+        var row = v.querySelector('[data-k="from"][data-acc="' + acc + '"]');
+        if(!row) return;
+        row.value = S.today;
+        row.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        row.focus();
+      });
+    });
+
     v.querySelectorAll('[data-unlink]').forEach(function(b){
       b.addEventListener('click', function(e){
         e.stopPropagation();
@@ -552,10 +586,12 @@
   }
 
   function load(){
-    return Promise.all([ get('/api/bank/report'), get('/api/bank/links') ])
+    return Promise.all([ get('/api/bank/report'), get('/api/bank/links'),
+                         get('/api/bank/drift').catch(function(){ return { drift: [] }; }) ])
       .then(function(a){
         S.report = a[0];
         S.links = a[1];
+        S.drift = (a[2] && a[2].drift) || [];
         S.today = a[0].today || S.today;
         $('yearNote').textContent = 'Tax year ' + a[0].year.year +
           ' · ' + a[0].year.from + ' to ' + a[0].year.to;

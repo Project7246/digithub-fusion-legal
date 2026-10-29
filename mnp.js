@@ -591,8 +591,16 @@ export async function fetchPayouts(token, from, to, extra) {
           netPayable: num(row.NetPayable),
           mode:       row.InstrumentMode || '',
           instrument: String(row.InstrumentNumber || '').trim(),
-          bank:       (block && block.BankName) || '',
-          account:    (block && block.AccountNo) || ''
+          // where they sent it. They name the beneficiary and the IBAN on
+          // every payment, which is how a bank changed with the courier shows
+          // up here rather than on a statement weeks later.
+          bank:        (block && block.BankName) || '',
+          beneficiary: (block && (block.BeneficiaryName || block.AcccountName ||
+                                  block.AccountName)) || '',
+          bankAccount: (block && (block.BeneficiaryBankAccount ||
+                                  block.BeneficiaryAccount)) || '',
+          branch:      (block && block.BranchName) || '',
+          account:     (block && block.AccountNo) || ''
         });
       });
     }

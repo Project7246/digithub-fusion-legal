@@ -2882,3 +2882,36 @@ settled by one call that a week of reading manuals had not:
 Ask it before changing an adapter's field names. Guessing at names is what put
 `servicecharges` and `gst` into M&P's mapper, where they matched nothing and
 looked like a fix.
+
+### M&P's payments, and the bank they went into
+
+M&P have no webhook of any kind, so their money is asked for:
+`Reports/Payment_Report`, a span of days at a time, pulled on every sync
+(`mnplive.js`, `absorbPayouts()`). One row per payment, and a block around the
+rows naming the account it was sent to:
+
+```
+row    serial_no, PaymentID, PaidOn, RRAmount, InvoiceAmount, NetPayable,
+       InstrumentMode, InstrumentNumber
+block  BeneficiaryName, BankName, BeneficiaryBankAccount, AccountNo, BranchName
+```
+
+Each payment becomes a receipt (`courier_cprs`) with its **net**, and the
+gross and the charge kept beside it rather than worked back out later -
+`gross_amount`, `charge_amount`, and `paid_to_name`, `paid_to_bank`,
+`paid_to_account`, `instrument`, `pay_mode` as columns of their own.
+
+**And that is how a bank change announces itself.** The courier says on every
+payment which account it sent the money to, so when somebody changes the
+account with the courier, the courier's own next payment says so.
+`bankDrift()` puts that beside the bank linked here and the Banking screen
+shows it in three states - no bank set, the courier paying somewhere else, or
+agreement, which is shown as nothing at all. Account numbers are compared with
+everything but letters and digits taken out: an IBAN is written with spaces as
+often as without, and two spellings of one account is not a change of bank.
+
+**"Follow the change" does not set the bank by itself.** It takes you to that
+account's own card with today's date in it. Which of your banks an account
+number is, and from what day, is a decision about money - not one to guess at
+from an IBAN, and the dated link it writes is what every past deposit is
+placed by.
