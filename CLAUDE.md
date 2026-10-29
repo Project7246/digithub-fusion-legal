@@ -619,6 +619,32 @@ so every call sends all three.
 - One consignment can also be read from their public tracking screen
   (`tracking.mulphilog.com.pk/api/CNTracking`, `id` always 4), which needs no
   sign-in at all.
+### M&P do not deduct - they invoice
+
+Settled on 30 Oct 2026 by asking their API and reading the answer, not by
+reading the manual again. A parcel with `CODAmount` 6943 came back with
+`AmountPaid` **6943** - the whole of it - and what M&P charged for carrying it
+is on a line of its own:
+
+```
+CNTrackingInvDetail: [{ InvoiceNumber, InvoiceDate, AmountInvoiced, InvoiceType }]
+```
+
+That is why their QSR report has **seventeen columns and not one of them is a
+charge or a tax**, and why guessing at `servicecharges` and `gst` matched
+nothing. Their `fee` is the sum of `AmountInvoiced`, the invoice lines are kept
+beside the parcel, and their `tax` is nought honestly: that call gives one
+amount and does not split carriage from GST.
+
+**This changes the money chain, not only the field.** Every receivable figure
+was `amount - fee - tax`, which is right for PostEx and Trax - they pay the COD
+less what they kept - and wrong for M&P, who pay the whole COD and send a bill.
+Netting their charges off understated what M&P owe by exactly their charges, on
+the dashboard, the statement, the ageing, the receipts and the banking deposits
+alike. **`deductingCouriers()` in `adapters.js` is the one list**, each adapter
+says which it is (`deducts: false` on M&P), and every money query builds its SQL
+from it.
+
 - **Their charges and their GST were hard nought until 30 Oct 2026**, in both
   mappers. So an M&P receipt showed no tax at all, every M&P parcel looked as
   though it had cost nothing to carry, what M&P still owed was overstated by
@@ -2769,3 +2795,71 @@ are one row here, which is the price of not needing a column nobody keeps.
 **What we owe is not in this app**, so the report says `payable: null` rather
 than nought. A nought is a figure nobody can argue with and nobody should
 trust.
+
+## A nought is "not said", never "nothing"
+
+Three bugs in one week, all the same bug, all in the money:
+
+- **M&P's charges and GST** were written as `0` in both mappers with nothing
+  behind them. Their report carries no such column at all.
+- **Trax's tracking call** returns no money either, so `mapTracked` sets fee
+  and tax to nought - and `saveOrders` wrote that straight over the charges a
+  webhook or an invoice had already recorded. **Every sweep raised what the
+  courier owed us by exactly its charges.**
+- **The weight** was read by every adapter for years and kept by none, so the
+  rates screen had nothing to price against.
+
+The rule now, and it is the same rule in all three places: **a courier that
+says nothing does not erase what it said before.** `saveOrders` only overwrites
+`fee`, `tax` and `weight` with a value that is not nought; a nought leaves what
+is there alone. Where a figure genuinely is nothing - M&P's tax - it is said in
+the comment, so the next person knows which kind of nought they are looking at.
+
+And when a figure cannot be read at all, the screen says so rather than showing
+a nought: "M&P charges 0" has to mean "not read" until the adapter is known to
+read them.
+
+## The month's compute, and who was actually spending it
+
+Found on 30 Oct 2026, with the couriers apparently broken: `/api/courier/keeper`
+said **134 of 100 hours used**, `holding: true`, and the courier sweep had spent
+**5.3** of those hours. So the sweep that had been switched off to save the
+month was not the one spending it - and because M&P have no webhooks and must be
+polled, M&P simply stopped. That is what "the data is not up to date" and the
+CPRs ending on the 26th were.
+
+**The Shopify sweep was the spender.** It ran every ten minutes for ever,
+whatever the meter said, and ten minutes is longer than Neon's five-minute idle
+window - so every pass was its own spell: 144 wake-ups a day, about six minutes
+each, to ask an empty queue whether anything had arrived. The meter could not
+see it, because it only counted the keeper's own `beginBackground`/
+`endBackground` seconds.
+
+It is background work now and says so: counted through the same pair, rested on
+`nextGapMinutes()` rather than a flat ten minutes, and held off at an hour
+apiece once the month is spent. A backlog in flight is still worked through at
+four seconds a batch - that is finite and somebody is waiting for it.
+
+**The rule this leaves behind**: anything that wakes the database on a timer
+must be measured by `compute.js` and paced by its budget. A new always-on poller
+that is not is a standing charge the meter will blame on something else.
+
+## Asking a courier what it actually sends
+
+`GET /api/courier/peek?account=N&from=&to=` (Fusion's own, `requireBoss`) calls
+the courier's own list calls and hands back **their row untouched** - the keys
+on it, the first row, and whatever the block around it carries.
+
+It exists because of the sentence this file now repeats: a figure of nought and
+a column that was never sent look identical on every screen. Three things were
+settled by one call that a week of reading manuals had not:
+
+- M&P's QSR report has no charge column at all
+- M&P's charges are on `CNTrackingInvDetail`, per consignment
+- `"There is no QSR Report record against the request parameters"` is what M&P
+  say when the **location id is not one of theirs** - it reads as "no data", so
+  `peek` lists the sub-accounts the sign-in really holds beside the one saved
+
+Ask it before changing an adapter's field names. Guessing at names is what put
+`servicecharges` and `gst` into M&P's mapper, where they matched nothing and
+looked like a fix.
