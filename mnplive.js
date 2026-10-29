@@ -38,7 +38,39 @@ export async function absorbPayouts(realmId, acc, from, to) {
 
   const list = await a.fetchPayouts(acc.token, from, to, credsOf(acc));
 
-  const rows = (list || []).filter(p => p && p.paymentId).map(p => ({
+  // **Their report is per consignment, not per payment.** One October came
+  // back with three thousand rows and the receipts under them hold a hundred
+  // and fifty parcels apiece - so a row is one parcel's share of a payment,
+  // and the payment is what the rows add up to. Keeping one row per payment
+  // number put one parcel's figures on a receipt worth a hundred and fifty of
+  // them: a receipt of 326,262 collected showed a net of 1,147.
+  const byPayment = new Map();
+  (list || []).forEach(p => {
+    if (!p || !p.paymentId) return;
+    const key = String(p.paymentId);
+    const sum = byPayment.get(key) || {
+      paymentId: key, paidOn: null, amount: 0, invoiced: 0, netPayable: 0,
+      mode: '', instrument: '', bank: '', beneficiary: '', bankAccount: '',
+      account: '', lines: 0
+    };
+
+    sum.amount     += Number(p.amount) || 0;
+    sum.invoiced   += Number(p.invoiced) || 0;
+    sum.netPayable += Number(p.netPayable) || 0;
+    sum.lines      += 1;
+
+    // the earliest day it was paid on - they repeat it on every line
+    if (p.paidOn && (!sum.paidOn || p.paidOn < sum.paidOn)) sum.paidOn = p.paidOn;
+
+    // whichever line actually carries each of these: a line that says nothing
+    // about the bank does not erase what another line said
+    ['mode', 'instrument', 'bank', 'beneficiary', 'bankAccount', 'account']
+      .forEach(k => { if (!sum[k] && p[k]) sum[k] = p[k]; });
+
+    byPayment.set(key, sum);
+  });
+
+  const rows = [...byPayment.values()].map(p => ({
     cprNumber:  String(p.paymentId),
     remoteId:   String(p.paymentId),
     // A payment that exists is money that moved, which is what CLOSED means
@@ -55,7 +87,7 @@ export async function absorbPayouts(realmId, acc, from, to) {
     paidToAccount: p.bankAccount || null,
     instrument:    p.instrument || null,
     mode:          p.mode || null,
-    raw: { via: 'payment report', account: p.account || '' }
+    raw: { via: 'payment report', account: p.account || '', lines: p.lines }
   }));
 
   if (!rows.length) return { payments: 0 };
