@@ -1,0 +1,603 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Rates</title>
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="manifest" href="/manifest.json">
+<meta name="theme-color" content="#222F34">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@600;700;800&family=Roboto:wght@400;500&family=Roboto+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/app.css">
+<style>
+  .cbar{display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap;margin-bottom:16px}
+  .cbar > div{display:flex;flex-direction:column;gap:5px}
+  .cbar label{margin:0}
+  .cbar input[type=date],.cbar select{width:auto;min-width:150px}
+
+  .pills{display:flex;gap:4px;flex-wrap:wrap;margin-bottom:16px}
+  .pills button{padding:7px 14px;border-radius:7px;border:1px solid var(--line);
+    background:var(--panel);font:inherit;font-size:13px;color:var(--muted);cursor:pointer}
+  .pills button.on{background:var(--ink);border-color:var(--ink);color:#fff;font-weight:500}
+
+  table.plain{width:100%;border-collapse:collapse;font-size:13px}
+  table.plain th{font-family:var(--mono);font-size:10px;letter-spacing:.09em;
+    text-transform:uppercase;color:var(--faint);font-weight:400;text-align:left;
+    padding:9px 14px;border-bottom:1px solid var(--line);white-space:nowrap}
+  table.plain td{padding:10px 14px;border-bottom:1px solid var(--line)}
+  table.plain tr:last-child td{border-bottom:0}
+  table.plain td.n,table.plain th.n{text-align:right}
+  table.plain td.n{font-family:var(--mono);font-variant-numeric:tabular-nums}
+  table.plain td.nm{font-weight:500}
+  .over{color:var(--neg);font-weight:500}
+  .under{color:var(--ok)}
+  .wrapx{overflow-x:auto}
+
+  .card{border:1px solid var(--line);border-radius:8px;margin-bottom:12px;background:var(--panel)}
+  .card > header{display:flex;align-items:center;gap:12px;padding:12px 16px;
+    border-bottom:1px solid var(--line);flex-wrap:wrap}
+  .card > header b{font-size:14px}
+  .card > header .when{font-family:var(--mono);font-size:12px;color:var(--muted)}
+  .card > header .acts{margin-left:auto;display:flex;gap:8px}
+  .card > header button{font-size:12px;padding:5px 11px;border-radius:6px;
+    border:1px solid var(--line);background:var(--panel);cursor:pointer;color:var(--text)}
+  .card > header button.danger{color:var(--neg)}
+
+  .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(135px,1fr));gap:12px;padding:14px 16px}
+  .grid label{margin:0 0 5px}
+  .zoneline{border-top:1px solid var(--line)}
+  .zoneline:first-child{border-top:0}
+
+  .egg{padding:12px 16px;border-top:1px solid var(--line);background:var(--panel-2);
+    font-size:12.5px;color:var(--muted)}
+  .egg b{font-family:var(--mono);color:var(--text)}
+
+  .msg{font-size:13px;margin:10px 0 0}
+  .msg.bad{color:var(--neg)}
+  .msg.good{color:var(--ok)}
+</style>
+</head>
+<body>
+
+<div class="layout">
+  <aside class="rail"></aside>
+
+  <div class="main">
+    <div class="topline">
+      <div>
+        <h1>Rates</h1>
+        <div class="sub">What each courier agreed to charge, and what it actually charged.</div>
+      </div>
+    </div>
+
+    <div class="shell">
+      <div id="body" class="hide">
+
+        <div class="cbar">
+          <div><label for="from">From</label><input type="date" id="from"></div>
+          <div><label for="to">To</label><input type="date" id="to"></div>
+          <div><label for="who">Courier</label>
+            <select id="who"><option value="">Every courier</option></select></div>
+          <div><label>&nbsp;</label><button class="solid" id="go">Show</button></div>
+        </div>
+
+        <div class="pills" id="tabs">
+          <button data-tab="charged" class="on">What they charged</button>
+          <button data-tab="agreed">Agreed rates</button>
+          <button data-tab="gap">Agreed against charged</button>
+        </div>
+
+        <div id="view"><div class="fxnone">One moment…</div></div>
+      </div>
+
+      <div id="gate" class="gate hide">
+        <img src="/logo.svg" alt="">
+        <h2>Rates work on your courier accounts</h2>
+        <p>Add a courier account first and its parcels bring their charges with them.</p>
+        <a class="solid" href="/couriers">Courier accounts</a>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="/nav.js"></script>
+<script>
+"use strict";
+(function(){
+  var $ = function(id){ return document.getElementById(id); };
+  var NAMES = { postex:'PostEx', trax:'Trax', mnp:'M&P' };
+  var S = { tab:'charged', report:null, cards:[], accounts:[], today:'', busy:false };
+
+  function esc(s){
+    return String(s == null ? '' : s)
+      .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+      .replace(/"/g,'&quot;');
+  }
+  function nf(n){
+    var v = Math.round(Number(n) || 0);
+    return String(v).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+  }
+  function n2(n){
+    var v = Math.round((Number(n) || 0) * 100) / 100;
+    return v.toFixed(2).replace(/\B(?=(\d{3})+(?!\d)\.)/g, ',');
+  }
+  function name(k){ return NAMES[k] || k; }
+
+  function get(url){
+    return fetch(url, { cache:'no-store' })
+      .then(function(r){ return r.json(); })
+      .then(function(d){ if(d.error) throw new Error(d.error); return d; });
+  }
+  function post(url, body){
+    return fetch(url, { method:'POST', headers:{'Content-Type':'application/json'},
+                        body:JSON.stringify(body || {}) })
+      .then(function(r){ return r.json(); })
+      .then(function(d){ if(d.error) throw new Error(d.error); return d; });
+  }
+
+  /* ---------- tab 1: what they charged ---------- */
+  // This one needs no rate card at all. Every parcel carries the courier's own
+  // fee and tax, so the cost per parcel and per kilo are answerable from the
+  // day an account is connected.
+
+  function chargedView(){
+    var r = S.report;
+    if(!r || !r.couriers.length){
+      return '<div class="sheet"><div class="sec">' +
+        '<div class="fxnone">No parcels booked in these dates.</div></div></div>';
+    }
+
+    var rows = r.couriers.map(function(c){
+      return '<tr>' +
+        '<td class="nm">' + esc(name(c.courier)) + '</td>' +
+        '<td class="n">' + nf(c.parcels) + '</td>' +
+        '<td class="n">' + nf(c.returned) + '</td>' +
+        '<td class="n">' + n2(c.charged) + '</td>' +
+        '<td class="n">' + n2(c.perParcel) + '</td>' +
+        '<td class="n">' + (c.weight ? n2(c.perKg) : '—') + '</td>' +
+        '<td class="n">' + (c.weighed < c.parcels
+            ? nf(c.parcels - c.weighed) + ' no weight' : 'all weighed') + '</td>' +
+      '</tr>';
+    }).join('');
+
+    var months = r.months.slice(0, 24).map(function(m){
+      return '<tr>' +
+        '<td class="nm">' + esc(m.month) + '</td>' +
+        '<td>' + esc(name(m.courier)) + '</td>' +
+        '<td class="n">' + nf(m.parcels) + '</td>' +
+        '<td class="n">' + n2(m.charged) + '</td>' +
+        '<td class="n">' + n2(m.perParcel) + '</td>' +
+      '</tr>';
+    }).join('');
+
+    var cities = r.cities.slice(0, 20).map(function(c){
+      return '<tr>' +
+        '<td class="nm">' + esc(c.city) + '</td>' +
+        '<td>' + esc(name(c.courier)) + '</td>' +
+        '<td class="n">' + nf(c.parcels) + '</td>' +
+        '<td class="n">' + n2(c.charged) + '</td>' +
+        '<td class="n">' + n2(c.perParcel) + '</td>' +
+      '</tr>';
+    }).join('');
+
+    return '<div class="sheet"><div class="sec" style="padding:0">' +
+        '<div class="wrapx"><table class="plain"><thead><tr>' +
+          '<th>Company</th><th class="n">Parcels</th><th class="n">Returned</th>' +
+          '<th class="n">Charged</th><th class="n">Per parcel</th>' +
+          '<th class="n">Per kg</th><th class="n">Weights</th>' +
+        '</tr></thead><tbody>' + rows + '</tbody></table></div>' +
+      '</div></div>' +
+
+      '<div class="sheet"><div class="sec" style="padding-bottom:0;border-bottom:0">' +
+        '<h2>Month by month<span class="aside">a rate that moved shows as a step</span></h2>' +
+      '</div><div class="sec" style="padding:0">' +
+        '<div class="wrapx"><table class="plain"><thead><tr>' +
+          '<th>Month</th><th>Company</th><th class="n">Parcels</th>' +
+          '<th class="n">Charged</th><th class="n">Per parcel</th>' +
+        '</tr></thead><tbody>' + months + '</tbody></table></div>' +
+      '</div></div>' +
+
+      '<div class="sheet"><div class="sec" style="padding-bottom:0;border-bottom:0">' +
+        '<h2>Where it cost most<span class="aside">top 20 cities</span></h2>' +
+      '</div><div class="sec" style="padding:0">' +
+        '<div class="wrapx"><table class="plain"><thead><tr>' +
+          '<th>City</th><th>Company</th><th class="n">Parcels</th>' +
+          '<th class="n">Charged</th><th class="n">Per parcel</th>' +
+        '</tr></thead><tbody>' + cities + '</tbody></table></div>' +
+      '</div></div>';
+  }
+
+  /* ---------- tab 2: the agreed rates ---------- */
+
+  function box(label, key, value, step){
+    return '<div><label>' + esc(label) + '</label>' +
+      '<input type="number" step="' + (step || '0.01') + '" data-k="' + key + '" ' +
+      'value="' + esc(value == null ? '' : value) + '"></div>';
+  }
+
+  function zoneBlock(line, i){
+    var zone = line.zone || '*';
+    var isAll = zone === '*';
+    return '<div class="zoneline" data-zone-row="' + i + '">' +
+      '<div class="grid">' +
+        '<div><label>City</label>' +
+          (isAll
+            ? '<input type="text" data-k="zone" value="*" readonly title="The rate for everywhere">'
+            : '<input type="text" data-k="zone" value="' + esc(zone) + '">') +
+        '</div>' +
+        box('Base weight (kg)', 'baseKg', line.baseKg == null ? 1 : line.baseKg, '0.1') +
+        box('Base charge', 'baseCharge', line.baseCharge) +
+        box('Each extra kg', 'extraCharge', line.extraCharge) +
+        box('COD %', 'codPercent', line.codPercent, '0.01') +
+        box('COD minimum', 'codMin', line.codMin) +
+        box('Return charge', 'returnCharge', line.returnCharge) +
+        box('Fuel %', 'fuelPercent', line.fuelPercent, '0.01') +
+        box('GST %', 'gstPercent', line.gstPercent, '0.01') +
+        (isAll ? '' : '<div><label>&nbsp;</label>' +
+          '<button type="button" data-drop-zone="' + i + '">Remove city</button></div>') +
+      '</div>' +
+    '</div>';
+  }
+
+  function cardBlock(c, idx){
+    var lines = c.lines && c.lines.length ? c.lines : [{ zone:'*', baseKg:1 }];
+    return '<div class="card" data-card="' + idx + '" data-id="' + (c.id || '') + '">' +
+      '<header>' +
+        '<b>' + esc(name(c.courier)) + '</b>' +
+        '<span class="when">from <input type="date" data-k="from" value="' +
+          esc(c.from || S.today) + '" style="width:auto;display:inline-block"></span>' +
+        '<span class="when">' + (c.accountLabel ? esc(c.accountLabel) : 'every account') + '</span>' +
+        '<span class="acts">' +
+          '<button type="button" data-addzone="' + idx + '">Add a city</button>' +
+          '<button type="button" data-save="' + idx + '">Save</button>' +
+          (c.id ? '<button type="button" class="danger" data-drop="' + c.id + '">Delete</button>' : '') +
+        '</span>' +
+      '</header>' +
+      lines.map(zoneBlock).join('') +
+      '<div class="egg" data-egg="' + idx + '">A 1.5 kg parcel with Rs 2,000 to collect: —</div>' +
+      '<div class="msg" data-msg="' + idx + '"></div>' +
+    '</div>';
+  }
+
+  function agreedView(){
+    var head =
+      '<div class="sheet"><div class="sec">' +
+        '<h2>Add the rates a courier agreed<span class="aside">rates change, so every card has a start date</span></h2>' +
+        '<div class="cbar" style="margin:0">' +
+          '<div><label for="newWho">Courier</label><select id="newWho"></select></div>' +
+          '<div><label for="newAcc">Account</label><select id="newAcc">' +
+            '<option value="">Every account of this courier</option></select></div>' +
+          '<div><label for="newFrom">Rates start from</label>' +
+            '<input type="date" id="newFrom" value="' + esc(S.today) + '"></div>' +
+          '<div><label>&nbsp;</label><button class="solid" id="newCard">Add a rate card</button></div>' +
+        '</div>' +
+      '</div></div>';
+
+    var body = S.cards.length
+      ? S.cards.map(cardBlock).join('')
+      : '<div class="sheet"><div class="sec"><div class="fxnone">' +
+        'No rate cards yet. Add one above and the next tab compares it with what you were charged.' +
+        '</div></div></div>';
+
+    return head + body;
+  }
+
+  /* ---------- tab 3: agreed against charged ---------- */
+
+  function gapView(){
+    var r = S.report;
+    if(!r) return '<div class="fxnone">One moment…</div>';
+
+    var priced = r.couriers.filter(function(c){ return c.priced > 0; });
+    if(!priced.length){
+      return '<div class="sheet"><div class="sec">' +
+        '<h2>Nothing to compare yet</h2>' +
+        '<div class="fxnone">Add a rate card under <b>Agreed rates</b>, dated from the day ' +
+        'those rates started. Every parcel is then priced on the card that was in force ' +
+        'the day it was booked.</div>' +
+        '</div></div>';
+    }
+
+    var rows = priced.map(function(c){
+      var d = c.difference;
+      var cls = d > 0 ? 'over' : (d < 0 ? 'under' : '');
+      return '<tr>' +
+        '<td class="nm">' + esc(name(c.courier)) + '</td>' +
+        '<td class="n">' + nf(c.priced) + ' of ' + nf(c.parcels) + '</td>' +
+        '<td class="n">' + n2(c.expected) + '</td>' +
+        '<td class="n">' + n2(c.chargedPriced) + '</td>' +
+        '<td class="n ' + cls + '">' + (d > 0 ? '+' : '') + n2(d) + '</td>' +
+      '</tr>';
+    }).join('');
+
+    var months = r.months.filter(function(m){ return m.priced > 0; }).slice(0, 24)
+      .map(function(m){
+        var d = m.charged - m.expected;
+        return '<tr>' +
+          '<td class="nm">' + esc(m.month) + '</td>' +
+          '<td>' + esc(name(m.courier)) + '</td>' +
+          '<td class="n">' + nf(m.parcels) + '</td>' +
+          '<td class="n">' + n2(m.expected) + '</td>' +
+          '<td class="n">' + n2(m.charged) + '</td>' +
+          '<td class="n ' + (d > 0 ? 'over' : d < 0 ? 'under' : '') + '">' +
+            (d > 0 ? '+' : '') + n2(d) + '</td>' +
+        '</tr>';
+      }).join('');
+
+    var worst = r.worst.map(function(p){
+      return '<tr>' +
+        '<td class="mono">' + esc(p.tracking) + '</td>' +
+        '<td>' + esc(p.orderRef || '') + '</td>' +
+        '<td>' + esc(name(p.courier)) + '</td>' +
+        '<td>' + esc(p.city || '') + '</td>' +
+        '<td class="n">' + (p.weight ? p.weight : '—') + '</td>' +
+        '<td class="n">' + n2(p.amount) + '</td>' +
+        '<td class="n">' + n2(p.expected) + '</td>' +
+        '<td class="n">' + n2(p.charged) + '</td>' +
+        '<td class="n ' + (p.difference > 0 ? 'over' : 'under') + '">' +
+          (p.difference > 0 ? '+' : '') + n2(p.difference) + '</td>' +
+      '</tr>';
+    }).join('');
+
+    return '<div class="sheet"><div class="sec" style="padding:0">' +
+        '<div class="wrapx"><table class="plain"><thead><tr>' +
+          '<th>Company</th><th class="n">Parcels priced</th><th class="n">Agreed</th>' +
+          '<th class="n">Charged</th><th class="n">Difference</th>' +
+        '</tr></thead><tbody>' + rows + '</tbody></table></div>' +
+      '</div></div>' +
+
+      '<div class="sheet"><div class="sec" style="padding-bottom:0;border-bottom:0">' +
+        '<h2>Month by month</h2></div>' +
+        '<div class="sec" style="padding:0"><div class="wrapx"><table class="plain"><thead><tr>' +
+          '<th>Month</th><th>Company</th><th class="n">Parcels</th>' +
+          '<th class="n">Agreed</th><th class="n">Charged</th><th class="n">Difference</th>' +
+        '</tr></thead><tbody>' + months + '</tbody></table></div></div>' +
+      '</div>' +
+
+      (worst ?
+      '<div class="sheet"><div class="sec" style="padding-bottom:0;border-bottom:0">' +
+        '<h2>Biggest differences<span class="aside">50 parcels</span></h2></div>' +
+        '<div class="sec" style="padding:0"><div class="wrapx"><table class="plain"><thead><tr>' +
+          '<th>Tracking</th><th>Order</th><th>Company</th><th>City</th><th class="n">Kg</th>' +
+          '<th class="n">COD</th><th class="n">Agreed</th><th class="n">Charged</th>' +
+          '<th class="n">Difference</th>' +
+        '</tr></thead><tbody>' + worst + '</tbody></table></div></div>' +
+      '</div>' : '');
+  }
+
+  /* ---------- drawing ---------- */
+
+  function draw(){
+    var view = $('view');
+    if(S.tab === 'agreed'){
+      view.innerHTML = agreedView();
+      fillNewCard();
+      wireCards();
+      S.cards.forEach(function(c, i){ showExample(i); });
+      return;
+    }
+    if(S.busy){ view.innerHTML = '<div class="fxnone">Reading the parcels…</div>'; return; }
+    view.innerHTML = S.tab === 'charged' ? chargedView() : gapView();
+  }
+
+  function fillNewCard(){
+    var who = $('newWho');
+    if(!who) return;
+    who.innerHTML = Object.keys(NAMES).map(function(k){
+      return '<option value="' + k + '">' + NAMES[k] + '</option>';
+    }).join('');
+
+    var acc = $('newAcc');
+    acc.innerHTML = '<option value="">Every account of this courier</option>' +
+      S.accounts.map(function(a){
+        return '<option value="' + a.id + '" data-courier="' + esc(a.courier) + '">' +
+               esc(a.label) + '</option>';
+      }).join('');
+
+    $('newCard').addEventListener('click', function(){
+      S.cards.unshift({
+        id: 0,
+        courier: who.value,
+        accountId: Number(acc.value) || null,
+        accountLabel: acc.value ? acc.options[acc.selectedIndex].textContent : null,
+        from: $('newFrom').value || S.today,
+        lines: [{ zone:'*', baseKg:1, baseCharge:0, extraCharge:0, codPercent:0,
+                  codMin:0, returnCharge:0, fuelPercent:0, gstPercent:0 }]
+      });
+      draw();
+    });
+  }
+
+  function readCard(box){
+    var i = Number(box.getAttribute('data-card'));
+    var c = S.cards[i];
+    var from = box.querySelector('input[data-k="from"]').value;
+
+    var lines = [].slice.call(box.querySelectorAll('[data-zone-row]')).map(function(row){
+      var out = {};
+      [].slice.call(row.querySelectorAll('[data-k]')).forEach(function(el){
+        out[el.getAttribute('data-k')] = el.value;
+      });
+      return out;
+    });
+
+    return { id: c.id || 0, courier: c.courier, accountId: c.accountId,
+             from: from, lines: lines };
+  }
+
+  // The worked example under each card, so the numbers in the boxes are not
+  // taken on trust. It is the server's own pricing function, run on one made-up
+  // parcel - the same one every card is shown with, so two cards can be
+  // compared by eye.
+  function showExample(i){
+    var box = document.querySelector('[data-card="' + i + '"]');
+    if(!box) return;
+    var card = readCard(box);
+    var line = card.lines[0];
+    if(!line) return;
+
+    post('/api/rates/try', {
+      parcel: { weight: 1.5, amount: 2000, statusGroup: 'delivered' },
+      line: {
+        baseKg: Number(line.baseKg) || 1, baseCharge: Number(line.baseCharge) || 0,
+        extraCharge: Number(line.extraCharge) || 0,
+        codPercent: Number(line.codPercent) || 0, codMin: Number(line.codMin) || 0,
+        returnCharge: Number(line.returnCharge) || 0,
+        fuelPercent: Number(line.fuelPercent) || 0, gstPercent: Number(line.gstPercent) || 0
+      }
+    }).then(function(d){
+      var egg = box.querySelector('[data-egg]');
+      if(!egg || !d.priced) return;
+      var p = d.priced;
+      egg.innerHTML = 'A 1.5 kg parcel with Rs 2,000 to collect: carriage <b>' + n2(p.carriage) +
+        '</b> + COD <b>' + n2(p.cod) + '</b> + fuel <b>' + n2(p.fuel) +
+        '</b> + GST <b>' + n2(p.gst) + '</b> = <b>' + n2(p.total) + '</b>';
+    }).catch(function(){});
+  }
+
+  function wireCards(){
+    var view = $('view');
+
+    view.querySelectorAll('[data-addzone]').forEach(function(b){
+      b.addEventListener('click', function(){
+        var i = Number(b.getAttribute('data-addzone'));
+        var box = document.querySelector('[data-card="' + i + '"]');
+        S.cards[i] = readCard(box);
+        S.cards[i].lines.push({ zone:'', baseKg:1, baseCharge:0, extraCharge:0,
+          codPercent:0, codMin:0, returnCharge:0, fuelPercent:0, gstPercent:0 });
+        draw();
+      });
+    });
+
+    view.querySelectorAll('[data-drop-zone]').forEach(function(b){
+      b.addEventListener('click', function(){
+        var row = b.closest('[data-zone-row]');
+        var box = b.closest('[data-card]');
+        var i = Number(box.getAttribute('data-card'));
+        var at = Number(row.getAttribute('data-zone-row'));
+        S.cards[i] = readCard(box);
+        S.cards[i].lines.splice(at, 1);
+        draw();
+      });
+    });
+
+    view.querySelectorAll('[data-save]').forEach(function(b){
+      b.addEventListener('click', function(){
+        var i = Number(b.getAttribute('data-save'));
+        var box = document.querySelector('[data-card="' + i + '"]');
+        var msg = box.querySelector('[data-msg]');
+        b.disabled = true;
+        msg.className = 'msg'; msg.textContent = 'Saving…';
+
+        post('/api/rates/cards', readCard(box))
+          .then(function(){
+            msg.className = 'msg good';
+            msg.textContent = 'Saved. Parcels booked from this date on are priced on it.';
+            return load(true);
+          })
+          .catch(function(e){
+            b.disabled = false;
+            msg.className = 'msg bad'; msg.textContent = e.message;
+          });
+      });
+    });
+
+    view.querySelectorAll('[data-drop]').forEach(function(b){
+      b.addEventListener('click', function(){
+        var id = Number(b.getAttribute('data-drop'));
+        post('/api/rates/cards/remove', { id: id })
+          .then(function(){ return load(true); })
+          .catch(function(){});
+      });
+    });
+
+    view.querySelectorAll('.card input').forEach(function(el){
+      el.addEventListener('change', function(){
+        var box = el.closest('[data-card]');
+        if(box) showExample(Number(box.getAttribute('data-card')));
+      });
+    });
+  }
+
+  /* ---------- reading ---------- */
+
+  function load(cardsOnly){
+    var jobs = [ get('/api/rates/cards') ];
+    if(!cardsOnly){
+      S.busy = true;
+      draw();
+      jobs.push(get('/api/rates/report?from=' + $('from').value + '&to=' + $('to').value +
+                    (($('who').value) ? '&courier=' + encodeURIComponent($('who').value) : '')));
+    }
+
+    return Promise.all(jobs).then(function(answers){
+      S.cards = answers[0].cards || [];
+      S.today = answers[0].today || S.today;
+      if(answers[1]) S.report = answers[1];
+      S.busy = false;
+      draw();
+    }).catch(function(e){
+      S.busy = false;
+      $('view').innerHTML = '<div class="sheet"><div class="sec"><div class="fxnone">' +
+        'Could not read it: ' + esc(e.message) + '</div></div></div>';
+    });
+  }
+
+  /* ---------- start ---------- */
+
+  window.APP.ready.then(function(s){
+    if(!s.connected){ $('gate').classList.remove('hide'); return; }
+    $('body').classList.remove('hide');
+
+    var today = new Date();
+    var back = new Date(Date.now() - 29 * 86400000);
+    $('to').value = today.toISOString().slice(0, 10);
+    $('from').value = back.toISOString().slice(0, 10);
+    S.today = $('to').value;
+
+    $('tabs').addEventListener('click', function(e){
+      var b = e.target.closest('button[data-tab]');
+      if(!b) return;
+      S.tab = b.getAttribute('data-tab');
+      [].slice.call($('tabs').querySelectorAll('button')).forEach(function(x){
+        x.classList.toggle('on', x === b);
+      });
+      try { sessionStorage.setItem('rates:tab', S.tab); } catch (err) {}
+      draw();
+    });
+
+    $('go').addEventListener('click', function(){ load(); });
+
+    get('/api/courier/accounts').then(function(d){
+      S.accounts = d.accounts || [];
+      var who = $('who');
+      var seen = {};
+      S.accounts.forEach(function(a){
+        if(seen[a.courier]) return;
+        seen[a.courier] = 1;
+        var o = document.createElement('option');
+        o.value = a.courier; o.textContent = NAMES[a.courier] || a.courier;
+        who.appendChild(o);
+      });
+    }).catch(function(){});
+
+    try {
+      var kept = sessionStorage.getItem('rates:tab');
+      if(kept){
+        S.tab = kept;
+        [].slice.call($('tabs').querySelectorAll('button')).forEach(function(x){
+          x.classList.toggle('on', x.getAttribute('data-tab') === kept);
+        });
+      }
+    } catch (err) {}
+
+    load();
+  }).catch(function(){
+    $('view').innerHTML = '<div class="fxnone">Could not reach the server.</div>';
+  });
+})();
+</script>
+</body>
+</html>

@@ -842,6 +842,55 @@ anything.
 `/courier-dash` is still in the Operations rail and `/pickups` is still
 reached from the load sheet. What this rail grows instead is **Rates**.
 
+### Rates: what was agreed, against what was charged
+
+Asked for on 29 Oct 2026, and the sentence that shapes it is *"rate kyun ke
+company change karti rehti hai"* - so the rate card is typed in here and
+**every card carries the day it starts and never an end**. A new rate is a new
+card, from its own date; the old one is never edited into it, because that
+would quietly re-price a year of parcels and make last month's figures
+disagree with last month's screen. A parcel is priced on the card that was in
+force **the day it was booked**.
+
+`rates.js` holds both tables and both answers:
+
+| | |
+|---|---|
+| `courier_rate_cards` | one courier company, optionally one account of it, and `effective_from` |
+| `courier_rate_lines` | one line per zone. `'*'` is the rate for everywhere; a city named here beats it for that city alone, which is how these agreements are actually written |
+
+A line is base weight, base charge, each extra kg, COD percent and its
+minimum, the return charge, fuel percent and GST percent. An account's own
+card beats the company's, a city line beats `'*'`, and the newest card not
+later than the booking date beats the older ones - all of it in `CARD_JOIN`,
+one lateral join.
+
+Three tabs, and **only the last one needs a card**:
+
+- **What they charged** - from the parcels themselves. Every parcel carries
+  the courier's own fee and tax, so cost per parcel, cost per kg, per month
+  and per city are answerable from the day an account is connected, for every
+  courier, with no typing at all.
+- **Agreed rates** - the cards. Each one shows a worked example underneath
+  (a 1.5 kg parcel with Rs 2,000 to collect, broken into carriage, COD, fuel
+  and GST) so the numbers in the boxes are not taken on trust.
+- **Agreed against charged** - per company, per month, and the fifty parcels
+  where the gap is biggest. Only parcels a card could price are compared, and
+  the count says how many that was of how many.
+
+Two things to know about it:
+
+- **`courier_orders.weight`** was added for this. Every adapter had always
+  read the weight and nothing kept it, so there was nothing to price against.
+  A courier that says nothing leaves it **NULL**, never nought, and the screen
+  counts those parcels rather than pricing them at zero; an update that
+  carries no weight does not erase the weight we already had.
+- **The arithmetic is written twice** - `expectedFor()` in JavaScript, for the
+  worked example, and `EXPECTED_SQL` for the figures, because pricing fifty
+  thousand parcels in node would mean reading fifty thousand rows. They are
+  kept line for line with each other, and that is the thing to check first if
+  the two ever disagree.
+
 ### Service areas: the courier's own list, not ours
 
 `/courier-dash`'s Cities tab is the cities **we** have sent to. This is the

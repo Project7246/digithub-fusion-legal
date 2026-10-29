@@ -75,6 +75,16 @@ export async function initCouriers() {
       ON courier_orders (realm_id, account_id, tracking)
   `);
 
+  // What the courier weighed it at. Every adapter has always read it and
+  // nothing kept it, which was fine until the rates screen: a rate card is
+  // written in kilograms, so without this there is nothing to price against.
+  // It stays NULL where a courier did not say, and the screens count how many
+  // parcels that is rather than treating a missing weight as nought.
+  await pool.query(`
+    ALTER TABLE courier_orders
+      ADD COLUMN IF NOT EXISTS weight NUMERIC(10,3)
+  `);
+
   await pool.query(`
     CREATE INDEX IF NOT EXISTS courier_orders_dates
       ON courier_orders (realm_id, booked_on)
@@ -436,13 +446,17 @@ export async function saveOrders(realmId, accountId, courier, rows) {
     slice.forEach(o => {
       values.push(
         `($${n++},$${n++},$${n++},$${n++},$${n++},$${n++},$${n++},` +
-        `$${n++},$${n++},$${n++},$${n++},$${n++},$${n++},$${n++},$${n++}, NOW())`
+        `$${n++},$${n++},$${n++},$${n++},$${n++},$${n++},$${n++},$${n++},$${n++}, NOW())`
       );
       params.push(
         realmId, accountId, courier, o.tracking, o.orderRef || null,
         o.status || null, o.statusGroup || null,
         o.amount || 0, o.fee || 0, o.tax || 0, o.city || null,
         o.bookedOn || null, o.pickedOn || null, o.deliveredOn || null,
+        // a weight the courier did not give is NULL, not nought: the rates
+        // screen counts what it cannot price rather than pricing it at zero
+        (o.weight === undefined || o.weight === null || Number(o.weight) <= 0)
+          ? null : Number(o.weight),
         JSON.stringify(o.raw || {})
       );
     });
@@ -450,7 +464,7 @@ export async function saveOrders(realmId, accountId, courier, rows) {
     await pool.query(
       `INSERT INTO courier_orders
          (realm_id, account_id, courier, tracking, order_ref, status, status_group,
-          amount, fee, tax, city, booked_on, picked_on, delivered_on, raw, seen_at)
+          amount, fee, tax, city, booked_on, picked_on, delivered_on, weight, raw, seen_at)
        VALUES ${values.join(',')}
        ON CONFLICT (realm_id, account_id, tracking) DO UPDATE SET
          status       = EXCLUDED.status,
@@ -461,6 +475,9 @@ export async function saveOrders(realmId, accountId, courier, rows) {
          city         = EXCLUDED.city,
          picked_on    = EXCLUDED.picked_on,
          delivered_on = EXCLUDED.delivered_on,
+         -- a courier that said nothing about the weight this time does not
+         -- erase the weight it gave us last time
+         weight       = COALESCE(EXCLUDED.weight, courier_orders.weight),
          raw          = EXCLUDED.raw,
          seen_at      = NOW()`,
       params

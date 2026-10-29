@@ -78,14 +78,18 @@
 
     { key:'logistics', label:'Logistics', home:'/logistics', tile:'truck',
       what:'Where every order is, across every courier account.', qb:true,
-      soon:[{ label:'Returns', tile:'back' }, { label:'Rates', tile:'tag' }],
+      soon:[{ label:'Returns', tile:'back' }],
       groups: [
       { group: null, items: [
         { href:'/logistics', front:true, label:'Overview',        icon:'grid' }
       ]},
       { group: 'Couriers', items: [
         { href:'/couriers',     label:'Courier accounts', icon:'truck', tree:true,
-          need:'couriersync', tile:'truck', as:'Couriers', count:'accounts' }
+          need:'couriersync', tile:'truck', as:'Couriers', count:'accounts' },
+        // What each company agreed to charge, against what it actually
+        // charged. It is in this group and not under the day's work because it
+        // is about the companies themselves, not about today's parcels.
+        { href:'/rates', label:'Rates', icon:'tag', need:'couriersync', tile:'tag' }
         // No Tracking and no Pickups line. Asked for on 29 Oct 2026: this rail
         // is the courier companies and the day's work, and what Logistics is
         // to grow here is **Rates** - company against company, per parcel.
@@ -117,8 +121,10 @@
 
     { key:'operations', label:'Operations', home:'/operations', tile:'box',
       what:'The day as it runs - orders in, parcels out, what went wrong.', qb:true,
-      soon:[{ label:'Helpdesk', tile:'chat' }, { label:'Rates', tile:'tag' },
-            { label:'Timesheets', tile:'clock' }],
+      // Rates is not listed here as "soon" any more: it is a real page now, and
+      // it belongs to Logistics - the same line in two rails is two places to
+      // look for one page.
+      soon:[{ label:'Helpdesk', tile:'chat' }, { label:'Timesheets', tile:'clock' }],
       groups: [
       { group: null, items: [
         { href:'/operations', front:true, label:'Overview',       icon:'grid' }

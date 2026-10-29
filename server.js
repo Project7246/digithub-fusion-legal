@@ -197,6 +197,9 @@ import { reachCourier } from './reach.js';
 import { absorbPayment } from './traxlive.js';
 import { relayState } from './wire.js';
 import {
+  initRates, listCards, saveCard, dropCard, rateReport, expectedFor, todayText as rateToday
+} from './rates.js';
+import {
   dashboard as dashData, recentCprs, pickups, pickupOrders, ordersBy, eachOrder,
   deliveryReport, logisticsSummary
 } from './dashdata.js';
@@ -1431,7 +1434,8 @@ const RIGHT_GROUPS = [
     what: 'Pull courier orders and receipts in',
     paths: ['/api/courier/sync', '/api/courier/backfill', '/api/courier/cpr-chase',
             '/api/courier/keeper-now', '/api/courier/hook-roll', '/api/courier/backfill-clear',
-            '/api/courier/backfill-resume', '/api/receipts/login', '/api/receipts/logout'] },
+            '/api/courier/backfill-resume', '/api/receipts/login', '/api/receipts/logout',
+            '/api/rates/cards', '/api/rates/cards/remove', '/api/rates/try'] },
 
   // The links to the audit's sheets (/api/audit/link, /link-remove, /pick) are in no group on purpose: only the admin attaches, changes or
   // removes them, and it cannot be handed out.
@@ -1514,6 +1518,7 @@ const PAGE_NEED = new Map(Object.entries({
   '/receipts.html': 'couriersync',
   '/delivery-reports.html': 'couriersync',
   '/service-areas.html': 'couriersync',
+  '/rates.html': 'couriersync',
   '/load-sheet.html': 'couriersync',
   '/dispatch-app.html': 'couriersync',
   '/cprs.html': 'couriersync',
@@ -8982,6 +8987,67 @@ app.post('/api/shopify/wire', async (req, res) => {
   }
 });
 
+// ==================== rates: agreed against charged ====================
+//
+// The cards are typed in because a courier's rates live in an agreement and
+// change whenever the company decides they do - which is why a card carries
+// the day it starts and is never edited into the next one.
+
+app.get('/api/rates/cards', async (req, res) => {
+  const realmId = await requireCompany(req, res);
+  if (!realmId) return;
+  try {
+    res.setHeader('Cache-Control', 'no-store');
+    res.json({ cards: await listCards(realmId, { courier: req.query.courier }), today: rateToday() });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.post('/api/rates/cards', async (req, res) => {
+  const realmId = await requireCompany(req, res);
+  if (!realmId) return;
+  try {
+    const id = await saveCard(realmId, req.body || {});
+    res.json({ ok: true, id });
+  } catch (e) {
+    res.status(400).json({ error: e.message });
+  }
+});
+
+app.post('/api/rates/cards/remove', async (req, res) => {
+  const realmId = await requireCompany(req, res);
+  if (!realmId) return;
+  try {
+    res.json({ ok: true, gone: await dropCard(realmId, req.body && req.body.id) });
+  } catch (e) {
+    res.status(400).json({ error: e.message });
+  }
+});
+
+app.get('/api/rates/report', async (req, res) => {
+  const realmId = await requireCompany(req, res);
+  if (!realmId) return;
+  const { from, to, courier, account } = req.query;
+  if (!from || !to) return res.status(400).json({ error: 'Pick a date range' });
+  try {
+    res.setHeader('Cache-Control', 'no-store');
+    res.json(await rateReport(realmId, { from, to, courier, account }));
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// One parcel priced against one card line, for the worked example under the
+// card somebody is typing. It touches no table - the same function the
+// figures are built from, run on the numbers in the boxes.
+app.post('/api/rates/try', async (req, res) => {
+  const realmId = await requireCompany(req, res);
+  if (!realmId) return;
+  const b = req.body || {};
+  res.json({ ok: true, priced: expectedFor(b.parcel || {}, b.line || null) });
+});
+
 // The Logistics front page, and the figures the rail carries beside its own
 // lines. One call for both, because they are the same question asked twice -
 // and because every page on this section draws that rail, so a second call
@@ -13998,6 +14064,7 @@ initDb()
   .then(() => initSettings())
   .then(() => initCache())
   .then(() => initCouriers())
+  .then(() => initRates())
   .then(() => initShopify())
   .then(() => initHr())
   .then(() => initHrPay())
