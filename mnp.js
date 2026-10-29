@@ -188,8 +188,15 @@ export function mapReportRow(row) {
     upfront:     0,
     reserve:     0,
     balance:     0,
-    fee:         0,
-    tax:         0,
+    // What M&P kept, and the tax on it. These were **hard nought** until
+    // 30 Oct 2026, which is why an M&P receipt showed no tax at all and why
+    // every M&P parcel looked as though it had cost nothing to carry - it
+    // overstated what M&P still owed and it priced nothing on the rates
+    // screen. Read by name through pick(), so a column they do not send
+    // leaves it at nought exactly as before.
+    fee:         num(pick(f, ['servicecharges', 'servicecharge', 'deliverycharges',
+                              'charges', 'totalcharges', 'freight', 'freightcharges'])),
+    tax:         num(pick(f, ['gst', 'salestax', 'tax', 'gstamount'])),
     city:        pick(f, ['destination', 'destzone', 'destinationcity']),
     bookedOn:    day(pick(f, ['bookingdate'])),
     pickedOn:    null,
@@ -230,8 +237,11 @@ export function mapTracked(row) {
     upfront:     0,
     reserve:     0,
     balance:     0,
-    fee:         0,
-    tax:         0,
+    // the same two, off the tracking call. Whichever of the two calls carries
+    // them wins, because saveOrders keeps the later answer.
+    fee:         num(r.ServiceCharges || r.DeliveryCharges || r.TotalCharges ||
+                     r.Charges || r.FreightCharges),
+    tax:         num(r.GST || r.SalesTax || r.Tax || r.GSTAmount),
     city:        r.DestinationCity || r.OriginCity || '',
     bookedOn:    day(r.BookingDate),
     pickedOn:    lineOf('transit'),

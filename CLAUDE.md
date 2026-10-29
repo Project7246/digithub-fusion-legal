@@ -619,6 +619,15 @@ so every call sends all three.
 - One consignment can also be read from their public tracking screen
   (`tracking.mulphilog.com.pk/api/CNTracking`, `id` always 4), which needs no
   sign-in at all.
+- **Their charges and their GST were hard nought until 30 Oct 2026**, in both
+  mappers. So an M&P receipt showed no tax at all, every M&P parcel looked as
+  though it had cost nothing to carry, what M&P still owed was overstated by
+  exactly their charges, and the rates screen had nothing to compare them
+  with. They are read by name now - `servicecharges`, `gst` and the spellings
+  around them - which leaves nought where M&P send no such column, **so the
+  field names are the thing to confirm against a real answer**. Until an M&P
+  report is seen with figures on it, "M&P charges 0" means "not read", not
+  "free".
 
 **A date is not a moment.** `day()` in `statuses.js` reads a courier's date by
 hand and never through `toISOString()`: M&P send `02 Nov 2024`, and parsing that
