@@ -142,6 +142,19 @@
       ]}
     ]},
 
+    // Fusion's own money, not a client's books: every bank account, what the
+    // couriers paid into it, what the spending sheet took out of it. Only
+    // ADMIN_EMAILS sees it - `need:'__boss__'` is not a right that can be
+    // handed out, and the server refuses the page to anybody else.
+    { key:'banking', label:'Banking', home:'/banking', tile:'cash',
+      what:'Every bank account, what came in and what went out.', qb:false,
+      groups: [
+      { group: null, items: [
+        { href:'/banking', front:true, showTile:true, label:'Overview',
+          icon:'cash', tile:'cash', as:'Banking', need:'__boss__' }
+      ]}
+    ]},
+
     { key:'hr', label:'HR', home:'/hr', tile:'people',
       what:'The people who do the work.', qb:false,
       soon:[{ label:'Contracts', tile:'sheet' }, { label:'Hiring', tile:'people' }],
@@ -1369,6 +1382,16 @@
       // the launcher needs `support` and `rights` together to say who to ask
       window.APP.status = s;
       window.APP.may = function(job){ return !!s.admin || mine.indexOf(job) > -1; };
+
+      // Fusion's own lines. Not a right that can be handed out, so they are not
+      // cut by the rights below - they are simply not drawn for anybody but
+      // ADMIN_EMAILS, whatever else they hold. The server refuses the pages
+      // too; this is so nobody is offered a door that will not open.
+      if(!s.boss && rail){
+        rail.querySelectorAll('nav a[data-line="__boss__"]').forEach(function(a){
+          a.remove();
+        });
+      }
 
       // Given areas rather than the whole of the books: the rail is cut to them.
       // A group whose every line has gone takes its heading with it, so there is

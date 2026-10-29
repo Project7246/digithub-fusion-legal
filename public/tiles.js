@@ -118,7 +118,9 @@
     var out = [];
     sec.groups.forEach(function(g){
       g.items.forEach(function(it){
-        if (it.front) return;
+        // A section's own front page is not a tile - it is where the tiles
+        // live. A section that *is* one page says showTile and gets one.
+        if (it.front && !it.showTile) return;
         out.push({ href: it.href, label: it.as || it.label, icon: it.tile,
                    need: it.need, always: !!it.always });
       });
@@ -154,6 +156,12 @@
   // their own HR record is the only one - and it is the server's list too.
   function mine(t, sec){
     if (t.always) return true;
+    // Fusion's own, and not a job anybody can be given. `admin` is the
+    // administrator of whichever company is open, which a client's own
+    // administrator also is - this asks the other question.
+    if (t.need === '__boss__') {
+      return !!(window.APP && window.APP.status && window.APP.status.boss);
+    }
     if (sec && !inSection(sec)) return false;
     if (!t.need) return true;
     return !window.APP || !window.APP.may || window.APP.may(t.need);

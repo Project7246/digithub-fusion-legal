@@ -200,6 +200,11 @@ import {
   initRates, listCards, saveCard, dropCard, rateReport, expectedFor, todayText as rateToday
 } from './rates.js';
 import {
+  initBanking, listBanks, saveBank, closeBank, listLinks, linkBank, unlink,
+  postDeposits, homeless, transfer, adjust, moveDeposit, dropMove,
+  report as bankReport, bankSheet, pullSheet, taxYear, todayText as bankToday
+} from './banking.js';
+import {
   dashboard as dashData, recentCprs, pickups, pickupOrders, ordersBy, eachOrder,
   deliveryReport, logisticsSummary
 } from './dashdata.js';
@@ -403,6 +408,13 @@ app.get(/^\/$|^\/[A-Za-z0-9-]+$/, async (req, res, next) => {
         : '/choose');
     }
     if (here === '/choose') return res.redirect('/');
+
+    // Fusion's own pages. Not a job that can be handed out at all - the
+    // routes behind them ask requireBoss, and a page that draws them has to
+    // ask the same thing or it loads, fetches, and fills with refusals.
+    if (PAGE_NEED.get(here + '.html') === '__boss__' && !(who && who.admin)) {
+      return res.redirect('/');
+    }
 
     // A page that belongs to an area this person was not given is not theirs to
     // open. Only a limited user is held to this - everybody else was given the
@@ -1546,6 +1558,9 @@ const PAGE_NEED = new Map(Object.entries({
   '/delivery-reports.html': 'couriersync',
   '/service-areas.html': 'couriersync',
   '/rates.html': 'couriersync',
+  // Banking is Fusion's own, like the mail settings and the database page -
+  // the routes behind it all ask requireBoss, and the page says so too.
+  '/banking.html': '__boss__',
   '/load-sheet.html': 'couriersync',
   '/dispatch-app.html': 'couriersync',
   '/cprs.html': 'couriersync',
@@ -9037,6 +9052,178 @@ app.post('/api/shopify/wire', async (req, res) => {
   }
 });
 
+// ==================== banking ====================
+//
+// Fusion's own, every route of it: the banks are the company's money and the
+// courier sign-ins sit beside them. requireBoss, not requireAdmin.
+
+app.get('/api/bank/report', async (req, res) => {
+  if (!await requireBoss(req, res)) return;
+  const realmId = await requireCompany(req, res);
+  if (!realmId) return;
+  try {
+    res.setHeader('Cache-Control', 'no-store');
+    const out = await bankReport(realmId, { year: req.query.year });
+    res.json(Object.assign(out, { today: bankToday() }));
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.get('/api/bank/one', async (req, res) => {
+  if (!await requireBoss(req, res)) return;
+  const realmId = await requireCompany(req, res);
+  if (!realmId) return;
+  try {
+    res.setHeader('Cache-Control', 'no-store');
+    res.json(await bankSheet(realmId, req.query.id,
+      { from: req.query.from, to: req.query.to, year: req.query.year }));
+  } catch (e) {
+    res.status(400).json({ error: e.message });
+  }
+});
+
+app.post('/api/bank/save', async (req, res) => {
+  if (!await requireBoss(req, res)) return;
+  const realmId = await requireCompany(req, res);
+  if (!realmId) return;
+  try {
+    res.json({ ok: true, id: await saveBank(realmId, req.body || {}) });
+  } catch (e) {
+    res.status(400).json({ error: e.message });
+  }
+});
+
+app.post('/api/bank/close', async (req, res) => {
+  if (!await requireBoss(req, res)) return;
+  const realmId = await requireCompany(req, res);
+  if (!realmId) return;
+  try {
+    res.json({ ok: true, gone: await closeBank(realmId, req.body && req.body.id) });
+  } catch (e) {
+    res.status(400).json({ error: e.message });
+  }
+});
+
+// which bank a courier account pays into, and the whole history of that
+app.get('/api/bank/links', async (req, res) => {
+  if (!await requireBoss(req, res)) return;
+  const realmId = await requireCompany(req, res);
+  if (!realmId) return;
+  try {
+    res.setHeader('Cache-Control', 'no-store');
+    res.json({
+      links: await listLinks(realmId, req.query.account),
+      accounts: await listCourierAccounts(realmId),
+      waiting: await homeless(realmId)
+    });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.post('/api/bank/link', async (req, res) => {
+  const who = await requireBoss(req, res);
+  if (!who) return;
+  const realmId = await requireCompany(req, res);
+  if (!realmId) return;
+  try {
+    const id = await linkBank(realmId, Object.assign({}, req.body, { by: who.email || null }));
+    // the money follows the change at once, rather than at the next sweep
+    const posted = await postDeposits(realmId);
+    res.json({ ok: true, id, posted });
+  } catch (e) {
+    res.status(400).json({ error: e.message });
+  }
+});
+
+app.post('/api/bank/unlink', async (req, res) => {
+  if (!await requireBoss(req, res)) return;
+  const realmId = await requireCompany(req, res);
+  if (!realmId) return;
+  try {
+    res.json({ ok: true, gone: await unlink(realmId, req.body && req.body.id) });
+  } catch (e) {
+    res.status(400).json({ error: e.message });
+  }
+});
+
+// the couriers' paid receipts, into the banks they were paying into that day
+app.post('/api/bank/post', async (req, res) => {
+  if (!await requireBoss(req, res)) return;
+  const realmId = await requireCompany(req, res);
+  if (!realmId) return;
+  try {
+    res.json({ ok: true, posted: await postDeposits(realmId),
+               waiting: await homeless(realmId) });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.post('/api/bank/transfer', async (req, res) => {
+  const who = await requireBoss(req, res);
+  if (!who) return;
+  const realmId = await requireCompany(req, res);
+  if (!realmId) return;
+  try {
+    await transfer(realmId, Object.assign({}, req.body, { by: who.email || null }));
+    res.json({ ok: true });
+  } catch (e) {
+    res.status(400).json({ error: e.message });
+  }
+});
+
+app.post('/api/bank/adjust', async (req, res) => {
+  const who = await requireBoss(req, res);
+  if (!who) return;
+  const realmId = await requireCompany(req, res);
+  if (!realmId) return;
+  try {
+    res.json({ ok: true, id: await adjust(realmId, Object.assign({}, req.body, { by: who.email || null })) });
+  } catch (e) {
+    res.status(400).json({ error: e.message });
+  }
+});
+
+// a payment that landed in the account the courier was told to stop using
+app.post('/api/bank/move', async (req, res) => {
+  const who = await requireBoss(req, res);
+  if (!who) return;
+  const realmId = await requireCompany(req, res);
+  if (!realmId) return;
+  try {
+    await moveDeposit(realmId, Object.assign({}, req.body, { by: who.email || null }));
+    res.json({ ok: true });
+  } catch (e) {
+    res.status(400).json({ error: e.message });
+  }
+});
+
+app.post('/api/bank/entry-remove', async (req, res) => {
+  if (!await requireBoss(req, res)) return;
+  const realmId = await requireCompany(req, res);
+  if (!realmId) return;
+  try {
+    await dropMove(realmId, req.body && req.body.id);
+    res.json({ ok: true });
+  } catch (e) {
+    res.status(400).json({ error: e.message });
+  }
+});
+
+app.post('/api/bank/sheet', async (req, res) => {
+  if (!await requireBoss(req, res)) return;
+  const realmId = await requireCompany(req, res);
+  if (!realmId) return;
+  try {
+    res.json(await pullSheet(realmId, req.body && req.body.id,
+                             { fresh: !!(req.body && req.body.fresh) }));
+  } catch (e) {
+    res.status(400).json({ error: e.message });
+  }
+});
+
 // ==================== rates: agreed against charged ====================
 //
 // The cards are typed in because a courier's rates live in an agreement and
@@ -14115,6 +14302,7 @@ initDb()
   .then(() => initCache())
   .then(() => initCouriers())
   .then(() => initRates())
+  .then(() => initBanking())
   .then(() => initShopify())
   .then(() => initHr())
   .then(() => initHrPay())

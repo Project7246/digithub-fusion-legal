@@ -1,0 +1,602 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Banking</title>
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="manifest" href="/manifest.json">
+<meta name="theme-color" content="#222F34">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@600;700;800&family=Roboto:wght@400;500&family=Roboto+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/app.css">
+<style>
+  .pills{display:flex;gap:4px;flex-wrap:wrap;margin-bottom:16px}
+  .pills button{padding:7px 14px;border-radius:7px;border:1px solid var(--line);
+    background:var(--panel);font:inherit;font-size:13px;color:var(--muted);cursor:pointer}
+  .pills button.on{background:var(--ink);border-color:var(--ink);color:#fff;font-weight:500}
+
+  .figs4{display:grid;grid-template-columns:repeat(4,1fr);border-top:1px solid var(--line)}
+  .figs4 > div{padding:16px 22px;border-right:1px solid var(--line)}
+  .figs4 > div:last-child{border-right:0}
+  .figs4 span{display:block;font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;
+    color:var(--faint);margin-bottom:5px}
+  .figs4 b{font-family:var(--mono);font-size:20px;font-weight:500;font-variant-numeric:tabular-nums}
+  .figs4 small{display:block;font-size:11.5px;color:var(--muted);margin-top:3px}
+  @media (max-width:820px){ .figs4{grid-template-columns:repeat(2,1fr)} }
+
+  table.plain{width:100%;border-collapse:collapse;font-size:13px}
+  table.plain th{font-family:var(--mono);font-size:10px;letter-spacing:.09em;
+    text-transform:uppercase;color:var(--faint);font-weight:400;text-align:left;
+    padding:9px 14px;border-bottom:1px solid var(--line);white-space:nowrap}
+  table.plain td{padding:10px 14px;border-bottom:1px solid var(--line)}
+  table.plain tr:last-child td{border-bottom:0}
+  table.plain td.n,table.plain th.n{text-align:right}
+  table.plain td.n{font-family:var(--mono);font-variant-numeric:tabular-nums}
+  table.plain td.nm{font-weight:500}
+  table.plain tr.click{cursor:pointer}
+  table.plain tr.click:hover td{background:var(--panel-2)}
+  .neg{color:var(--neg)}
+  .pos{color:var(--ok)}
+  .wrapx{overflow-x:auto}
+
+  .form{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px}
+  .form label{margin:0 0 5px}
+  .form .wide{grid-column:1 / -1}
+  .acts{display:flex;gap:8px;align-items:center;margin-top:14px;flex-wrap:wrap}
+  .acts .msg{font-size:12.5px}
+  .msg.bad{color:var(--neg)} .msg.good{color:var(--ok)}
+  button.danger{padding:7px 13px;background:#fff;border:1px solid var(--line-2);
+    border-radius:6px;font:inherit;font-size:12.5px;color:var(--neg);cursor:pointer}
+  button.danger:hover{border-color:var(--neg)}
+
+  .lognote{font-size:12px;color:var(--faint);padding:8px 14px}
+  .chg{display:flex;gap:10px;align-items:baseline;padding:7px 14px;border-bottom:1px solid var(--line);font-size:12.5px}
+  .chg:last-child{border-bottom:0}
+  .chg b{font-family:var(--mono);font-size:12px}
+  .chg .who{margin-left:auto;color:var(--faint);font-size:11.5px}
+  .warn{background:var(--warn-soft);color:var(--warn);padding:10px 14px;border-radius:7px;
+    font-size:12.5px;margin-bottom:12px}
+</style>
+</head>
+<body>
+
+<div class="layout">
+  <aside class="rail"></aside>
+
+  <div class="main">
+    <div class="topline">
+      <div>
+        <h1>Banking</h1>
+        <div class="sub">Every bank account, what came in and what went out.</div>
+      </div>
+      <div class="right"><span class="mono" id="yearNote" style="font-size:12px;color:var(--muted)"></span></div>
+    </div>
+
+    <div class="shell">
+      <div id="body" class="hide">
+        <div class="pills" id="tabs">
+          <button data-tab="report" class="on">The banks</button>
+          <button data-tab="couriers">Courier payments</button>
+          <button data-tab="entries">Transfers and entries</button>
+          <button data-tab="add">Add or edit a bank</button>
+        </div>
+        <div id="view"><div class="fxnone">One moment…</div></div>
+      </div>
+
+      <div id="gate" class="gate hide">
+        <img src="/logo.svg" alt="">
+        <h2>Banking is Fusion's own</h2>
+        <p>These are the company's bank accounts, so only Fusion's own administrator opens them.</p>
+        <a class="solid" href="/">Back</a>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="/nav.js"></script>
+<script>
+"use strict";
+(function(){
+  var $ = function(id){ return document.getElementById(id); };
+  var NAMES = { postex:'PostEx', trax:'Trax', mnp:'M&P' };
+  var S = { tab:'report', report:null, links:null, today:'', editing:null };
+
+  function esc(s){
+    return String(s == null ? '' : s)
+      .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  }
+  function money(n){
+    var v = Math.round((Number(n) || 0) * 100) / 100;
+    var s = Math.abs(v).toFixed(2).replace(/\B(?=(\d{3})+(?!\d)\.)/g, ',');
+    return (v < 0 ? '-' : '') + s;
+  }
+  function cname(k){ return NAMES[k] || k; }
+
+  function get(url){
+    return fetch(url, { cache:'no-store' }).then(function(r){ return r.json(); })
+      .then(function(d){ if(d.error) throw new Error(d.error); return d; });
+  }
+  function post(url, body){
+    return fetch(url, { method:'POST', headers:{'Content-Type':'application/json'},
+                        body:JSON.stringify(body || {}) })
+      .then(function(r){ return r.json(); })
+      .then(function(d){ if(d.error) throw new Error(d.error); return d; });
+  }
+
+  /* ---------- the banks ---------- */
+
+  function reportView(){
+    var d = S.report;
+    if(!d) return '<div class="fxnone">One moment…</div>';
+
+    var live = d.banks.filter(function(b){ return b.active; });
+    if(!live.length){
+      return '<div class="sheet"><div class="sec">' +
+        '<h2>No bank accounts yet</h2>' +
+        '<div class="fxnone">Add one under <b>Add or edit a bank</b>. It asks for the ' +
+        'balance and the day that balance is true of — nothing before that day is ' +
+        'ever counted, so the balance stays the one you typed.</div></div></div>';
+    }
+
+    var rows = d.banks.map(function(b){
+      return '<tr class="click" data-bank="' + b.id + '">' +
+        '<td class="nm">' + esc(b.name) + (b.active ? '' : ' <span class="pill">closed</span>') +
+          (b.ownerName ? '<br><span style="font-size:11.5px;color:var(--faint)">' +
+            esc(b.ownerName) + '</span>' : '') + '</td>' +
+        '<td class="n">' + money(b.opening) + '<br><span style="font-size:11px;color:var(--faint)">' +
+          esc(b.openingOn || '') + '</span></td>' +
+        '<td class="n pos">' + money(b.inYear) + '</td>' +
+        '<td class="n neg">' + money(b.outYear) + '</td>' +
+        '<td class="n"><b>' + money(b.balance) + '</b></td>' +
+        '<td class="n">' + money(b.receivable) +
+          (b.receivableParcels ? '<br><span style="font-size:11px;color:var(--faint)">' +
+            b.receivableParcels + ' parcels</span>' : '') + '</td>' +
+      '</tr>' +
+      '<tr class="kids" id="bk' + b.id + '" style="display:none">' +
+        '<td colspan="6" style="background:var(--panel-2);padding:0"></td></tr>';
+    }).join('');
+
+    return '<div class="sheet"><div class="figs4">' +
+        '<div><span>In the banks now</span><b>' + money(d.totals.balance) + '</b>' +
+          '<small>' + live.length + ' account' + (live.length === 1 ? '' : 's') + '</small></div>' +
+        '<div><span>Still to receive</span><b>' + money(d.totals.receivable) + '</b>' +
+          '<small>couriers hold it</small></div>' +
+        '<div><span>Received this tax year</span><b>' + money(d.totals.inYear) + '</b>' +
+          '<small>' + esc(d.year.from) + ' to ' + esc(d.year.to) + '</small></div>' +
+        '<div><span>Paid this tax year</span><b>' + money(d.totals.outYear) + '</b>' +
+          '<small>from the spending sheets</small></div>' +
+      '</div></div>' +
+
+      '<div class="sheet" style="margin-top:20px"><div class="sec" style="padding:0">' +
+        '<div class="wrapx"><table class="plain"><thead><tr>' +
+          '<th>Bank</th><th class="n">Opening</th><th class="n">In this year</th>' +
+          '<th class="n">Out this year</th><th class="n">Balance now</th>' +
+          '<th class="n">To receive</th>' +
+        '</tr></thead><tbody>' + rows + '</tbody></table></div>' +
+      '</div></div>' +
+
+      '<div class="sheet" style="margin-top:20px">' +
+        '<div class="sec" style="padding-bottom:0;border-bottom:0">' +
+          '<h2>What moved last<span class="aside">60 entries</span></h2></div>' +
+        '<div class="sec" style="padding:0"><div class="wrapx">' + movesTable(d.moves) +
+        '</div></div></div>';
+  }
+
+  function movesTable(moves){
+    if(!moves.length) return '<div class="lognote">Nothing has moved yet.</div>';
+    var rows = moves.map(function(m){
+      return '<tr>' +
+        '<td class="n">' + esc(m.on) + '</td>' +
+        '<td>' + esc(m.bank) + '</td>' +
+        '<td>' + esc(kindWord(m)) + '</td>' +
+        '<td>' + esc(m.ref || m.note || '') + '</td>' +
+        '<td class="n ' + (m.amount < 0 ? 'neg' : 'pos') + '">' + money(m.amount) + '</td>' +
+      '</tr>';
+    }).join('');
+    return '<table class="plain"><thead><tr><th>Date</th><th>Bank</th><th>What</th>' +
+      '<th>Reference</th><th class="n">Amount</th></tr></thead><tbody>' + rows + '</tbody></table>';
+  }
+
+  function kindWord(m){
+    if(m.kind === 'courier') return 'Courier payment' + (m.account ? ' · ' + m.account : '');
+    if(m.kind === 'spend')   return 'Spending sheet';
+    if(m.kind === 'transfer')return 'Transfer';
+    return 'Adjustment';
+  }
+
+  /* ---------- courier payments ---------- */
+
+  function couriersView(){
+    var d = S.links;
+    if(!d) return '<div class="fxnone">One moment…</div>';
+
+    var banks = (S.report && S.report.banks.filter(function(b){ return b.active; })) || [];
+    var byAccount = {};
+    d.links.forEach(function(l){
+      if(!byAccount[l.accountId]) byAccount[l.accountId] = [];
+      byAccount[l.accountId].push(l);
+    });
+
+    var waiting = (d.waiting || []).filter(function(w){ return w.net > 0; });
+    var warn = waiting.length
+      ? '<div class="warn"><b>' + waiting.length + ' courier account' +
+        (waiting.length === 1 ? ' has' : 's have') + ' paid money with nowhere to put it.</b> ' +
+        waiting.map(function(w){
+          return esc(w.label) + ' — ' + money(w.net) + ' over ' + w.receipts +
+                 ' receipt' + (w.receipts === 1 ? '' : 's') + ' (' + esc(w.why) + ')';
+        }).join('; ') + '</div>'
+      : '';
+
+    var cards = (d.accounts || []).map(function(a){
+      var mine = byAccount[a.id] || [];
+      var now = mine[0] || null;
+
+      var log = mine.length
+        ? mine.map(function(l){
+            return '<div class="chg"><b>' + esc(l.from) + '</b> → ' + esc(l.bankName) +
+              (l.note ? ' · ' + esc(l.note) : '') +
+              '<span class="who">' + esc(l.madeBy || '') + '</span>' +
+              ' <button class="mini" data-unlink="' + l.id + '">Remove</button></div>';
+          }).join('')
+        : '<div class="lognote">No bank set yet. Payments from this account are held ' +
+          'until one is.</div>';
+
+      return '<div class="sheet" style="margin-bottom:16px">' +
+        '<div class="sec" style="padding-bottom:12px">' +
+          '<h2>' + esc(a.label) + '<span class="aside">' + esc(cname(a.courier)) +
+            (now ? ' · paying into <b>' + esc(now.bankName) + '</b> since ' + esc(now.from)
+                 : ' · no bank set') + '</span></h2>' +
+          '<div class="form">' +
+            '<div><label>Pays into</label><select data-k="bank" data-acc="' + a.id + '">' +
+              banks.map(function(b){
+                return '<option value="' + b.id + '"' +
+                  (now && now.bankId === b.id ? ' selected' : '') + '>' + esc(b.name) + '</option>';
+              }).join('') + '</select></div>' +
+            '<div><label>From this date</label>' +
+              '<input type="date" data-k="from" data-acc="' + a.id + '" value="' +
+              esc(S.today) + '"></div>' +
+            '<div><label>Note</label><input type="text" data-k="note" data-acc="' + a.id +
+              '" placeholder="why it changed"></div>' +
+            '<div><label>&nbsp;</label><button class="solid" data-link="' + a.id +
+              '">Save the change</button></div>' +
+          '</div>' +
+          '<div class="msg" data-msg="' + a.id + '"></div>' +
+        '</div>' +
+        '<div class="sec" style="padding:0">' + log + '</div>' +
+      '</div>';
+    }).join('');
+
+    return warn +
+      '<div class="sheet" style="margin-bottom:16px"><div class="sec">' +
+        '<h2>How this works<span class="aside">read once</span></h2>' +
+        '<p class="hint" style="margin:0">A courier payment goes into the bank that ' +
+        'account was paying into <b>on the day it paid</b>, not the bank it pays into ' +
+        'today. So changing the bank never moves money that has already landed, and the ' +
+        'list underneath each account is the record of every change.</p>' +
+        '<div class="acts"><button class="solid" id="postNow">Put the couriers’ ' +
+        'payments into the banks</button><span class="msg" id="postMsg"></span></div>' +
+      '</div></div>' + cards;
+  }
+
+  /* ---------- transfers, adjustments ---------- */
+
+  function entriesView(){
+    var banks = (S.report && S.report.banks.filter(function(b){ return b.active; })) || [];
+    if(!banks.length) return '<div class="fxnone">Add a bank first.</div>';
+
+    var opts = banks.map(function(b){
+      return '<option value="' + b.id + '">' + esc(b.name) + '</option>';
+    }).join('');
+
+    return '<div class="sheet" style="margin-bottom:16px"><div class="sec">' +
+        '<h2>Move money between banks</h2>' +
+        '<div class="form">' +
+          '<div><label>Out of</label><select id="tFrom">' + opts + '</select></div>' +
+          '<div><label>Into</label><select id="tTo">' + opts + '</select></div>' +
+          '<div><label>Date</label><input type="date" id="tOn" value="' + esc(S.today) + '"></div>' +
+          '<div><label>Amount</label><input type="number" id="tAmt" step="0.01"></div>' +
+          '<div class="wide"><label>Note</label><input type="text" id="tNote"></div>' +
+        '</div>' +
+        '<div class="acts"><button class="solid" id="tGo">Transfer</button>' +
+        '<span class="msg" id="tMsg"></span></div>' +
+      '</div></div>' +
+
+      '<div class="sheet" style="margin-bottom:16px"><div class="sec">' +
+        '<h2>Adjustment<span class="aside">a minus takes it off</span></h2>' +
+        '<div class="form">' +
+          '<div><label>Bank</label><select id="aBank">' + opts + '</select></div>' +
+          '<div><label>Date</label><input type="date" id="aOn" value="' + esc(S.today) + '"></div>' +
+          '<div><label>Amount</label><input type="number" id="aAmt" step="0.01"></div>' +
+          '<div class="wide"><label>What it is for</label><input type="text" id="aNote"></div>' +
+        '</div>' +
+        '<div class="acts"><button class="solid" id="aGo">Save the entry</button>' +
+        '<span class="msg" id="aMsg"></span></div>' +
+      '</div></div>' +
+
+      '<div class="sheet"><div class="sec" style="padding-bottom:0;border-bottom:0">' +
+        '<h2>Spending sheets</h2></div>' +
+        '<div class="sec" style="padding:0"><div class="wrapx"><table class="plain"><thead><tr>' +
+          '<th>Bank</th><th>Sheet</th><th class="n">Out this year</th><th></th>' +
+        '</tr></thead><tbody>' +
+        banks.map(function(b){
+          return '<tr><td class="nm">' + esc(b.name) + '</td>' +
+            '<td>' + (b.sheetUrl
+              ? '<span style="font-size:12px;color:var(--muted)">linked</span>'
+              : '<span style="font-size:12px;color:var(--faint)">none — add it when ' +
+                'you edit the bank</span>') + '</td>' +
+            '<td class="n neg">' + money(b.outYear) + '</td>' +
+            '<td>' + (b.sheetUrl
+              ? '<button class="mini" data-sheet="' + b.id + '">Read it now</button>' : '') +
+              '<span class="msg" data-sheetmsg="' + b.id + '"></span></td></tr>';
+        }).join('') +
+        '</tbody></table></div></div></div>';
+  }
+
+  /* ---------- add or edit a bank ---------- */
+
+  function addView(){
+    var b = S.editing || { opening:0, openingOn:S.today, active:true };
+    var banks = (S.report && S.report.banks) || [];
+
+    return '<div class="sheet" style="margin-bottom:16px"><div class="sec">' +
+        '<h2>' + (b.id ? 'Edit ' + esc(b.name) : 'A new bank account') +
+          '<span class="aside">nothing before the opening date is ever counted</span></h2>' +
+        '<div class="form">' +
+          '<div><label>Bank name</label><input type="text" id="bName" value="' +
+            esc(b.name || '') + '" placeholder="Alfalah — current"></div>' +
+          '<div><label>Account title</label><input type="text" id="bTitle" value="' +
+            esc(b.title || '') + '"></div>' +
+          '<div><label>In whose name</label><input type="text" id="bOwner" value="' +
+            esc(b.ownerName || '') + '" placeholder="the business it belongs to"></div>' +
+          '<div><label>Account number</label><input type="text" id="bNo" value="' +
+            esc(b.accountNo || '') + '"></div>' +
+          '<div><label>IBAN</label><input type="text" id="bIban" value="' +
+            esc(b.iban || '') + '"></div>' +
+          '<div><label>Branch</label><input type="text" id="bBranch" value="' +
+            esc(b.branch || '') + '"></div>' +
+          '<div><label>Opening balance</label><input type="number" id="bOpen" step="0.01" value="' +
+            esc(b.opening) + '"></div>' +
+          '<div><label>True on</label><input type="date" id="bOpenOn" value="' +
+            esc(b.openingOn || S.today) + '"></div>' +
+          '<div class="wide"><label>Spending sheet (published CSV)</label>' +
+            '<input type="text" id="bSheet" value="' + esc(b.sheetUrl || '') + '" ' +
+            'placeholder="Google Sheets → File → Share → Publish to the web → CSV"></div>' +
+          '<div class="wide"><label>Notes</label><input type="text" id="bNotes" value="' +
+            esc(b.notes || '') + '"></div>' +
+        '</div>' +
+        '<div class="acts">' +
+          '<button class="solid" id="bSave">' + (b.id ? 'Save' : 'Add this bank') + '</button>' +
+          (b.id ? '<button id="bNew">Add a different one instead</button>' : '') +
+          (b.id ? '<button class="danger" id="bClose">Close this account</button>' : '') +
+          '<span class="msg" id="bMsg"></span>' +
+        '</div>' +
+      '</div></div>' +
+
+      (banks.length
+        ? '<div class="sheet"><div class="sec" style="padding:0"><div class="wrapx">' +
+          '<table class="plain"><thead><tr><th>Bank</th><th>IBAN</th><th>In whose name</th>' +
+          '<th class="n">Opening</th><th></th></tr></thead><tbody>' +
+          banks.map(function(x){
+            return '<tr><td class="nm">' + esc(x.name) +
+              (x.active ? '' : ' <span style="color:var(--faint)">closed</span>') + '</td>' +
+              '<td class="mono" style="font-size:11.5px">' + esc(x.iban || '') + '</td>' +
+              '<td>' + esc(x.ownerName || '') + '</td>' +
+              '<td class="n">' + money(x.opening) + '</td>' +
+              '<td><button class="mini" data-edit="' + x.id + '">Edit</button></td></tr>';
+          }).join('') + '</tbody></table></div></div></div>'
+        : '');
+  }
+
+  /* ---------- drawing and wiring ---------- */
+
+  function draw(){
+    var v = $('view');
+    v.innerHTML = S.tab === 'report'   ? reportView()
+                : S.tab === 'couriers' ? couriersView()
+                : S.tab === 'entries'  ? entriesView()
+                : addView();
+    wire();
+  }
+
+  function say(el, cls, text){
+    if(!el) return;
+    el.className = 'msg ' + (cls || '');
+    el.textContent = text;
+  }
+
+  function wire(){
+    var v = $('view');
+
+    v.querySelectorAll('[data-bank]').forEach(function(tr){
+      tr.addEventListener('click', function(){
+        var id = tr.getAttribute('data-bank');
+        var kids = document.getElementById('bk' + id);
+        if(!kids) return;
+        if(kids.style.display !== 'none'){ kids.style.display = 'none'; return; }
+        kids.style.display = '';
+        var cell = kids.querySelector('td');
+        if(cell.getAttribute('data-done')) return;
+        cell.innerHTML = '<div class="lognote">Reading…</div>';
+        get('/api/bank/one?id=' + id).then(function(d){
+          cell.setAttribute('data-done', '1');
+          cell.innerHTML = '<div class="lognote">' + esc(d.bank.name) +
+            (d.bank.iban ? ' · ' + esc(d.bank.iban) : '') +
+            (d.bank.notes ? ' · ' + esc(d.bank.notes) : '') +
+            ' · ' + esc(d.year.from) + ' to ' + esc(d.year.to) + '</div>' +
+            '<div class="wrapx">' + movesTable(d.moves.map(function(m){
+              return Object.assign({}, m, { bank: d.bank.name });
+            })) + '</div>';
+        }).catch(function(e){
+          cell.innerHTML = '<div class="lognote">' + esc(e.message) + '</div>';
+        });
+      });
+    });
+
+    var postNow = $('postNow');
+    if(postNow) postNow.addEventListener('click', function(){
+      postNow.disabled = true;
+      say($('postMsg'), '', 'Working…');
+      post('/api/bank/post', {}).then(function(d){
+        say($('postMsg'), 'good', d.posted + ' payment' + (d.posted === 1 ? '' : 's') + ' written.');
+        return load();
+      }).catch(function(e){
+        postNow.disabled = false;
+        say($('postMsg'), 'bad', e.message);
+      });
+    });
+
+    v.querySelectorAll('[data-link]').forEach(function(b){
+      b.addEventListener('click', function(){
+        var acc = b.getAttribute('data-link');
+        var pick = function(k){
+          var el = v.querySelector('[data-k="' + k + '"][data-acc="' + acc + '"]');
+          return el ? el.value : '';
+        };
+        var msg = v.querySelector('[data-msg="' + acc + '"]');
+        b.disabled = true;
+        say(msg, '', 'Saving…');
+        post('/api/bank/link', { accountId: Number(acc), bankId: Number(pick('bank')),
+                                 from: pick('from'), note: pick('note') })
+          .then(function(d){
+            say(msg, 'good', 'Saved' + (d.posted ? ' · ' + d.posted + ' payments placed' : '') + '.');
+            return load();
+          })
+          .catch(function(e){ b.disabled = false; say(msg, 'bad', e.message); });
+      });
+    });
+
+    v.querySelectorAll('[data-unlink]').forEach(function(b){
+      b.addEventListener('click', function(e){
+        e.stopPropagation();
+        post('/api/bank/unlink', { id: Number(b.getAttribute('data-unlink')) })
+          .then(load).catch(function(){});
+      });
+    });
+
+    var tGo = $('tGo');
+    if(tGo) tGo.addEventListener('click', function(){
+      say($('tMsg'), '', 'Working…');
+      post('/api/bank/transfer', { fromBank: Number($('tFrom').value),
+          toBank: Number($('tTo').value), on: $('tOn').value,
+          amount: $('tAmt').value, note: $('tNote').value })
+        .then(function(){ say($('tMsg'), 'good', 'Moved.'); return load(); })
+        .catch(function(e){ say($('tMsg'), 'bad', e.message); });
+    });
+
+    var aGo = $('aGo');
+    if(aGo) aGo.addEventListener('click', function(){
+      say($('aMsg'), '', 'Working…');
+      post('/api/bank/adjust', { bankId: Number($('aBank').value), on: $('aOn').value,
+          amount: $('aAmt').value, note: $('aNote').value })
+        .then(function(){ say($('aMsg'), 'good', 'Saved.'); return load(); })
+        .catch(function(e){ say($('aMsg'), 'bad', e.message); });
+    });
+
+    v.querySelectorAll('[data-sheet]').forEach(function(b){
+      b.addEventListener('click', function(){
+        var id = b.getAttribute('data-sheet');
+        var msg = v.querySelector('[data-sheetmsg="' + id + '"]');
+        b.disabled = true;
+        say(msg, '', ' Reading…');
+        post('/api/bank/sheet', { id: Number(id), fresh: true }).then(function(d){
+          say(msg, 'good', ' ' + d.written + ' rows in' +
+            (d.gone ? ', ' + d.gone + ' taken off' : '') +
+            (d.before ? ', ' + d.before + ' before the opening date left out' : '') + '.');
+          b.disabled = false;
+          return load();
+        }).catch(function(e){ b.disabled = false; say(msg, 'bad', ' ' + e.message); });
+      });
+    });
+
+    var bSave = $('bSave');
+    if(bSave) bSave.addEventListener('click', function(){
+      var body = {
+        id: S.editing && S.editing.id,
+        name: $('bName').value, title: $('bTitle').value,
+        ownerName: $('bOwner').value, accountNo: $('bNo').value,
+        iban: $('bIban').value, branch: $('bBranch').value,
+        opening: $('bOpen').value, openingOn: $('bOpenOn').value,
+        sheetUrl: $('bSheet').value, notes: $('bNotes').value
+      };
+      bSave.disabled = true;
+      say($('bMsg'), '', 'Saving…');
+      post('/api/bank/save', body).then(function(){
+        S.editing = null;
+        say($('bMsg'), 'good', 'Saved.');
+        return load();
+      }).catch(function(e){
+        bSave.disabled = false;
+        say($('bMsg'), 'bad', e.message);
+      });
+    });
+
+    var bNew = $('bNew');
+    if(bNew) bNew.addEventListener('click', function(){ S.editing = null; draw(); });
+
+    var bClose = $('bClose');
+    if(bClose) bClose.addEventListener('click', function(){
+      post('/api/bank/close', { id: S.editing && S.editing.id })
+        .then(function(){ S.editing = null; return load(); })
+        .catch(function(e){ say($('bMsg'), 'bad', e.message); });
+    });
+
+    v.querySelectorAll('[data-edit]').forEach(function(b){
+      b.addEventListener('click', function(){
+        var id = Number(b.getAttribute('data-edit'));
+        S.editing = (S.report.banks || []).filter(function(x){ return x.id === id; })[0] || null;
+        draw();
+      });
+    });
+  }
+
+  function load(){
+    return Promise.all([ get('/api/bank/report'), get('/api/bank/links') ])
+      .then(function(a){
+        S.report = a[0];
+        S.links = a[1];
+        S.today = a[0].today || S.today;
+        $('yearNote').textContent = 'Tax year ' + a[0].year.year +
+          ' · ' + a[0].year.from + ' to ' + a[0].year.to;
+        draw();
+      })
+      .catch(function(e){
+        $('view').innerHTML = '<div class="sheet"><div class="sec"><div class="fxnone">' +
+          'Could not read it: ' + esc(e.message) + '</div></div></div>';
+      });
+  }
+
+  window.APP.ready.then(function(s){
+    if(!s.boss){ $('gate').classList.remove('hide'); return; }
+    $('body').classList.remove('hide');
+
+    $('tabs').addEventListener('click', function(e){
+      var b = e.target.closest('button[data-tab]');
+      if(!b) return;
+      S.tab = b.getAttribute('data-tab');
+      [].slice.call($('tabs').querySelectorAll('button')).forEach(function(x){
+        x.classList.toggle('on', x === b);
+      });
+      try { sessionStorage.setItem('bank:tab', S.tab); } catch (err) {}
+      draw();
+    });
+
+    try {
+      var kept = sessionStorage.getItem('bank:tab');
+      if(kept){
+        S.tab = kept;
+        [].slice.call($('tabs').querySelectorAll('button')).forEach(function(x){
+          x.classList.toggle('on', x.getAttribute('data-tab') === kept);
+        });
+      }
+    } catch (err) {}
+
+    load();
+  }).catch(function(){
+    $('view').innerHTML = '<div class="fxnone">Could not reach the server.</div>';
+  });
+})();
+</script>
+</body>
+</html>
