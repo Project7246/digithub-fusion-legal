@@ -85,9 +85,14 @@
       ]},
       { group: 'Couriers', items: [
         { href:'/couriers',     label:'Courier accounts', icon:'truck', tree:true,
-          need:'couriersync', tile:'truck', as:'Couriers' },
-        { href:'/courier-dash', label:'Tracking',      icon:'pin',    need:'couriersync', tile:'pin' },
-        { href:'/pickups',      label:'Pickups',       icon:'hand',   need:'couriersync', tile:'hand' }
+          need:'couriersync', tile:'truck', as:'Couriers' }
+        // No Tracking and no Pickups line. Asked for on 29 Oct 2026: this rail
+        // is the courier companies and the day's work, and what Logistics is
+        // to grow here is **Rates** - company against company, per parcel.
+        // /courier-dash is still a page and is still in the Operations rail,
+        // which is where the day's parcels are looked at; /pickups is still
+        // reached from the load sheet. The same line in two rails is two
+        // places to look for one page.
         // No Receipts line. The CPRs are on the courier account's own Finance
         // tab, under the statement they belong to - "jb finance k section mn
         // har courier ka acount mn cpr show ho rha h tu yaha is ki zarort ni
