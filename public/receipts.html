@@ -908,11 +908,23 @@
   function openReceipt(c){
     if(!c) return;
 
-    // PostEx, with its portal signed in: the full thing, as before.
-    if(c.courier === 'postex' && c.remoteId && account &&
-       String(account.id) === String(c.accountId)){
-      openCpr(c.remoteId, c.cpr);
-      return;
+    // PostEx, with its portal signed in: the full thing, as before. The
+    // receipt names its own account, so opening one belonging to the other
+    // PostEx account switches to it rather than falling back to the short
+    // version - two accounts of one courier are not two couriers.
+    if(c.courier === 'postex' && c.remoteId){
+      var his = accounts.filter(function(a){
+        return String(a.id) === String(c.accountId);
+      })[0];
+      if(his){
+        if(!account || String(account.id) !== String(his.id)){
+          account = his;
+          var sel = $('acct');
+          if(sel) sel.value = String(his.id);
+        }
+        openCpr(c.remoteId, c.cpr);
+        return;
+      }
     }
 
     current = c;
