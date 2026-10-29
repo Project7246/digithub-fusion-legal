@@ -557,6 +557,10 @@ export async function peek(token, from, to, extra) {
       });
       const block = all.find(b => Array.isArray(b && b.Details) && b.Details.length) || null;
       const list = block ? block.Details : (rows(all[0]) || []);
+      if (list.length) {
+        peekSample.tracking = String(
+          list[0].consignmentNumber || list[0].CNNo || list[0].cn || '').trim();
+      }
       out.calls.push({
         what: 'Reports/QSR_Report',
         rows: list.length,
@@ -576,5 +580,69 @@ export async function peek(token, from, to, extra) {
       error: 'no location id on this account, or no date to read' });
   }
 
+  // The money. The QSR report carries no charge and no tax at all - seventeen
+  // columns and not one of them is either - so whatever M&P deduct is on one
+  // of these two, and this is what says which.
+  if (location) {
+    try {
+      const { all } = await post(token, extra, '/Reports/Payment_Report', {
+        dateFrom: from, dateTo: to, locationID: String(location)
+      });
+      const block = all.find(b => Array.isArray(b && b.Details) && b.Details.length) || all[0] || null;
+      const list = (block && block.Details) || [];
+      out.calls.push({
+        what: 'Reports/Payment_Report',
+        rows: list.length,
+        keys: list.length ? Object.keys(list[0]) : [],
+        first: list[0] || null,
+        blockKeys: block ? Object.keys(block).filter(k => k !== 'Details') : [],
+        block: block ? Object.fromEntries(
+          Object.entries(block).filter(([k]) => k !== 'Details')) : null
+      });
+    } catch (e) {
+      out.calls.push({ what: 'Reports/Payment_Report', error: e.message });
+    }
+  }
+
+  // and one consignment off the bulk tracking call, which is the other place
+  // a per-parcel deduction could be
+  try {
+    const account = accountOf(extra);
+    const one = await pool0(token, extra, account);
+    out.calls.push(one);
+  } catch (e) {
+    out.calls.push({ what: 'Tracking/Bulk_Consignment_Tracking_New', error: e.message });
+  }
+
   return out;
 }
+
+// One parcel we already hold, asked about by name - the caller passes none, so
+// the newest consignment on the QSR answer above is used where there is one.
+async function pool0(token, extra, account) {
+  const sample = peekSample.tracking;
+  if (!sample) {
+    return { what: 'Tracking/Bulk_Consignment_Tracking_New',
+             error: 'no consignment number to ask about' };
+  }
+  const { all } = await post(token, extra,
+    '/Tracking/Bulk_Consignment_Tracking_New',
+    { AccountNo: account, Consignments: [sample] });
+
+  const block = all.find(b => Array.isArray(b && b.tracking_Details) &&
+                              b.tracking_Details.length) || all[0] || null;
+  const list = (block && block.tracking_Details) || [];
+  const row = list[0] || null;
+
+  return {
+    what: 'Tracking/Bulk_Consignment_Tracking_New',
+    rows: list.length,
+    keys: row ? Object.keys(row) : [],
+    // the history is long and says nothing about money
+    first: row ? Object.fromEntries(
+      Object.entries(row).filter(([k]) => k !== 'CNTrackingDetail')) : null
+  };
+}
+
+// the consignment number peek() picks up on its way past
+const peekSample = { tracking: '' };
