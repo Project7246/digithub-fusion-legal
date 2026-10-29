@@ -102,7 +102,10 @@
       // The day as it is run, rather than the accounts behind it. These three
       // are Logistics' own and are not repeated under Operations: the same
       // line in two rails is two places to look for one page.
-      { group: 'The day', items: [
+      // "The day" was the heading here and it read as a half-finished note
+      // rather than a part of the app. These three are the day's work in order
+      // - plan it, see what happened, know where the couriers go at all.
+      { group: 'Daily operations', items: [
         { href:'/load-sheet',       label:'Load sheet',       icon:'sheet',
           need:'couriersync', tile:'sheet' },
         { href:'/delivery-reports', label:'Delivery reports', icon:'chart',
