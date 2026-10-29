@@ -636,14 +636,33 @@ nothing. Their `fee` is the sum of `AmountInvoiced`, the invoice lines are kept
 beside the parcel, and their `tax` is nought honestly: that call gives one
 amount and does not split carriage from GST.
 
-**This changes the money chain, not only the field.** Every receivable figure
-was `amount - fee - tax`, which is right for PostEx and Trax - they pay the COD
-less what they kept - and wrong for M&P, who pay the whole COD and send a bill.
-Netting their charges off understated what M&P owe by exactly their charges, on
-the dashboard, the statement, the ageing, the receipts and the banking deposits
-alike. **`deductingCouriers()` in `adapters.js` is the one list**, each adapter
-says which it is (`deducts: false` on M&P), and every money query builds its SQL
-from it.
+**And then their payment report said the opposite, so read both.** The tracking
+call reports `AmountPaid` equal to the whole `CODAmount`, which reads as
+"nothing was kept". `Reports/Payment_Report` describes the money that actually
+moved:
+
+```
+PaymentID 20261533146 - RRAmount 6943, InvoiceAmount 13286, NetPayable -6343, IBFT
+```
+
+`NetPayable` is `RRAmount` less `InvoiceAmount`, so what reaches the bank **is**
+the COD net of their invoices - the same shape as PostEx and Trax, told in two
+places instead of one. M&P therefore stay on the default: they deduct.
+
+`deductingCouriers()` in `adapters.js` is the one list every money query builds
+its SQL from, and an adapter says `deducts: false` only if a courier genuinely
+hands over the whole COD. Nothing does today; the machinery is there because
+the question had to be asked.
+
+**Not settled, and not to be guessed at**: that payment's `InvoiceAmount`
+(13,286) is not that parcel's invoice (109.25), so a payment carries invoices
+beyond the parcels it pays for. Until the two are reconciled, the receivable is
+right per parcel and a payment's own `NetPayable` is the figure to trust for
+the bank.
+
+**Their payment report also names the bank**: `BeneficiaryBankAccount`,
+`BankName`, `BeneficiaryName` sit on the block around the rows - which is the
+account the Banking module is waiting for.
 
 - **Their charges and their GST were hard nought until 30 Oct 2026**, in both
   mappers. So an M&P receipt showed no tax at all, every M&P parcel looked as

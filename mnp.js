@@ -605,12 +605,26 @@ export const adapter = {
   peek,
   key: 'mnp',
   name: 'M&P',
-  // **They do not deduct.** M&P hand over the whole COD and invoice what
-  // they charged separately, so a parcel of theirs is worth its full COD to
-  // us and their charges are a bill, not a deduction. PostEx and Trax keep
-  // theirs out of the money they send, which is the usual way and the
-  // default - see deductingCouriers() in adapters.js.
-  deducts: false,
+  // **They do deduct**, and the parcel does not show it.
+  //
+  // Their tracking call reports `AmountPaid` equal to the whole `CODAmount`,
+  // which reads as "nothing was kept" and is what this was first written to.
+  // Their payment report says otherwise, and it is the one that describes the
+  // money that actually moved:
+  //
+  //     PaymentID 20261533146 - RRAmount 6943, InvoiceAmount 13286,
+  //     NetPayable -6343, IBFT
+  //
+  // NetPayable is RRAmount less InvoiceAmount, so what reaches the bank is the
+  // COD **net of their invoices** - the same shape as PostEx and Trax, told
+  // in two places instead of one. So M&P are left on the default here, and
+  // `fee` on a parcel is what they invoiced for carrying it.
+  //
+  // What is still not settled, and should not be guessed at: that payment's
+  // InvoiceAmount (13,286) is not that parcel's invoice (109.25), so a
+  // payment carries invoices beyond the parcels it pays for. Until the two
+  // are reconciled, the receivable is right per parcel and a payment's own
+  // net is the figure to trust for the bank.
   base: BASE,
   // their public tracking screen is a different host on a different network,
   // so one of the two being reachable says nothing about the other
