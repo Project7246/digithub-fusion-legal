@@ -166,6 +166,25 @@ export async function listLocations(token, extra) {
 
 /* ---------- a consignment, in the app's own shape ---------- */
 
+// What M&P billed for one consignment. There can be more than one line - a
+// return is invoiced as well as the delivery - so they are added up, and the
+// numbers are kept beside the parcel so a figure can be opened into the
+// invoice it came from.
+function invoiced(r) {
+  const list = Array.isArray(r && r.CNTrackingInvDetail) ? r.CNTrackingInvDetail : [];
+  return list.reduce((sum, x) => sum + num(x && x.AmountInvoiced), 0);
+}
+
+function invoiceLines(r) {
+  const list = Array.isArray(r && r.CNTrackingInvDetail) ? r.CNTrackingInvDetail : [];
+  return list.map(x => ({
+    number: String((x && x.InvoiceNumber) || '').trim(),
+    on: day(x && x.InvoiceDate),
+    amount: num(x && x.AmountInvoiced),
+    kind: String((x && x.InvoiceType) || '').trim()
+  })).filter(x => x.number || x.amount);
+}
+
 // A row of the QSR report: one consignment, with where it ended up.
 export function mapReportRow(row) {
   const f = flatten(row, 0);
@@ -237,11 +256,20 @@ export function mapTracked(row) {
     upfront:     0,
     reserve:     0,
     balance:     0,
-    // the same two, off the tracking call. Whichever of the two calls carries
-    // them wins, because saveOrders keeps the later answer.
-    fee:         num(r.ServiceCharges || r.DeliveryCharges || r.TotalCharges ||
-                     r.Charges || r.FreightCharges),
-    tax:         num(r.GST || r.SalesTax || r.Tax || r.GSTAmount),
+    // **M&P do not deduct anything at the door.** Read off their own answer on
+    // 30 Oct 2026: a parcel with CODAmount 6943 came back with AmountPaid
+    // 6943 - the whole of it - and what they charge for carrying it is
+    // invoiced separately, one row per consignment under
+    // `CNTrackingInvDetail`: InvoiceNumber, InvoiceDate, AmountInvoiced,
+    // InvoiceType. That is the charge, and it is why their QSR report has no
+    // charge column at all and why guessing at `servicecharges` and `gst`
+    // never matched anything.
+    //
+    // So `fee` is what they invoiced, `tax` is nought, and the nought is
+    // honest: this call gives one amount and does not split it into carriage
+    // and GST. Their invoice does, and nothing here reads an invoice yet.
+    fee:         invoiced(r),
+    tax:         0,
     city:        r.DestinationCity || r.OriginCity || '',
     bookedOn:    day(r.BookingDate),
     pickedOn:    lineOf('transit'),
@@ -249,7 +277,9 @@ export function mapTracked(row) {
     settled:     !!(r.PaymentID && String(r.PaymentID).trim()),
     settledOn:   day(r.PaymentDate),
     cprNumber:   String(r.PaymentID || '').trim(),
-    raw:         { history: history.slice(-8) }
+    // what they paid, which for M&P is the whole COD, and what they billed
+    payout:      num(r.AmountPaid),
+    raw:         { history: history.slice(-8), invoices: invoiceLines(r) }
   };
 }
 
@@ -481,6 +511,12 @@ export const adapter = {
   peek,
   key: 'mnp',
   name: 'M&P',
+  // **They do not deduct.** M&P hand over the whole COD and invoice what
+  // they charged separately, so a parcel of theirs is worth its full COD to
+  // us and their charges are a bill, not a deduction. PostEx and Trax keep
+  // theirs out of the money they send, which is the usual way and the
+  // default - see deductingCouriers() in adapters.js.
+  deducts: false,
   base: BASE,
   // their public tracking screen is a different host on a different network,
   // so one of the two being reachable says nothing about the other

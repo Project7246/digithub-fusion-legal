@@ -35,6 +35,21 @@ export const ADAPTERS = {
   mnp:    mnp
 };
 
+// Which couriers take their charges out of the money they send us.
+//
+// Most do: PostEx and Trax both pay the COD less what they kept, so a parcel
+// is worth `amount - fee - tax` to us. **M&P do not** - they pay the whole COD
+// and invoice their charges separately - so netting their fee off would
+// understate what they owe by exactly their charges, every month.
+//
+// The money queries build a SQL fragment out of this. The keys are our own
+// identifiers from the files above, never anything typed in.
+export function deductingCouriers() {
+  return Object.values(ADAPTERS)
+    .filter(a => a.deducts !== false)
+    .map(a => a.key);
+}
+
 export function adapterFor(courier) {
   return ADAPTERS[String(courier || '').trim().toLowerCase()] || null;
 }

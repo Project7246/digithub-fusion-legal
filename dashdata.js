@@ -3,8 +3,23 @@
 // database - which is why the page opens at once.
 
 import { pool } from './db.js';
+import { deductingCouriers } from './adapters.js';
 
 const r2 = v => Math.round(Number(v || 0) * 100) / 100;
+
+// What a parcel is worth to us, in SQL.
+//
+// Most couriers take their charges out of the money they send, so the parcel
+// is worth its COD less the fee and the tax. **M&P do not**: they pay the
+// whole COD and invoice their charges separately, so netting theirs off would
+// understate what they owe by exactly their charges. `deductingCouriers()`
+// is the one list, built from the adapters themselves, and the keys in it are
+// our own identifiers - never anything typed in.
+const DEDUCTS = deductingCouriers();
+const NET_OF = '(o.amount - CASE WHEN o.courier IN (' +
+  deductingCouriers().map(k => "'" + k + "'").join(',') +
+  ') THEN COALESCE(o.fee,0) + COALESCE(o.tax,0) ELSE 0 END)';
+
 const day = v => v ? new Date(v).toISOString().slice(0, 10) : null;
 
 function nextDay(s) {
@@ -403,7 +418,7 @@ const PAID_SQL    = GOT_SQL;      // the name moneyWhere() knows it by
 function agePair(name, when) {
   const open = `NOT ${GOT_SQL}`;
   return `COUNT(*) FILTER (WHERE ${open} AND ${when}) AS ${name}_n,
-          COALESCE(SUM(o.amount - o.fee - o.tax) FILTER (WHERE ${open} AND ${when}),0) AS ${name}_v`;
+          COALESCE(SUM(${NET_OF}) FILTER (WHERE ${open} AND ${when}),0) AS ${name}_v`;
 }
 
 // The statement for one period. `dates` cuts it on the **delivery** date,
@@ -420,7 +435,7 @@ async function parcelMoney(realmId, opts, dates) {
     where += ` AND o.delivered_on >= $${a} AND o.delivered_on <= $${b}`;
   }
 
-  const net = `(o.amount - o.fee - o.tax)`;
+  const net = NET_OF;
   const pair = (name, when) =>
     `COUNT(*) FILTER (WHERE ${when}) AS ${name}_n,
      COALESCE(SUM(${net}) FILTER (WHERE ${when}),0) AS ${name}_v`;
@@ -598,7 +613,7 @@ async function cprMoney(realmId, opts, dates) {
 // what has and has not come back on them.
 async function byMonth(realmId, opts) {
   const base = scope(realmId, opts);
-  const net = `(o.amount - o.fee - o.tax)`;
+  const net = NET_OF;
 
   const r = await pool.query(
     `SELECT to_char(date_trunc('month', o.delivered_on), 'YYYY-MM') AS m,
@@ -707,7 +722,12 @@ export async function recentCprs(realmId, opts) {
       charges,
       fee: r2(x.fee),
       tax: r2(x.tax),
-      net: x.net_amount == null ? r2(amount - charges) : r2(x.net_amount),
+      // What they actually paid against this receipt. A courier that deducts
+      // pays the COD less its charges; M&P pay the whole COD and bill their
+      // charges on an invoice of their own, so taking them off here would
+      // show a receipt as smaller than the money that arrived.
+      net: x.net_amount != null ? r2(x.net_amount)
+         : (DEDUCTS.indexOf(x.courier) > -1 ? r2(amount - charges) : amount),
       status: x.status || '',
       remoteId: x.remote_id || null,
       inBooks: !!x.received_on,
@@ -1228,10 +1248,10 @@ export async function logisticsSummary(realmId, opts) {
          FROM courier_orders o WHERE ${w}`, args),
 
     pool.query(
-      `SELECT COALESCE(SUM(o.amount - o.fee - o.tax)
+      `SELECT COALESCE(SUM(${NET_OF})
                 FILTER (WHERE NOT ${GOT_SQL}),0) AS owed,
               COUNT(*) FILTER (WHERE NOT ${GOT_SQL}) AS owed_n,
-              COALESCE(SUM(o.amount - o.fee - o.tax)
+              COALESCE(SUM(${NET_OF})
                 FILTER (WHERE NOT ${GOT_SQL}
                         AND o.delivered_on < CURRENT_DATE - 14),0) AS late,
               COUNT(*) FILTER (WHERE NOT ${GOT_SQL}
@@ -1250,7 +1270,7 @@ export async function logisticsSummary(realmId, opts) {
                                AND o.booked_on >= CURRENT_DATE - 30) AS returned,
               COUNT(*) FILTER (WHERE ${MOVING}) AS moving,
               COALESCE(SUM(o.fee + o.tax) FILTER (WHERE o.booked_on >= CURRENT_DATE - 30),0) AS charges,
-              COALESCE(SUM(o.amount - o.fee - o.tax)
+              COALESCE(SUM(${NET_OF})
                 FILTER (WHERE o.status_group = 'delivered' AND NOT ${GOT_SQL}),0) AS owed
          FROM courier_orders o WHERE ${w}
         GROUP BY o.courier ORDER BY 2 DESC`, args),

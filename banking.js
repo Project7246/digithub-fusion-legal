@@ -23,6 +23,7 @@
 // figure on the report is cut by that and by nothing else.
 
 import { pool } from './db.js';
+import { deductingCouriers } from './adapters.js';
 
 /* ==================== the tables ==================== */
 
@@ -113,6 +114,14 @@ export async function initBanking() {
 /* ==================== small things ==================== */
 
 const n2 = v => Math.round(Number(v || 0) * 100) / 100;
+// What a parcel is worth to us. Most couriers take their charges out of what
+// they send; M&P pay the whole COD and bill their charges separately, so
+// netting theirs off would understate what they owe by exactly their charges.
+// One list, built from the adapters - see deductingCouriers().
+const NET_OF = '(o.amount - CASE WHEN o.courier IN (' +
+  deductingCouriers().map(k => "'" + k + "'").join(',') +
+  ') THEN COALESCE(o.fee,0) + COALESCE(o.tax,0) ELSE 0 END)';
+
 const num = v => {
   const f = parseFloat(String(v == null ? '' : v).replace(/[^0-9.\-]/g, ''));
   return isNaN(f) ? 0 : f;
@@ -288,7 +297,7 @@ const DEPOSIT_SQL = `
   WITH receipt AS (
     SELECT o.realm_id, o.account_id, o.cpr_number,
            MIN(o.settled_on) AS paid_on,
-           COALESCE(SUM(o.amount - o.fee - o.tax), 0) AS net
+           COALESCE(SUM(${NET_OF}), 0) AS net
       FROM courier_orders o
      WHERE o.realm_id = $1
        AND o.cpr_number IS NOT NULL AND o.cpr_number <> ''
@@ -337,7 +346,7 @@ export async function postDeposits(realmId) {
 export async function homeless(realmId) {
   const r = await pool.query(
     `SELECT o.account_id, a.label, a.courier, COUNT(DISTINCT o.cpr_number) AS receipts,
-            COALESCE(SUM(o.amount - o.fee - o.tax),0) AS net,
+            COALESCE(SUM(${NET_OF}),0) AS net,
             MIN(o.settled_on) AS first_on, MAX(o.settled_on) AS last_on,
             EXISTS (SELECT 1 FROM bank_links l
                      WHERE l.realm_id = o.realm_id AND l.account_id = o.account_id) AS has_link
@@ -458,7 +467,7 @@ export async function dropMove(realmId, id) {
 
 export async function receivable(realmId) {
   const r = await pool.query(
-    `SELECT l.bank_id, COALESCE(SUM(o.amount - o.fee - o.tax),0) AS owed,
+    `SELECT l.bank_id, COALESCE(SUM(${NET_OF}),0) AS owed,
             COUNT(*) AS parcels
        FROM courier_orders o
        JOIN LATERAL (
