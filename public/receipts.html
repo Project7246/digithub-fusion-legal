@@ -505,6 +505,18 @@
         var list = d.cprs || [];
         if(d.error){ $('ours').innerHTML = ''; return; }
 
+        // Arriving from a figure on the courier dashboard, with that figure's
+        // own list already chosen. The whole list is still read and the
+        // heading says which part of it is being shown, so the card's number
+        // and the list behind it cannot disagree.
+        var only = new URLSearchParams(location.search).get('show') || '';
+        var allOfThem = list.length;
+        if(only === 'due' || only === 'unposted'){
+          list = list.filter(function(c){ return !c.inBooks; });
+        } else if(only === 'paid'){
+          list = list.filter(function(c){ return !!c.settledOn; });
+        }
+
         var mine = scopeAccount ? scopeAccount.label : (courier ? cname(courier) : '');
 
         if(!list.length){
@@ -565,7 +577,9 @@
             '<span class="aside">' + n0(list.length) + ' receipt' +
             (list.length === 1 ? '' : 's') +
             (waiting.length ? ' \u00b7 ' + full(waitingAmount) + ' not in QuickBooks yet' : '') +
-            ' \u00b7 click one to see its parcels</span></h3>' +
+            (only ? ' \u00b7 ' + n0(list.length) + ' of ' + n0(allOfThem) +
+                    ', from the dashboard' : '') +
+            ' \u00b7 click one to open it</span></h3>' +
           '<div style="max-height:520px;overflow:auto"><table class="t">' +
           '<tr><th>Receipt</th><th>Courier</th><th>Account</th><th>Paid on</th>' +
           '<th class="r">Parcels</th><th class="r">Collected</th>' +
