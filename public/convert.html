@@ -666,17 +666,48 @@
       var td2=document.createElement('td'); td2.textContent=p.name;
       var td3=document.createElement('td'); td3.className='num'; td3.textContent=p.count;
       var td4=document.createElement('td');
+      var find=document.createElement('input');
+      find.type='text'; find.placeholder='Search name or SKU';
+      find.style.cssText='font-size:12px;padding:6px 8px;margin-bottom:5px';
       var sel=document.createElement('select'); sel.style.fontSize='13px';
-      var o0=document.createElement('option'); o0.value=''; o0.textContent='— choose a QuickBooks product —'; sel.appendChild(o0);
-      var oS=document.createElement('option'); oS.value='__skip__'; oS.textContent='Skip this product entirely'; sel.appendChild(oS);
-      qbProducts.forEach(function(q){
-        var o=document.createElement('option'); o.value=q.name; o.textContent=q.name; sel.appendChild(o);
+
+      function option(value,label){
+        var o=document.createElement('option'); o.value=value; o.textContent=label;
+        sel.appendChild(o); return o;
+      }
+      // The QuickBooks list is thousands long, so the box above it cuts the
+      // options down as it is typed: every word must appear, in the name or in
+      // the SKU. Whatever is already picked stays on the list either way, so a
+      // search can never silently drop the choice that was made.
+      function fill(term){
+        var words=key(term).split(' ').filter(Boolean);
+        var chosen=sel.value||'';
+        sel.innerHTML='';
+        var first=option('','— choose a QuickBooks product —');
+        option('__skip__','Skip this product entirely');
+        var shown=0;
+        qbProducts.forEach(function(q){
+          var hay=key(q.name)+' '+key(q.sku||'');
+          var hit=!words.length || words.every(function(w){ return hay.indexOf(w)>=0; });
+          if(!hit && q.name!==chosen) return;
+          if(hit) shown++;
+          option(q.name, q.sku ? q.name+'  ·  '+q.sku : q.name);
+        });
+        if(words.length) first.textContent = shown
+          ? shown+' of '+qbProducts.length+' match'
+          : 'Nothing matched that search';
+        sel.value=chosen;
+      }
+      fill('');
+      find.addEventListener('input',function(){ fill(this.value); });
+      find.addEventListener('keydown',function(e){
+        if(e.key==='Enter'){ e.preventDefault(); sel.focus(); }
       });
       var ex=mappings[p.key];
       if(ex){ if(ex.skip) sel.value='__skip__'; else if(ex.qbItem) sel.value=ex.qbItem; }
       sel.addEventListener('change',function(){ p.choice=this.value; });
       p.choice=sel.value;
-      td4.appendChild(sel);
+      td4.appendChild(find); td4.appendChild(sel);
       tr.appendChild(td0); tr.appendChild(td1); tr.appendChild(td2); tr.appendChild(td3); tr.appendChild(td4);
       frag.appendChild(tr);
     });
