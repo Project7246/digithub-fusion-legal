@@ -12,6 +12,51 @@
 <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@600;700;800&family=Roboto:wght@400;500&family=Roboto+Mono:wght@400;500&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="/app.css">
 <link rel="stylesheet" href="/tiles.css">
+<style>
+  /* The front page is read in ten seconds: what is moving, what is owed, and
+     what is waiting on somebody. The tiles stay, at the foot, as the way into
+     the pages - they were never the answer to a question. */
+  .board{display:flex;flex-direction:column;gap:20px}
+  .two{display:grid;grid-template-columns:1.4fr 1fr;gap:20px;align-items:start}
+  @media (max-width:900px){ .two{grid-template-columns:1fr} }
+
+  .figs a{display:block;padding:16px 22px;border-right:1px solid var(--line);
+    text-decoration:none;color:inherit}
+  .figs a:last-child{border-right:0}
+  .figs a:hover{background:var(--panel-2)}
+  .figs small{display:block;font-size:11.5px;color:var(--muted);margin-top:3px}
+  .figs b.lit{color:var(--accent-deep)}
+  @media (max-width:760px){
+    .figs{grid-template-columns:repeat(2,1fr)}
+    .figs a:nth-child(2){border-right:0}
+    .figs a:nth-child(-n+2){border-bottom:1px solid var(--line)}
+  }
+
+  table.plain{width:100%;border-collapse:collapse;font-size:13px}
+  table.plain th{font-family:var(--mono);font-size:10px;letter-spacing:.09em;
+    text-transform:uppercase;color:var(--faint);font-weight:400;text-align:left;
+    padding:9px 14px;border-bottom:1px solid var(--line)}
+  table.plain td{padding:10px 14px;border-bottom:1px solid var(--line)}
+  table.plain tr:last-child td{border-bottom:0}
+  table.plain td.n{text-align:right;font-family:var(--mono);font-variant-numeric:tabular-nums}
+  table.plain th.n{text-align:right}
+  table.plain td.nm{font-weight:500}
+  .rate{height:5px;border-radius:3px;background:var(--line);overflow:hidden;min-width:56px}
+  .rate i{display:block;height:100%;background:var(--accent)}
+
+  .task{display:flex;gap:12px;align-items:flex-start;padding:12px 14px;
+    border-bottom:1px solid var(--line)}
+  .task:last-child{border-bottom:0}
+  .task .sev{width:3px;align-self:stretch;border-radius:2px;background:var(--warn)}
+  .task .sev.hot{background:var(--neg)}
+  .task .sev.cool{background:var(--accent)}
+  .task p{margin:0;font-size:13px}
+  .task small{display:block;color:var(--muted);font-size:12px;margin-top:1px}
+  .task a{margin-left:auto;align-self:center;font-size:12.5px;color:var(--accent-deep);
+    white-space:nowrap;text-decoration:none}
+  .task a:hover{text-decoration:underline}
+  .clear{padding:16px 14px;font-size:13px;color:var(--muted)}
+</style>
 </head>
 <body>
 
@@ -22,7 +67,7 @@
     <div class="topline">
       <div>
         <h1>Logistics</h1>
-        <div class="sub">Where every order is, across every courier account.</div>
+        <div class="sub">Where every parcel is, and what the couriers still owe.</div>
       </div>
     </div>
 
@@ -37,11 +82,169 @@
 <script>
 "use strict";
 (function(){
-  // The section this page is the front of. Everything on it comes out of the one
-  // list in nav.js, which is also what built the rail on the left - so what is
-  // in the rail and what is on this page can never disagree.
+  // The section this page is the front of. The tiles at the foot come out of
+  // the one list in nav.js, which is also what built the rail - so what is in
+  // the rail and what is on this page can never disagree.
   var KEY = 'logistics';
   var board = document.getElementById('board');
+
+  function esc(s){
+    return String(s == null ? '' : s)
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  }
+  function nf(n){
+    return String(Math.round(Number(n) || 0)).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+  }
+  function pc(part, whole){
+    var w = Number(whole) || 0;
+    if (!w) return 0;
+    return Math.max(0, Math.min(100, Math.round((Number(part) || 0) / w * 100)));
+  }
+  var NAMES = { postex: 'PostEx', trax: 'Trax', mnp: 'M&P' };
+  function courierName(k){ return NAMES[k] || k; }
+
+  function ago(iso){
+    if (!iso) return '';
+    var mins = Math.round((Date.now() - new Date(iso).getTime()) / 60000);
+    if (!isFinite(mins) || mins < 0) return '';
+    if (mins < 60) return mins + ' min ago';
+    var hrs = Math.round(mins / 60);
+    if (hrs < 48) return hrs + ' hours ago';
+    return Math.round(hrs / 24) + ' days ago';
+  }
+
+  /* ---------- the four figures ---------- */
+
+  function figures(d){
+    var p = d.parcels, m = d.money;
+    var rate = pc(p.delivered7, p.booked7);
+
+    return '<div class="sheet"><div class="figs">' +
+      '<a href="/delivery-reports">' +
+        '<span>Moving</span><b>' + nf(p.moving) + '</b>' +
+        '<small>' + (p.unpicked
+          ? nf(p.unpicked) + ' not picked up yet'
+          : 'all picked up') + '</small>' +
+      '</a>' +
+      '<a href="/delivery-reports">' +
+        '<span>Delivered · 7 days</span><b>' + nf(p.delivered7) + '</b>' +
+        '<small>' + (p.booked7 ? rate + '% of what was booked' : 'nothing booked this week') + '</small>' +
+      '</a>' +
+      '<a href="/delivery-reports">' +
+        '<span>Returns · 30 days</span><b>' + nf(p.returns30) + '</b>' +
+        '<small>' + (p.returning ? nf(p.returning) + ' on the way back' : 'none on the way back') + '</small>' +
+      '</a>' +
+      '<a href="/courier-dash">' +
+        '<span>To receive</span><b class="lit">' + nf(m.owed) + '</b>' +
+        '<small>' + (m.late
+          ? 'Rs · ' + nf(m.late) + ' older than two weeks'
+          : 'Rs · nothing overdue') + '</small>' +
+      '</a>' +
+    '</div></div>';
+  }
+
+  /* ---------- each courier company ---------- */
+
+  function companies(d){
+    if (!d.couriers.length){
+      return '<div class="sheet"><div class="sec">' +
+        '<h2>Courier companies</h2>' +
+        '<div class="fxnone">No parcels yet. Add a courier account to begin.</div>' +
+        '</div></div>';
+    }
+
+    var rows = d.couriers.map(function(c){
+      return '<tr>' +
+        '<td class="nm">' + esc(courierName(c.courier)) + '</td>' +
+        '<td class="n">' + nf(c.parcels) + '</td>' +
+        '<td><div class="rate" title="' + pc(c.delivered, c.parcels) + '% delivered">' +
+          '<i style="width:' + pc(c.delivered, c.parcels) + '%"></i></div></td>' +
+        '<td class="n">' + nf(c.returned) + '</td>' +
+        '<td class="n">' + nf(c.charges) + '</td>' +
+        '<td class="n">' + nf(c.owed) + '</td>' +
+      '</tr>';
+    }).join('');
+
+    return '<div class="sheet"><div class="sec" style="padding:0">' +
+      '<table class="plain"><thead><tr>' +
+        '<th>Company</th><th class="n">Parcels</th><th>Delivered</th>' +
+        '<th class="n">Returned</th><th class="n">Charges</th><th class="n">To receive</th>' +
+      '</tr></thead><tbody>' + rows + '</tbody></table>' +
+    '</div></div>';
+  }
+
+  /* ---------- what is waiting on somebody ---------- */
+
+  function waiting(d){
+    var out = [];
+    var p = d.parcels, m = d.money;
+
+    if (p.unpickedOld){
+      out.push({ sev: 'hot',
+        what: nf(p.unpickedOld) + ' parcels booked but never collected',
+        why: 'Booked more than two days ago, still no pickup date',
+        go: 'Open', href: '/delivery-reports' });
+    }
+    if (m.lateCount){
+      out.push({ sev: '',
+        what: 'Rs ' + nf(m.late) + ' delivered over two weeks ago, still unpaid',
+        why: nf(m.lateCount) + ' parcels',
+        go: 'Chase', href: '/courier-dash' });
+    }
+    if (p.trouble){
+      out.push({ sev: '',
+        what: nf(p.trouble) + ' parcels lost or damaged',
+        why: 'Each one is a claim to put to the courier',
+        go: 'Open', href: '/delivery-reports' });
+    }
+
+    d.accounts.forEach(function(a){
+      if (a.error){
+        out.push({ sev: 'hot',
+          what: esc(a.label) + ' is not answering',
+          why: esc(a.error), go: 'Fix', href: '/couriers' });
+        return;
+      }
+      // A webhook that has not called in a day is the quiet failure: nothing
+      // breaks on screen, the parcels simply stop moving.
+      var quiet = a.hookAt && (Date.now() - new Date(a.hookAt).getTime() > 36 * 3600 * 1000);
+      if (!a.hookAt){
+        out.push({ sev: 'cool',
+          what: esc(a.label) + ' has no webhook yet',
+          why: 'Statuses only arrive when somebody pulls them in',
+          go: 'Set up', href: '/couriers' });
+      } else if (quiet){
+        out.push({ sev: '',
+          what: esc(a.label) + ' has gone quiet',
+          why: 'Last webhook ' + ago(a.hookAt),
+          go: 'Check', href: '/couriers' });
+      }
+    });
+
+    var body = out.length
+      ? out.slice(0, 6).map(function(t){
+          return '<div class="task"><i class="sev ' + t.sev + '"></i>' +
+            '<div><p>' + t.what + '</p><small>' + t.why + '</small></div>' +
+            '<a href="' + t.href + '">' + t.go + '</a></div>';
+        }).join('')
+      : '<div class="clear">Nothing is waiting. Every account is answering and ' +
+        'no money is overdue.</div>';
+
+    return '<div class="sheet">' +
+      '<div class="sec" style="padding-bottom:0;border-bottom:0">' +
+        '<h2>Waiting on you<span class="aside">' + (out.length || 'clear') + '</span></h2>' +
+      '</div>' +
+      '<div class="sec" style="padding:0">' + body + '</div>' +
+    '</div>';
+  }
+
+  function tiles(){
+    return '<div class="sheet"><div class="sec">' +
+      '<h2>Pages</h2><div id="tileboard"></div>' +
+    '</div></div>';
+  }
+
+  /* ---------- draw ---------- */
 
   window.APP.ready.then(function(s){
     var sec = ((window.APP.sections) || []).filter(function(x){ return x.key === KEY; })[0];
@@ -64,7 +267,35 @@
         '</div>';
       return;
     }
-    window.FUSION.draw(board, KEY, '');
+
+    return fetch('/api/logistics/summary', { cache: 'no-store' })
+      .then(function(r){ return r.json(); })
+      .then(function(d){
+        if (d.error) throw new Error(d.error);
+
+        board.className = 'board';
+        board.innerHTML =
+          figures(d) +
+          '<div class="two">' + companies(d) + waiting(d) + '</div>' +
+          tiles();
+
+        window.FUSION.draw(document.getElementById('tileboard'), KEY, '');
+
+        // The rail's own figures come from this same answer, so the number
+        // beside a line and the number on this page are one number.
+        if (window.FUSION.railCounts) window.FUSION.railCounts(d);
+      })
+      .catch(function(e){
+        // A read that failed and a section with nothing in it must never look
+        // the same. The tiles are still drawn, so the pages can be reached.
+        board.className = 'board';
+        board.innerHTML =
+          '<div class="sheet"><div class="sec">' +
+            '<h2>Logistics</h2>' +
+            '<div class="fxnone">Could not read the figures: ' + esc(e.message) + '</div>' +
+          '</div></div>' + tiles();
+        window.FUSION.draw(document.getElementById('tileboard'), KEY, '');
+      });
   }).catch(function(){
     board.innerHTML = '<div class="fxnone">Could not reach the server.</div>';
   });

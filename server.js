@@ -198,7 +198,7 @@ import { absorbPayment } from './traxlive.js';
 import { relayState } from './wire.js';
 import {
   dashboard as dashData, recentCprs, pickups, pickupOrders, ordersBy, eachOrder,
-  deliveryReport
+  deliveryReport, logisticsSummary
 } from './dashdata.js';
 const app = express();
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 25 * 1024 * 1024 } });
@@ -8979,6 +8979,25 @@ app.post('/api/shopify/wire', async (req, res) => {
     res.json(await wireHooks(realmId, shop, base));
   } catch (e) {
     res.status(400).json({ error: e.message });
+  }
+});
+
+// The Logistics front page, and the figures the rail carries beside its own
+// lines. One call for both, because they are the same question asked twice -
+// and because every page on this section draws that rail, so a second call
+// here is a second wake-up for the database on every page anybody opens.
+app.get('/api/logistics/summary', async (req, res) => {
+  const realmId = await requireCompany(req, res);
+  if (!realmId) return;
+
+  try {
+    res.setHeader('Cache-Control', 'no-store');
+    res.json(await logisticsSummary(realmId, {
+      account: req.query.account,
+      courier: req.query.courier
+    }));
+  } catch (e) {
+    res.status(500).json({ error: e.message });
   }
 });
 

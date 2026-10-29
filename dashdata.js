@@ -1179,3 +1179,122 @@ export async function ordersBy(realmId, opts) {
     orders: rows
   };
 }
+
+/* ==================== the Logistics front page ==================== */
+//
+// What the section's own screen shows, and the figures beside the rail's
+// lines. **Four queries in one Promise.all**, for the reason the delivery
+// report gives: a front page that fires a dozen is a database that never
+// sleeps, and the month's compute pays for it.
+//
+// Nothing here works a figure out in its own way. "Received" is GOT_SQL, the
+// same sentence the statement and the ageing use - PostEx's closed CPR, or the
+// courier's own settled flag, which is how Trax and M&P pay. One definition,
+// so two screens cannot disagree about what is still owed.
+export async function logisticsSummary(realmId, opts) {
+  const base = scope(realmId, opts || {});
+  const w = base.where.join(' AND ');
+  const args = base.args;
+
+  // A parcel still with the courier: not delivered, not sent back, not written
+  // off. The same list the dashboard's "pending" uses.
+  const MOVING = `o.status_group NOT IN
+    ('delivered','returned','cancelled','expired','lost','damaged')`;
+
+  const [parcels, money, byCourier, accounts] = await Promise.all([
+    pool.query(
+      `SELECT COUNT(*) FILTER (WHERE ${MOVING}) AS moving,
+              -- whether a parcel was collected is a date the courier stamps,
+              -- never something to be guessed from its status
+              COUNT(*) FILTER (WHERE ${MOVING} AND o.picked_on IS NULL) AS unpicked,
+              COUNT(*) FILTER (WHERE ${MOVING} AND o.picked_on IS NULL
+                               AND o.booked_on < CURRENT_DATE - 2) AS unpicked_old,
+              COUNT(*) FILTER (WHERE o.status_group = 'delivered'
+                               AND o.delivered_on >= CURRENT_DATE - 7) AS delivered7,
+              COUNT(*) FILTER (WHERE o.booked_on >= CURRENT_DATE - 7) AS booked7,
+              COUNT(*) FILTER (WHERE o.status_group IN ('returned','returning')
+                               AND o.booked_on >= CURRENT_DATE - 30) AS returns30,
+              COUNT(*) FILTER (WHERE o.status_group = 'returning') AS returning,
+              COUNT(*) FILTER (WHERE o.status_group IN ('lost','damaged')) AS trouble,
+              MAX(o.seen_at) AS last_seen
+         FROM courier_orders o WHERE ${w}`, args),
+
+    pool.query(
+      `SELECT COALESCE(SUM(o.amount - o.fee - o.tax)
+                FILTER (WHERE NOT ${GOT_SQL}),0) AS owed,
+              COUNT(*) FILTER (WHERE NOT ${GOT_SQL}) AS owed_n,
+              COALESCE(SUM(o.amount - o.fee - o.tax)
+                FILTER (WHERE NOT ${GOT_SQL}
+                        AND o.delivered_on < CURRENT_DATE - 14),0) AS late,
+              COUNT(*) FILTER (WHERE NOT ${GOT_SQL}
+                        AND o.delivered_on < CURRENT_DATE - 14) AS late_n
+         FROM courier_orders o
+        WHERE ${w} AND o.status_group = 'delivered'`, args),
+
+    // One row per courier **company**, not per account: PostEx against Trax by
+    // name, rather than two PostEx accounts to be added up by eye.
+    pool.query(
+      `SELECT o.courier,
+              COUNT(*) FILTER (WHERE o.booked_on >= CURRENT_DATE - 30) AS parcels,
+              COUNT(*) FILTER (WHERE o.status_group = 'delivered'
+                               AND o.booked_on >= CURRENT_DATE - 30) AS delivered,
+              COUNT(*) FILTER (WHERE o.status_group IN ('returned','returning')
+                               AND o.booked_on >= CURRENT_DATE - 30) AS returned,
+              COUNT(*) FILTER (WHERE ${MOVING}) AS moving,
+              COALESCE(SUM(o.fee + o.tax) FILTER (WHERE o.booked_on >= CURRENT_DATE - 30),0) AS charges,
+              COALESCE(SUM(o.amount - o.fee - o.tax)
+                FILTER (WHERE o.status_group = 'delivered' AND NOT ${GOT_SQL}),0) AS owed
+         FROM courier_orders o WHERE ${w}
+        GROUP BY o.courier ORDER BY 2 DESC`, args),
+
+    // The accounts themselves, for the line that says what is waiting on
+    // somebody. A webhook that has not called in a day is the quiet failure
+    // worth naming: nothing breaks, the parcels simply stop moving.
+    pool.query(
+      `SELECT id, courier, label, last_error, last_sync, hook_at,
+              (portal_secret IS NOT NULL) AS portal_ready
+         FROM courier_accounts
+        WHERE realm_id = $1 AND active IS TRUE
+        ORDER BY courier, label`, [realmId])
+  ]);
+
+  const p = parcels.rows[0] || {};
+  const m = money.rows[0] || {};
+  const n = v => Number(v || 0);
+
+  return {
+    parcels: {
+      moving: n(p.moving),
+      unpicked: n(p.unpicked),
+      unpickedOld: n(p.unpicked_old),
+      delivered7: n(p.delivered7),
+      booked7: n(p.booked7),
+      returns30: n(p.returns30),
+      returning: n(p.returning),
+      trouble: n(p.trouble),
+      lastSeen: p.last_seen || null
+    },
+    money: {
+      owed: r2(m.owed), owedCount: n(m.owed_n),
+      late: r2(m.late), lateCount: n(m.late_n)
+    },
+    couriers: byCourier.rows.map(x => ({
+      courier: x.courier,
+      parcels: n(x.parcels),
+      delivered: n(x.delivered),
+      returned: n(x.returned),
+      moving: n(x.moving),
+      charges: r2(x.charges),
+      owed: r2(x.owed)
+    })),
+    accounts: accounts.rows.map(a => ({
+      id: a.id,
+      courier: a.courier,
+      label: a.label,
+      error: a.last_error || null,
+      lastSync: a.last_sync || null,
+      hookAt: a.hook_at || null,
+      portalReady: a.portal_ready === true
+    }))
+  };
+}

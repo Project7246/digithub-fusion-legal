@@ -85,7 +85,7 @@
       ]},
       { group: 'Couriers', items: [
         { href:'/couriers',     label:'Courier accounts', icon:'truck', tree:true,
-          need:'couriersync', tile:'truck', as:'Couriers' }
+          need:'couriersync', tile:'truck', as:'Couriers', count:'accounts' }
         // No Tracking and no Pickups line. Asked for on 29 Oct 2026: this rail
         // is the courier companies and the day's work, and what Logistics is
         // to grow here is **Rates** - company against company, per parcel.
@@ -106,7 +106,7 @@
         { href:'/load-sheet',       label:'Load sheet',       icon:'sheet',
           need:'couriersync', tile:'sheet' },
         { href:'/delivery-reports', label:'Delivery reports', icon:'chart',
-          need:'couriersync', tile:'chart' },
+          need:'couriersync', tile:'chart', count:'moving' },
         { href:'/service-areas',    label:'Service areas',    icon:'map',
           need:'couriersync', tile:'map' }
       ]}
@@ -305,6 +305,10 @@
               (it.tree ? ' id="couriersLink"' : '') +
               (it.rtree ? ' id="receiptsLink"' : '') + '>' +
               svg(it.icon) + it.label +
+              // A line that carries a figure says so here, and railCounts()
+              // below fills it in. Empty until then: a nought standing in for
+              // "not read yet" is a lie about the parcels.
+              (it.count ? '<span class="rcnt" data-count="' + it.count + '"></span>' : '') +
               (it.tree ? '<span class="tcar" id="couriersCar">\u25B8</span>' : '') +
               (it.rtree ? '<span class="tcar" id="receiptsCar">\u25B8</span>' : '') + '</a>';
       // Couriers is not one page but a small tree, filled in further down
@@ -330,6 +334,82 @@
 
   var rail = document.querySelector('.rail');
   if(rail) rail.innerHTML = html;
+
+  /* ---------- the figures beside the rail's own lines ---------- */
+  //
+  // A rail of names tells you where the pages are; a rail of names with
+  // figures tells you which one to open. The figures are the section's own
+  // summary - the same answer its front page is built from, so the number
+  // beside a line and the number on that page are one number.
+  //
+  // **It is read once per tab and then left alone.** Every page in a section
+  // draws this rail, so a read on every page open would be a database kept
+  // awake by people walking around the app - which on Neon is the whole of the
+  // bill. The section's front page passes its own answer in (railCounts), and
+  // anywhere else this reads what that left behind, and asks only when it is
+  // older than the window below.
+  window.FUSION = window.FUSION || {};
+  (function(){
+    var FEEDS = { logistics: '/api/logistics/summary' };
+    var MINUTES = 10;
+    var KEPT = 'app:counts:' + HERE.key;
+
+    var st = document.createElement('style');
+    st.textContent =
+      '.rail nav a .rcnt{margin-left:auto;font-family:var(--mono,monospace);' +
+      '  font-size:11px;color:#9DB0B5;font-variant-numeric:tabular-nums}' +
+      '.rail nav a.on .rcnt{color:var(--qbo,#11BAB5)}' +
+      '.rail nav a .rcnt:empty{display:none}';
+    document.head.appendChild(st);
+
+    function nf(n){
+      return String(Math.round(Number(n) || 0)).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+    }
+
+    // What each named count is, read off one summary. A line asks for a name,
+    // not for a query - so a new line is a name here and nothing else.
+    function figureOf(name, d){
+      if(!d) return null;
+      if(name === 'accounts') return (d.accounts || []).length || null;
+      if(name === 'moving')   return (d.parcels && d.parcels.moving) || null;
+      return null;
+    }
+
+    function paint(d){
+      var spots = document.querySelectorAll('.rail nav a .rcnt');
+      for(var i = 0; i < spots.length; i++){
+        var got = figureOf(spots[i].getAttribute('data-count'), d);
+        spots[i].textContent = got ? nf(got) : '';
+      }
+    }
+
+    // Handed the front page's own answer. Kept for the other pages in this
+    // section, which then need no read of their own.
+    window.FUSION.railCounts = function(d){
+      paint(d);
+      try {
+        sessionStorage.setItem(KEPT, JSON.stringify({ at: Date.now(), d: d }));
+      } catch (e) {}
+    };
+
+    var feed = FEEDS[HERE.key];
+    if(!feed || !rail) return;
+
+    var held = null;
+    try { held = JSON.parse(sessionStorage.getItem(KEPT) || 'null'); } catch (e) {}
+    if(held && held.d) paint(held.d);
+
+    var fresh = held && (Date.now() - Number(held.at || 0) < MINUTES * 60000);
+    // The front page reads this for itself a moment from now, so the rail does
+    // not ask as well.
+    var isFront = (path === HERE.home);
+    if(fresh || isFront) return;
+
+    fetch(feed, { cache: 'no-store' })
+      .then(function(r){ return r.json(); })
+      .then(function(d){ if(!d.error) window.FUSION.railCounts(d); })
+      .catch(function(){});
+  })();
 
   /* ---------- how it looks on this computer ---------- */
   // Text size, rail width and colours are one person's own taste on one machine, so

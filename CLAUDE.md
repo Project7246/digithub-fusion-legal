@@ -810,6 +810,37 @@ page.
 | `/delivery-reports` | what happened to them afterwards, per courier |
 | `/service-areas` | where each courier will go at all |
 
+### The front page answers, and the rail carries figures
+
+Chosen on 29 Oct 2026 from three drawn-out options, and the two complaints
+that produced it were plain: the rail was a list of names, and the Overview
+was a grid of icons with two greyed-out "soon" tiles. Neither answered
+anything.
+
+- **`/logistics` opens with figures**: moving (and how many of them nobody has
+  collected), delivered in seven days against what was booked, returns, and
+  what is still to receive. Then each courier company in one table, and
+  **Waiting on you** - a parcel never collected, money delivered a fortnight
+  ago and still unpaid, an account that is not answering, a webhook gone
+  quiet. The tiles are still there, at the foot, as the way into the pages.
+- **The rail's lines carry their own figure.** An item in `nav.js` says
+  `count:'moving'` and nothing more; `railCounts()` knows what each name is,
+  read off one summary. A line with no figure yet shows **nothing**, never a
+  nought - a nought is a statement about the parcels.
+- **One read per tab.** `logisticsSummary()` in `dashdata.js` is four queries
+  in one `Promise.all`, and `/api/logistics/summary` is the only caller. The
+  front page passes its answer to `railCounts()`, which keeps it in
+  `sessionStorage`; every other page in the section paints from that and asks
+  again only after ten minutes. Every page draws this rail, so a read on each
+  page open would be a database kept awake by somebody walking around the app.
+- **Nothing here works a figure out its own way.** "Received" is `GOT_SQL`,
+  the same sentence the statement and the ageing use, so the front page and
+  the courier dashboard cannot disagree about what is owed.
+
+**Tracking and Pickups are off this rail** (asked for in those words).
+`/courier-dash` is still in the Operations rail and `/pickups` is still
+reached from the load sheet. What this rail grows instead is **Rates**.
+
 ### Service areas: the courier's own list, not ours
 
 `/courier-dash`'s Cities tab is the cities **we** have sent to. This is the
