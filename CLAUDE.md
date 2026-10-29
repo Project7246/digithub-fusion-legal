@@ -800,9 +800,10 @@ The merged page has two halves, and the top one is new:
 
 The rail used to hold the courier accounts and nothing else - who we have
 keys for, where each parcel got to, what has been paid. That is the ledger
-side. Three lines under **The day** are the other side, and they are in the
-Logistics rail only: the same line in two rails is two places to look for one
-page.
+side. Three lines under **Daily operations** are the other side, and they are
+in the Logistics rail only: the same line in two rails is two places to look
+for one page. That heading read **The day** until 29 Oct 2026, which looked
+like a note somebody had left in rather than a part of the app.
 
 | Page | What it is |
 |---|---|
