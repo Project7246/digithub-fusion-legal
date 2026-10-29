@@ -33,6 +33,11 @@ import {
   dayText, todayText
 } from './shopify.js';
 import { decrypt } from './secrets.js';
+// The month's compute. This sweep spends it like the courier keeper does, so
+// it is measured and paced by the same meter - see the note on tick() below.
+import {
+  nextGapMinutes, mayRun, beginBackground, endBackground
+} from './compute.js';
 import {
   getAccessToken, qbQuery, loadTerms, getOrCreateCustomer,
   postInvoice, listAccounts, salesPrefs, isRetryable, createItem
@@ -931,13 +936,36 @@ function schedule(ms) {
   if (timer.unref) timer.unref();
 }
 
+// How long to wait when the month's allowance is spent. Not "never": orders
+// already in the queue are work somebody is waiting for, and a backlog that
+// never drains is worse than a slow one. Rarely, so the database is allowed to
+// sleep between passes.
+const HELD_EVERY = Math.max(10, Number(process.env.SHOPIFY_HELD_MINUTES) || 60) * 60 * 1000;
+
 async function tick() {
   let did = null;
+  // **The month's compute, and who spends it.** This sweep is a timer that
+  // wakes the database on its own, which is the one thing Neon charges for -
+  // and until 30 Oct 2026 it ran every ten minutes for ever, whatever the
+  // meter said. Ten minutes is longer than Neon's five-minute idle window, so
+  // every single pass was its own spell: 144 wake-ups a day, about six minutes
+  // each, for a queue that was usually empty. That is most of a month's
+  // allowance spent on asking "anything?" - and because the meter only counted
+  // the courier keeper's own seconds, what it saw was a month running out and
+  // the one sweep it could switch off was the courier one. The couriers then
+  // went stale, which is how this was found.
+  //
+  // So: it is counted as background work, it rests on the budget's own gap
+  // rather than a flat ten minutes, and when the month is spent it holds off
+  // the way the keeper does.
+  const allowed = mayRun();
+  const mark = beginBackground();
   try {
     did = await sweep();
   } catch (e) {
     console.error('shopify sweep:', e.message);
   } finally {
+    endBackground(mark);
     // the next one is booked whatever just happened. Once this is switched on
     // it does not stop for a failure, a deploy, a page being closed or anything
     // else - only for somebody switching it off.
@@ -949,9 +977,16 @@ async function tick() {
     // is quicker. When the last pass filled its batch there is more waiting,
     // so the next one goes almost at once; the gap comes back the moment the
     // queue is shorter than a batch.
+    // A backlog in flight is real work and is worked through at full speed
+    // whatever the meter says - it is finite, and somebody is waiting for it.
+    // An empty queue is not, and that is where the month was going.
+    const resting = Math.max(IDLE_EVERY, nextGapMinutes({}) * 60 * 1000);
+
+    if (!allowed.ok) state.note = allowed.why;
+
     schedule(busy && did.more ? BACKLOG_EVERY
-           : busy ? BUSY_EVERY
-           : IDLE_EVERY);
+           : busy ? (allowed.ok ? BUSY_EVERY : Math.min(HELD_EVERY, resting))
+           : (allowed.ok ? resting : HELD_EVERY));
   }
 }
 

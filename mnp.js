@@ -529,7 +529,22 @@ export const adapter = {
 // own data: one row of a report they can already open on the courier's portal.
 export async function peek(token, from, to, extra) {
   const location = (extra && (extra.location || extra.locationId)) || '';
-  const out = { calls: [] };
+  const out = { calls: [], saved: { account: accountOf(extra) || '', location: location } };
+
+  // Which account numbers and which sub-accounts this sign-in actually holds.
+  // "There is no QSR Report record against the request parameters" is what M&P
+  // say when the location id is not one of theirs, and that sentence reads as
+  // "no data" - so the two are put side by side here.
+  try {
+    out.accounts = await listAccounts(token, extra);
+  } catch (e) {
+    out.accounts = [{ error: e.message }];
+  }
+  try {
+    out.locations = await listLocations(token, extra);
+  } catch (e) {
+    out.locations = [{ error: e.message }];
+  }
 
   const month = String(from || '').slice(0, 7) || '';
   const [y, m] = month ? month.split('-') : ['', ''];
