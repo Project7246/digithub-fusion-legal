@@ -769,10 +769,31 @@ export async function peek(token, from, to, extra) {
       });
       const block = all.find(b => Array.isArray(b && b.Details) && b.Details.length) || all[0] || null;
       const list = (block && block.Details) || [];
+      // What the shape of this report actually is. A row per payment and a
+      // row per consignment look identical until the rows are counted by
+      // payment number - and the two give completely different figures on a
+      // receipt, so it is worth knowing rather than inferring.
+      const byId = new Map();
+      list.forEach(r => {
+        const k = String(r.PaymentID || '');
+        const g = byId.get(k) || { rows: 0, rr: 0, inv: 0, net: 0 };
+        g.rows += 1;
+        g.rr  += Number(String(r.RRAmount || 0).replace(/[^0-9.\-]/g, '')) || 0;
+        g.inv += Number(String(r.InvoiceAmount || 0).replace(/[^0-9.\-]/g, '')) || 0;
+        g.net += Number(String(r.NetPayable || 0).replace(/[^0-9.\-]/g, '')) || 0;
+        byId.set(k, g);
+      });
+      const biggest = [...byId.entries()].sort((a, b) => b[1].rows - a[1].rows)[0] || null;
+
       out.calls.push({
         what: 'Reports/Payment_Report',
         tried: t.label,
         rows: list.length,
+        payments: byId.size,
+        rowsPerPayment: biggest ? biggest[1].rows : 0,
+        biggest: biggest ? { id: biggest[0], ...biggest[1] } : null,
+        // every row of that one payment, as they sent them
+        itsRows: biggest ? list.filter(r => String(r.PaymentID || '') === biggest[0]).slice(0, 6) : [],
         keys: list.length ? Object.keys(list[0]) : [],
         first: list[0] || null,
         blockKeys: block ? Object.keys(block).filter(k => k !== 'Details') : [],
