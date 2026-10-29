@@ -142,6 +142,10 @@ export function mapTracked(details) {
     upfront:     0,
     reserve:     0,
     balance:     0,
+    // `/shipment/track` says nothing about money at all - the charges are on
+    // `/shipment/charges`, on the two charges webhooks, and on the invoice. So
+    // these are nought meaning **not said**, and saveOrders keeps whatever was
+    // said before rather than taking it as a correction to nought.
     fee:         0,
     tax:         0,
     city:        consignee.destination || (d.pickup && d.pickup.origin) || '',

@@ -470,8 +470,17 @@ export async function saveOrders(realmId, accountId, courier, rows) {
          status       = EXCLUDED.status,
          status_group = EXCLUDED.status_group,
          amount       = EXCLUDED.amount,
-         fee          = EXCLUDED.fee,
-         tax          = EXCLUDED.tax,
+         -- **A courier that says nothing about the money does not erase the
+         -- money it already said.** Several calls carry a parcel without its
+         -- charges on it at all - Trax's tracking call is one, and it returns
+         -- fee 0 and tax 0 for every parcel - so a refresh used to wipe the
+         -- charges a webhook or an invoice had already written, and the
+         -- receivable grew by exactly the charges every time the sweep ran.
+         -- Nought here means "not said", the way it does for the weight.
+         fee          = CASE WHEN COALESCE(EXCLUDED.fee,0) <> 0
+                             THEN EXCLUDED.fee ELSE courier_orders.fee END,
+         tax          = CASE WHEN COALESCE(EXCLUDED.tax,0) <> 0
+                             THEN EXCLUDED.tax ELSE courier_orders.tax END,
          city         = EXCLUDED.city,
          picked_on    = EXCLUDED.picked_on,
          delivered_on = EXCLUDED.delivered_on,
