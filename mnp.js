@@ -477,6 +477,8 @@ export async function fetchPayouts(token, from, to, extra) {
 }
 
 export const adapter = {
+  // their own row, untouched, for settling what they do and do not send
+  peek,
   key: 'mnp',
   name: 'M&P',
   base: BASE,
@@ -514,3 +516,50 @@ export const adapter = {
   listLocations,
   fetchAreas
 };
+
+/* ---------- what they actually send ---------- */
+//
+// Their charges and their GST are read by name, and the names came from
+// their manual rather than from an answer - so when a figure comes out at
+// nought there is no way, from the screens, to tell "M&P sent no such column"
+// from "M&P sent nought". This hands back **their own row, untouched**, so
+// the question is settled by looking rather than by guessing again.
+//
+// It is shown to Fusion's own admin and nobody else, and it is the account's
+// own data: one row of a report they can already open on the courier's portal.
+export async function peek(token, from, to, extra) {
+  const location = (extra && (extra.location || extra.locationId)) || '';
+  const out = { calls: [] };
+
+  const month = String(from || '').slice(0, 7) || '';
+  const [y, m] = month ? month.split('-') : ['', ''];
+
+  if (location && y) {
+    try {
+      const { all } = await post(token, extra, '/Reports/QSR_Report', {
+        MonthNumber: Number(m), year: Number(y), Year: Number(y),
+        locationID: String(location)
+      });
+      const block = all.find(b => Array.isArray(b && b.Details) && b.Details.length) || null;
+      const list = block ? block.Details : (rows(all[0]) || []);
+      out.calls.push({
+        what: 'Reports/QSR_Report',
+        rows: list.length,
+        keys: list.length ? Object.keys(list[0]) : [],
+        first: list[0] || null,
+        // what the block itself carries around the rows - their monthly
+        // totals sit here, and that is where a GST figure often is
+        blockKeys: block ? Object.keys(block).filter(k => k !== 'Details') : [],
+        block: block ? Object.fromEntries(
+          Object.entries(block).filter(([k]) => k !== 'Details')) : null
+      });
+    } catch (e) {
+      out.calls.push({ what: 'Reports/QSR_Report', error: e.message });
+    }
+  } else {
+    out.calls.push({ what: 'Reports/QSR_Report',
+      error: 'no location id on this account, or no date to read' });
+  }
+
+  return out;
+}

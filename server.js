@@ -9052,6 +9052,36 @@ app.post('/api/shopify/wire', async (req, res) => {
   }
 });
 
+// What a courier actually sends, untouched. Fusion's own, because it is a raw
+// answer from somebody's account - and it exists because "the figure is nought"
+// and "they send no such column" look identical on every screen until somebody
+// looks at the answer itself.
+app.get('/api/courier/peek', async (req, res) => {
+  if (!await requireBoss(req, res)) return;
+  const realmId = await requireCompany(req, res);
+  if (!realmId) return;
+
+  const id = Number(req.query.account);
+  if (!id) return res.status(400).json({ error: 'Which account?' });
+
+  try {
+    res.setHeader('Cache-Control', 'no-store');
+    const acc = await getCourierAccount(realmId, id);
+    if (!acc) return res.status(404).json({ error: 'No such courier account' });
+
+    const a = adapterFor(acc.courier);
+    if (!a || typeof a.peek !== 'function') {
+      return res.json({ courier: acc.courier, account: acc.label, calls: [],
+        note: (a ? a.name : acc.courier) + ' has nothing to look at yet.' });
+    }
+
+    const out = await a.peek(acc.token, req.query.from, req.query.to, credsOf(acc));
+    res.json(Object.assign({ courier: acc.courier, account: acc.label }, out));
+  } catch (e) {
+    res.status(502).json({ error: e.message });
+  }
+});
+
 // ==================== banking ====================
 //
 // Fusion's own, every route of it: the banks are the company's money and the
