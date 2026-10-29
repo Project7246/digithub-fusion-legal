@@ -917,10 +917,15 @@ Each adapter grew `fetchAreas(token, extra)` returning one shape -
   `Branches/Get_Cities_All` is where they will deliver to. Both are read and
   merged into one row with two flags, because two lists side by side only get
   compared by eye. If one refuses, the other is still shown.
-- **PostEx** `get-operational-city`. This is the one path in the three
-  adapters **not** taken from a document in hand, so it is written to fail
-  quietly - the page says PostEx handed over no list and the other couriers
-  still answer. If PostEx move it, that is the line to change.
+- **PostEx** `get-operational-city`, and **v2 before v1**. PostEx publish two
+  of this call; v1 is the original and is what was asked for until
+  29 Oct 2026, which is why the PostEx tab showed nothing at all while Trax
+  and M&P answered. v1 is still tried after v2, for an account still served by
+  the older integration. This is the one path in the three adapters **not**
+  taken from a document in hand, so it fails quietly - the other couriers
+  still answer - but it no longer fails **silently**: what PostEx said comes
+  back as `trouble` and the page prints it. A list that came back empty is not
+  a courier that goes nowhere.
 
 The page asks every courier at once and answers "who goes there" comparatively,
 which is the question: one goes, one does not, and that is which one the

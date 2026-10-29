@@ -261,9 +261,13 @@
 
     $('out').innerHTML =
       '<div class="cards">' +
+        // The account's name is deliberately not here. A courier publishes one
+        // list of where it goes; the account is only whose key was used to ask
+        // for it, and naming it reads as though PostEx - RB and PostEx - AH
+        // went to different towns.
         '<div class="card"><div class="k">Areas listed</div><div class="v">' +
-          n0(areas.length) + '</div><div class="n">' + esc(cname(shown)) +
-          ' &middot; ' + esc(c.label) + '</div></div>' +
+          n0(areas.length) + '</div><div class="n">towns ' + esc(cname(shown)) +
+          ' publishes</div></div>' +
         (hasPick
           ? '<div class="card"><div class="k">They collect from</div><div class="v">' +
             n0(pick) + '</div><div class="n">pickup allowed</div></div>' : '') +

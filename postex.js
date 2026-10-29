@@ -317,10 +317,34 @@ export async function fetchCprs(jwt, merchantId, from, to) {
 // calls it says "PostEx did not hand over a city list" and carries on -
 // rather than to be trusted. If PostEx move it, this is the line to change.
 export async function fetchAreas(token) {
-  const j = await ask(token, '/services/integration/api/order/v1/get-operational-city', {});
-  const list = j.dist || j.data || [];
+  // **v2 first.** PostEx publish two of this call and v2 is the current one -
+  // v1 is the original and is what this asked for until 29 Oct 2026, which is
+  // why the PostEx tab on /service-areas showed nothing at all while Trax and
+  // M&P answered. v1 is still tried after it, because an account on the older
+  // integration may be served by that one and not by v2.
+  const tries = [
+    '/services/integration/api/order/v2/get-operational-city',
+    '/services/integration/api/order/v1/get-operational-city'
+  ];
 
-  return (Array.isArray(list) ? list : []).map(c => ({
+  let list = [];
+  let said = '';
+
+  for (const path of tries) {
+    let j;
+    try {
+      j = await ask(token, path, {});
+    } catch (e) {
+      // keep the first refusal: it is the one that names the real problem
+      said = said || e.message;
+      continue;
+    }
+    const got = j.dist || j.data || j.cities || [];
+    if (Array.isArray(got) && got.length) { list = got; said = ''; break; }
+    said = said || String(j.statusMessage || j.message || 'answered with no cities in it');
+  }
+
+  const out = (Array.isArray(list) ? list : []).map(c => ({
     id:       String(c.operationalCityId || c.cityId || c.id || '').trim(),
     name:     String(c.operationalCityName || c.cityName || c.name || c).trim(),
     hub:      String(c.hubName || c.hub || '').trim(),
@@ -331,6 +355,14 @@ export async function fetchAreas(token) {
     delivery: true,
     services: []
   })).filter(c => c.name);
+
+  // A list that came back empty is not the same as a courier that goes
+  // nowhere, and the screen must not read as though it were. What PostEx
+  // actually said is carried out with it.
+  if (!out.length && said) {
+    out.trouble = 'PostEx did not hand over a city list: ' + said;
+  }
+  return out;
 }
 
 export const adapter = {
