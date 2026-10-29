@@ -697,7 +697,16 @@ export async function recentCprs(realmId, opts) {
             MAX(c.qb_payment_id) AS qb_payment_id,
             MAX(c.status)        AS status,
             MAX(c.net_amount)    AS net_amount,
-            MAX(c.remote_id)     AS remote_id
+            MAX(c.remote_id)     AS remote_id,
+            -- what the courier said about the payment itself: the gross it
+            -- collected, what it kept, and where it sent the rest
+            MAX(c.gross_amount)  AS gross_amount,
+            MAX(c.charge_amount) AS charge_amount,
+            MAX(c.instrument)    AS instrument,
+            MAX(c.pay_mode)      AS pay_mode,
+            MAX(c.paid_to_bank)  AS paid_to_bank,
+            MAX(c.paid_to_account) AS paid_to_account,
+            MAX(c.paid_to_name)  AS paid_to_name
        FROM courier_orders o
        JOIN courier_accounts a ON a.id = o.account_id
        LEFT JOIN courier_cprs c
@@ -732,7 +741,14 @@ export async function recentCprs(realmId, opts) {
       remoteId: x.remote_id || null,
       inBooks: !!x.received_on,
       receivedOn: day(x.received_on),
-      qbPaymentId: x.qb_payment_id || null
+      qbPaymentId: x.qb_payment_id || null,
+      gross: x.gross_amount == null ? null : r2(x.gross_amount),
+      charge: x.charge_amount == null ? null : r2(x.charge_amount),
+      instrument: x.instrument || '',
+      mode: x.pay_mode || '',
+      paidToBank: x.paid_to_bank || '',
+      paidToAccount: x.paid_to_account || '',
+      paidToName: x.paid_to_name || ''
     };
   });
 }

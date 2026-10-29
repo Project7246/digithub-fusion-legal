@@ -542,31 +542,6 @@
             n0(list.length) + ' receipts</div></div>' +
           '</div>';
 
-        // What a receipt is made of, before its parcels: what was collected,
-        // what the courier kept, what tax came off it, and whether the books
-        // know about it yet. Clicking a receipt used to open the parcels alone,
-        // which answers "which parcels" and not "what was deducted" - and the
-        // deduction is the question a CPR is opened with.
-        function head(c){
-          var money =
-            '<div class="rsum">' +
-              '<div><span>COD collected</span><b>' + full(c.amount) + '</b></div>' +
-              '<div><span>Courier charges</span><b>-' + full(c.fee == null ? c.charges : c.fee) + '</b></div>' +
-              '<div><span>Tax deducted</span><b>-' + full(c.tax || 0) + '</b></div>' +
-              '<div class="net"><span>Paid to us</span><b>' + full(c.net) + '</b></div>' +
-            '</div>';
-
-          var books = c.inBooks
-            ? '<div class="rbooks ok">Received in QuickBooks' +
-              (c.receivedOn ? ' on ' + esc(c.receivedOn) : '') +
-              (c.qbPaymentId ? ' · payment ' + esc(c.qbPaymentId) : '') + '.</div>'
-            : '<div class="rbooks">Not received in QuickBooks yet.' +
-              (c.courier === 'postex'
-                ? ' Open it in PostEx’s own receipt book below to receive it.'
-                : '') + '</div>';
-
-          return money + books;
-        }
 
         var rows = list.map(function(c, i){
           return '<tr class="click rrow" data-i="' + i + '">' +
@@ -581,9 +556,7 @@
             '<td class="r"><b>' + full(c.net) + '</b></td>' +
             '<td>' + (c.inBooks
               ? '<span class="pill ok">in QuickBooks</span>'
-              : '<span class="pill wait">not received</span>') + '</td></tr>' +
-            '<tr class="kids" id="kids' + i + '" style="display:none">' +
-              '<td colspan="10" class="kidcell"></td></tr>';
+              : '<span class="pill wait">not received</span>') + '</td></tr>';
         }).join('');
 
         $('ours').innerHTML =
@@ -603,46 +576,14 @@
           'from. Net is what was collected less what the courier kept. PostEx ' +
           'receipts can also be opened and received below.</div></div>';
 
+        // A receipt opens in the side window, the way it always has. It was
+        // briefly made to unfold underneath its own row instead, which put the
+        // whole of a receipt into a strip the width of a table cell and left
+        // the Receive in QuickBooks button out of reach. A receipt is opened
+        // to be worked on, not glanced at.
         $('ours').querySelectorAll('tr.rrow').forEach(function(tr){
           tr.addEventListener('click', function(){
-            var i = Number(tr.getAttribute('data-i'));
-            var kids = document.getElementById('kids' + i);
-            if(!kids) return;
-
-            if(kids.style.display !== 'none'){ kids.style.display = 'none'; return; }
-            kids.style.display = '';
-
-            var cell = kids.querySelector('.kidcell');
-            if(cell.getAttribute('data-done')) return;
-            cell.innerHTML = head(list[i]) + '<div class="loading">Reading\u2026</div>';
-
-            var q = new URLSearchParams();
-            q.set('cpr', list[i].cpr);
-            q.set('account', list[i].accountId);
-
-            fetch('/api/courier/rows?' + q.toString(), { cache:'no-store' })
-              .then(function(r){ return r.json(); })
-              .then(function(o){
-                cell.setAttribute('data-done', '1');
-                var lines = (o.orders || []).map(function(x){
-                  return '<tr><td class="mono">' + esc(x.tracking) + '</td>' +
-                    '<td class="mono">' + esc(x.orderRef || '') + '</td>' +
-                    '<td>' + esc(x.city || '') + '</td>' +
-                    '<td>' + esc(x.status || '') + '</td>' +
-                    '<td class="mono">' + esc(x.deliveredOn || '') + '</td>' +
-                    '<td class="r">' + full(x.amount) + '</td>' +
-                    '<td class="r">' + full(x.fee) + '</td>' +
-                    '<td class="r">' + full(x.tax) + '</td></tr>';
-                }).join('');
-                cell.innerHTML = head(list[i]) +
-                  '<table class="t sub"><tr><th>Tracking</th>' +
-                  '<th>Order</th><th>City</th><th>Status</th><th>Delivered</th>' +
-                  '<th class="r">Amount</th><th class="r">Charges</th>' +
-                  '<th class="r">Tax</th></tr>' +
-                  (lines || '<tr><td colspan="8">No parcels on this receipt.</td></tr>') +
-                  '</table>';
-              })
-              .catch(function(e){ cell.innerHTML = '<div class="msg">' + esc(e.message) + '</div>'; });
+            openReceipt(list[Number(tr.getAttribute('data-i'))]);
           });
         });
       })
@@ -956,7 +897,107 @@
     location.href = '/api/receipts/export?' + p.toString();
   });
 
+  /* ---------- a receipt from the list above, whichever courier paid it ---------- */
+  //
+  // PostEx keep the whole of a receipt in their portal - what was collected,
+  // the COD charges, the sales tax, the income tax withheld, the adjustments -
+  // so a PostEx receipt opens that, which is also the screen that can receive
+  // it into QuickBooks. The other two tell us the figures on the payment
+  // itself, and this draws those, with the parcels underneath.
+
+  function openReceipt(c){
+    if(!c) return;
+
+    // PostEx, with its portal signed in: the full thing, as before.
+    if(c.courier === 'postex' && c.remoteId && account &&
+       String(account.id) === String(c.accountId)){
+      openCpr(c.remoteId, c.cpr);
+      return;
+    }
+
+    current = c;
+    $('dTitle').textContent = c.cpr;
+    $('dNote').innerHTML = badges(c);
+    $('dReceive').style.display = 'none';      // see below
+    $('dBody').innerHTML = oursHead(c) + '<div class="loading">Reading the parcels…</div>';
+    $('drawer').classList.add('open');
+
+    var q = new URLSearchParams();
+    q.set('cpr', c.cpr);
+    q.set('account', c.accountId);
+
+    fetch('/api/courier/rows?' + q.toString(), { cache:'no-store' })
+      .then(function(r){ return r.json(); })
+      .then(function(o){
+        var rows = (o.orders || []).map(function(x){
+          return '<tr><td class="mono">' + esc(x.tracking) + '</td>' +
+            '<td class="mono">' + esc(x.orderRef || '') + '</td>' +
+            '<td>' + esc(x.city || '') + '</td>' +
+            '<td>' + esc(x.status || '') + '</td>' +
+            '<td class="mono">' + esc(x.deliveredOn || '') + '</td>' +
+            '<td class="r">' + full(x.amount) + '</td>' +
+            '<td class="r">' + full(x.fee) + '</td>' +
+            '<td class="r">' + full(x.tax) + '</td></tr>';
+        }).join('');
+
+        $('dBody').innerHTML = oursHead(c) +
+          '<div class="box"><h3>The parcels on this receipt' +
+            '<span class="aside">' + n0((o.orders || []).length) + '</span></h3>' +
+          '<div class="scroll"><table class="t"><tr><th>Tracking</th><th>Order</th>' +
+            '<th>City</th><th>Status</th><th>Delivered</th><th class="r">COD</th>' +
+            '<th class="r">Charges</th><th class="r">Tax</th></tr>' +
+            (rows || '<tr><td colspan="8" class="empty">No parcels are on this ' +
+              'receipt yet. They arrive with the next pull.</td></tr>') +
+          '</table></div></div>';
+      })
+      .catch(function(e){
+        $('dBody').innerHTML = oursHead(c) + '<div class="msg">' + esc(e.message) + '</div>';
+      });
+  }
+
+  // The money on the payment itself. What the courier said, in the courier's
+  // own order: what it collected, what it kept, what it sent, and where.
+  function oursHead(c){
+    var kept = (c.gross != null && c.net != null) ? (c.gross - c.net) : null;
+
+    var money =
+      line('COD collected', c.gross != null ? c.gross : c.amount) +
+      (c.charge != null
+        ? line('Invoiced by the courier', -c.charge)
+        : line('Courier charges', -(c.fee == null ? c.charges : c.fee))) +
+      ((c.tax || 0) ? line('Tax deducted', -(c.tax || 0)) : '') +
+      ((kept != null && c.charge == null) ? line('Kept in all', -kept) : '') +
+      line('Paid to us', c.net, 'big');
+
+    var where = (c.paidToAccount || c.paidToBank)
+      ? '<div class="box" style="margin:0"><h3>Where it was sent</h3>' +
+        '<div class="tot">' +
+          '<div><span>Bank</span><span>' + esc(c.paidToBank || '—') + '</span></div>' +
+          '<div><span>Account</span><span class="mono">' +
+            esc(c.paidToAccount || '—') + '</span></div>' +
+          (c.paidToName ? '<div><span>In the name of</span><span>' +
+            esc(c.paidToName) + '</span></div>' : '') +
+          (c.instrument ? '<div><span>' + esc(c.mode || 'Reference') +
+            '</span><span class="mono">' + esc(c.instrument) + '</span></div>' : '') +
+        '</div></div>'
+      : '<div class="box" style="margin:0"><h3>Where it was sent</h3>' +
+        '<p style="font-size:12.5px;color:var(--muted);margin:0">' +
+        esc(cname(c.courier)) + ' did not say which account this went into.</p></div>';
+
+    var note = c.courier === 'postex'
+      ? '<div class="note" style="margin-top:12px">Sign in to the PostEx portal ' +
+        'below to open this receipt in full and receive it into QuickBooks.</div>'
+      : '<div class="note" style="margin-top:12px">' + esc(cname(c.courier)) +
+        ' has no portal of ours to sign in to, so this is what they said on the ' +
+        'payment itself. Receiving it into QuickBooks is PostEx only for now.</div>';
+
+    return '<div class="sum">' +
+      '<div class="box" style="margin:0"><h3>Money</h3><div class="tot">' + money +
+      '</div></div>' + where + '</div>' + note;
+  }
+
   function openCpr(remoteId, cprNumber, fresh){
+    $('dReceive').style.display = '';
     current = all.filter(function(c){ return String(c.remoteId) === String(remoteId); })[0] ||
               { remoteId: remoteId, cpr: cprNumber };
     page = 0;
