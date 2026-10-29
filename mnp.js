@@ -175,11 +175,22 @@ async function report(token, extra, path, body, rowsOf) {
     }
   }
 
-  // Nothing answered with anything. The last refusal is the honest one, and
-  // it is said with what was actually tried, because "no record against the
-  // request parameters" on its own has sent somebody looking in the wrong
-  // place more than once.
+  // Nothing came back. There are two reasons for that and they are not the
+  // same thing at all:
+  //
+  //   **nothing booked yet.** M&P say "There is no ... record against the
+  //   request parameters", which reads like a refusal and is not one - an
+  //   account that exists but has had no bookings through it answers exactly
+  //   this. It is not an error, and writing it on the account as one leaves
+  //   somebody chasing a courier about a week they never used.
+  //
+  //   **something is wrong** - the login, the route, the parameters. That is
+  //   an error, and it says what was tried.
   const why = last ? last.message : 'M&P said nothing';
+  if (/no\s+\w*\s*report record|no record against/i.test(why)) {
+    return { rows: [], empty: true, location: tries[0] || '' };
+  }
+
   throw new Error(why + ' (tried ' + tries.length + ' location id' +
     (tries.length === 1 ? '' : 's') + ': ' +
     tries.map(x => x || 'none').join(', ') + ')');
@@ -435,7 +446,7 @@ export async function fetchOrders(token, from, to, statusId, extra) {
     }
 
     {
-      const list = got.rows;
+      const list = got.rows || [];
       list.forEach(row => {
         const o = mapReportRow(row);
         if (!o.tracking) return;
@@ -579,7 +590,7 @@ export async function fetchPayouts(token, from, to, extra) {
 
   const out = [];
   {
-    const list = got.rows;
+    const list = got.rows || [];
     {
       list.forEach(row => {
         const block = row.__block || {};

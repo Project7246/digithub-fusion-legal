@@ -925,7 +925,7 @@
           '<div class="vl">' + n0(P.delivered || 0) + '</div>' +
           '<div class="fn">COD ' + full(P.cod || 0) + '</div>' +
         '</div>' +
-        '<div class="k1 c-chg">' +
+        '<div class="k1 c-chg open" data-charges="1">' +
           '<div class="lb">Charges &amp; tax &middot; this period</div>' +
           '<div class="vl">' + full(P.charges || 0) + '</div>' +
           '<div class="fn">' + full(P.fee || 0) + ' + tax ' + full(P.tax || 0) + '</div>' +
@@ -1391,19 +1391,19 @@
     // works from the parcels; this is the paperwork behind it.
     if (CE.cprs) {
       F.cprs += '<div class="kpi">' +
-        '<div class="k1 c-net">' +
+        '<div class="k1 c-net open" data-cprs="due">' +
           '<div class="lb">Not paid &middot; open or approved</div>' +
           '<div class="vl">' + full(CE.due || 0) + '</div>' +
           '<div class="fn">' + n0(CE.dueCprs || 0) + ' of ' + n0(CE.cprs) + ' CPRs' +
           (CE.oldestDue ? ' &middot; oldest ' + esc(CE.oldestDue) : '') + '</div>' +
         '</div>' +
-        '<div class="k1 c-cod">' +
+        '<div class="k1 c-cod open" data-cprs="paid">' +
           '<div class="lb">Paid &middot; closed</div>' +
           '<div class="vl">' + full(CE.paid || 0) + '</div>' +
           '<div class="fn">' + n0(CE.paidCprs || 0) + ' of ' + n0(CE.cprs) + ' CPRs</div>' +
         '</div>' +
         (rec && rec.notInBooks
-          ? '<div class="k1 c-cpr">' +
+          ? '<div class="k1 c-cpr open" data-cprs="unposted">' +
               '<div class="lb">Not in QuickBooks yet</div>' +
               '<div class="vl">' + full(rec.notInBooksAmount || 0) + '</div>' +
               '<div class="fn">' + n0(rec.notInBooks) + ' CPRs to post</div>' +
@@ -1772,6 +1772,30 @@
           : 'Received on closed CPRs');
       });
     });
+    // Charges and tax are earned on every parcel in the range, so the card
+    // opens the range itself - the same parcels the figure was added up from.
+    $('out').querySelectorAll('[data-charges]').forEach(function(el){
+      el.addEventListener('click', function(){
+        openList({ title: 'Charges and tax — every parcel in this period' });
+      });
+    });
+
+    // The CPR cards are about the receipts rather than the parcels, and the
+    // receipts have a screen of their own that can open each one and post it.
+    // Sending somebody there with the right list already chosen beats drawing
+    // a fourth table of the same thing here.
+    $('out').querySelectorAll('[data-cprs]').forEach(function(el){
+      el.addEventListener('click', function(){
+        var which = el.getAttribute('data-cprs');
+        var q = new URLSearchParams();
+        if (account) q.set('account', account);
+        if ($('from') && $('from').value) q.set('from', $('from').value);
+        if ($('to') && $('to').value) q.set('to', $('to').value);
+        q.set('show', which);
+        location.href = '/receipts?' + q.toString();
+      });
+    });
+
     $('out').querySelectorAll('[data-pending]').forEach(function(el){
       el.addEventListener('click', function(){
         moneyList({ pending: '1' }, 'In a CPR, not paid yet');
