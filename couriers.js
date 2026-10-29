@@ -161,17 +161,48 @@ export async function initCouriers() {
 // A receipt seen again is updated, never duplicated. What we have already
 // done with it in QuickBooks is ours, so those columns are left alone.
 export async function saveCprs(realmId, accountId, courier, rows) {
-  if (!rows.length) return 0;
+  // One receipt number can arrive twice in one answer - M&P list a payment
+  // once per sub-account it covers. Postgres refuses a whole statement that
+  // touches the same row twice ("cannot affect row a second time"), so the
+  // last word on each number is the one kept.
+  const byNumber = new Map();
+  (rows || []).forEach(c => { if (c && c.cprNumber) byNumber.set(String(c.cprNumber), c); });
+  const good = [...byNumber.values()];
+  if (!good.length) return 0;
 
-  for (const c of rows) {
-    if (!c || !c.cprNumber) continue;
+  // **One round trip per hundred receipts, not one per receipt.** M&P's
+  // October held three thousand payments, and a query apiece was three
+  // thousand trips to Neon for one pull - minutes of waiting and a bill for
+  // all of it. saveOrders has always written in chunks; this had not.
+  const CHUNK = 100;
+
+  for (let start = 0; start < good.length; start += CHUNK) {
+    const slice = good.slice(start, start + CHUNK);
+    const values = [];
+    const params = [];
+    let n = 1;
+
+    slice.forEach(c => {
+      values.push('(' + Array.from({ length: 18 }, () => '$' + (n++)).join(',') + ', NOW())');
+      params.push(
+        realmId, accountId, courier, c.cprNumber, c.remoteId || null,
+        c.status || null, c.statusId || null, c.netAmount || 0,
+        c.createdOn || null, c.approvedOn || null,
+        JSON.stringify(c.raw || {}),
+        c.paidToName || null, c.paidToBank || null, c.paidToAccount || null,
+        c.instrument || null, c.mode || null,
+        c.grossAmount == null ? null : Number(c.grossAmount),
+        c.chargeAmount == null ? null : Number(c.chargeAmount)
+      );
+    });
+
     await pool.query(
       `INSERT INTO courier_cprs
          (realm_id, account_id, courier, cpr_number, remote_id, status, status_id,
           net_amount, created_on, approved_on, raw,
           paid_to_name, paid_to_bank, paid_to_account, instrument, pay_mode,
           gross_amount, charge_amount, seen_at)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18, NOW())
+       VALUES ${values.join(',')}
        ON CONFLICT (realm_id, account_id, cpr_number) DO UPDATE SET
          remote_id   = EXCLUDED.remote_id,
          status      = EXCLUDED.status,
@@ -190,18 +221,11 @@ export async function saveCprs(realmId, accountId, courier, rows) {
          gross_amount    = COALESCE(EXCLUDED.gross_amount, courier_cprs.gross_amount),
          charge_amount   = COALESCE(EXCLUDED.charge_amount, courier_cprs.charge_amount),
          seen_at     = NOW()`,
-      [realmId, accountId, courier, c.cprNumber, c.remoteId || null,
-       c.status || null, c.statusId || null, c.netAmount || 0,
-       c.createdOn || null, c.approvedOn || null,
-       JSON.stringify(c.raw || {}),
-       c.paidToName || null, c.paidToBank || null, c.paidToAccount || null,
-       c.instrument || null, c.mode || null,
-       c.grossAmount == null ? null : Number(c.grossAmount),
-       c.chargeAmount == null ? null : Number(c.chargeAmount)]
+      params
     );
   }
 
-  return rows.length;
+  return good.length;
 }
 
 export async function listPortalCprs(realmId, opts) {
