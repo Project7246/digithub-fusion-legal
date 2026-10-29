@@ -56,8 +56,11 @@
         { href:'/payments', label:'Receive payments', icon:'cash',    need:'payments', tile:'cash', as:'Payments' },
         { href:'/advance',  label:'Advance payments', icon:'wallet',  need:'advance', tile:'wallet', as:'Advances' },
         { href:'/charges',  label:'Delivery charges', icon:'receipt', need:'charges', tile:'receipt', as:'Delivery fees' },
-        { href:'/find',     label:'Find orders',      icon:'search', tile:'find' },
-        { href:'/audit',    label:'Open invoice audit', icon:'check', tile:'check', as:'Invoice audit' }
+        // Reading the books is a job too - both of these search a company's own
+        // invoices, and neither asked for anything until 30 Oct 2026.
+        { href:'/find',     label:'Find orders',      icon:'search', tile:'find', need:'books' },
+        { href:'/audit',    label:'Open invoice audit', icon:'check', tile:'check',
+          as:'Invoice audit', need:'books' }
       ]},
       { group: 'Products', items: [
         // cost, stock, duplicates and the reports behind them are tabs of one page
@@ -152,7 +155,10 @@
       { group: 'The people', items: [
         { href:'/employees', label:'People',     icon:'people', need:'hr',
           tile:'people' },
-        { href:'/my-hr',     label:'My record',  icon:'check',  tile:'check' }
+        // Theirs whatever else they were given - it is their own record. The
+        // server keeps the same short list (ALWAYS_OPEN), so the page and the
+        // tile cannot disagree about it.
+        { href:'/my-hr',     label:'My record',  icon:'check',  tile:'check', always:true }
       ]},
       // The month, in the order it is actually done: the biometric report and
       // the leave first, the figures after.
@@ -1359,6 +1365,9 @@
       // own buttons as a run goes, and a rule that forced them back would undo that.
       var mine = (s.rights || []);
       window.APP.rights = mine;
+      // the whole answer, for anything that has to know more than one flag -
+      // the launcher needs `support` and `rights` together to say who to ask
+      window.APP.status = s;
       window.APP.may = function(job){ return !!s.admin || mine.indexOf(job) > -1; };
 
       // Given areas rather than the whole of the books: the rail is cut to them.

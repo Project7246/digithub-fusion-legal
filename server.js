@@ -408,8 +408,23 @@ app.get(/^\/$|^\/[A-Za-z0-9-]+$/, async (req, res, next) => {
     // open. Only a limited user is held to this - everybody else was given the
     // whole of the books, or the whole of them to read.
     if (who && who.role === 'custom' && !who.admin) {
+      const rights = who.rights || [];
       const need = PAGE_NEED.get(here + '.html');
-      if (need && who.rights.indexOf(need) < 0) return res.redirect('/');
+      if (need && rights.indexOf(need) < 0) return res.redirect('/');
+
+      // A module's own front page belongs to the module. Being given nothing
+      // in Logistics and still being able to open /logistics is how somebody
+      // ends up reading a section that was never handed to them - and the page
+      // behind it fetches real figures, so "there is nothing on it" was never
+      // true.
+      const area = SECTION_RIGHTS.get(here);
+      if (area && !area.some(k => rights.indexOf(k) > -1)) return res.redirect('/');
+
+      // Given nothing at all. Not a page to tidy up - a person waiting to be
+      // let in, who must see who to ask and nothing else. ALWAYS_OPEN is the
+      // short list that is theirs whatever they were given: their own record,
+      // the screen that names who to ask, and the way out.
+      if (!rights.length && !ALWAYS_OPEN.has(here)) return res.redirect('/choose');
     }
 
     return next();
@@ -1366,8 +1381,9 @@ const USER_MAY_POST = new Set([
   '/api/replace/pick', '/api/replace/shopify', '/api/replace/target',
   '/api/replace/clear', '/api/replace/clear-log',
   '/api/swap/plan', '/api/swap/clear', '/api/swap/clear-log',
-  // why invoices are still open - looked up in the attached sheets, nothing written
-  '/api/audit/start', '/api/audit/resume', '/api/audit/clear'
+  // The audit's own runs used to be here - "nothing is written, so anybody may
+  // look" - which was true about the writing and wrong about the looking: what
+  // it reads is the company's open invoices. They are the `books` right now.
 ]);
 
 // What the admin can hand out, by the name of the job rather than the route behind
@@ -1456,6 +1472,15 @@ const RIGHT_GROUPS = [
     what: 'Remembered SKU-to-item matches',
     paths: ['/api/mappings'] },
 
+  // Reading the books is a job too. /find searches every invoice a company
+  // has and /audit lists what is still open against them - both are the
+  // company's sales, and until 30 Oct 2026 neither asked for anything at all,
+  // so anybody who had been given a login could open them. Somebody given HR
+  // and nothing else could read the customers.
+  { key: 'books', area: 'sales', label: 'Find orders, audit the books',
+    what: 'Search invoices, and see what is still open',
+    paths: ['/api/audit/start', '/api/audit/resume', '/api/audit/clear'] },
+
   // ---- HR ----
   // Two groups, not one, and the line between them is money. Somebody keeps the
   // staff records and brings the biometric report in; somebody else works the
@@ -1513,6 +1538,8 @@ const PAGE_NEED = new Map(Object.entries({
   '/swap.html': 'changes',
   '/recat.html': 'changes',
   '/desc.html': 'changes',
+  '/find.html': 'books',
+  '/audit.html': 'books',
   '/couriers.html': 'couriersync',
   '/courier-dash.html': 'couriersync',
   '/receipts.html': 'couriersync',
@@ -1532,6 +1559,25 @@ const PAGE_NEED = new Map(Object.entries({
   '/attendance.html': 'hr',
   '/payroll.html': 'payroll'
 }));
+
+// A module's front page, and the jobs that make somebody part of that module.
+// It is a second list beside the one in nav.js, which draws the rail from the
+// same idea - so a module added there has to be added here, or its front page
+// is open to anybody with a login. The browser cannot be the only thing saying
+// no: a tile that is not drawn is still a URL that can be typed.
+const SECTION_RIGHTS = new Map(Object.entries({
+  '/finance':    ['upload', 'payments', 'advance', 'charges', 'void', 'merge',
+                  'changes', 'products', 'purchases', 'delete', 'books', 'settings'],
+  '/logistics':  ['couriersync'],
+  '/operations': ['couriersync'],
+  '/hr':         ['hr', 'payroll'],
+  '/csr':        ['shopify']
+}));
+
+// Open to anybody who is signed in, whatever they were given. Their own HR
+// record is theirs by definition, /choose is the screen that names who to ask,
+// and the launcher has to stay reachable or there is nowhere to land.
+const ALWAYS_OPEN = new Set(['/', '/my-hr', '/choose', '/companies', '/eula', '/privacy']);
 
 // route -> the job it belongs to, worked out once
 const RIGHT_OF_PATH = new Map();
@@ -2397,6 +2443,10 @@ app.get('/auth/status', async (req, res) => {
     // back without the figures - a switch the page could flick back is not a
     // switch.
     hideMoney: !!(who && who.hideMoney),
+    // Who to ask. It was sent only to somebody not let in at all, but a person
+    // who has been let in and given no job is in the same position: signed in,
+    // looking at a screen with nothing on it, and nothing saying who opens it.
+    support: { email: [...ADMIN_EMAILS][0] || null, phone: SUPPORT_PHONE },
     user: user ? (user.name || user.email) : null,
     loginId: (user && user.login_id) || null,
     avatarV: (user && user.avatar && user.avatar_at) ? new Date(user.avatar_at).getTime() : null

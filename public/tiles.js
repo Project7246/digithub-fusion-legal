@@ -119,7 +119,8 @@
     sec.groups.forEach(function(g){
       g.items.forEach(function(it){
         if (it.front) return;
-        out.push({ href: it.href, label: it.as || it.label, icon: it.tile, need: it.need });
+        out.push({ href: it.href, label: it.as || it.label, icon: it.tile,
+                   need: it.need, always: !!it.always });
       });
     });
     (sec.soon || []).forEach(function(t){
@@ -128,9 +129,32 @@
     return out;
   }
 
-  // Shown if the person was given the job it belongs to. A tile with no job is
-  // reading, which was never what was being handed out.
-  function mine(t){
+  // Which sections this person is part of at all. Being given a job inside a
+  // module is what puts you in that module; holding none of them means the
+  // module is not yours and nothing of it is drawn - not its tiles, not the
+  // ones that happen to ask for no job of their own, and not the greyed-out
+  // "soon" ones either.
+  //
+  // This is the hole that let somebody given HR and nothing else see Finance,
+  // Logistics and Shopify on the launcher: a tile with no `need` on it was
+  // counted as reading, and reading was taken to be everybody's.
+  function inSection(sec){
+    if (!window.APP || !window.APP.may) return true;
+    var needs = {}, any = false;
+    (sec.groups || []).forEach(function(g){
+      (g.items || []).forEach(function(it){ if (it.need){ needs[it.need] = 1; any = true; } });
+    });
+    if (!any) return true;                       // a section that asks for nothing
+    for (var k in needs) if (window.APP.may(k)) return true;
+    return false;
+  }
+
+  // Shown if the person was given the job it belongs to, inside a module they
+  // are part of. `always` is the short list that is theirs whatever they hold -
+  // their own HR record is the only one - and it is the server's list too.
+  function mine(t, sec){
+    if (t.always) return true;
+    if (sec && !inSection(sec)) return false;
     if (!t.need) return true;
     return !window.APP || !window.APP.may || window.APP.may(t.need);
   }
@@ -142,6 +166,25 @@
     }
     return '<a class="fxtile" href="' + esc(t.href) + '" data-sec="' + esc(t.sec || '') + '">' +
       '<div class="fxbox">' + mark(t.icon) + '</div><span>' + esc(t.label) + '</span></a>';
+  }
+
+  // Somebody who has been let in and given no job at all. They are not a
+  // person with an empty screen to tidy up - they are waiting to be let in, and
+  // the one thing the screen owes them is who to ask.
+  function waiting(){
+    var s = window.APP && window.APP.status;
+    if (!s || s.admin || s.boss) return '';
+    if ((s.rights || []).length) return '';
+
+    var who = (s.support && s.support.email) || '';
+    var tel = (s.support && s.support.phone) || '';
+
+    return '<div class="fxwait">' +
+      '<b>Nothing has been opened to you yet.</b>' +
+      '<p>Your login works, but nobody has said which parts of Fusion are ' +
+      'yours. Ask for access' + (who ? ' at <b>' + esc(who) + '</b>' : '') +
+      (tel ? ', or on <b>' + esc(tel) + '</b>' : '') + '.</p>' +
+      '</div>';
   }
 
   window.FUSION = window.FUSION || {};
@@ -163,7 +206,7 @@
       var flat = [], seen = {};
       all.forEach(function(sec){
         tilesOf(sec).forEach(function(t){
-          if (!mine(t)) return;
+          if (!mine(t, sec)) return;
           if (seek && t.label.toLowerCase().indexOf(seek) < 0) return;
           // Couriers, tracking and CPRs sit on two desks; the launcher shows each once
           var id = t.href || ('soon:' + t.label);
@@ -173,11 +216,11 @@
         });
       });
       flat.sort(function(a, b){ return (a.soon ? 1 : 0) - (b.soon ? 1 : 0); });
-      el.innerHTML = flat.length
+      el.innerHTML = waiting() + (flat.length
         ? '<div class="fxtiles">' + flat.map(one).join('') + '</div>'
-        : '<div class="fxnone">' + (seek
+        : (waiting() ? '' : '<div class="fxnone">' + (seek
             ? 'Nothing matches &ldquo;' + esc(find) + '&rdquo;.'
-            : 'Nothing here is yours to open yet.') + '</div>';
+            : 'Nothing here is yours to open yet.') + '</div>'));
       el.querySelectorAll('[data-sec]').forEach(function(a){
         var k = a.getAttribute('data-sec');
         if (!k) return;
@@ -190,7 +233,7 @@
 
     want.forEach(function(sec){
       var list = tilesOf(sec).filter(function(t){
-        if (!mine(t)) return false;
+        if (!mine(t, sec)) return false;
         return !seek || t.label.toLowerCase().indexOf(seek) > -1;
       });
       if (!list.length) return;

@@ -64,3 +64,10 @@
   .fxtile .fxbox svg{width:32px;height:32px}
   .fxshelfcap a{font-size:15.5px}
 }
+
+/* Somebody signed in and given nothing. Not an empty state to be tidied away:
+   a person waiting to be let in, who needs to know who opens the door. */
+.fxwait{border:1px solid var(--line);border-radius:10px;background:var(--panel);
+  padding:18px 20px;margin-bottom:18px;max-width:640px}
+.fxwait b{font-size:14px}
+.fxwait p{margin:7px 0 0;font-size:13px;color:var(--muted);line-height:1.6}
