@@ -1,5 +1,72 @@
 # Digithub Fusion - project notes for Claude
 
+## ARCHITECTURE RULES (read before every task)
+
+Given on 30 Oct 2026. These stand above everything else in this file. Read
+them before starting any task.
+
+### PRODUCT DIRECTION
+
+Fusion is one platform sold to many different companies, with modules that are
+switched on or off per company (Finance, Logistics, HR, Banking, POS, Ledger).
+Build everything for many companies from the start, even if only one uses it
+today.
+
+### RULES
+
+1. **Isolation**: every table that holds a company's data has `realm_id`. Every
+   query filters by it. For new tables also add Postgres Row-Level Security so
+   a forgotten filter cannot leak data.
+2. **Modules**: each new module gets its OWN files and its OWN tables. Do not
+   add new feature code to `server.js`. Create a new file, export a router, and
+   only register it in `server.js`. Modules talk to each other only through
+   small, named functions, never by reading another module's tables.
+3. **Migrations**: do not rely on `CREATE TABLE IF NOT EXISTS` for new work.
+   Create numbered migration files (e.g. `migrations/012_name.sql`), run once,
+   never edited after they have run.
+4. **Money**: store as integer paisa or `NUMERIC`, never float. In any ledger,
+   a posted entry is never edited or deleted, only reversed. Every entry has
+   debits equal to credits.
+5. **Audit**: every change to money, payroll, banking or rights writes a row
+   (who, what, old value, new value, when).
+6. **Tests first**: before building a money feature, write the check script
+   (like `tools/hr-check.mjs`) with known correct figures, then make the code
+   pass it. Show the results.
+7. **Secrets**: no secret value in code, in logs, or in replies. Tokens and
+   credentials are stored encrypted. Name variables only.
+8. **Safe changes**: do not touch Finance code when working on HR, and the
+   reverse. If a task needs it, stop and say so first.
+9. **Real data**: never run experiments on production data. Use test data and
+   say clearly which database a script will touch before it runs.
+10. **Feature switches**: each module can be enabled or disabled per company.
+
+### HOW TO WORK EVERY TIME
+
+- Before starting any task, say which module it belongs to and which of these
+  rules apply.
+- If a request conflicts with a rule, **STOP** and say which rule and why. Do
+  not quietly work around it. The owner may say "override", and only then may
+  it proceed - and a line is added to this file recording the exception.
+- If something is unclear, write "unclear" instead of guessing.
+- After each task, say in 3 lines: what changed, which files, what the owner
+  must check or test themselves.
+- Keep this file up to date with every decision the owner makes.
+
+### Where the code does not meet these rules yet
+
+Stated once, plainly, so no task has to rediscover it. These are **not**
+exceptions to the rules - they are the distance between the rules and the code
+as it stands on 30 Oct 2026, and new work closes it rather than widening it.
+
+| Rule | Today |
+|---|---|
+| 1 - RLS | Every table carries `realm_id` and every query filters by it, but **no table has Row-Level Security**. New tables get it. |
+| 2 - own files, own router | Modules do have their own files (`hr.js`, `banking.js`, `rates.js`, …) but **every route is declared in `server.js`** - 452 of them, 14,400 lines. New modules export a router. |
+| 3 - migrations | There is **no `migrations/` directory**. Tables are made with `CREATE TABLE IF NOT EXISTS` and columns with `ALTER TABLE … ADD COLUMN IF NOT EXISTS`, inside each module's `init*()`. New work uses numbered files. |
+| 4 - money | Money is `NUMERIC(14,2)` throughout, which is correct. **There is no ledger with reversal-only posting**; `hr_pay_lines` and `bank_moves` are edited in place today. |
+| 5 - audit | There is **no audit table**. `bank_links` keeps its own history by never editing a row, and `hr_pay_lines.source` records who put a figure there, but neither is a general audit trail. |
+| 10 - feature switches | There is **no per-company module switch**. What a person sees is their rights; what a company has is everything. |
+
 ## How to talk to the user
 - Reply in **Roman Urdu**. Code, file names, paths, commands stay in English.
 - Do not guess when a request is vague ("yaha" etc): ask which page first.
