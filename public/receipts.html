@@ -986,14 +986,26 @@
   function oursHead(c){
     var kept = (c.gross != null && c.net != null) ? (c.gross - c.net) : null;
 
+    // What the courier said about this payment, in its own order. The second
+    // line is deliberately **not** called "charges": M&P recover their
+    // invoices when it suits them - nothing on one payment, a whole month's
+    // billing on the next, which is why a payment can come out negative - so
+    // it is what was taken off this payment, not what these parcels cost.
+    // What these parcels cost is on the parcels themselves, underneath.
     var money =
-      line('COD collected', c.gross != null ? c.gross : c.amount) +
+      line('Collected in this payment', c.gross != null ? c.gross : c.amount) +
       (c.charge != null
-        ? line('Invoiced by the courier', -c.charge)
+        ? line('Invoices recovered from it', -c.charge)
         : line('Courier charges', -(c.fee == null ? c.charges : c.fee))) +
       ((c.tax || 0) ? line('Tax deducted', -(c.tax || 0)) : '') +
       ((kept != null && c.charge == null) ? line('Kept in all', -kept) : '') +
-      line('Paid to us', c.net, 'big');
+      line('Paid to us', c.net, 'big') +
+      (c.charge != null && c.fee
+        ? '<div class="note" style="margin-top:8px">The parcels below carry ' +
+          full(c.fee) + ' of invoiced charges of their own. A payment settles ' +
+          'whatever the courier chose to bill against it, which is not always ' +
+          'the parcels in it.</div>'
+        : '');
 
     var where = (c.paidToAccount || c.paidToBank)
       ? '<div class="box" style="margin:0"><h3>Where it was sent</h3>' +

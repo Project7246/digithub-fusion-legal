@@ -654,11 +654,25 @@ its SQL from, and an adapter says `deducts: false` only if a courier genuinely
 hands over the whole COD. Nothing does today; the machinery is there because
 the question had to be asked.
 
-**Not settled, and not to be guessed at**: that payment's `InvoiceAmount`
-(13,286) is not that parcel's invoice (109.25), so a payment carries invoices
-beyond the parcels it pays for. Until the two are reconciled, the receivable is
-right per parcel and a payment's own `NetPayable` is the figure to trust for
-the bank.
+**Settled on 30 Oct 2026 by counting their rows.** October came back with
+3,016 rows and **23 payments** - so a row is one consignment's share of a
+payment, and the payment number repeats down them. On the biggest:
+
+```
+227 rows - collected 536,898 - invoices 93,824.40 = paid 443,073.60
+```
+
+Their own arithmetic holds, row by row and in total. What it does **not** mean
+is "what these parcels cost": M&P recover their invoices when it suits them -
+nothing on one payment, a month's billing on the next, which is how a payment
+comes out negative. So the receipt says **Collected in this payment**,
+**Invoices recovered from it** and **Paid to us**, and never "charges". What a
+parcel cost is on the parcel, from `AmountInvoiced` on its own invoice line.
+
+This was nearly called a bug on the strength of one receipt showing a charge
+larger than its collections. It was the label that was wrong, not the figure -
+which is the reason a figure is read back from the live account after a change
+and not only in a test.
 
 **Their payment report also names the bank**: `BeneficiaryBankAccount`,
 `BankName`, `BeneficiaryName` sit on the block around the rows - which is the
