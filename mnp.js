@@ -616,18 +616,31 @@ export async function peek(token, from, to, extra) {
       error: 'no location id on this account, or no date to read' });
   }
 
-  // The money. The QSR report carries no charge and no tax at all - seventeen
-  // columns and not one of them is either - so whatever M&P deduct is on one
-  // of these two, and this is what says which.
-  if (location) {
+  // **Is the location id needed at all?** Asked straight out, because the one
+  // saved on an account was not even in M&P's own list of sub-accounts and the
+  // QSR report answered anyway, while the payment report refused. So both
+  // calls are tried with the saved id, with none at all, and with each
+  // sub-account this sign-in really holds - and whichever answers is the
+  // answer. Guessing at this is what left an account erroring for a week.
+  const tries = [{ label: 'the id saved on this account', id: location },
+                 { label: 'no location id at all', id: '' }];
+  (out.locations || []).forEach(l => {
+    if (l && l.location && l.location !== location) {
+      tries.push({ label: 'sub-account ' + l.location + ' (' + (l.name || '') + ')',
+                   id: l.location });
+    }
+  });
+
+  for (const t of tries) {
     try {
       const { all } = await post(token, extra, '/Reports/Payment_Report', {
-        dateFrom: from, dateTo: to, locationID: String(location)
+        dateFrom: from, dateTo: to, locationID: String(t.id || '')
       });
       const block = all.find(b => Array.isArray(b && b.Details) && b.Details.length) || all[0] || null;
       const list = (block && block.Details) || [];
       out.calls.push({
         what: 'Reports/Payment_Report',
+        tried: t.label,
         rows: list.length,
         keys: list.length ? Object.keys(list[0]) : [],
         first: list[0] || null,
@@ -635,8 +648,26 @@ export async function peek(token, from, to, extra) {
         block: block ? Object.fromEntries(
           Object.entries(block).filter(([k]) => k !== 'Details')) : null
       });
+      if (list.length) break;        // one that answers is enough
     } catch (e) {
-      out.calls.push({ what: 'Reports/Payment_Report', error: e.message });
+      out.calls.push({ what: 'Reports/Payment_Report', tried: t.label, error: e.message });
+    }
+  }
+
+  // and the same question of the QSR report, which is the one that must keep
+  // working whatever is decided about the id
+  if (location && m && y) {
+    try {
+      const { all } = await post(token, extra, '/Reports/QSR_Report', {
+        MonthNumber: Number(m), year: Number(y), Year: Number(y), locationID: ''
+      });
+      const block = all.find(b => Array.isArray(b && b.Details) && b.Details.length) || null;
+      const list = block ? block.Details : [];
+      out.calls.push({ what: 'Reports/QSR_Report', tried: 'no location id at all',
+                       rows: list.length });
+    } catch (e) {
+      out.calls.push({ what: 'Reports/QSR_Report', tried: 'no location id at all',
+                       error: e.message });
     }
   }
 
