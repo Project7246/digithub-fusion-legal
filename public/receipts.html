@@ -23,6 +23,15 @@
   tr.rrow{cursor:pointer}
   tr.rrow:hover td{background:#F7FAFC}
   td.kidcell{padding:0 0 10px 18px;background:#FBFDFE}
+  /* the money on one receipt, read the way it is argued: collected, less what
+     they kept, less tax, leaving what was paid */
+  .rsum{display:flex;gap:26px;flex-wrap:wrap;padding:12px 2px 10px}
+  .rsum > div{display:flex;flex-direction:column;gap:2px}
+  .rsum span{font-size:10.5px;letter-spacing:.08em;text-transform:uppercase;color:var(--faint)}
+  .rsum b{font-family:var(--mono);font-size:14px;font-variant-numeric:tabular-nums}
+  .rsum .net b{color:var(--ok)}
+  .rbooks{font-size:12px;color:var(--muted);padding:0 2px 10px}
+  .rbooks.ok{color:var(--ok)}
   table.t.sub{margin:0}
   table.t.sub th{font-size:10.5px}
   table.t.sub td{padding:5px 8px;font-size:12px}
@@ -533,6 +542,32 @@
             n0(list.length) + ' receipts</div></div>' +
           '</div>';
 
+        // What a receipt is made of, before its parcels: what was collected,
+        // what the courier kept, what tax came off it, and whether the books
+        // know about it yet. Clicking a receipt used to open the parcels alone,
+        // which answers "which parcels" and not "what was deducted" - and the
+        // deduction is the question a CPR is opened with.
+        function head(c){
+          var money =
+            '<div class="rsum">' +
+              '<div><span>COD collected</span><b>' + full(c.amount) + '</b></div>' +
+              '<div><span>Courier charges</span><b>-' + full(c.fee == null ? c.charges : c.fee) + '</b></div>' +
+              '<div><span>Tax deducted</span><b>-' + full(c.tax || 0) + '</b></div>' +
+              '<div class="net"><span>Paid to us</span><b>' + full(c.net) + '</b></div>' +
+            '</div>';
+
+          var books = c.inBooks
+            ? '<div class="rbooks ok">Received in QuickBooks' +
+              (c.receivedOn ? ' on ' + esc(c.receivedOn) : '') +
+              (c.qbPaymentId ? ' · payment ' + esc(c.qbPaymentId) : '') + '.</div>'
+            : '<div class="rbooks">Not received in QuickBooks yet.' +
+              (c.courier === 'postex'
+                ? ' Open it in PostEx’s own receipt book below to receive it.'
+                : '') + '</div>';
+
+          return money + books;
+        }
+
         var rows = list.map(function(c, i){
           return '<tr class="click rrow" data-i="' + i + '">' +
             '<td class="mono">' + esc(c.cpr) + '</td>' +
@@ -541,13 +576,14 @@
             '<td class="mono">' + esc(c.settledOn || '\u2014') + '</td>' +
             '<td class="r">' + n0(c.orders) + '</td>' +
             '<td class="r">' + full(c.amount) + '</td>' +
-            '<td class="r">' + full(c.charges) + '</td>' +
+            '<td class="r">' + full(c.fee == null ? c.charges : c.fee) + '</td>' +
+            '<td class="r">' + full(c.tax || 0) + '</td>' +
             '<td class="r"><b>' + full(c.net) + '</b></td>' +
             '<td>' + (c.inBooks
               ? '<span class="pill ok">in QuickBooks</span>'
               : '<span class="pill wait">not received</span>') + '</td></tr>' +
             '<tr class="kids" id="kids' + i + '" style="display:none">' +
-              '<td colspan="9" class="kidcell"></td></tr>';
+              '<td colspan="10" class="kidcell"></td></tr>';
         }).join('');
 
         $('ours').innerHTML =
@@ -560,7 +596,8 @@
           '<div style="max-height:520px;overflow:auto"><table class="t">' +
           '<tr><th>Receipt</th><th>Courier</th><th>Account</th><th>Paid on</th>' +
           '<th class="r">Parcels</th><th class="r">Collected</th>' +
-          '<th class="r">Charges</th><th class="r">Net</th><th>In the books</th></tr>' +
+          '<th class="r">Charges</th><th class="r">Tax</th>' +
+          '<th class="r">Net</th><th>In the books</th></tr>' +
           rows + '</table></div>' +
           '<div class="note">One row per receipt number, whichever courier it came ' +
           'from. Net is what was collected less what the courier kept. PostEx ' +
@@ -577,7 +614,7 @@
 
             var cell = kids.querySelector('.kidcell');
             if(cell.getAttribute('data-done')) return;
-            cell.innerHTML = '<div class="loading">Reading\u2026</div>';
+            cell.innerHTML = head(list[i]) + '<div class="loading">Reading\u2026</div>';
 
             var q = new URLSearchParams();
             q.set('cpr', list[i].cpr);
@@ -594,12 +631,15 @@
                     '<td>' + esc(x.status || '') + '</td>' +
                     '<td class="mono">' + esc(x.deliveredOn || '') + '</td>' +
                     '<td class="r">' + full(x.amount) + '</td>' +
-                    '<td class="r">' + full(x.fee + x.tax) + '</td></tr>';
+                    '<td class="r">' + full(x.fee) + '</td>' +
+                    '<td class="r">' + full(x.tax) + '</td></tr>';
                 }).join('');
-                cell.innerHTML = '<table class="t sub"><tr><th>Tracking</th>' +
+                cell.innerHTML = head(list[i]) +
+                  '<table class="t sub"><tr><th>Tracking</th>' +
                   '<th>Order</th><th>City</th><th>Status</th><th>Delivered</th>' +
-                  '<th class="r">Amount</th><th class="r">Charges</th></tr>' +
-                  (lines || '<tr><td colspan="7">No parcels on this receipt.</td></tr>') +
+                  '<th class="r">Amount</th><th class="r">Charges</th>' +
+                  '<th class="r">Tax</th></tr>' +
+                  (lines || '<tr><td colspan="8">No parcels on this receipt.</td></tr>') +
                   '</table>';
               })
               .catch(function(e){ cell.innerHTML = '<div class="msg">' + esc(e.message) + '</div>'; });

@@ -673,6 +673,11 @@ export async function recentCprs(realmId, opts) {
             COUNT(*) AS orders,
             COALESCE(SUM(o.amount),0) AS amount,
             COALESCE(SUM(o.fee + o.tax),0) AS charges,
+            -- kept apart as well as together: "what tax was deducted on this
+            -- receipt" is the question asked of a CPR, and a single
+            -- charges figure cannot answer it
+            COALESCE(SUM(o.fee),0) AS fee,
+            COALESCE(SUM(o.tax),0) AS tax,
             MAX(c.received_on)   AS received_on,
             MAX(c.qb_payment_id) AS qb_payment_id,
             MAX(c.status)        AS status,
@@ -700,10 +705,13 @@ export async function recentCprs(realmId, opts) {
       orders: Number(x.orders),
       amount,
       charges,
+      fee: r2(x.fee),
+      tax: r2(x.tax),
       net: x.net_amount == null ? r2(amount - charges) : r2(x.net_amount),
       status: x.status || '',
       remoteId: x.remote_id || null,
       inBooks: !!x.received_on,
+      receivedOn: day(x.received_on),
       qbPaymentId: x.qb_payment_id || null
     };
   });
