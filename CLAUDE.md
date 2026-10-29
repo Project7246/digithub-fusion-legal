@@ -842,6 +842,15 @@ anything.
 `/courier-dash` is still in the Operations rail and `/pickups` is still
 reached from the load sheet. What this rail grows instead is **Rates**.
 
+**A section `claims` the pages it opens but does not list.** Taking Tracking
+off this rail meant `/courier-dash` was a line in Operations alone - so
+opening a Trax account from the Logistics courier tree landed somebody in
+Operations, with the rail changed underneath them although they had asked to
+go nowhere. `claims` on a section (`/courier-dash`, `/pickups`, `/receipts`)
+is read by `holds()` beside the rail's own lines: the page belongs to
+whichever section you were standing in, and the courier tree's line is what
+lights up, because that is how you got there.
+
 ### Rates: what was agreed, against what was charged
 
 Asked for on 29 Oct 2026, and the sentence that shapes it is *"rate kyun ke

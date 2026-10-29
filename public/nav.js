@@ -78,6 +78,10 @@
 
     { key:'logistics', label:'Logistics', home:'/logistics', tile:'truck',
       what:'Where every order is, across every courier account.', qb:true,
+      // Opened from an account in this rail's courier tree, and from the
+      // figures on its front page. They are not lines here - see the Couriers
+      // group below - but they are this section's pages while you are in it.
+      claims:['/courier-dash', '/pickups', '/receipts'],
       soon:[{ label:'Returns', tile:'back' }],
       groups: [
       { group: null, items: [
@@ -254,6 +258,15 @@
         if (h === p || (h !== '/' && p.indexOf(h) === 0)) return true;
       }
     }
+    // Pages a section owns without drawing a line for them. Opening a courier
+    // account from the Logistics rail used to land on /courier-dash, which by
+    // then was a line in Operations only - so the rail changed underneath
+    // somebody who had not asked to go anywhere. A page can belong to a
+    // section without being on its rail.
+    var also = sec.claims || [];
+    for (var k = 0; k < also.length; k++) {
+      if (also[k] === p || p.indexOf(also[k]) === 0) return true;
+    }
     return false;
   }
   function pickSection(){
@@ -306,7 +319,11 @@
                 (path === '/merge' || path === '/checklist')) ||
                // every tab of the changes page lights up the one link
                (it.href === '/replace' &&
-                (path === '/swap' || path === '/recat' || path === '/desc'));
+                (path === '/swap' || path === '/recat' || path === '/desc')) ||
+               // a page this section owns without a line of its own was
+               // reached through the courier tree, so that is the line that
+               // lights up - otherwise nothing on the rail would
+               (it.tree && (HERE.claims || []).indexOf(path) > -1);
       html += '<a href="' + it.href + '"' +
               (it.need ? ' data-line="' + it.need + '"' : '') +
               (on ? ' class="on"' : (it.admin ? ' class="admin-only"' : '')) +
