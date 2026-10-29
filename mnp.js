@@ -110,6 +110,81 @@ async function post(token, extra, path, body) {
   return unwrap(r, path);
 }
 
+/* ---------- the location id, which nobody should have to know ---------- */
+//
+// M&P's report calls take a `locationID` - their sub-account, the one the
+// bookings went through - and it is the single thing that has broken most
+// often here. The id saved on one account was not even in M&P's own list of
+// sub-accounts: the QSR report answered anyway, and the payment report
+// refused with **"There is no Payment Report record against the request
+// parameters"**, which reads as "you have no payments" and is not what it
+// means.
+//
+// So nobody types it any more. The call is tried with whatever is saved, then
+// with none at all, then with each sub-account this sign-in actually holds,
+// and the one that answers is remembered for as long as the process lives.
+// A courier's own account numbers are the courier's to know, not something
+// for a person to copy out of an email from two years ago.
+
+const worked = new Map();      // account number -> the location id that answered
+
+function remember(account, id) {
+  if (account) worked.set(String(account), String(id == null ? '' : id));
+}
+
+export function forgetLocations() { worked.clear(); }
+
+// Every id worth trying, best first and each one only once.
+async function locationsToTry(token, extra) {
+  const account = accountOf(extra);
+  const saved = (extra && (extra.location || extra.locationId)) || '';
+  const out = [];
+  const add = v => {
+    const id = String(v == null ? '' : v);
+    if (!out.some(x => x === id)) out.push(id);
+  };
+
+  if (worked.has(String(account))) add(worked.get(String(account)));
+  add(saved);
+  add('');                                     // their reports often ignore it
+
+  try {
+    (await listLocations(token, extra)).forEach(l => add(l.location));
+  } catch (e) { /* the sign-in works or nothing else would have got this far */ }
+
+  return out;
+}
+
+// One report call, asked until it answers. `body(id)` builds the call for a
+// given location id; `rowsOf(all)` says what came back. A refusal that names
+// the parameters is M&P's way of saying "not that id", so it is tried with the
+// next one rather than reported as "you have no data".
+async function report(token, extra, path, body, rowsOf) {
+  const account = accountOf(extra);
+  const tries = await locationsToTry(token, extra);
+  let last = null;
+
+  for (const id of tries) {
+    try {
+      const { all } = await post(token, extra, path, body(id));
+      const rows = rowsOf(all);
+      if (rows.length) { remember(account, id); return { rows, location: id }; }
+      last = last || new Error('M&P had nothing on ' + path + ' for these dates');
+    } catch (e) {
+      last = last || e;
+    }
+  }
+
+  // Nothing answered with anything. The last refusal is the honest one, and
+  // it is said with what was actually tried, because "no record against the
+  // request parameters" on its own has sent somebody looking in the wrong
+  // place more than once.
+  const why = last ? last.message : 'M&P said nothing';
+  throw new Error(why + ' (tried ' + tries.length + ' location id' +
+    (tries.length === 1 ? '' : 's') + ': ' +
+    tries.map(x => x || 'none').join(', ') + ')');
+}
+
 // M&P answer a 200 with `isSuccess: false` and the reason in `message`, and
 // their lists arrive wrapped in an array of one. Both are undone here so
 // nothing above this line has to know.
@@ -335,24 +410,32 @@ function monthsOf(from, to) {
 // are cut to the span afterwards so a sweep of "the last four days" does not
 // save a whole month every time.
 export async function fetchOrders(token, from, to, statusId, extra) {
-  const location = (extra && (extra.location || extra.locationId)) || '';
-  if (!location) {
-    throw new Error('M&P reports need the location id - add it to this account ' +
-                    '(it is the sub-account the bookings go through)');
-  }
-
   const seen = new Map();
 
   for (const m of monthsOf(from, to)) {
-    const { all } = await post(token, extra, '/Reports/QSR_Report', {
-      MonthNumber: m.month,
-      year: m.year,
-      Year: m.year,
-      locationID: String(location)
-    });
+    // No location id is asked of anybody now - see report() above. A month
+    // that genuinely holds nothing is not a failure, so it is passed over
+    // rather than stopping the span.
+    let got;
+    try {
+      got = await report(token, extra, '/Reports/QSR_Report',
+        id => ({ MonthNumber: m.month, year: m.year, Year: m.year, locationID: id }),
+        all => {
+          const out = [];
+          all.forEach(block => {
+            const list = Array.isArray(block && block.Details) ? block.Details : (rows(block) || []);
+            list.forEach(row => out.push(row));
+          });
+          return out;
+        });
+    } catch (e) {
+      // the last month of a span is often empty - that is not an error
+      if (monthsOf(from, to).length > 1) continue;
+      throw e;
+    }
 
-    all.forEach(block => {
-      const list = Array.isArray(block && block.Details) ? block.Details : (rows(block) || []);
+    {
+      const list = got.rows;
       list.forEach(row => {
         const o = mapReportRow(row);
         if (!o.tracking) return;
@@ -360,7 +443,7 @@ export async function fetchOrders(token, from, to, statusId, extra) {
         if (o.bookedOn && (o.bookedOn < from || o.bookedOn > to)) return;
         seen.set(o.tracking, o);
       });
-    });
+    }
   }
 
   return [...seen.values()];
@@ -483,26 +566,37 @@ export async function fetchAreas(token, extra) {
 }
 
 export async function fetchPayouts(token, from, to, extra) {
-  const location = (extra && (extra.location || extra.locationId)) || '';
-  const { all } = await post(token, extra, '/Reports/Payment_Report', {
-    dateFrom: from, dateTo: to, locationID: String(location)
-  });
+  const got = await report(token, extra, '/Reports/Payment_Report',
+    id => ({ dateFrom: from, dateTo: to, locationID: id }),
+    all => {
+      const out = [];
+      all.forEach(block => {
+        const list = Array.isArray(block && block.Details) ? block.Details : [];
+        list.forEach(row => out.push(Object.assign({ __block: block }, row)));
+      });
+      return out;
+    });
 
   const out = [];
-  all.forEach(block => {
-    const list = Array.isArray(block && block.Details) ? block.Details : [];
-    list.forEach(row => out.push({
-      paymentId:  String(row.PaymentID || '').trim(),
-      paidOn:     day(row.PaidOn),
-      amount:     num(row.RRAmount),
-      invoiced:   num(row.InvoiceAmount),
-      netPayable: num(row.NetPayable),
-      mode:       row.InstrumentMode || '',
-      instrument: String(row.InstrumentNumber || '').trim(),
-      bank:       (block && block.BankName) || '',
-      account:    (block && block.AccountNo) || ''
-    }));
-  });
+  {
+    const list = got.rows;
+    {
+      list.forEach(row => {
+        const block = row.__block || {};
+        out.push({
+          paymentId:  String(row.PaymentID || '').trim(),
+          paidOn:     day(row.PaidOn),
+          amount:     num(row.RRAmount),
+          invoiced:   num(row.InvoiceAmount),
+          netPayable: num(row.NetPayable),
+          mode:       row.InstrumentMode || '',
+          instrument: String(row.InstrumentNumber || '').trim(),
+          bank:       (block && block.BankName) || '',
+          account:    (block && block.AccountNo) || ''
+        });
+      });
+    }
+  }
   return out;
 }
 
@@ -530,8 +624,12 @@ export const adapter = {
       hint: 'the username M&P gave you' },
     { name: 'account', label: 'Account number', optional: true,
       hint: 'like 4T154 - looked up for you if you leave it out' },
+    // Left here because an account saved before this still carries one, and a
+    // right one is one call saved. It is tried first and then simply passed
+    // over: M&P's reports are asked with every sub-account the sign-in holds
+    // until one answers, so a wrong id no longer stops anything.
     { name: 'location', label: 'Location id', optional: true,
-      hint: 'the sub-account bookings go through - looked up too' }
+      hint: 'leave it out - every sub-account is tried until one answers' }
   ],
   hook: {
     where: null,
