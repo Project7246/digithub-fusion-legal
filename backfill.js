@@ -2,8 +2,11 @@
 // runs, everything else - the receipts, the city figures, what is still owed -
 // is answered from here instead of asking the courier all over again.
 
-import { getAccount, saveOrders, needCpr, savePayments, credsOf } from './couriers.js';
+import {
+  getAccount, saveOrders, needCpr, savePayments, markPaid, credsOf
+} from './couriers.js';
 import { adapterFor } from './adapters.js';
+import { decrypt } from './secrets.js';
 import { realmOf } from './desk.js';
 
 const jobs = new Map();          // desk (company and person) -> job
@@ -175,14 +178,58 @@ async function run(realmId, job, carrying) {
 
   const a = adapterFor(acc.courier);
   if (!a) throw new Error('No adapter for ' + acc.courier);
-  if (a.lists === false || typeof a.fetchOrders !== 'function') {
-    throw new Error(a.name + ' cannot be asked for past months - its API only ' +
-      'answers about one parcel at a time, so its orders arrive through its ' +
-      'webhooks from the day they are switched on');
+
+  // Two doors, and which one this account has decides nothing else about the
+  // run. Most couriers answer a span of days from their API; Trax does not -
+  // its API only ever answers about a tracking number you already hold - but
+  // its **portal** does, and that is what the sign-in on the Couriers page
+  // buys. Everything after this reads the same either way.
+  const viaPortal = !!(a.portal && a.portal.lists &&
+                       typeof a.portal.sessionFor === 'function' &&
+                       acc.portal_email && acc.portal_secret);
+
+  if (!viaPortal && (a.lists === false || typeof a.fetchOrders !== 'function')) {
+    throw new Error(a.name + ' cannot be asked for past months through its API - ' +
+      'it only answers about one parcel at a time' +
+      (a.portal && a.portal.lists
+        ? `. Its past is behind its own portal: sign in to ${a.portal.where} ` +
+          'for this account on the Couriers page, then start this again'
+        : ', so its orders arrive through its webhooks from the day they are ' +
+          'switched on'));
   }
 
   // whatever this courier wants beside its token - a login, an account number
   const extra = credsOf(acc);
+
+  // The portal is a second sign-in and it is made once, here, rather than per
+  // month: twenty months would otherwise be twenty sign-ins.
+  let session = null;
+  let shipper = '';
+  if (viaPortal) {
+    session = await a.portal.sessionFor(acc.id, acc.portal_email, decrypt(acc.portal_secret));
+    const who = (session.shippers || [])[0] || null;
+    shipper = who ? who.id : '';
+    if (!shipper) {
+      throw new Error(`${a.portal.where} did not say which shipper this sign-in ` +
+        'is for, so there is nothing to ask it about');
+    }
+    say(job, `Signed in to ${a.portal.where} as ${who.name || acc.portal_email}`);
+  }
+
+  // One month's parcels, however this account gets them.
+  async function monthOrders(m) {
+    if (!viaPortal) return a.fetchOrders(acc.token, m.from, m.to, 0, extra);
+
+    const got = [];
+    await a.portal.shipments(session, {
+      shipper,
+      from: m.from,
+      to: m.to,
+      onPage: list => { got.push(...list); },
+      stop: () => job.cancel
+    });
+    return got;
+  }
 
   job.label = acc.label;
   if (!carrying) say(job, `${acc.label}: ${job.from} to ${job.to}, ${job.months.length} month${job.months.length === 1 ? '' : 's'}`);
@@ -195,8 +242,7 @@ async function run(realmId, job, carrying) {
 
     let orders = [];
     try {
-      orders = await tryThrice(job, m.label,
-        () => a.fetchOrders(acc.token, m.from, m.to, 0, extra));
+      orders = await tryThrice(job, m.label, () => monthOrders(m));
     } catch (e) {
       say(job, `${m.label}: gave up - ${e.message}`);
       job.monthsDone++;
@@ -212,10 +258,24 @@ async function run(realmId, job, carrying) {
       continue;
     }
 
+    // What the portal's own report says has been paid out. It names no payment,
+    // so it only ever marks a parcel paid and never unpaid - markPaid() is the
+    // whole of that rule, and the receipt numbers the payment webhook wrote are
+    // left exactly as they are.
+    let paid = 0;
+    if (viaPortal && typeof a.portal.paidOnly === 'function') {
+      try {
+        paid = await markPaid(realmId, acc.id, a.portal.paidOnly(orders));
+      } catch (e) {
+        say(job, `${m.label}: the parcels were kept but their payment status was not - ${e.message}`);
+      }
+    }
+
     job.ordersSaved += saved;
     job.monthsDone++;
     job.okMonths.add(m.label);
-    say(job, `${m.label}: ${orders.length} orders, ${saved} kept`);
+    say(job, `${m.label}: ${orders.length} orders, ${saved} kept` +
+             (paid ? `, ${paid} of them already paid for` : ''));
 
     await sleep(500);
   }
@@ -229,7 +289,19 @@ async function run(realmId, job, carrying) {
 
   /* ---------- then what each one was paid under ---------- */
 
-  if (job.withCpr && a.fetchPayment) {
+  if (job.withCpr && viaPortal) {
+    say(job, 'The payment status came with each parcel, so nothing is asked ' +
+             'about one at a time. Which payment paid for it arrives from the ' +
+             "courier's payment webhook, a whole batch at a time.");
+  }
+
+  // Asked parcel by parcel, which is the only way PostEx's API will answer it.
+  // **Never after a portal import**: that import is how a courier with no list
+  // call gets years of parcels at once, and asking each delivered one of fifty
+  // thousand what it was paid under is fifty thousand calls through a relay.
+  // What paid for them arrives from the payment webhook and the invoice behind
+  // it (traxlive.js), a whole batch at a time.
+  if (job.withCpr && a.fetchPayment && !viaPortal) {
     job.phase = 'receipts';
     say(job, 'Now asking what each delivered parcel was paid under');
 

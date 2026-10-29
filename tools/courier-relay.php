@@ -88,14 +88,34 @@ foreach (getallheaders() as $name => $value) {
 $method = $_SERVER['REQUEST_METHOD'];
 $body = ($method === 'GET' || $method === 'HEAD') ? null : file_get_contents('php://input');
 
+// The three headers that have to come back, and why.
+//
+// A courier's API needs none of them. A courier's **portal** needs all three:
+// it signs us in by setting a cookie, and it answers a sign-in with a 302 to
+// the page it wants us on - so a relay that quietly follows the redirect and
+// drops the cookie hands back a login page and the sign-in looks like a wrong
+// password. The redirect is passed back as it came and Fusion reads it.
+$backCookies = [];
+$backLocation = '';
+
 $ch = curl_init($target);
 curl_setopt_array($ch, [
     CURLOPT_RETURNTRANSFER => true,
-    CURLOPT_FOLLOWLOCATION => true,
+    CURLOPT_FOLLOWLOCATION => false,
     CURLOPT_CUSTOMREQUEST  => $method,
     CURLOPT_HTTPHEADER     => $pass,
     CURLOPT_TIMEOUT        => 25,
-    CURLOPT_CONNECTTIMEOUT => 12
+    CURLOPT_CONNECTTIMEOUT => 12,
+    CURLOPT_HEADERFUNCTION => function ($ch, $line) use (&$backCookies, &$backLocation) {
+        $at = strpos($line, ':');
+        if ($at !== false) {
+            $name = strtolower(trim(substr($line, 0, $at)));
+            $value = trim(substr($line, $at + 1));
+            if ($name === 'set-cookie') $backCookies[] = $value;
+            if ($name === 'location')   $backLocation = $value;
+        }
+        return strlen($line);
+    }
 ]);
 if ($body !== null && $body !== '') curl_setopt($ch, CURLOPT_POSTFIELDS, $body);
 
@@ -115,4 +135,11 @@ if ($answer === false) {
 http_response_code($code ? $code : 502);
 if ($type) header('Content-Type: ' . $type);
 header('X-Relayed-To: ' . $parts['host']);
+
+// Handed back as they came. `false` on the second argument is what lets more
+// than one Set-Cookie line through - with the default each one would replace
+// the last, and a portal that sets two cookies at sign-in would lose one.
+foreach ($backCookies as $line) header('Set-Cookie: ' . $line, false);
+if ($backLocation !== '') header('Location: ' . $backLocation, true, $code ? $code : 302);
+
 echo $answer;

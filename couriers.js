@@ -573,6 +573,36 @@ export async function savePayments(realmId, accountId, rows) {
   return good.length;
 }
 
+// A screen that says a parcel has been paid for but does not say which payment
+// paid it.
+//
+// Trax's portal is one: its Summary report carries a payment status per parcel
+// and no payment id anywhere on it. savePayments() above is the wrong door for
+// that - it writes `cpr_number` from what it was handed, so a row with no id
+// would wipe the receipt number the payment webhook had already written down.
+//
+// This one only ever marks a parcel **paid**, and touches nothing else. A
+// parcel the screen said nothing about keeps whatever it had: "this report did
+// not mention it" is not "the courier has not paid for it".
+export async function markPaid(realmId, accountId, rows) {
+  const good = (rows || []).filter(p => p && p.tracking && p.settled === true);
+  if (!good.length) return 0;
+
+  const r = await pool.query(
+    `UPDATE courier_orders o
+        SET settled    = TRUE,
+            settled_on = COALESCE(o.settled_on, v.settled_on)
+       FROM (SELECT * FROM unnest($3::text[], $4::date[])
+                      AS t(tracking, settled_on)) v
+      WHERE o.realm_id = $1 AND o.account_id = $2 AND o.tracking = v.tracking
+        AND o.settled IS DISTINCT FROM TRUE`,
+    [realmId, accountId,
+     good.map(p => p.tracking),
+     good.map(p => p.settledOn || null)]
+  );
+  return r.rowCount;
+}
+
 // Which receipts have not had their parcels read in yet.
 //
 // A CPR names every parcel it paid for, and PostEx hands that list over in one

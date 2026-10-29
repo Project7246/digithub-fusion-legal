@@ -26,6 +26,10 @@
 import { makeGrouper, num, day } from './statuses.js';
 import { flatten, pick } from './hooks.js';
 import { qs, call, rows } from './wire.js';
+// Their API has no call that takes a span of days; their portal does. The two
+// are different sign-ins and different addresses, so they are different files -
+// the same way postex.js and postexportal.js are.
+import { portal } from './traxportal.js';
 
 const BASE = (process.env.TRAX_BASE || 'https://sonic.pk/api').replace(/\/+$/, '');
 
@@ -46,6 +50,8 @@ const GROUPS = {
   'shipment - return to shipper':      'returning',
   'shipment - returned to shipper':    'returned',
   'shipment - return received':        'returned',
+  // the portal's own wording for the same thing - a return that got home
+  'return - delivered to shipper':     'returned',
   'shipment - lost':                   'lost',
   'shipment - damaged':                'damaged',
   'shipment - cancelled':              'cancelled',
@@ -466,8 +472,11 @@ export const adapter = {
     headerless: true
   },
   // No endpoint anywhere in their API lists a day's shipments, so the keeper
-  // tops up what we hold instead of asking for days.
+  // tops up what we hold instead of asking for days. Their **portal** does
+  // list them, which is what `portal` below is - a span of days is asked for
+  // there, and only there.
   lists: false,
+  portal,
   groupOf,
   readHook,
   // the list they do have: one payment, every parcel in it
@@ -482,3 +491,10 @@ export const adapter = {
   refreshKnown,
   fetchAreas
 };
+
+// The portal reads the same statuses this file does, in the same words, so it
+// is handed this file's own grouper. It is set here rather than imported there
+// on purpose: two files importing each other work in one load order and fail
+// in the other, and the failure turns up long afterwards on a boot nobody
+// touched.
+portal.groupOf = groupOf;

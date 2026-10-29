@@ -530,6 +530,75 @@ apart is our own - which orders went to which courier on which day. That record
 is made where the day is split, and the load sheet is deliberately left for
 later, so the question stays open until then.
 
+#### And the other half of the past is behind their portal
+
+The payment route above only ever reaches a parcel that was **delivered and
+paid for**, which was never the hard half. The question actually asked was
+*"kitny parcels book hoy, courier ny pick ni kiy, or kitny pick kiy likn
+delivered ni ho"* - and a payment is made for none of those.
+
+`traxportal.js` is the answer, and it stands beside `trax.js` the way
+`postexportal.js` stands beside `postex.js`:
+
+| | |
+|---|---|
+| `trax.js` | one API key, an `Authorization` header, and no call anywhere that takes a span of days |
+| `traxportal.js` | the portal's own sign-in at `sonic.pk`, where a span of days is the whole point |
+
+The portal's **Reports → Summary** screen is one DataTables feed:
+
+```
+GET /cod/reports/summary/list
+    ?search_user=<shipper id>&search_date_from=…&search_date_to=…&start=&length=
+```
+
+Read off the portal while signed in (29 Oct 2026): on one account it answered
+**57,753 shipments since 1 January 2025**, 500 to a call in about three
+seconds. Every row carries `booking_date`, **`rider_picked_status_date` -
+empty when nobody ever came for it**, the three delivery attempts,
+`current_status` in Trax's own words, `return_reason`, `payment_status`,
+`collection_amount`, `weight_charges`, and `order_id`, which is **our own
+Shopify order number** as it went onto the booking.
+
+- **The sign-in is a cookie, which is why this file does not use `call()`.**
+  `wire.js` reads a body and throws the headers away. The portal sets
+  `XSRF-TOKEN` and `traxlogistics_session`, answers a sign-in with a 302, and
+  Laravel will not take the form without the `_token` printed on the page it
+  was drawn on - so the login page is read first, every time, and the cookie
+  jar is kept by hand.
+- **The relay had to learn two things**, and both are in `tools/courier-relay.php`
+  and `tools/courier-relay.js`: hand **`Set-Cookie`** back (every line - the
+  default `header()` would keep only the last), and **stop following
+  redirects**. A relay that followed the sign-in's 302 handed back a login page
+  with no cookie on it, which reads as a wrong password. **The PHP file on
+  Hostinger has to be uploaded again** for this.
+- **A session that goes stale signs in again by itself.** A twenty-month import
+  outlives a two-hour Laravel session, and "the portal sent us back to the
+  login page" must never be written down as "Trax has no parcels in March".
+- **It is the portal's front end, not a documented API.** If Trax change their
+  screens these calls change with it. PostEx is in exactly the same position
+  and has held.
+
+**Where it is used**: `backfill.js` asks the adapter, not the courier's name -
+`a.portal.lists` means a span of days can be had, and an account with
+`portal_email` set takes that door instead of `fetchOrders`. The **Bring the
+past in** button on `/couriers` is the screen, month by month, with Stop, and
+it picks a running import back up if the page is opened again.
+
+**The money is deliberately only half carried over.** The Summary report says
+*whether* a parcel was paid for and never *which payment* paid it, so
+`markPaid()` in `couriers.js` sets `settled` and touches nothing else - a
+report that did not mention a parcel must not wipe the CPR number the payment
+webhook wrote. And the per-parcel payment chase is **skipped entirely** after a
+portal import: fifty thousand delivered parcels would be fifty thousand calls
+through the relay, and `/invoice` answers the same question a whole batch at a
+time.
+
+**Still to do**: `/cod/finance/payments/list` is the portal's CPR list -
+Payment ID, delivered and returned counts, charges, GST, WHT, Total Payable,
+Reference No., Status, and the parcels under each - and nothing reads it yet.
+That is what would make `/receipts` whole for Trax.
+
 **M&P** is the COD API at `https://mnpcourier.com/mycodapi/api` (*M&P COD API
 Manual*, 2025022404). The sign-in is a username and a password **in the call
 itself** - query on a GET, JSON body on a POST - and their own document spells

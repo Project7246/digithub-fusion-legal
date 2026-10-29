@@ -64,7 +64,20 @@ export function courierKinds() {
     receipts: typeof a.fetchCprs === 'function',
     // whether the courier will say where it goes - the service areas page
     // offers a tab only for a courier that answers
-    areas: typeof a.fetchAreas === 'function'
+    areas: typeof a.fetchAreas === 'function',
+    // Some couriers keep a merchant portal behind a second sign-in, and it
+    // answers questions their API will not. The page draws the sign-in box
+    // from this rather than from a courier's name, so a courier that grows one
+    // needs nothing changed on the screen.
+    portal: a.portal
+      ? {
+          where: a.portal.where || '',
+          says: a.portal.says || '',
+          // whether that portal can be asked for a span of days, which is what
+          // makes bringing a past in possible at all
+          lists: !!a.portal.lists
+        }
+      : null
   }));
 }
 

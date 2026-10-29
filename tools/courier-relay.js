@@ -79,7 +79,11 @@ export default {
         method: request.method,
         headers: out,
         body,
-        redirect: 'follow'
+        // Not followed. A courier's API never redirects; a courier's portal
+        // answers a sign-in with a 302 and sets the session cookie on it, so
+        // following it here would drop the one thing the call was for and the
+        // sign-in would read as a wrong password.
+        redirect: 'manual'
       });
 
       // handed back as it came, so the adapter reads the courier's own words
@@ -87,6 +91,13 @@ export default {
       back.delete('content-encoding');
       back.delete('content-length');
       back.set('X-Relayed-To', to.hostname);
+
+      // Set-Cookie is the one header that can be there more than once, and
+      // copying the headers folds them into a single line. Put back one by one.
+      if (typeof answer.headers.getSetCookie === 'function') {
+        back.delete('set-cookie');
+        for (const line of answer.headers.getSetCookie()) back.append('Set-Cookie', line);
+      }
 
       return new Response(answer.body, { status: answer.status, headers: back });
     } catch (e) {

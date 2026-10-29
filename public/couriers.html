@@ -269,9 +269,13 @@
 
       drawFields();
       sel.addEventListener('change', drawFields);
-    }).catch(function(){});
-
-    loadAccounts();
+    })
+    // The accounts are drawn after the couriers, not beside them: what an
+    // account row offers - a portal sign-in, bringing a past in - is read off
+    // its adapter, and a row drawn before that list arrived would offer
+    // nothing.
+    .catch(function(){})
+    .then(loadAccounts);
   });
 
   /* ---------- what this courier asks for ---------- */
@@ -332,6 +336,61 @@
     });
   }
 
+  /* ---------- how an import is getting on ---------- */
+  //
+  // Asked for only while something is running, and stopped the moment it is
+  // not. A page left open on a poller is a database that never sleeps, and the
+  // month's compute is what pays for that.
+
+  var fillTimer = null;
+
+  function fillLine(j){
+    var last = (j.log || []).slice(-1)[0];
+    return '<b>' + esc(j.state) + '</b> · ' +
+           j.monthsDone + ' of ' + j.monthsTotal + ' month' + (j.monthsTotal === 1 ? '' : 's') +
+           ' · ' + nf(j.ordersSaved) + ' parcels kept' +
+           (last ? '<br><span class="mono">' + esc(last.text) + '</span>' : '');
+  }
+
+  function watchFill(id){
+    if(fillTimer) clearTimeout(fillTimer);
+    var out = $('bo' + id);
+    if(!out) return;
+
+    function tick(){
+      get('/api/courier/backfill-status?since=0').then(function(d){
+        var j = d.job;
+        if(!j){ out.className = 'out'; out.textContent = ''; return; }
+
+        out.className = 'out' + (j.state === 'failed' ? ' bad'
+                               : j.state === 'done' ? ' good' : '');
+        out.innerHTML = fillLine(j) + (j.error ? '<br>' + esc(j.error) : '');
+
+        if(j.state === 'running'){ fillTimer = setTimeout(tick, 3000); return; }
+        var b = document.querySelector('button[data-pstart="' + id + '"]');
+        if(b) b.disabled = false;
+      }).catch(function(){ fillTimer = setTimeout(tick, 8000); });
+    }
+    tick();
+  }
+
+  // An import keeps running on the server, so a page opened again in the
+  // middle of one picks it back up rather than showing nothing.
+  function pickUpRunning(){
+    get('/api/courier/backfill-status?since=0').then(function(d){
+      var j = d.job;
+      if(!j || j.state !== 'running') return;
+      var a = S.accounts.filter(function(x){ return x.label === j.account; })[0];
+      if(!a) return;
+      var p = $('past' + a.id);
+      if(!p) return;
+      p.classList.add('open');
+      var b = document.querySelector('button[data-pstart="' + a.id + '"]');
+      if(b) b.disabled = true;
+      watchFill(a.id);
+    }).catch(function(){});
+  }
+
   function drawAccounts(){
     var box = $('accs');
     box.innerHTML = '';
@@ -356,11 +415,18 @@
         ? 'last pulled ' + new Date(a.last_sync).toLocaleString()
         : 'never pulled';
 
-      // Cash payment receipts live behind the courier's own portal, which is a
-      // separate sign-in from the API token. Only PostEx has one so far.
-      var hasPortal = a.courier === 'postex';
+      // A courier's own portal is a second sign-in, separate from the API
+      // token, and what it is good for differs by courier: PostEx's knows
+      // about cash payment receipts, Trax's is the only place a span of days
+      // can be asked for at all. Which is which comes from the adapter, not
+      // from the courier's name on this page.
+      var K = kindOf(a.courier);
+      var P = K && K.portal;
+      var hasPortal = !!P;
+      var pastable = !!(P && P.lists && a.portal_ready);
+      var portalWord = P && P.lists ? 'portal' : 'receipts';
       var portalLine = hasPortal
-        ? ' \u00b7 receipts ' + (a.portal_ready
+        ? ' \u00b7 ' + portalWord + ' ' + (a.portal_ready
             ? '<span class="tag on">signed in</span> ' + esc(a.portal_email || '')
             : '<span class="tag off">not signed in</span>')
         : '';
@@ -373,10 +439,14 @@
         '<div class="acts">' +
           (hasPortal
             ? '<button data-portal="' + a.id + '">' +
-              (a.portal_ready ? 'Change sign-in' : 'Sign in for receipts') + '</button>' +
+              (a.portal_ready
+                ? 'Change sign-in'
+                : (P.lists ? 'Sign in to ' + esc(P.where) : 'Sign in for receipts')) +
+              '</button>' +
               (a.portal_ready
                 ? '<button data-pout="' + a.id + '">Forget</button>' : '')
             : '') +
+          (pastable ? '<button data-past="' + a.id + '">Bring the past in</button>' : '') +
           '<button data-test="' + a.id + '">Test</button>' +
           '<button class="danger" data-del="' + a.id + '">Remove</button>' +
         '</div>';
@@ -388,10 +458,7 @@
         form.className = 'plog';
         form.id = 'plog' + a.id;
         form.innerHTML =
-          '<p class="why">The same email and password you use on ' +
-          'merchant.postex.pk. It is kept encrypted so the app can sign in again ' +
-          'on its own \u2014 PostEx sign-ins only last a few hours. ' +
-          'It is checked before it is saved.</p>' +
+          '<p class="why">' + esc(P.says || ('The sign-in for ' + P.where + '.')) + '</p>' +
           '<div class="row">' +
             '<div><label>Email</label>' +
               '<input type="email" id="pe' + a.id + '" autocomplete="off" value="' +
@@ -404,7 +471,33 @@
         wrap.appendChild(form);
       }
 
+      // The past, for a courier whose API will not hand one over.
+      if(pastable){
+        var past = document.createElement('div');
+        past.className = 'plog';
+        past.id = 'past' + a.id;
+        past.innerHTML =
+          '<p class="why">Read from ' + esc(P.where) + ', a month at a time: every ' +
+          'parcel, where it got to, whether the rider ever picked it up, and what it ' +
+          'was worth. Nothing is sent to ' + esc(K.name) + '.</p>' +
+          '<div class="row">' +
+            '<div><label>From</label><input type="date" id="bf' + a.id + '"></div>' +
+            '<div><label>To</label><input type="date" id="bt' + a.id + '"></div>' +
+            '<button class="save" data-pstart="' + a.id + '">Start</button>' +
+            '<button data-pstop="' + a.id + '">Stop</button>' +
+          '</div>' +
+          '<div class="out" id="bo' + a.id + '"></div>';
+        wrap.appendChild(past);
+      }
+
       box.appendChild(wrap);
+
+      if(pastable){
+        var endsAt = new Date().toISOString().slice(0, 10);
+        var startsAt = new Date(Date.now() - 180 * 86400000).toISOString().slice(0, 10);
+        $('bf' + a.id).value = startsAt;
+        $('bt' + a.id).value = endsAt;
+      }
     });
 
     /* ---------- the portal sign-in ---------- */
@@ -442,6 +535,46 @@
             b.disabled = false; b.textContent = 'Sign in';
             out.className = 'out bad'; out.textContent = e.message;
           });
+      });
+    });
+
+    /* ---------- bringing a past in ---------- */
+
+    box.querySelectorAll('button[data-past]').forEach(function(b){
+      b.addEventListener('click', function(){
+        var f = $('past' + b.getAttribute('data-past'));
+        if(f) f.classList.toggle('open');
+      });
+    });
+
+    box.querySelectorAll('button[data-pstart]').forEach(function(b){
+      b.addEventListener('click', function(){
+        var id = Number(b.getAttribute('data-pstart'));
+        var out = $('bo' + id);
+        var from = $('bf' + id).value, to = $('bt' + id).value;
+
+        if(!from || !to){
+          out.className = 'out bad'; out.textContent = 'Pick both dates.';
+          return;
+        }
+
+        b.disabled = true;
+        out.className = 'out'; out.textContent = 'Starting…';
+
+        // The payment status comes with each parcel on this route, so there is
+        // nothing to ask about one at a time.
+        post('/api/courier/backfill', { account: id, from: from, to: to, withCpr: false })
+          .then(function(){ watchFill(id); })
+          .catch(function(e){
+            b.disabled = false;
+            out.className = 'out bad'; out.textContent = e.message;
+          });
+      });
+    });
+
+    box.querySelectorAll('button[data-pstop]').forEach(function(b){
+      b.addEventListener('click', function(){
+        post('/api/courier/backfill-stop', {}).catch(function(){});
       });
     });
 
@@ -491,6 +624,8 @@
           .catch(function(e){ say('bad', '<b>' + esc(e.message) + '</b>'); });
       });
     });
+
+    pickUpRunning();
   }
 
   $('btnAdd').addEventListener('click', function(){

@@ -10939,6 +10939,35 @@ app.post('/api/receipts/login', async (req, res) => {
     const acc = await getCourierAccount(realmId, id);
     if (!acc) return res.status(404).json({ error: 'No such account' });
 
+    // Which portal this is belongs to the courier's own file. PostEx's is in
+    // postexportal.js and was the only one for a long time; Trax's is in
+    // traxportal.js, and it is where a Trax account's past comes from rather
+    // than its receipts. A courier whose adapter names no portal is not one
+    // there is anything to sign in to.
+    const a = adapterFor(acc.courier);
+    if (a && a.portal && typeof a.portal.signIn === 'function') {
+      const session = await a.portal.signIn(email, password);
+      await setPortalLogin(realmId, id, { email, secret: encryptSecret(password) });
+      if (typeof a.portal.forget === 'function') a.portal.forget(id);
+
+      const who = (session.shippers || [])[0] || null;
+      return res.json({
+        ok: true,
+        merchantName: who ? who.name : '',
+        merchantId: who ? who.id : '',
+        // what this sign-in now makes possible, in the answer rather than on
+        // the page, so one courier growing a portal does not need the screen
+        // rewritten
+        lists: !!a.portal.lists
+      });
+    }
+
+    if (acc.courier !== 'postex') {
+      return res.status(400).json({
+        error: (a ? a.name : acc.courier) + ' has no portal to sign in to'
+      });
+    }
+
     const who = await portalLogin(email, password);
 
     await setPortalLogin(realmId, id, {
@@ -10964,8 +10993,16 @@ app.post('/api/receipts/logout', async (req, res) => {
   if (!realmId) return;
 
   try {
-    await clearPortalLogin(realmId, Number(req.body.id));
-    forgetCpr(Number(req.body.id));
+    const id = Number(req.body.id);
+    const acc = await getCourierAccount(realmId, id);
+    await clearPortalLogin(realmId, id);
+    forgetCpr(id);
+
+    // and the signed-in session held in memory for a courier that keeps one,
+    // or the next call would go on using a sign-in nobody can see any more
+    const a = acc ? adapterFor(acc.courier) : null;
+    if (a && a.portal && typeof a.portal.forget === 'function') a.portal.forget(id);
+
     res.json({ ok: true });
   } catch (e) {
     res.status(500).json({ error: e.message });

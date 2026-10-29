@@ -350,6 +350,19 @@ export const adapter = {
     where: 'merchant.postex.pk → Integration guide → Webhook Configuration',
     note: 'PostEx calls this a Status Updates Webhook.'
   },
+  // PostEx's merchant portal is a second sign-in, and what it knows about is
+  // cash payment receipts - postexportal.js. It is named here so the couriers
+  // page draws its sign-in box from the adapter rather than from the word
+  // "postex"; `lists` is false because a span of days is asked of the API
+  // (fetchOrders above), not of the portal.
+  portal: {
+    where: 'merchant.postex.pk',
+    says: 'The same email and password you use on merchant.postex.pk. It is ' +
+          'kept encrypted so the app can sign in again on its own - PostEx ' +
+          'sign-ins only last a few hours. It is checked before it is saved.',
+    lists: false,
+    receipts: true
+  },
   groupOf,
   testToken,
   fetchOrders,
