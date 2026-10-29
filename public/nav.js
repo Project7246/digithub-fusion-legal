@@ -1113,8 +1113,15 @@
       '  color:rgba(255,255,255,.62);text-decoration:none;line-height:1.4}',
       '.ctree a:hover{color:#fff;background:rgba(255,255,255,.05)}',
       '.ctree a.on{color:#fff;background:rgba(255,255,255,.09);font-weight:600}',
-      '.ctree a.all{font-weight:600;color:rgba(255,255,255,.78);padding-left:34px}',
-      '.ctree .kids a.all{padding-left:46px;font-weight:600;color:rgba(255,255,255,.72)}',
+      // "All Trax accounts" is a way to widen what you are looking at, not a
+      // place you usually want - so it reads quieter than the accounts under
+      // it. It was the loudest thing in the tree, louder than the account
+      // actually open, which put the hierarchy upside down.
+      '.ctree a.all{font-weight:400;font-size:12px;color:rgba(255,255,255,.45);',
+      '  padding-left:34px}',
+      '.ctree .kids a.all{padding-left:46px;font-weight:400;color:rgba(255,255,255,.45)}',
+      // whichever of them is the page you are on still wins, in both places
+      '.ctree a.all.on, .ctree .kids a.all.on{color:#fff;font-weight:600}',
       '.ctree .grp{display:flex;align-items:center;gap:8px;cursor:pointer;',
       '  padding:7px 14px 7px 34px;font-size:12px;color:rgba(255,255,255,.62);',
       '  user-select:none;line-height:1.4}',
