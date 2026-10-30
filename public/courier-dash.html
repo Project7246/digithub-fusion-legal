@@ -928,12 +928,18 @@
           '<div class="vl">' + full(EV.due || 0) + '</div>' +
           '<div class="fn">' + n0(EV.dueOrders || 0) + ' parcels not received</div>' +
         '</div>' +
-        '<div class="k1 c-cod open" data-group="delivered">' +
+        // **Delivery dates, not booking dates.** The figure beside it is cut
+        // on the day the courier handed the parcel over - that is what the
+        // whole statement is cut on - so opening it with the booking dates
+        // showed a different set of parcels from the one it counted.
+        '<div class="k1 c-cod open" data-group="delivered" data-dates="delivered">' +
           '<div class="lb">Delivered in this period</div>' +
           '<div class="vl">' + n0(P.delivered || 0) + '</div>' +
           '<div class="fn">COD ' + full(P.cod || 0) + '</div>' +
         '</div>' +
-        '<div class="k1 c-chg open" data-charges="1">' +
+        // Charges and tax are earned on the parcels that were **delivered** in
+        // this period, which is what the figure beside them is made of.
+        '<div class="k1 c-chg open" data-charges="1" data-dates="delivered">' +
           '<div class="lb">Charges &amp; tax &middot; this period</div>' +
           '<div class="vl">' + full(P.charges || 0) + '</div>' +
           '<div class="fn">' + full(P.fee || 0) + ' + tax ' + full(P.tax || 0) + '</div>' +
@@ -975,7 +981,7 @@
 
           sRow('Parcels delivered &mdash; COD collected',
                P.delivered, P.cod, EV.delivered, EV.cod,
-               'open', ' data-group="delivered"') +
+               'open', ' data-group="delivered" data-dates="delivered"') +
           sRow('Less: courier charges', null, P.fee, null, EV.fee,
                'less', '', 'less') +
           sRow('Less: tax', null, P.tax, null, EV.tax,
@@ -1744,12 +1750,36 @@
         openList({ status: b.getAttribute('data-status'), group: b.getAttribute('data-group') });
       });
     });
+    // A row or a card can say which dates it was counted on. Everything on
+    // the statement is cut on the day the courier delivered; everything on
+    // Parcels is cut on the day it was booked. Opening one with the other's
+    // dates is how a figure and its own list come to disagree.
+    function datesFor(el, extra){
+      var want = Object.assign({}, extra || {});
+      if(el.getAttribute('data-dates') === 'delivered'){
+        want.dfrom = fromEl.value;
+        want.dto = toEl.value;
+        want.allTime = true;          // drop the booking-date filter
+      }
+      return want;
+    }
+
     $('out').querySelectorAll('tr[data-group]').forEach(function(tr){
       tr.addEventListener('click', function(){
-        openList({
+        openList(datesFor(tr, {
           group: tr.getAttribute('data-group'),
           title: tr.cells[0] ? tr.cells[0].textContent : ''
-        });
+        }));
+      });
+    });
+
+    $('out').querySelectorAll('.k1[data-group]').forEach(function(el){
+      el.addEventListener('click', function(){
+        var lb = el.querySelector('.lb');
+        openList(datesFor(el, {
+          group: el.getAttribute('data-group'),
+          title: lb ? lb.textContent : ''
+        }));
       });
     });
     $('out').querySelectorAll('tr[data-picked]').forEach(function(tr){
@@ -1790,7 +1820,10 @@
     // opens the range itself - the same parcels the figure was added up from.
     $('out').querySelectorAll('[data-charges]').forEach(function(el){
       el.addEventListener('click', function(){
-        openList({ title: 'Charges and tax — every parcel in this period' });
+        openList(datesFor(el, {
+          group: 'delivered',
+          title: 'Charges and tax — the parcels they came off'
+        }));
       });
     });
 
@@ -1949,12 +1982,25 @@
     if(e.target === $('drawer')) $('drawer').classList.remove('open');
   });
 
+  // The charges and the tax are columns of their own. They were not there,
+  // so a figure made of them - "Charges and tax in this period" - opened into
+  // a list that did not show either of them, and the only way to check the
+  // total was to trust it.
   function orderTable(rows){
+    var totals = rows.reduce(function(t, o){
+      t.amount += Number(o.amount) || 0;
+      t.fee    += Number(o.fee) || 0;
+      t.tax    += Number(o.tax) || 0;
+      return t;
+    }, { amount: 0, fee: 0, tax: 0 });
+
     var lines = rows.map(function(o){
       return '<tr><td class="mono">' + esc(o.orderRef || '') + '</td>' +
              '<td class="mono">' + esc(o.tracking) + '</td>' +
              '<td>' + esc(o.city || '') + '</td>' +
              '<td class="r">' + full(o.amount) + '</td>' +
+             '<td class="r">' + full(o.fee) + '</td>' +
+             '<td class="r">' + full(o.tax) + '</td>' +
              '<td class="mono">' + esc(o.bookedOn || '') + '</td>' +
              '<td class="mono">' + esc(o.deliveredOn || '') + '</td>' +
              '<td>' + esc(o.status) + '</td>' +
@@ -1962,9 +2008,18 @@
     }).join('');
 
     return '<table class="t">' +
-      '<tr><th>Order ref</th><th>Tracking</th><th>City</th><th class="r">Amount</th>' +
+      '<tr><th>Order ref</th><th>Tracking</th><th>City</th><th class="r">COD</th>' +
+      '<th class="r">Charges</th><th class="r">Tax</th>' +
       '<th>Booked</th><th>Delivered</th><th>Status</th><th>CPR</th></tr>' +
-      (lines || '<tr><td colspan="8">Nothing here.</td></tr>') + '</table>';
+      (lines ||  '<tr><td colspan="10">Nothing here.</td></tr>') +
+      (rows.length
+        ? '<tr class="tot"><td colspan="3"><b>' + n0(rows.length) + ' parcels</b></td>' +
+          '<td class="r"><b>' + full(totals.amount) + '</b></td>' +
+          '<td class="r"><b>' + full(totals.fee) + '</b></td>' +
+          '<td class="r"><b>' + full(totals.tax) + '</b></td>' +
+          '<td colspan="4"></td></tr>'
+        : '') +
+      '</table>';
   }
 
   function openList(what){
