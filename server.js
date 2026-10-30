@@ -136,7 +136,8 @@ import { startDelJob, stopDelJob, clearDelJob, resumeDelJob, delSnapshot } from 
 import { loadAdvance, findForAdvance, spanLabel } from './advance.js';
 import { startAdvJob, stopAdvJob, clearAdvJob, resumeAdvJob, advSnapshot } from './advjobs.js';
 import {
-  initCouriers, listAccounts as listCourierAccounts, getAccount as getCourierAccount,
+  initCouriers, rebucket as rebucketOrders,
+  listAccounts as listCourierAccounts, getAccount as getCourierAccount,
   addAccount as addCourierAccount, removeAccount as removeCourierAccount,
   markSync, saveOrders, credsOf, movingTrackings, needCpr, savePayments,
   listCprs, cprOrders, cprProgress
@@ -9050,6 +9051,29 @@ app.post('/api/shopify/wire', async (req, res) => {
     res.json(await wireHooks(realmId, shop, base));
   } catch (e) {
     res.status(400).json({ error: e.message });
+  }
+});
+
+// Filing every parcel again from the words the courier already sent.
+//
+// Needed whenever a status mapping is corrected: `status_group` is stored on
+// the row, so parcels written under the old mapping keep the old bucket. It
+// asks no courier anything - the courier's own words are already on the row.
+// Fusion's own, and it says what it moved rather than only how many.
+app.post('/api/courier/rebucket', async (req, res) => {
+  if (!await requireBoss(req, res)) return;
+  const realmId = await requireCompany(req, res);
+  if (!realmId) return;
+
+  try {
+    const moved = await rebucketOrders(realmId, groupFor);
+    res.json({
+      ok: true,
+      parcels: moved.reduce((n, m) => n + m.parcels, 0),
+      moved
+    });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
   }
 });
 

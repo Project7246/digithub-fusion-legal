@@ -814,3 +814,46 @@ export async function cprProgress(realmId, accountId) {
     left: Number(x.delivered || 0) - Number(x.known || 0) - Number(x.unsettled || 0)
   };
 }
+
+// Filing every parcel again, from the words the courier sent.
+//
+// `status_group` is stored, not worked out when it is read - so a status that
+// was put in the wrong bucket stays in it until the parcel is written again.
+// When a mapping is corrected, the parcels already here have to be told.
+//
+// It reads nothing from any courier: the courier's own words are already on
+// the row, and this only re-reads them. One query per distinct status, and
+// only the rows whose bucket actually changes are touched.
+export async function rebucket(realmId, groupFor) {
+  const seen = await pool.query(
+    `SELECT courier, status, status_group, COUNT(*) AS n
+       FROM courier_orders
+      WHERE realm_id = $1 AND status IS NOT NULL
+      GROUP BY courier, status, status_group`,
+    [realmId]
+  );
+
+  const moved = [];
+  for (const row of seen.rows) {
+    const want = groupFor(row.courier, row.status);
+    if (!want || want === row.status_group) continue;
+
+    const r = await pool.query(
+      `UPDATE courier_orders
+          SET status_group = $4
+        WHERE realm_id = $1 AND courier = $2 AND status = $3
+          AND status_group IS DISTINCT FROM $4`,
+      [realmId, row.courier, row.status, want]
+    );
+
+    moved.push({
+      courier: row.courier,
+      status: row.status,
+      from: row.status_group,
+      to: want,
+      parcels: r.rowCount
+    });
+  }
+
+  return moved;
+}
