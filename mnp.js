@@ -45,6 +45,10 @@ const TRACK_BASE = (process.env.MNP_TRACK_BASE ||
 // "Delivered") and the report's prefixed code ("RS-Return to Shipper"). Both
 // are here; anything else goes through the word rules in statuses.js.
 const GROUPS = {
+  // Read off a live account: a delivery that found nobody is still the
+  // courier's to deal with, not an unknown.
+  'nsc-no such consignee':      'transit',
+  'nsc':                        'transit',
   'booked':                   'booked',
   'manifested':               'booked',
   'picked up':                'transit',
@@ -316,16 +320,48 @@ export function mapReportRow(row) {
 
 // A consignment as the tracking call gives it: the same fields plus its own
 // history, and the settlement when there is one.
+// Their own time on one history line, as a number to sort by.
+//
+// They write it as `Oct 13 2026 11:04AM` - month first, two spaces where the
+// day is one digit, and no space before AM. `Date.parse` makes nothing of
+// that, and a parser that quietly fails sorts every line equal, which is how
+// taking "the last one" went on winning. So it is read by hand: the day
+// through day(v,'mdy'), which this file already uses, and the clock after it.
+function stampOf(h) {
+  const raw = String((h && h.TransactionTime) || '').replace(/\s+/g, ' ').trim();
+  const d = stamp(raw);                      // yyyy-mm-dd, read month-first
+  if (!d) return 0;
+
+  const t = raw.match(/(\d{1,2}):(\d{2})(?::(\d{2}))?\s*([AP]M)?/i);
+  let mins = 0;
+  if (t) {
+    let hour = Number(t[1]) % 12;
+    if (t[4] && /p/i.test(t[4])) hour += 12;
+    mins = hour * 60 + Number(t[2]);
+  }
+  return Number(d.replace(/-/g, '')) * 1440 + mins;
+}
+
 export function mapTracked(row) {
   const r = row || {};
   const history = Array.isArray(r.CNTrackingDetail) ? r.CNTrackingDetail : [];
 
-  const latest = history.length ? history[history.length - 1] : {};
+  // **Newest by its own clock, not by its place in the list.** Taking the last
+  // element assumes M&P send their history oldest first, and nothing in their
+  // answer says they do. Trax's reader has sorted by timestamp since it was
+  // written; this one had not.
+  //
+  // In their own order of time, oldest first - so "the day it was picked up"
+  // below is the first time it reached that stage, not whichever line happened
+  // to be last in the answer.
+  const ordered = history.slice().sort((a, b) => stampOf(a) - stampOf(b));
+
+  const latest = ordered.length ? ordered[ordered.length - 1] : {};
   const status = String(latest.TrackingStatus || r.DeliveryStatus || '').trim();
   const group = groupOf(status);
 
   const lineOf = want => {
-    const hit = history.slice().reverse().find(h => groupOf(h.TrackingStatus) === want);
+    const hit = ordered.find(h => groupOf(h.TrackingStatus) === want);
     return hit ? stamp(hit.TransactionTime) : null;
   };
 

@@ -522,8 +522,34 @@ export async function saveOrders(realmId, accountId, courier, rows) {
           amount, fee, tax, city, booked_on, picked_on, delivered_on, weight, raw, seen_at)
        VALUES ${values.join(',')}
        ON CONFLICT (realm_id, account_id, tracking) DO UPDATE SET
-         status       = EXCLUDED.status,
-         status_group = EXCLUDED.status_group,
+         -- **A parcel does not go back to booked after it was delivered.**
+         --
+         -- M&P's monthly report writes "Booked" against every consignment on
+         -- it, whatever has happened since, and writes the city as a code.
+         -- Their tracking call writes the real status and the real city. Both
+         -- are read, so whichever ran last used to win - and the monthly
+         -- report, which knows least, usually ran last: 3,156 parcels sat at
+         -- "Booked" with delivered dates on them, and cities that had been
+         -- named went back to being codes.
+         --
+         -- So a status is only replaced by one that is not a step backwards,
+         -- and what came back empty replaces nothing at all. The order of the
+         -- journey is the courier-agnostic part: nothing that has finished is
+         -- un-finished by a later answer that says less.
+         status = CASE
+           WHEN COALESCE(EXCLUDED.status, '') = '' THEN courier_orders.status
+           WHEN courier_orders.status_group IN
+                ('delivered','returned','cancelled','lost','damaged','expired','transferred')
+            AND EXCLUDED.status_group IN ('unbooked','booked')
+             THEN courier_orders.status
+           ELSE EXCLUDED.status END,
+         status_group = CASE
+           WHEN COALESCE(EXCLUDED.status, '') = '' THEN courier_orders.status_group
+           WHEN courier_orders.status_group IN
+                ('delivered','returned','cancelled','lost','damaged','expired','transferred')
+            AND EXCLUDED.status_group IN ('unbooked','booked')
+             THEN courier_orders.status_group
+           ELSE EXCLUDED.status_group END,
          amount       = EXCLUDED.amount,
          -- **A courier that says nothing about the money does not erase the
          -- money it already said.** Several calls carry a parcel without its
@@ -536,9 +562,19 @@ export async function saveOrders(realmId, accountId, courier, rows) {
                              THEN EXCLUDED.fee ELSE courier_orders.fee END,
          tax          = CASE WHEN COALESCE(EXCLUDED.tax,0) <> 0
                              THEN EXCLUDED.tax ELSE courier_orders.tax END,
-         city         = EXCLUDED.city,
-         picked_on    = EXCLUDED.picked_on,
-         delivered_on = EXCLUDED.delivered_on,
+         -- A courier that answers with a code where it once gave a name is
+         -- not correcting the name - see cityName() in statuses.js.
+         city = CASE
+           WHEN COALESCE(EXCLUDED.city, '') = '' THEN courier_orders.city
+           WHEN EXCLUDED.city ~ '^[A-Z0-9.\-]{1,3}$'
+            AND COALESCE(courier_orders.city, '') <> ''
+            AND courier_orders.city !~ '^[A-Z0-9.\-]{1,3}$'
+             THEN courier_orders.city
+           ELSE EXCLUDED.city END,
+         -- the same again for the two dates a lesser answer leaves empty
+         picked_on    = COALESCE(EXCLUDED.picked_on, courier_orders.picked_on),
+         delivered_on = COALESCE(EXCLUDED.delivered_on, courier_orders.delivered_on),
+         order_ref    = COALESCE(NULLIF(EXCLUDED.order_ref, ''), courier_orders.order_ref),
          -- a courier that said nothing about the weight this time does not
          -- erase the weight it gave us last time
          weight       = COALESCE(EXCLUDED.weight, courier_orders.weight),

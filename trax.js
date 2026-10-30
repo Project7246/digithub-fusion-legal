@@ -52,6 +52,12 @@ const GROUPS = {
   'shipment - return received':        'returned',
   // the portal's own wording for the same thing - a return that got home
   'return - delivered to shipper':     'returned',
+  // Trax hold the parcel and ask the shipper what to do next - it is theirs,
+  // waiting on an answer, which is what review means here. 51 parcels on one
+  // account were falling through to "other", a bucket that means "we do not
+  // know".
+  'shipment - shipper advise requested': 'review',
+  'shipment - reason validation required': 'review',
   'shipment - lost':                   'lost',
   'shipment - damaged':                'damaged',
   'shipment - cancelled':              'cancelled',
