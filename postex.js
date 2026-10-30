@@ -20,6 +20,20 @@ const GROUPS = {
   'postex warehouse':           'transit',
   'out for delivery':           'transit',
   'attempted':                  'transit',
+  // Read off a live account on 30 Oct 2026, where these three were falling
+  // through to buckets that were wrong about the money:
+  //
+  //   In Stock            136 parcels filed under "other" - PostEx have it,
+  //                       after booking and before the warehouse, and the
+  //                       parcel carries a pickup date
+  //   Under Verification   66 parcels under "other" - the courier is holding
+  //                       it, which is what review means here
+  //   Delivery En-Route    46 parcels counted as **delivered**, their COD
+  //                       counted as collected while they were still moving
+  'in stock':                   'transit',
+  'under verification':         'review',
+  'delivery en-route':          'transit',
+  'delivery en route':          'transit',
   'delivery under review':      'review',
   'delivered':                  'delivered',
   'out for return':             'returning',

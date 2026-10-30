@@ -1164,6 +1164,10 @@ export async function eachOrder(realmId, opts, onBatch) {
   return sent;
 }
 
+// How many rows one drawer will draw. The count beside it is of everything
+// that matched, never of this.
+const CAP = Math.max(100, Number(process.env.ORDER_LIST_CAP) || 2000);
+
 export async function ordersBy(realmId, opts) {
   const base = scope(realmId, opts);
   const where = base.where.slice();
@@ -1191,14 +1195,22 @@ export async function ordersBy(realmId, opts) {
   moneyWhere(opts, where, args);
 
   const r = await pool.query(
+    // **The two window figures are the whole honesty of this list.** It is
+    // capped at two thousand rows so a screen cannot be asked to draw ten
+    // thousand - but the count and the value are of **everything that
+    // matched**, not of what fits. The drawer used to put the capped number in
+    // its own heading, so opening a figure of 9,315 said "2,000 orders" and
+    // one screen gave two answers about one thing.
     `SELECT o.tracking, o.order_ref, o.amount, o.fee, o.tax, o.status, o.status_group,
             o.city, o.booked_on, o.picked_on, o.delivered_on,
-            o.settled_on, o.cpr_number, a.label
+            o.settled_on, o.cpr_number, a.label,
+            COUNT(*) OVER ()                      AS all_rows,
+            COALESCE(SUM(o.amount) OVER (), 0)    AS all_amount
        FROM courier_orders o
        JOIN courier_accounts a ON a.id = o.account_id
       WHERE ${where.join(' AND ')}
       ORDER BY o.booked_on DESC NULLS LAST, o.tracking
-      LIMIT 2000`, args);
+      LIMIT ${CAP}`, args);
 
   const rows = r.rows.map(x => ({
     account: x.label,
@@ -1217,9 +1229,16 @@ export async function ordersBy(realmId, opts) {
     cprNumber: x.cpr_number
   }));
 
+  const all = r.rows[0] || {};
+
   return {
-    count: rows.length,
-    amount: r2(rows.reduce((s, x) => s + x.amount, 0)),
+    // what matched, which is what the figure on the card said
+    count: r.rows.length ? Number(all.all_rows) : 0,
+    amount: r.rows.length ? r2(all.all_amount) : 0,
+    // and what is actually in this answer
+    shown: rows.length,
+    capped: rows.length < (r.rows.length ? Number(all.all_rows) : 0),
+    cap: CAP,
     orders: rows
   };
 }

@@ -29,10 +29,17 @@ export function byWords(status) {
   // the word "delivery" in it - "Delivery Unsuccessful", "Delivery In Process",
   // "Undelivered", "RTO Delivered" - so the exceptions are listed, and they
   // are listed from what the three couriers' own documents say.
+  //
+  // **"Delivery En-Route" is not a delivery.** PostEx use it for a parcel on
+  // its way to the buyer, and it was being counted as delivered - 46 parcels
+  // on one account, their COD counted as collected and owed to us while they
+  // were still moving. A parcel that is *en route* has not arrived, whatever
+  // the word next to it says.
   if (s.includes('deliver') && !s.includes('under review') && !s.includes('out for') &&
       !s.includes('attempt') && !s.includes('in process') && !s.includes('failed') &&
       !s.includes('undeliver') && !s.includes('return') && !s.includes('rto') &&
-      !s.includes('unsuccess') && !s.includes('not deliver') && !s.includes('pending')) {
+      !s.includes('unsuccess') && !s.includes('not deliver') && !s.includes('pending') &&
+      !s.includes('en-route') && !s.includes('en route') && !s.includes('enroute')) {
     return 'delivered';
   }
   if (s.includes('return') || s.includes('rto') || s.includes('refused') ||

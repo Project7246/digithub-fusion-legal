@@ -194,7 +194,14 @@
     align-items:center;gap:12px}
   .drawer .hd b{font-size:14px}
   .drawer .hd .note{font-size:12px;color:var(--faint)}
-  .drawer .hd .x{margin-left:auto;border:1px solid var(--line);background:#fff;border-radius:7px;
+  /* Download sits to the left of the close button and takes the auto margin,
+     so the two stay together at the right-hand end however long the title is. */
+  .drawer .hd .dl{margin-left:auto;border:1px solid var(--line);background:#fff;
+    border-radius:7px;padding:6px 12px;cursor:pointer;font:inherit;font-size:12.5px;
+    color:var(--text)}
+  .drawer .hd .dl:hover{border-color:var(--qbo)}
+  .drawer .hd .dl[disabled]{opacity:.45;cursor:default}
+  .drawer .hd .x{border:1px solid var(--line);background:#fff;border-radius:7px;
     width:30px;height:30px;cursor:pointer;font-size:15px;line-height:1}
   .drawer .bd{overflow:auto;padding:6px 20px 24px}
 
@@ -378,6 +385,7 @@
 <div class="drawer" id="drawer">
   <div class="panel">
     <div class="hd"><b id="dTitle">Orders</b><span class="note" id="dNote"></span>
+      <button class="dl" id="dCsv" title="Download what is open here as a CSV file">Download CSV</button>
       <button class="x" id="dClose">&times;</button></div>
     <div class="bd" id="dBody"></div>
   </div>
@@ -1230,7 +1238,13 @@
         '<div class="k1 c-cod open" data-group="">' +
           '<div class="lb">Booked in this period</div>' +
           '<div class="vl">' + n0(t.orders) + '</div>' +
-          '<div class="fn">handed to the courier</div>' +
+          // **Not "handed to the courier".** Booking a parcel and the courier
+          // collecting it are two different days and two different numbers -
+          // 9,801 booked against 9,315 picked up on one account - and saying
+          // the first is the second hides every parcel still sitting here.
+          '<div class="fn">booked with the courier' +
+            (t.unpicked ? ' · ' + n0(t.unpicked) + ' not picked up yet' : '') +
+          '</div>' +
         '</div>' +
         '<div class="k1 c-ok open" data-group="delivered">' +
           '<div class="lb">Delivered</div>' +
@@ -1886,12 +1900,50 @@
 
   /* ---------- the drawer ---------- */
 
+  // Whatever the side window is showing, kept so Download can write it out
+  // without asking the server the same question twice.
+  var shown = { title: '', rows: [] };
+
   function openDrawer(title, note, body){
     $('dTitle').textContent = title;
     $('dNote').textContent = note || '';
     $('dBody').innerHTML = body;
+    shown = { title: title, rows: [] };
+    $('dCsv').disabled = true;
     $('drawer').classList.add('open');
   }
+
+  // What the window is holding, as a file: the same columns in the same order
+  // as the table on screen, so the file and the screen are one answer.
+  function csvCell(v){
+    var t = String(v == null ? '' : v);
+    return /[",\n]/.test(t) ? '"' + t.replace(/"/g, '""') + '"' : t;
+  }
+
+  function csvOf(rows){
+    var head = ['Order', 'Tracking', 'Account', 'Status', 'City', 'Booked',
+                'Picked up', 'Delivered', 'Settled', 'Receipt',
+                'COD', 'Charges', 'Tax'];
+    var lines = rows.map(function(o){
+      return [o.orderRef, o.tracking, o.account, o.status, o.city, o.bookedOn,
+              o.pickedOn, o.deliveredOn, o.settledOn, o.cprNumber,
+              o.amount, o.fee, o.tax].map(csvCell).join(',');
+    });
+    return head.join(',') + '\n' + lines.join('\n');
+  }
+
+  $('dCsv').addEventListener('click', function(){
+    if(!shown.rows.length) return;
+    var name = (shown.title || 'orders').toLowerCase()
+      .replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 60) || 'orders';
+    var blob = new Blob([csvOf(shown.rows)], { type: 'text/csv;charset=utf-8' });
+    var a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = name + '.csv';
+    document.body.appendChild(a);
+    a.click();
+    setTimeout(function(){ URL.revokeObjectURL(a.href); a.remove(); }, 1000);
+  });
   $('dClose').addEventListener('click', function(){ $('drawer').classList.remove('open'); });
   $('drawer').addEventListener('click', function(e){
     if(e.target === $('drawer')) $('drawer').classList.remove('open');
@@ -1930,8 +1982,20 @@
       .then(function(r){ return r.json(); })
       .then(function(d){
         if(d.error){ $('dBody').innerHTML = '<div class="msg">'+esc(d.error)+'</div>'; return; }
-        $('dNote').textContent = n0(d.count) + ' orders \u00b7 ' + full(d.amount);
-        $('dBody').innerHTML = orderTable(d.orders || []);
+        // The count and the value are of everything that matched. Where more
+        // matched than one window draws, it says so rather than quietly
+        // reporting the part it drew - which is how a figure of 9,315 opened
+        // as "2,000 orders".
+        $('dNote').textContent = n0(d.count) + ' orders \u00b7 ' + full(d.amount) +
+          (d.capped ? ' \u00b7 showing the first ' + n0(d.shown) : '');
+        shown.rows = d.orders || [];
+        $('dCsv').disabled = !shown.rows.length;
+        $('dBody').innerHTML = orderTable(d.orders || []) +
+          (d.capped
+            ? '<p class="hint" style="margin:10px 2px">' + n0(d.count) +
+              ' parcels matched. This window and the CSV carry the first ' +
+              n0(d.shown) + '.</p>'
+            : '');
       })
       .catch(function(e){ $('dBody').innerHTML = '<div class="msg">'+esc(e.message)+'</div>'; });
   }
