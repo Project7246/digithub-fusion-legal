@@ -57,6 +57,13 @@ const GROUPS = {
   // account were falling through to "other", a bucket that means "we do not
   // know".
   'shipment - shipper advise requested': 'review',
+  // An intercept is the shipper asking for a parcel back before it is
+  // delivered. Asked for, it is held while Trax decide; approved, it is on
+  // its way back. Seven parcels on one account were sitting in "other".
+  'intercept requested':               'review',
+  'shipment - intercept requested':    'review',
+  'intercept approved':                'returning',
+  'shipment - intercept approved':     'returning',
   'shipment - reason validation required': 'review',
   'shipment - lost':                   'lost',
   'shipment - damaged':                'damaged',
