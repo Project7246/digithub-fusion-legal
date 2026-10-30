@@ -2996,3 +2996,85 @@ account's own card with today's date in it. Which of your banks an account
 number is, and from what day, is a decision about money - not one to guess at
 from an IBAN, and the dated link it writes is what every past deposit is
 placed by.
+
+## What a parcel's status is allowed to do
+
+Settled on 30 Oct 2026, after going through all three couriers against a live
+account rather than one of them. Eleven faults came out of it, and nine were
+about the money. These are the rules they left behind.
+
+### A later answer that says less never wins
+
+`saveOrders` used to write every field it was handed. Two couriers answer
+about one parcel from two calls that know different amounts, so **whichever
+ran last won** - and the one that knew least usually ran last:
+
+| | knows | writes |
+|---|---|---|
+| M&P `Reports/QSR_Report` | the booking | `Booked` on every consignment on it, whatever has happened since, and the city as a **code** |
+| M&P `Tracking/Bulk_...` | the journey | the real status, the real city, the invoice lines |
+| Trax `/shipment/track` | the journey | **no money at all** - fee 0, tax 0 |
+
+3,156 parcels sat at `Booked` with delivery dates on them, and cities that had
+just been named went back to codes the moment a dashboard opened.
+
+So, in the `ON CONFLICT` of `saveOrders`:
+
+- a value that came back **empty replaces nothing** - status, city, both dates,
+  the order reference;
+- **nought is "not said"** for `fee`, `tax` and `weight`;
+- and **nothing that has finished is un-finished**: a parcel in `delivered`,
+  `returned`, `cancelled`, `lost`, `damaged`, `expired` or `transferred` is not
+  put back to `unbooked` or `booked` by a later answer.
+
+### The newest line of a history is the newest by its own clock
+
+M&P's tracking reader took the **last** element of `CNTrackingDetail`. Nothing
+in their answer says the history is oldest first, and `Date.parse` makes
+nothing of `Oct 13 2026 11:04AM` - so a sort on it put every line equal and
+"the last one" went on winning, which was usually `Booked`. `stampOf()` reads
+their date and clock by hand, the history is ordered once, and the first time
+a parcel reached a stage is what dates that stage.
+
+### A word with "deliver" in it is not a delivery
+
+`byWords` filed **`Delivery En-Route`** as delivered - a parcel on its way to
+the buyer, its COD counted as collected and owed to us. `en-route` is one of
+the exceptions now, for every courier.
+
+### `other` is where a parcel goes to be forgotten
+
+Anything in it is a parcel nobody can act on, so it is a list to empty, not a
+bucket to live in. These were in it and are not any more:
+
+| Courier | Status | Now |
+|---|---|---|
+| PostEx | In Stock (136) | transit - they hold it |
+| PostEx | Under Verification (66) | review |
+| Trax | Shipper Advise Requested (51), Reason Validation Required (9) | review |
+| Trax | Intercept Requested (6) / Approved (2) | review / returning |
+| M&P | ICA, CAN, UL, FCD, FWT, Reached at Destination (50) | transit |
+| M&P | NSA-Non Service Area (8) | returning |
+
+### A parcel nobody can place is asked about first
+
+The refresh is capped (`REFRESH_CAP`, 60) and ordered newest first, so on an
+account with thirteen hundred parcels moving, two with **no status at all**
+were never reached. `movingTrackings()` puts unknown first now.
+
+### Three tools this left behind, all Fusion's own
+
+| | |
+|---|---|
+| `POST /api/courier/rebucket` | files every parcel again from the courier's own words. Needed whenever a mapping is corrected, because `status_group` is stored, not worked out when read |
+| `POST /api/courier/cityfix` | tidies the shape of a city name (`SIALKOT` → `Sialkot`) and asks the courier for the name behind a code. **It never turns a code into a name itself** - only the courier knows whether `GUJ` is Gujranwala or Gujrat |
+| `GET /api/courier/peek` | the courier's own row, untouched |
+
+### Where it stands
+
+Every account's `other` is empty but for one M&P parcel their own system has
+no status for. Cities are names everywhere - `0 still coded` after 3,462 were
+named by the courier and 14,568 tidied. The ageing bands tie to `oldestDue` on
+every account, the not-collected figure matches the portal (226 unbooked), and
+M&P's 24 October payments are the 23-24 distinct `PaymentID`s behind their
+3,016 report rows.
