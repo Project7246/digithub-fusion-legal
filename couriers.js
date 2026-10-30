@@ -617,7 +617,15 @@ export async function movingTrackings(realmId, accountId, limit) {
         AND (status_group IS NULL
              OR status_group NOT IN ('delivered','returned','cancelled','expired','lost','damaged')
              OR (status_group = 'delivered' AND settled IS NOT TRUE))
-      ORDER BY COALESCE(booked_on, CURRENT_DATE) DESC, id DESC
+      -- **A parcel nobody can place comes first.** The refresh is capped, and
+      -- an account with a thousand parcels on the move never reached the two
+      -- the courier had sent no status for at all - they sat in "other",
+      -- which is the one bucket that means "we do not know", for as long as
+      -- newer parcels kept arriving. Not knowing is the most worth asking
+      -- about; after that, newest first as before.
+      ORDER BY (COALESCE(status, '') = '' OR status_group IS NULL
+                OR status_group = 'other') DESC,
+               COALESCE(booked_on, CURRENT_DATE) DESC, id DESC
       LIMIT $3`,
     [realmId, Number(accountId), Math.max(1, Number(limit) || 60)]
   );
