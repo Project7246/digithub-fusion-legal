@@ -50,7 +50,8 @@ import {
   setEmployeeStatus, linkEmployeeUser, verifyOwnForm, nextEmpCode,
   missingFrom, MUST_FILL, SELF_FIELDS,
   daysOf, putDay, dayFigures, DAY_STATUS, importDays,
-  listLeaves, askLeave, decideLeave, dropLeave, mayApprove, hrSize
+  listLeaves, askLeave, decideLeave, dropLeave, undoRefusedAbsences,
+  mayApprove, hrSize
 } from './hr.js';
 import {
   initHrPay, HEADS, EARN, DEDUCT, PAID, INFO, AUTO_HEADS, HEAD_KIND,
@@ -1535,7 +1536,8 @@ const RIGHT_GROUPS = [
             '/api/hr/people/login', '/api/hr/people/link', '/api/hr/standing',
             '/api/hr/days/import', '/api/hr/days/save',
             '/api/hr/people/import',
-            '/api/hr/leaves/new', '/api/hr/leaves/decide', '/api/hr/leaves/drop'] },
+            '/api/hr/leaves/new', '/api/hr/leaves/decide', '/api/hr/leaves/drop',
+            '/api/hr/leaves/undo-absences'] },
 
   { key: 'payroll', module: 'hr', money: true, area: 'people', label: 'Payroll',
     what: 'Work the month out, and post it to QuickBooks',
@@ -13980,6 +13982,28 @@ app.post('/api/hr/leaves/drop', async (req, res) => {
                                 mayApprove(policy, who));
     if (out.error) return res.status(400).json(out);
     res.json(out);
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// Letting go of the days a refusal wrote before refusals stopped writing.
+//
+// It is a one-off: those rows are real damage sitting in the attendance, and
+// nothing else can clear them. Only somebody who may decide a leave may do it,
+// it says exactly which days it moved and whose, and it touches nothing an
+// attendance record or a person ever marked.
+app.post('/api/hr/leaves/undo-absences', async (req, res) => {
+  const realmId = await requireCompany(req, res);
+  if (!realmId) return;
+  try {
+    const policy = await hrPolicy(realmId);
+    const who = await hrWho(req);
+    if (!mayApprove(policy, who)) {
+      return res.status(403).json({ error: 'Only somebody who decides leave may do this.' });
+    }
+    const b = req.body || {};
+    res.json(await undoRefusedAbsences(realmId, { code: b.code, from: b.from, to: b.to }));
   } catch (e) {
     res.status(500).json({ error: e.message });
   }

@@ -1144,6 +1144,44 @@ async function writeLeaveDays(realmId, lv, who, days) {
 
 // Every approved leave across a span, put back onto the days. Run after an
 // import, because the machine has just overwritten the days it covers.
+// The days a refusal wrote before refusals stopped writing.
+//
+// Until 30 Oct 2026 refusing a leave stamped `absent` on every day of its
+// range, by hand - which beats the biometric import for ever. One request
+// sent in error took a whole month with it. Those days are still sitting
+// there, and only this can let go of them: they are put back to **pending**,
+// their own word, and the attendance record fills them again.
+//
+// It touches nothing else. A day marked absent by the machine, or by somebody
+// deciding it was an absence, says something different and is left alone - the
+// note is what tells them apart, because it is the one thing only the old
+// refusal wrote.
+export async function undoRefusedAbsences(realmId, opts) {
+  const o = opts || {};
+  const where = ["realm_id = $1", "source = 'hand'", "note LIKE 'Not approved%'"];
+  const args = [realmId];
+  if (o.code) { args.push(String(o.code)); where.push('emp_code = $' + args.length); }
+  if (o.from) { args.push(o.from); where.push('day >= $' + args.length); }
+  if (o.to)   { args.push(o.to);   where.push('day <= $' + args.length); }
+
+  const seen = await pool.query(
+    `SELECT emp_code, day, status FROM hr_days WHERE ${where.join(' AND ')}
+      ORDER BY emp_code, day`, args);
+
+  const r = await pool.query(
+    `UPDATE hr_days
+        SET status = 'pending', source = 'biometric',
+            note = 'A refused leave marked this - put back, waiting on the attendance record',
+            decided_by = NULL, updated_at = NOW()
+      WHERE ${where.join(' AND ')}`, args);
+
+  return {
+    days: r.rowCount,
+    people: [...new Set(seen.rows.map(x => x.emp_code))],
+    rows: seen.rows.slice(0, 60).map(x => x.emp_code + ' ' + x.day + ' was ' + x.status)
+  };
+}
+
 export async function applyApprovedLeave(realmId, from, to) {
   const rows = await listLeaves(realmId, { from, to, state: 'approved' });
   let n = 0;
