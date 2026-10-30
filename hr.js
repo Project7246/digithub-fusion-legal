@@ -357,6 +357,11 @@ export async function initHr() {
       email_ref     TEXT
     )
   `);
+
+  // Which days of a range were granted. Nothing means the whole of it, which
+  // is what a leave usually is - saying so should not need every date ticked.
+  await pool.query(
+    `ALTER TABLE hr_leaves ADD COLUMN IF NOT EXISTS approved_days JSONB`);
   await pool.query(`
     CREATE INDEX IF NOT EXISTS hr_leaves_who
       ON hr_leaves (realm_id, emp_code, from_day)
@@ -980,6 +985,7 @@ export async function listLeaves(realmId, opts) {
   const o = opts || {};
   const where = ['realm_id = $1'];
   const args = [realmId];
+  if (o.id) { args.push(Number(o.id)); where.push('id = $' + args.length); }
   if (o.state) { args.push(o.state); where.push('state = $' + args.length); }
   if (o.code) { args.push(String(o.code)); where.push('emp_code = $' + args.length); }
   if (o.from) { args.push(o.from); where.push('to_day >= $' + args.length); }
@@ -1012,30 +1018,116 @@ export async function askLeave(realmId, body, who) {
 // and costs nothing, a refused one is an absence and is deducted. So the
 // decision is written on the leave and then straight onto the days it covers,
 // rather than being worked out again at payroll time from two places.
-export async function decideLeave(realmId, id, state, who, note) {
-  const st = state === 'approved' || state === 'refused' ? state : null;
-  if (!st) return { error: 'Approved or refused - nothing else.' };
+// Taking back what a leave wrote on the days.
+//
+// A day this leave had marked goes back to **pending** - "verification
+// pending", their own word - and to the biometric source, so the next import
+// fills it and nothing here pretends to know whether somebody came in. It is
+// never guessed at: a day the leave did not write is not touched.
+async function clearLeaveDays(realmId, lv) {
+  let n = 0;
+  for (const day of eachDay(lv.from_day, lv.to_day)) {
+    const r = await pool.query(
+      `UPDATE hr_days
+          SET status = 'pending', source = 'biometric',
+              note = 'Leave withdrawn - waiting on the attendance record',
+              decided_by = NULL, updated_at = NOW()
+        WHERE realm_id = $1 AND emp_code = $2 AND day = $3
+          AND source = 'hand'`,
+      [realmId, lv.emp_code, day]);
+    n += r.rowCount;
+  }
+  return n;
+}
+
+// Approved, refused, or **put back** - and approved can be part of a range.
+//
+// `days` is which days of the range are granted. The rest are simply not
+// granted, which writes nothing at all: refusing says the request was not
+// allowed, never that the person was absent.
+export async function decideLeave(realmId, id, state, who, note, days) {
+  const st = ['approved', 'refused', 'asked'].indexOf(String(state)) > -1
+    ? String(state) : null;
+  if (!st) return { error: 'Approved, refused, or put back - nothing else.' };
+
+  const was = await pool.query(
+    `SELECT * FROM hr_leaves WHERE realm_id = $1 AND id = $2`, [realmId, Number(id)]);
+  if (!was.rowCount) return { error: 'No such leave.' };
+
+  // whatever it wrote last time goes first, so changing a decision cannot
+  // leave half of the old one behind
+  const cleared = await clearLeaveDays(realmId, was.rows[0]);
+
   const r = await pool.query(
     `UPDATE hr_leaves
-        SET state = $3, decided_by = $4, decided_at = NOW(), decision_note = $5
+        SET state = $3,
+            decided_by = CASE WHEN $3 = 'asked' THEN NULL ELSE $4 END,
+            decided_at = CASE WHEN $3 = 'asked' THEN NULL ELSE NOW() END,
+            decision_note = $5,
+            approved_days = $6
       WHERE realm_id = $1 AND id = $2 RETURNING *`,
-    [realmId, Number(id), st, who || null, CLEAN(note)]);
-  if (!r.rowCount) return { error: 'No such leave.' };
+    [realmId, Number(id), st, who || null, CLEAN(note),
+     st === 'approved' && Array.isArray(days) && days.length
+       ? JSON.stringify(days.map(String)) : null]);
+
   const lv = r.rows[0];
-  const touched = await writeLeaveDays(realmId, lv, who);
-  return { ok: true, leave: lv, days: touched };
+  const touched = await writeLeaveDays(realmId, lv, who, days);
+  return { ok: true, leave: lv, days: touched, cleared };
+}
+
+// The employee's own withdrawal, and the administrator's removal.
+//
+// Asked for in those words: a request sent by mistake had no way back - the
+// person who sent it could not take it off, and refusing it was what did the
+// damage. While it is still waiting, whoever asked may take it back; after a
+// decision, only somebody who may decide can.
+export async function dropLeave(realmId, id, who, mayDecide) {
+  const r = await pool.query(
+    `SELECT * FROM hr_leaves WHERE realm_id = $1 AND id = $2`, [realmId, Number(id)]);
+  if (!r.rowCount) return { error: 'No such leave.' };
+
+  const lv = r.rows[0];
+  if (lv.state !== 'asked' && !mayDecide) {
+    return { error: 'This one has been decided already - ask whoever decides it.' };
+  }
+
+  const cleared = await clearLeaveDays(realmId, lv);
+  await pool.query(`DELETE FROM hr_leaves WHERE realm_id = $1 AND id = $2`,
+                   [realmId, Number(id)]);
+  return { ok: true, cleared };
 }
 
 // One leave onto its days. 'hand' is written as the source so the next
 // biometric import leaves these alone - see importDays.
-async function writeLeaveDays(realmId, lv, who) {
-  const want = lv.state === 'approved'
-    ? (lv.kind === 'half' ? 'ahalf' : lv.kind === 'wfh' ? 'wfh' : lv.kind === 'late' ? null : 'leave')
-    : (lv.kind === 'leave' ? 'absent' : lv.kind === 'half' ? 'half' : null);
+// **Refusing a leave says nothing about whether the person came in.**
+//
+// It used to write `absent` on every day of the range, by hand, which beats
+// the biometric import for ever. So one request sent by mistake - a whole
+// month, asked for in error - came back refused and marked the whole month
+// absent, and there was no way to undo it from either side. Refusing a
+// request only means the request was not granted; whether somebody was here
+// is what the machine at the door recorded, and that is the only thing that
+// may say it.
+//
+// `days` is which days of the range were approved. Nothing, and the whole
+// range is: a leave is usually all or nothing, and saying so should not need
+// every date ticked.
+async function writeLeaveDays(realmId, lv, who, days) {
+  if (lv.state !== 'approved') return 0;
+
+  const want = lv.kind === 'half' ? 'ahalf'
+             : lv.kind === 'wfh'  ? 'wfh'
+             : lv.kind === 'late' ? null
+             : 'leave';
   if (!want) return 0;                 // an approved late changes no status
+
+  const only = Array.isArray(days) && days.length
+    ? new Set(days.map(d => String(d)))
+    : null;
 
   let n = 0;
   for (const day of eachDay(lv.from_day, lv.to_day)) {
+    if (only && !only.has(day)) continue;
     await pool.query(
       `INSERT INTO hr_days (realm_id, emp_code, day, status, source, note, decided_by)
        VALUES ($1,$2,$3,$4,'hand',$5,$6)
@@ -1043,8 +1135,8 @@ async function writeLeaveDays(realmId, lv, who) {
          status = $4, source = 'hand', note = COALESCE($5, hr_days.note),
          decided_by = $6, updated_at = NOW()`,
       [realmId, lv.emp_code, day, want,
-       (lv.state === 'approved' ? 'Approved' : 'Not approved') +
-         (lv.reason ? ': ' + lv.reason : ''), who || lv.decided_by || null]);
+       'Approved' + (lv.reason ? ': ' + lv.reason : ''),
+       who || lv.decided_by || null]);
     n++;
   }
   return n;

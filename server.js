@@ -50,7 +50,7 @@ import {
   setEmployeeStatus, linkEmployeeUser, verifyOwnForm, nextEmpCode,
   missingFrom, MUST_FILL, SELF_FIELDS,
   daysOf, putDay, dayFigures, DAY_STATUS, importDays,
-  listLeaves, askLeave, decideLeave, mayApprove, hrSize
+  listLeaves, askLeave, decideLeave, dropLeave, mayApprove, hrSize
 } from './hr.js';
 import {
   initHrPay, HEADS, EARN, DEDUCT, PAID, INFO, AUTO_HEADS, HEAD_KIND,
@@ -1535,7 +1535,7 @@ const RIGHT_GROUPS = [
             '/api/hr/people/login', '/api/hr/people/link', '/api/hr/standing',
             '/api/hr/days/import', '/api/hr/days/save',
             '/api/hr/people/import',
-            '/api/hr/leaves/new', '/api/hr/leaves/decide'] },
+            '/api/hr/leaves/new', '/api/hr/leaves/decide', '/api/hr/leaves/drop'] },
 
   { key: 'payroll', module: 'hr', money: true, area: 'people', label: 'Payroll',
     what: 'Work the month out, and post it to QuickBooks',
@@ -13948,6 +13948,43 @@ app.post('/api/hr/leaves/new', async (req, res) => {
 // The hinge of the whole module. An approved day is a leave and costs nothing;
 // a refused one is an absence and is deducted - so only the three who were
 // named may answer, and the answer is written straight onto the days.
+// Taking a leave request back.
+//
+// Whoever asked may withdraw it while it is still waiting - a request sent by
+// mistake had no way back before this, and refusing it was what marked a month
+// absent. After a decision, only somebody who may decide can remove it, and
+// whatever it wrote on the attendance goes with it.
+app.post('/api/hr/leaves/drop', async (req, res) => {
+  const realmId = await requireCompany(req, res);
+  if (!realmId) return;
+  try {
+    const policy = await hrPolicy(realmId);
+    const who = await hrWho(req);
+    const b = req.body || {};
+
+    const mine = await listLeaves(realmId, { id: b.id });
+    const lv = (mine && mine[0]) || null;
+
+    // Whose it is, read off the staff record tied to this sign-in - not from
+    // anything the browser sent, which is the whole point of asking here.
+    const me = await employeeOfUser(realmId, who.sub);
+    const isMine = !!(lv && me && String(lv.emp_code) === String(me.emp_code));
+
+    if (!isMine && !mayApprove(policy, who)) {
+      return res.status(403).json({
+        error: 'That is not your request, and you are not one of the people who decide them.'
+      });
+    }
+
+    const out = await dropLeave(realmId, b.id, (who.email || who.sub),
+                                mayApprove(policy, who));
+    if (out.error) return res.status(400).json(out);
+    res.json(out);
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 app.post('/api/hr/leaves/decide', async (req, res) => {
   const realmId = await requireCompany(req, res);
   if (!realmId) return;
@@ -13961,7 +13998,10 @@ app.post('/api/hr/leaves/decide', async (req, res) => {
       });
     }
     const b = req.body || {};
-    const out = await decideLeave(realmId, b.id, b.state, (who.email || who.sub), b.note);
+    // `days` is which days of the range are granted - the rest are simply not
+    // granted, and granting nothing writes nothing on anybody's attendance.
+    const out = await decideLeave(realmId, b.id, b.state,
+                                  (who.email || who.sub), b.note, b.days);
     if (out.error) return res.status(400).json(out);
     res.json(out);
   } catch (e) {
