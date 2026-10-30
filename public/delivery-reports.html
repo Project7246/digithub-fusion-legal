@@ -1060,7 +1060,11 @@
     if(!s.connected){ $('gate').classList.remove('hide'); return; }
     $('body').classList.remove('hide');
 
-    if(s.hideMoney){ mayMoney = false; money = false; }
+    // The server strips the figures before they leave it, per module - a
+    // switch the browser could flick back is not a switch. This only stops
+    // the eye being drawn for somebody who would see nothing behind it.
+    var maySee = s.money ? s.money.logistics !== false : !s.hideMoney;
+    if(!maySee){ mayMoney = false; money = false; }
     paintEye();
 
     var sf = localStorage.getItem('drFrom'), st = localStorage.getItem('drTo');

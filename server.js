@@ -200,6 +200,10 @@ import { absorbPayment } from './traxlive.js';
 import { absorbPayouts, bankSaid, bankDrift } from './mnplive.js';
 import { relayState } from './wire.js';
 import {
+  read as readGrant, write as writeGrant, mayApp, inModule as inAccessModule,
+  seesMoney, catalogue as accessCatalogue, grantOf
+} from './access.js';
+import {
   initRates, listCards, saveCard, dropCard, rateReport, expectedFor, todayText as rateToday
 } from './rates.js';
 import {
@@ -637,12 +641,12 @@ async function whoIs(sub) {
 }
 
 // may this person do this job, whatever their role says
+// What somebody may do is one question asked in one place - access.js - so a
+// grant stored as the old flat list and one stored as the new shape give the
+// same answer, and nothing above this line has to know which it is holding.
 function mayDo(who, job) {
   if (!who || !job) return false;
-  if (who.admin || who.role === 'admin') return true;
-  if (who.role === 'standard') return true;
-  if (who.role === 'custom') return who.rights.indexOf(job) > -1;
-  return false;                        // reports only, or no access
+  return mayApp(who, job);
 }
 
 function forgetWho(sub) { whoCache.delete(sub); }
@@ -713,8 +717,12 @@ app.get('/api/admin/rights', async (req, res) => {
   res.json({
     roles: ROLES,
     areas: AREAS,
+    // The same jobs again, arranged the way somebody hands them out: module
+    // first, then the jobs inside it, and whether each one shows amounts.
+    modules: accessCatalogue(RIGHT_GROUPS),
     groups: RIGHT_GROUPS.map(g => ({
-      key: g.key, area: g.area || 'sales', label: g.label, what: g.what
+      key: g.key, area: g.area || 'sales', label: g.label, what: g.what,
+      module: g.module || 'finance', money: !!g.money
     }))
   });
 });
@@ -756,8 +764,15 @@ app.get('/api/admin/users', async (req, res) => {
         allowed: u.allowed !== false,
         role: (!!u.email && ADMIN_EMAILS.has(String(u.email).toLowerCase()))
           ? 'admin' : (u.role || 'viewer'),
-        rights: Array.isArray(u.rights) ? u.rights : [],
-        // parcels yes, money no - the tick beside the role on /users
+        // the jobs, whatever shape they are stored in
+        rights: readGrant(u.rights).apps,
+        // and whether amounts show, per module. Nothing said means yes, so a
+        // person who had figures before this existed still has them.
+        money: Object.fromEntries(accessCatalogue(RIGHT_GROUPS).map(m => [
+          m.key,
+          seesMoney({ role: u.role, rights: u.rights, hideMoney: u.hide_money }, m.key)
+        ])),
+        // parcels yes, money no - the older per-person tick, still honoured
         hideMoney: !!u.hide_money,
         realms: byUser.get(u.sub) || [],
         decided: !!u.decided_at,
@@ -1017,7 +1032,7 @@ app.post('/api/admin/users/access', async (req, res) => {
   const realmId = await requireAdmin(req, res);
   if (!realmId) return;
 
-  const { sub, allowed, rights, role } = req.body || {};
+  const { sub, allowed, rights, role, money } = req.body || {};
   if (!sub) return res.status(400).json({ error: 'Which person?' });
   if (role !== undefined && !ROLE_KEYS.has(String(role))) {
     return res.status(400).json({ error: 'There is no such role' });
@@ -1044,7 +1059,20 @@ app.post('/api/admin/users/access', async (req, res) => {
       }
     }
     const before = u || {};
-    await setUserAccess(sub, { allowed, rights, role });
+
+    // Stored in the new shape whenever anything about access is touched: the
+    // jobs, and whether amounts show, per module. A screen that sends only the
+    // old list still works - the money side then keeps whatever it had.
+    let grant;
+    if (rights !== undefined || money !== undefined) {
+      const had = readGrant(before.rights);
+      grant = writeGrant(
+        rights === undefined ? had.apps : (Array.isArray(rights) ? rights : readGrant(rights).apps),
+        money === undefined ? had.money : money
+      );
+    }
+
+    await setUserAccess(sub, { allowed, rights: grant, role });
     forgetWho(sub);
 
     // Told that something changed, never what the role is. Which role a person
@@ -1406,12 +1434,12 @@ const USER_MAY_POST = new Set([
 // addresses. The courier accounts and their keys are not here on purpose: those
 // stay with the admin whatever else is given away.
 const RIGHT_GROUPS = [
-  { key: 'upload', area: 'sales', label: 'Create invoices',
+  { key: 'upload', module: 'finance', money: true, area: 'sales', label: 'Create invoices',
     what: 'Post invoices to QuickBooks',
     paths: ['/api/upload/start', '/api/upload/retry', '/api/upload/resume',
             '/api/upload/handover', '/api/upload/clear'] },
 
-  { key: 'payments', area: 'sales', label: 'Receive payments',
+  { key: 'payments', module: 'finance', money: true, area: 'sales', label: 'Receive payments',
     what: 'Apply collections to open invoices',
     paths: ['/api/cpr/receive', '/api/cpr/receive-clear', '/api/cpr/receive-resume',
             '/api/cpr/bank', '/api/cpr/settled', '/api/cpr/colour',
@@ -1421,47 +1449,47 @@ const RIGHT_GROUPS = [
             '/api/receipts/receive', '/api/receipts/mark', '/api/receipts/bank',
             '/api/receipts/duplicate'] },
 
-  { key: 'advance', area: 'sales', label: 'Advance payments',
+  { key: 'advance', module: 'finance', money: true, area: 'sales', label: 'Advance payments',
     what: 'Part payment taken before delivery',
     paths: ['/api/adv/receive', '/api/adv/receive-one', '/api/adv/receive-clear',
             '/api/adv/receive-resume', '/api/adv/banks', '/api/adv/columns',
             '/api/adv/columns-reset', '/api/adv/root', '/api/adv/mark-posted',
             '/api/adv/fix-payment', '/api/adv/delete-payment'] },
 
-  { key: 'charges', area: 'purchases', label: 'Delivery charges',
+  { key: 'charges', module: 'finance', money: true, area: 'purchases', label: 'Delivery charges',
     what: 'Courier fees as journal entries',
     paths: ['/api/charges/post', '/api/charges/post-lines', '/api/charges/lines',
             '/api/charges/accounts', '/api/charges/columns', '/api/charges/dc-root'] },
 
-  { key: 'void', area: 'sales', label: 'Void invoices',
+  { key: 'void', module: 'finance', money: true, area: 'sales', label: 'Void invoices',
     what: 'Zero a returned order, keep its number',
     paths: ['/api/void/start', '/api/void/resume', '/api/void/clear',
             '/api/void/sheet-root'] },
 
-  { key: 'merge', area: 'sales', label: 'Merge receipts, adjust shipping',
+  { key: 'merge', module: 'finance', money: true, area: 'sales', label: 'Merge receipts, adjust shipping',
     what: 'One receipt against many orders',
     paths: ['/api/merge/strip', '/api/merge/strip-clear-log', '/api/merge/columns',
             '/api/shipfix/run'] },
 
-  { key: 'changes', area: 'items', label: 'Reclassify transactions',
+  { key: 'changes', module: 'finance', money: true, area: 'items', label: 'Reclassify transactions',
     what: 'Move to another item or account',
     paths: ['/api/replace/run', '/api/swap/run', '/api/recat/run', '/api/desc/run',
             '/api/recat/history/clear'] },
 
-  { key: 'products', area: 'items', label: 'Costs, stock and merges',
+  { key: 'products', module: 'finance', money: true, area: 'items', label: 'Costs, stock and merges',
     what: 'Costs, stock on hand, merges',
     paths: ['/api/products/apply', '/api/products/record/clear'] },
 
-  { key: 'purchases', area: 'purchases', label: 'Purchase orders and bills',
+  { key: 'purchases', module: 'finance', money: true, area: 'purchases', label: 'Purchase orders and bills',
     what: 'Raise purchase orders and bills',
     paths: ['/api/purchases/create', '/api/purchases/attach'] },
 
-  { key: 'delete', area: 'sales', label: 'Delete invoices',
+  { key: 'delete', module: 'finance', money: true, area: 'sales', label: 'Delete invoices',
     what: 'Remove invoices for good — no undo',
     paths: ['/api/invoice-delete-start', '/api/invoice-delete-clear',
             '/api/invoice-delete-resume', '/api/invoice-rename'] },
 
-  { key: 'couriersync', area: 'purchases', label: 'Bring courier data in',
+  { key: 'couriersync', module: 'logistics', money: true, area: 'purchases', label: 'Bring courier data in',
     what: 'Pull courier orders and receipts in',
     paths: ['/api/courier/sync', '/api/courier/backfill', '/api/courier/cpr-chase',
             '/api/courier/keeper-now', '/api/courier/hook-roll', '/api/courier/backfill-clear',
@@ -1471,7 +1499,7 @@ const RIGHT_GROUPS = [
   // The links to the audit's sheets (/api/audit/link, /link-remove, /pick) are in no group on purpose: only the admin attaches, changes or
   // removes them, and it cannot be handed out.
 
-  { key: 'shopify', area: 'sales', label: 'Shopify',
+  { key: 'shopify', module: 'csr', money: true, area: 'sales', label: 'Shopify',
     what: 'Connect shops and bring their orders in',
     paths: ['/api/shopify/shops', '/api/shopify/shops/remove', '/api/shopify/pull',
             '/api/shopify/build', '/api/shopify/mark', '/api/shopify/unmark',
@@ -1483,7 +1511,7 @@ const RIGHT_GROUPS = [
             '/api/shopify/new-items/look',
             '/api/shopify/undo/merge', '/api/shopify/sync'] },
 
-  { key: 'settings', area: 'items', label: 'SKU mappings',
+  { key: 'settings', module: 'finance', money: false, area: 'items', label: 'SKU mappings',
     what: 'Remembered SKU-to-item matches',
     paths: ['/api/mappings'] },
 
@@ -1492,7 +1520,7 @@ const RIGHT_GROUPS = [
   // company's sales, and until 30 Oct 2026 neither asked for anything at all,
   // so anybody who had been given a login could open them. Somebody given HR
   // and nothing else could read the customers.
-  { key: 'books', area: 'sales', label: 'Find orders, audit the books',
+  { key: 'books', module: 'finance', money: true, area: 'sales', label: 'Find orders, audit the books',
     what: 'Search invoices, and see what is still open',
     paths: ['/api/audit/start', '/api/audit/resume', '/api/audit/clear'] },
 
@@ -1501,7 +1529,7 @@ const RIGHT_GROUPS = [
   // staff records and brings the biometric report in; somebody else works the
   // month out and posts it. The same person often does both, and that is a
   // decision for whoever runs the company, not a thing to assume here.
-  { key: 'hr', area: 'people', label: 'People and attendance',
+  { key: 'hr', module: 'hr', money: false, area: 'people', label: 'People and attendance',
     what: 'Staff records, the biometric report, leave',
     paths: ['/api/hr/people/new', '/api/hr/people/save', '/api/hr/people/status',
             '/api/hr/people/login', '/api/hr/people/link', '/api/hr/standing',
@@ -1509,7 +1537,7 @@ const RIGHT_GROUPS = [
             '/api/hr/people/import',
             '/api/hr/leaves/new', '/api/hr/leaves/decide'] },
 
-  { key: 'payroll', area: 'people', label: 'Payroll',
+  { key: 'payroll', module: 'hr', money: true, area: 'people', label: 'Payroll',
     what: 'Work the month out, and post it to QuickBooks',
     paths: ['/api/hr/payroll/figure', '/api/hr/payroll/line',
             '/api/hr/payroll/facts', '/api/hr/payroll/pool',
@@ -2454,12 +2482,20 @@ app.get('/auth/status', async (req, res) => {
     // it.
     rights: (who && (who.admin || who.role === 'admin' || who.role === 'standard'))
       ? RIGHT_GROUPS.map(g => g.key)
-      : ((who && who.rights) || []),
+      : readGrant(who && who.rights).apps,
     jobs: RIGHT_GROUPS.map(g => g.key),
+    // **Per module, not per person.** The courier clerk may see every parcel
+    // and no figure; the accounts clerk may see every figure. One switch for
+    // the whole person could not say that. Nothing said means yes, so nobody
+    // loses a figure they had before this existed.
+    money: Object.fromEntries(accessCatalogue(RIGHT_GROUPS)
+      .map(m => [m.key, seesMoney(who, m.key)])),
     // Parcels yes, money no. The eye on the delivery report is hidden rather
     // than offered-and-refused when this is on, and the report itself comes
     // back without the figures - a switch the page could flick back is not a
     // switch.
+    // kept for the pages that already read it; `money` above is the one to
+    // ask, because it answers per module
     hideMoney: !!(who && who.hideMoney),
     // Who to ask. It was sent only to somebody not let in at all, but a person
     // who has been let in and given no job is in the same position: signed in,
@@ -9967,7 +10003,10 @@ app.get('/api/courier/report', async (req, res) => {
     const who = await whoIs(currentUser(req));
     const out = await deliveryReport(realmId, { from, to, account, courier });
 
-    out.money = !(who && who.hideMoney);
+    // Per module now: somebody may be in Logistics and not be shown what the
+    // parcels are worth. The old per-person switch still bites inside
+    // seesMoney(), so nobody's settings changed when this did.
+    out.money = seesMoney(who, 'logistics');
     if (!out.money) {
       out.couriers.forEach(c => {
         c.amount = null; c.charges = null; c.paid = null;

@@ -85,6 +85,11 @@
   .jobs.cos .cap{margin-bottom:9px}
   .jobs .areawhat{font-size:11.5px;color:var(--muted);margin-bottom:9px;line-height:1.5}
   .jobs .area + .area{margin-top:18px}
+  /* the per-module amounts switch, under that module's own jobs */
+  .moneysw{display:inline-flex;align-items:center;gap:8px;margin:10px 0 2px;
+    font-size:12.5px;color:var(--muted);cursor:pointer}
+  .moneysw input{accent-color:var(--qbo);width:15px;height:15px;margin:0}
+  .moneysw.off span{color:var(--neg)}
 
   /* A phone has no hover, so there would be nowhere for the description to live.
      There it goes back under the name - one column wide, it reads as a list
@@ -270,7 +275,8 @@
   // A line break inside a browser's own prompt and confirm boxes, which take
   // text and not markup.
   var BR = String.fromCharCode(10);
-  var S = { roles: [], areas: [], groups: [], users: [], companies: [], openSub: null };
+  var S = { roles: [], areas: [], groups: [], modules: [],
+            users: [], companies: [], openSub: null };
 
   function esc(s){
     return String(s == null ? '' : s)
@@ -376,21 +382,38 @@
               : '<div class="note">No company is connected yet.</div>') +
           '</div>' +
         '</div>' +
+        // **Module first, then the jobs inside it, then the amounts.**
+        //
+        // It used to be one flat sheet of tick boxes grouped by an accounting
+        // area - sales, purchases, items - which is how QuickBooks divides
+        // the books and not how this app divides the work. Somebody handing
+        // out access thinks "Logistics, and no figures", and had no way to
+        // say either half of that.
         '<div class="jobs rights' + (u.role === 'custom' ? ' show' : '') + '">' +
-          S.areas.map(function(a){
-            var mine = S.groups.filter(function(g){ return g.area === a.key; });
-            if(!mine.length) return '';
-            return '<div class="area">' +
-              '<div class="cap">' + esc(a.label) + '</div>' +
-              '<div class="areawhat">' + esc(a.what) + '</div>' +
+          (S.modules || []).map(function(m){
+            var money = (u.money && u.money[m.key] !== false);
+            return '<div class="area" data-mod="' + esc(m.key) + '">' +
+              '<div class="cap">' + esc(m.label) + '</div>' +
               '<div class="grid">' +
-                mine.map(function(g){
-                  return '<label data-tip="' + esc(g.what) + '">' +
+                m.apps.map(function(g){
+                  return '<label data-tip="' + esc(g.what || '') + '">' +
                     '<input type="checkbox" value="' + esc(g.key) + '"' +
                     (u.rights.indexOf(g.key) > -1 ? ' checked' : '') + '>' +
                     '<span>' + esc(g.label) + '</span></label>';
                 }).join('') +
-              '</div></div>';
+              '</div>' +
+              // Only where there is money in the module at all. Asking it of
+              // a module that shows none is a question with no meaning.
+              (m.hasMoney
+                ? '<label class="moneysw' + (money ? '' : ' off') + '" ' +
+                  'data-tip="Untick to let them see the work and not what it is worth - ' +
+                  'parcels, days, counts, but no amounts. The server leaves the figures ' +
+                  'out before they reach the browser.">' +
+                  '<input type="checkbox" class="mny" data-mod="' + esc(m.key) + '"' +
+                  (money ? ' checked' : '') + '>' +
+                  '<span>May see amounts in ' + esc(m.label) + '</span></label>'
+                : '') +
+            '</div>';
           }).join('') +
         '</div>' +
         '<div class="jobs cos show">' +
@@ -441,7 +464,14 @@
     save.addEventListener('click', function(){
       var role = (tr.querySelector('.roles input:checked') || {}).value || u.role;
       var picked = [];
-      tr.querySelectorAll('.jobs.rights input:checked').forEach(function(i){ picked.push(i.value); });
+      tr.querySelectorAll('.jobs.rights input[type=checkbox]:not(.mny):checked')
+        .forEach(function(i){ picked.push(i.value); });
+
+      // and whether amounts show, per module
+      var money = {};
+      tr.querySelectorAll('.jobs.rights input.mny').forEach(function(i){
+        money[i.getAttribute('data-mod')] = i.checked;
+      });
       var realms = [];
       tr.querySelectorAll('.cos input:checked').forEach(function(i){
         if(i.value) realms.push(i.value);
@@ -455,6 +485,7 @@
         sub: u.sub,
         role: role,
         rights: role === 'custom' ? picked : [],
+        money: money,
         allowed: role !== 'none'
       })
         .then(function(){
@@ -469,6 +500,7 @@
           u.hideMoney = hideMoney;
           u.role = role;
           u.rights = role === 'custom' ? picked : [];
+          u.money = money;
           u.realms = realms;
           u.allowed = role !== 'none';
           S.openSub = null;
@@ -769,6 +801,7 @@
       .then(function(d){
         S.roles = d.roles || [];
         S.areas = d.areas || [];
+        S.modules = d.modules || [];
         S.groups = d.groups || [];
         drawMake();
         return get('/api/admin/users');
