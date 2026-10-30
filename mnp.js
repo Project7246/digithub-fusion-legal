@@ -24,7 +24,7 @@
 // be asked, and the asking is kept to one report call per month per account,
 // plus bulk tracking (200 consignments a call) for the parcels still moving.
 
-import { makeGrouper, num, day } from './statuses.js';
+import { makeGrouper, num, day, cityName } from './statuses.js';
 
 // M&P's tracking screen writes its timestamps month first - "06/14/2025" is
 // 14 June - while their reports write "14 Jun 2025". Sonic writes the same
@@ -302,7 +302,11 @@ export function mapReportRow(row) {
     fee:         num(pick(f, ['servicecharges', 'servicecharge', 'deliverycharges',
                               'charges', 'totalcharges', 'freight', 'freightcharges'])),
     tax:         num(pick(f, ['gst', 'salestax', 'tax', 'gstamount'])),
-    city:        pick(f, ['destination', 'destzone', 'destinationcity']),
+    // Their monthly report gives a **code** here and nothing else - DESTZONE
+    // and DESTINATION both read `RWP` - while their tracking call gives
+    // `RAWALPINDI` for the same consignment. The code is kept as it is; the
+    // city fix-up asks their own tracking for the name.
+    city:        cityName(pick(f, ['destinationcity', 'destination', 'destzone'])),
     bookedOn:    day(pick(f, ['bookingdate'])),
     pickedOn:    null,
     deliveredOn: day(pick(f, ['deliverydate'])),
@@ -356,7 +360,7 @@ export function mapTracked(row) {
     // and GST. Their invoice does, and nothing here reads an invoice yet.
     fee:         invoiced(r),
     tax:         0,
-    city:        r.DestinationCity || r.OriginCity || '',
+    city:        cityName(r.DestinationCity || r.OriginCity),
     bookedOn:    day(r.BookingDate),
     pickedOn:    lineOf('transit'),
     deliveredOn: group === 'delivered' ? stamp(latest.TransactionTime) : lineOf('delivered'),

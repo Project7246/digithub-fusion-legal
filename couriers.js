@@ -857,3 +857,66 @@ export async function rebucket(realmId, groupFor) {
 
   return moved;
 }
+
+/* ==================== the names of places ==================== */
+//
+// Two different jobs, and they are kept apart because one is certain and the
+// other needs the courier.
+//
+//   tidyCities()   shape only - `SIALKOT` becomes `Sialkot`. Nothing is
+//                  renamed and no code is touched, so it cannot be wrong.
+//   codedCities()  finds the parcels still carrying a courier's code (`RWP`),
+//                  which only the courier can turn into a name.
+
+export async function tidyCities(realmId) {
+  // Shouted names, four letters or more, put into the shape every other
+  // courier writes them in. INITCAP is Postgres's own, and the length test is
+  // what keeps a code out of it.
+  const r = await pool.query(
+    `UPDATE courier_orders
+        SET city = INITCAP(city)
+      WHERE realm_id = $1
+        AND city IS NOT NULL
+        AND LENGTH(city) > 4
+        AND city = UPPER(city)
+        AND city <> INITCAP(city)`,
+    [realmId]
+  );
+  return r.rowCount;
+}
+
+// Which parcels still have a code where a city should be, grouped so the
+// screen can say what it is about to ask the courier.
+export async function codedCities(realmId, limit) {
+  const r = await pool.query(
+    `SELECT o.account_id, a.label, a.courier, o.city, COUNT(*) AS n
+       FROM courier_orders o
+       JOIN courier_accounts a ON a.id = o.account_id
+      WHERE o.realm_id = $1
+        AND o.city IS NOT NULL
+        AND o.city ~ '^[A-Z0-9.\-]{1,4}$'
+      GROUP BY o.account_id, a.label, a.courier, o.city
+      ORDER BY 5 DESC
+      LIMIT ${Math.max(1, Number(limit) || 60)}`,
+    [realmId]
+  );
+  return r.rows.map(x => ({
+    accountId: x.account_id, label: x.label, courier: x.courier,
+    code: x.city, parcels: Number(x.n)
+  }));
+}
+
+// The tracking numbers behind those codes, for one account, so the courier can
+// be asked about them a batch at a time.
+export async function codedTrackings(realmId, accountId, limit) {
+  const r = await pool.query(
+    `SELECT tracking FROM courier_orders
+      WHERE realm_id = $1 AND account_id = $2
+        AND city IS NOT NULL
+        AND city ~ '^[A-Z0-9.\-]{1,4}$'
+      ORDER BY booked_on DESC NULLS LAST
+      LIMIT ${Math.max(1, Number(limit) || 200)}`,
+    [realmId, Number(accountId)]
+  );
+  return r.rows.map(x => x.tracking);
+}

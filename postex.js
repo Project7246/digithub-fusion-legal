@@ -7,7 +7,7 @@
 // date are shared now (statuses.js), because three couriers disagreeing about
 // what "delivered" means would show up as three different dashboards.
 
-import { makeGrouper, num, day } from './statuses.js';
+import { makeGrouper, num, day, cityName } from './statuses.js';
 
 const BASE = 'https://api.postex.pk';
 
@@ -128,7 +128,7 @@ export function mapOrder(row) {
     balance,
     fee:         num(o.transactionFee) + num(o.reversalFee),
     tax:         num(o.transactionTax) + num(o.reversalTax),
-    city:        o.cityName || '',
+    city:        cityName(o.cityName),
     bookedOn:    day(o.transactionDate),
     pickedOn:    day(o.orderPickupDate),
     deliveredOn: day(o.orderDeliveryDate),

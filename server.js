@@ -137,6 +137,7 @@ import { loadAdvance, findForAdvance, spanLabel } from './advance.js';
 import { startAdvJob, stopAdvJob, clearAdvJob, resumeAdvJob, advSnapshot } from './advjobs.js';
 import {
   initCouriers, rebucket as rebucketOrders,
+  tidyCities, codedCities, codedTrackings,
   listAccounts as listCourierAccounts, getAccount as getCourierAccount,
   addAccount as addCourierAccount, removeAccount as removeCourierAccount,
   markSync, saveOrders, credsOf, movingTrackings, needCpr, savePayments,
@@ -9051,6 +9052,62 @@ app.post('/api/shopify/wire', async (req, res) => {
     res.json(await wireHooks(realmId, shop, base));
   } catch (e) {
     res.status(400).json({ error: e.message });
+  }
+});
+
+// Putting the name of a place right.
+//
+// Two jobs, and the answer says which did what. Tidying the shape is certain
+// and needs nobody - `SIALKOT` becomes `Sialkot`. A courier's code is not: M&P
+// write `RWP` on their monthly report and `RAWALPINDI` on their tracking call
+// for the same consignment, so the **courier is asked** rather than a guess
+// being written into a year of parcels.
+app.post('/api/courier/cityfix', async (req, res) => {
+  if (!await requireBoss(req, res)) return;
+  const realmId = await requireCompany(req, res);
+  if (!realmId) return;
+
+  try {
+    const tidied = await tidyCities(realmId);
+
+    // What is left is codes. Only an adapter that can be asked about parcels
+    // by name can answer, and it is asked in one batch per account per call -
+    // pressing it again picks up where it stopped.
+    const left = await codedCities(realmId);
+    const byAccount = new Map();
+    left.forEach(x => byAccount.set(x.accountId,
+      (byAccount.get(x.accountId) || 0) + x.parcels));
+
+    const asked = [];
+    for (const [accountId, parcels] of byAccount) {
+      const acc = await getCourierAccount(realmId, accountId);
+      if (!acc) continue;
+      const a = adapterFor(acc.courier);
+      if (!a || typeof a.refreshKnown !== 'function') {
+        asked.push({ account: acc.label, parcels, named: 0,
+          note: (a ? a.name : acc.courier) + ' cannot be asked about a parcel by name' });
+        continue;
+      }
+
+      const want = await codedTrackings(realmId, accountId,
+        Number(process.env.CITYFIX_BATCH) || 200);
+      if (!want.length) continue;
+
+      try {
+        const fresh = await a.refreshKnown(acc.token, want, credsOf(acc));
+        const named = fresh.filter(o => o && o.tracking && o.city &&
+                                        !/^[A-Z0-9.\-]{1,4}$/.test(o.city));
+        if (fresh.length) await saveOrders(realmId, acc.id, acc.courier, fresh);
+        asked.push({ account: acc.label, parcels, askedAbout: want.length,
+                     named: named.length, note: '' });
+      } catch (e) {
+        asked.push({ account: acc.label, parcels, named: 0, note: e.message });
+      }
+    }
+
+    res.json({ ok: true, tidied, stillCoded: await codedCities(realmId), asked });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
   }
 });
 

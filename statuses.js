@@ -170,3 +170,38 @@ export function day(v, order) {
   // local parts, not UTC - see above
   return iso(d.getFullYear(), d.getMonth() + 1, d.getDate());
 }
+
+/* ==================== the name of a place ==================== */
+//
+// One city, written three ways by three couriers: PostEx say `Lahore` on one
+// parcel and `SIALKOT` on the next, Trax write `Rawalpindi`, and M&P's monthly
+// report writes **`RWP`** while their tracking call writes `RAWALPINDI` for the
+// same consignment. On a screen that groups by city, that is three rows for
+// one place.
+//
+// This settles the shape - spacing and capitals - and nothing else. **It never
+// turns a code into a name**: `RWP` is left exactly as it is, because only the
+// courier knows which town a code of theirs means, and guessing once here
+// would put parcels in the wrong city for ever. Codes are replaced by asking
+// the courier (see the city fix-up in couriers.js).
+export function cityName(v) {
+  const s = String(v == null ? '' : v).trim().replace(/\s+/g, ' ');
+  if (!s) return '';
+
+  // A short all-capitals word with no space in it is a courier's code, and it
+  // is left alone so the fix-up can still recognise it.
+  if (/^[A-Z0-9.\-]{1,4}$/.test(s)) return s;
+
+  // Anything else that is shouted is put into the shape every other courier
+  // writes it in. A word already mixed-case is left as its writer wrote it.
+  if (s === s.toUpperCase()) {
+    return s.toLowerCase().replace(/(^|[\s.\-/'])([a-z])/g, (m, a, b) => a + b.toUpperCase());
+  }
+  return s;
+}
+
+// Whether a value is one of those courier codes rather than a place anybody
+// would recognise.
+export function looksLikeCode(v) {
+  return /^[A-Z0-9.\-]{1,4}$/.test(String(v == null ? '' : v).trim());
+}

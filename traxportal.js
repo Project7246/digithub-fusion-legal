@@ -40,7 +40,7 @@
 // which reads a body and throws the headers away.
 
 import { relayed, relayHeaders, plainly } from './wire.js';
-import { num, day, byWords } from './statuses.js';
+import { num, day, byWords, cityName } from './statuses.js';
 
 // Which bucket one of their words belongs in is **Trax's dialect, not this
 // file's**, so trax.js hands its own grouper over (`portal.groupOf = groupOf`,
@@ -421,7 +421,7 @@ export function mapRow(row) {
     upfront:     0,
     reserve:     0,
     balance:     0,
-    city:        String(r.destination || '').trim(),
+    city:        cityName(r.destination),
     bookedOn:    day(r.booking_date) || day(r.arrival_date),
     // Deliberately only the rider's own pickup. A parcel with no pickup date
     // is a parcel nobody collected, and filling that in from the first

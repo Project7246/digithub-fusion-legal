@@ -23,7 +23,7 @@
 //
 // So `lists: false` on the adapter, and the keeper asks for the one it can.
 
-import { makeGrouper, num, day } from './statuses.js';
+import { makeGrouper, num, day, cityName } from './statuses.js';
 import { flatten, pick } from './hooks.js';
 import { qs, call, rows } from './wire.js';
 // Their API has no call that takes a span of days; their portal does. The two
@@ -148,7 +148,7 @@ export function mapTracked(details) {
     // said before rather than taking it as a correction to nought.
     fee:         0,
     tax:         0,
-    city:        consignee.destination || (d.pickup && d.pickup.origin) || '',
+    city:        cityName(consignee.destination || (d.pickup && d.pickup.origin)),
     bookedOn:    lineOf('booked') || day(history.length
                    ? history[history.length - 1].date_time : null),
     pickedOn:    lineOf('transit'),
