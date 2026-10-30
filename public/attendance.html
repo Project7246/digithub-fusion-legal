@@ -480,7 +480,34 @@
       (done.length ? leaveTable(done, false) : '<div class="empty">Nothing yet.</div>') +
       '</div>';
 
+    // The one-off. Until 30 Oct 2026 refusing a request wrote `absent` on
+    // every day of it, by hand, which beats the biometric import for ever -
+    // so one request sent in error marked a whole month absent. Refusals
+    // write nothing now; this lets go of what the old ones wrote.
+    if (S.mayApprove) {
+      h += '<div class="box"><h3>Absences a refusal wrote' +
+        '<span class="aside">one-off</span></h3>' +
+        '<div class="f"><div class="acts">' +
+        '<button id="lundo">Let go of them</button>' +
+        '<span class="note" style="margin:0">Refusing a leave used to mark every ' +
+        'day of it absent. It no longer does. This puts those days back to ' +
+        'waiting to be accounted for - nothing a person or the machine marked ' +
+        'is touched.</span></div></div></div>';
+    }
+
     $('pane').innerHTML = h;
+
+    if ($('lundo')) {
+      $('lundo').addEventListener('click', function(){
+        post('/api/hr/leaves/undo-absences', {}).then(function(d){
+          if (d.error) return alert(d.error);
+          S.said = n0(d.days || 0) + ' day' + (d.days === 1 ? '' : 's') +
+            ' let go of' + ((d.people || []).length
+              ? ', across ' + n0(d.people.length) + ' people' : '') + '.';
+          load();
+        });
+      });
+    }
 
     $('ladd').addEventListener('click', function(){
       post('/api/hr/leaves/new', {
@@ -494,18 +521,109 @@
       });
     });
 
+    $('pane').querySelectorAll('button[data-some]').forEach(function(b){
+      b.addEventListener('click', function(){
+        var row = $('some' + b.getAttribute('data-some'));
+        if (row) row.style.display = (row.style.display === 'none' ? '' : 'none');
+      });
+    });
+
+    $('pane').querySelectorAll('button[data-drop]').forEach(function(b){
+      b.addEventListener('click', function(){
+        if (!confirm('Remove this request? Whatever it wrote on the attendance ' +
+                     'goes with it.')) return;
+        post('/api/hr/leaves/drop', { id: b.getAttribute('data-drop') })
+          .then(function(d){
+            if (d.error) return alert(d.error);
+            S.said = 'Removed' + (d.cleared ? ' - ' + n0(d.cleared) + ' day' +
+              (d.cleared === 1 ? '' : 's') + ' let go of.' : '.');
+            load();
+          });
+      });
+    });
+
     $('pane').querySelectorAll('button[data-id]').forEach(function(b){
       b.addEventListener('click', function(){
-        post('/api/hr/leaves/decide', {
-          id: b.getAttribute('data-id'), state: b.getAttribute('data-state')
-        }).then(function(d){
+        var id = b.getAttribute('data-id');
+        var body = { id: id, state: b.getAttribute('data-state') };
+
+        // Approving part of a range: the ticked days are granted and the rest
+        // are simply not, which writes nothing on them.
+        if (b.getAttribute('data-pick')) {
+          var picked = [];
+          $('pane').querySelectorAll('input[data-day="' + id + '"]')
+            .forEach(function(c){ if (c.checked) picked.push(c.value); });
+          if (!picked.length) {
+            return alert('Tick at least one day, or refuse the request instead.');
+          }
+          body.days = picked;
+        }
+
+        post('/api/hr/leaves/decide', body).then(function(d){
           if (d.error) return alert(d.error);
-          S.said = (d.leave.state === 'approved' ? 'Approved' : 'Refused') + ' - ' +
-            n0(d.days) + ' day' + (d.days === 1 ? '' : 's') + ' changed.';
+          S.said = (d.leave.state === 'approved' ? 'Approved' :
+                    d.leave.state === 'refused' ? 'Refused' :
+                    'Put back - it is waiting on an answer again') +
+            ' - ' + n0(d.days) + ' day' + (d.days === 1 ? '' : 's') + ' changed.';
           load();
         });
       });
     });
+  }
+
+  // An approval that covered part of the range says so. Approved with nothing
+  // named is the whole range, which is how a leave is usually answered.
+  function partly(l){
+    if (l.state !== 'approved' || !Array.isArray(l.approved_days)) return '';
+    var span = spanDays(l.from_day, l.to_day).length;
+    if (!l.approved_days.length || l.approved_days.length >= span) return '';
+    return ' <small style="color:var(--muted)">' + n0(l.approved_days.length) +
+      ' of ' + n0(span) + ' days</small>';
+  }
+
+  function lbtn(attr, col, label){
+    return '<button ' + attr + ' style="border:1px solid var(--' + col + ');' +
+      'background:var(--' + col + '-soft);color:var(--' + col + ');' +
+      'border-radius:6px;padding:4px 10px;font:inherit;font-size:11.5px;' +
+      'cursor:pointer;width:auto;height:auto">' + label + '</button>';
+  }
+
+  function pbtn(attr, label){
+    return '<button ' + attr + ' style="border:1px solid var(--line);' +
+      'background:var(--card);color:var(--ink);border-radius:6px;padding:4px 10px;' +
+      'font:inherit;font-size:11.5px;cursor:pointer;width:auto;height:auto">' +
+      label + '</button>';
+  }
+
+  // Every day a request covers, ten characters each, counted in UTC - a date
+  // is not a moment, and local midnight is what moves one into the day before.
+  function spanDays(a, b){
+    var out = [];
+    if (!a) return out;
+    var d = new Date(a + 'T00:00:00Z'), e = new Date((b || a) + 'T00:00:00Z');
+    while (d <= e && out.length < 95) {
+      out.push(d.toISOString().slice(0, 10));
+      d.setUTCDate(d.getUTCDate() + 1);
+    }
+    return out;
+  }
+
+  function dayPicker(l){
+    var days = spanDays(l.from_day, l.to_day);
+    var got = Array.isArray(l.approved_days) ? l.approved_days.map(String) : null;
+    var h = '<div style="padding:8px 2px">' +
+      '<div style="display:flex;flex-wrap:wrap;gap:6px">';
+    days.forEach(function(d){
+      var on = !got || got.indexOf(d) > -1;
+      h += '<label style="border:1px solid var(--line);border-radius:6px;' +
+        'padding:4px 8px;font-size:12px;cursor:pointer">' +
+        '<input type="checkbox" data-day="' + l.id + '" value="' + d + '"' +
+        (on ? ' checked' : '') + ' style="margin-right:5px;width:auto;height:auto">' +
+        d + '</label>';
+    });
+    return h + '</div><div class="acts" style="margin-top:8px">' +
+      lbtn('data-id="' + l.id + '" data-state="approved" data-pick="1"', 'ok',
+           'Approve the ticked days') + '</div></div>';
   }
 
   function leaveTable(rows, open){
@@ -522,22 +640,26 @@
         '<td>' + esc(l.reason || '') + '</td>' +
         '<td>' + (l.state === 'approved' ? '<span class="pill ok">approved</span>' :
                   l.state === 'refused' ? '<span class="pill neg">refused</span>' :
-                  '<span class="pill warn">waiting</span>') + '</td>';
+                  '<span class="pill warn">waiting</span>') + partly(l) + '</td>';
       if (open && S.mayApprove) {
         h += '<td style="white-space:nowrap">' +
-          '<button data-id="' + l.id + '" data-state="approved" ' +
-          'style="border:1px solid var(--ok);background:var(--ok-soft);color:var(--ok);' +
-          'border-radius:6px;padding:4px 10px;font:inherit;font-size:11.5px;cursor:pointer;' +
-          'width:auto;height:auto">Approve</button> ' +
-          '<button data-id="' + l.id + '" data-state="refused" ' +
-          'style="border:1px solid var(--neg);background:var(--neg-soft);color:var(--neg);' +
-          'border-radius:6px;padding:4px 10px;font:inherit;font-size:11.5px;cursor:pointer;' +
-          'width:auto;height:auto">Refuse</button></td>';
+          lbtn('data-id="' + l.id + '" data-state="approved"', 'ok', 'Approve') + ' ' +
+          pbtn('data-some="' + l.id + '"', 'Some days') + ' ' +
+          lbtn('data-id="' + l.id + '" data-state="refused"', 'neg', 'Refuse') + ' ' +
+          pbtn('data-drop="' + l.id + '"', 'Remove') + '</td>';
       } else {
-        h += '<td><small style="color:var(--muted)">' + esc(l.decided_by || '') +
-          '</small></td>';
+        h += '<td style="white-space:nowrap"><small style="color:var(--muted)">' +
+          esc(l.decided_by || '') + '</small>' +
+          (S.mayApprove
+            ? ' ' + pbtn('data-id="' + l.id + '" data-state="asked"', 'Put it back') +
+              ' ' + pbtn('data-drop="' + l.id + '"', 'Remove')
+            : '') + '</td>';
       }
       h += '</tr>';
+      if (open && S.mayApprove) {
+        h += '<tr id="some' + l.id + '" style="display:none"><td colspan="7">' +
+          dayPicker(l) + '</td></tr>';
+      }
     });
     return h + '</tbody></table></div>';
   }

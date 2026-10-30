@@ -452,7 +452,7 @@
     h += '<div class="box"><h3>What you have asked for' +
       '<span class="aside">' + n0(L.length) + '</span></h3>' +
       (L.length ? '<div class="lst"><table class="t"><thead><tr><th>Kind</th>' +
-        '<th>From</th><th>To</th><th>Reason</th><th>State</th>' +
+        '<th>From</th><th>To</th><th>Reason</th><th>State</th><th></th>' +
         '</tr></thead><tbody>' + L.map(function(l){
           return '<tr><td>' + esc(l.kind) + '</td>' +
             '<td class="num">' + esc(l.from_day) + '</td>' +
@@ -460,11 +460,31 @@
             '<td>' + esc(l.reason || '') + '</td>' +
             '<td>' + (l.state === 'approved' ? '<span class="pill ok">approved</span>' :
               l.state === 'refused' ? '<span class="pill neg">refused</span>' :
-              '<span class="pill warn">waiting</span>') + '</td></tr>';
+              '<span class="pill warn">waiting</span>') + '</td>' +
+            // A request sent by mistake is taken back by whoever sent it, while
+            // it is still waiting. After an answer it is theirs to remove.
+            '<td>' + (l.state === 'asked'
+              ? '<button data-drop="' + l.id + '" style="border:1px solid var(--line);' +
+                'background:var(--card);color:var(--ink);border-radius:6px;' +
+                'padding:4px 10px;font:inherit;font-size:11.5px;cursor:pointer;' +
+                'width:auto;height:auto">Take it back</button>'
+              : '') + '</td></tr>';
         }).join('') + '</tbody></table></div>'
         : '<div class="empty">Nothing yet.</div>') + '</div>';
 
     $('pane').innerHTML = h;
+
+    $('pane').querySelectorAll('button[data-drop]').forEach(function(b){
+      b.addEventListener('click', function(){
+        if (!confirm('Take this request back?')) return;
+        post('/api/hr/leaves/drop', { id: b.getAttribute('data-drop') })
+          .then(function(d){
+            if (d.error) return alert(d.error);
+            S.said = 'Taken back.';
+            load();
+          });
+      });
+    });
 
     $('lask').addEventListener('click', function(){
       post('/api/hr/me/leave', {
