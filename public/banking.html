@@ -142,14 +142,23 @@
 
     var rows = d.banks.map(function(b){
       return '<tr class="click" data-bank="' + b.id + '">' +
-        '<td class="nm">' + esc(b.name) + (b.active ? '' : ' <span class="pill">closed</span>') +
-          (b.ownerName ? '<br><span style="font-size:11.5px;color:var(--faint)">' +
-            esc(b.ownerName) + '</span>' : '') + '</td>' +
-        '<td class="n">' + money(b.opening) + '<br><span style="font-size:11px;color:var(--faint)">' +
-          esc(b.openingOn || '') + '</span></td>' +
+        // **The account title is what a bank is known by**, and the bank's own
+        // name is the lesser half of it. The owner's name is not in this list
+        // at all - it is on the record, where somebody looks it up, and a
+        // column of business names is not how anybody picks an account.
+        '<td class="nm">' + esc(b.title || b.name) +
+          (b.active ? '' : ' <span class="pill">closed</span>') +
+          '<br><span style="font-size:11.5px;color:var(--faint)">' +
+          esc(b.title ? b.name : '') + (b.accountNo ? ' · ' + esc(b.accountNo) : '') +
+          '</span></td>' +
+        '<td class="n">' + (b.openingKnown
+            ? money(b.opening) + '<br><span style="font-size:11px;color:var(--faint)">' +
+              esc(b.openingOn || '') + (b.openingAt ? ' ' + esc(b.openingAt) : '') + '</span>'
+            : '<span style="color:var(--warn)">not set yet</span>') + '</td>' +
         '<td class="n pos">' + money(b.inYear) + '</td>' +
         '<td class="n neg">' + money(b.outYear) + '</td>' +
-        '<td class="n"><b>' + money(b.balance) + '</b></td>' +
+        '<td class="n"><b>' + (b.balance == null
+            ? '<span style="color:var(--faint)">—</span>' : money(b.balance)) + '</b></td>' +
         '<td class="n">' + money(b.receivable) +
           (b.receivableParcels ? '<br><span style="font-size:11px;color:var(--faint)">' +
             b.receivableParcels + ' parcels</span>' : '') + '</td>' +
@@ -360,8 +369,12 @@
     var banks = (S.report && S.report.banks) || [];
 
     return '<div class="sheet" style="margin-bottom:16px"><div class="sec">' +
-        '<h2>' + (b.id ? 'Edit ' + esc(b.name) : 'A new bank account') +
+        '<h2>' + (b.id ? 'Edit ' + esc(b.title || b.name) : 'A new bank account') +
           '<span class="aside">nothing before the opening date is ever counted</span></h2>' +
+        '<p class="hint" style="margin:0 0 12px">Leave the opening balance blank ' +
+        'until you have the statement — the account still works, and what ' +
+        'moves is recorded. The time is kept with the balance; every feed here ' +
+        'carries a date and no clock, so the cut itself is by day.</p>' +
         '<div class="form">' +
           '<div><label>Bank name</label><input type="text" id="bName" value="' +
             esc(b.name || '') + '" placeholder="Alfalah — current"></div>' +
@@ -376,9 +389,12 @@
           '<div><label>Branch</label><input type="text" id="bBranch" value="' +
             esc(b.branch || '') + '"></div>' +
           '<div><label>Opening balance</label><input type="number" id="bOpen" step="0.01" value="' +
-            esc(b.opening) + '"></div>' +
+            esc(b.opening == null ? '' : b.opening) +
+            '" placeholder="leave it blank until you have the statement"></div>' +
           '<div><label>True on</label><input type="date" id="bOpenOn" value="' +
             esc(b.openingOn || S.today) + '"></div>' +
+          '<div><label>At</label><input type="time" id="bOpenAt" value="' +
+            esc(b.openingAt || '') + '"></div>' +
           '<div class="wide"><label>Spending sheet (published CSV)</label>' +
             '<input type="text" id="bSheet" value="' + esc(b.sheetUrl || '') + '" ' +
             'placeholder="Google Sheets → File → Share → Publish to the web → CSV"></div>' +
@@ -395,14 +411,14 @@
 
       (banks.length
         ? '<div class="sheet"><div class="sec" style="padding:0"><div class="wrapx">' +
-          '<table class="plain"><thead><tr><th>Bank</th><th>IBAN</th><th>In whose name</th>' +
+          '<table class="plain"><thead><tr><th>Account title</th><th>IBAN</th><th>In whose name</th>' +
           '<th class="n">Opening</th><th></th></tr></thead><tbody>' +
           banks.map(function(x){
-            return '<tr><td class="nm">' + esc(x.name) +
+            return '<tr><td class="nm">' + esc(x.title || x.name) +
               (x.active ? '' : ' <span style="color:var(--faint)">closed</span>') + '</td>' +
               '<td class="mono" style="font-size:11.5px">' + esc(x.iban || '') + '</td>' +
               '<td>' + esc(x.ownerName || '') + '</td>' +
-              '<td class="n">' + money(x.opening) + '</td>' +
+              '<td class="n">' + (x.openingKnown ? money(x.opening) : 'not set') + '</td>' +
               '<td><button class="mini" data-edit="' + x.id + '">Edit</button></td></tr>';
           }).join('') + '</tbody></table></div></div></div>'
         : '');
@@ -552,6 +568,7 @@
         ownerName: $('bOwner').value, accountNo: $('bNo').value,
         iban: $('bIban').value, branch: $('bBranch').value,
         opening: $('bOpen').value, openingOn: $('bOpenOn').value,
+        openingAt: $('bOpenAt') ? $('bOpenAt').value : '',
         sheetUrl: $('bSheet').value, notes: $('bNotes').value
       };
       bSave.disabled = true;

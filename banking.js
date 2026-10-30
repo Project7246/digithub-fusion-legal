@@ -39,8 +39,8 @@ export async function initBanking() {
       iban          TEXT,
       branch        TEXT,
       notes         TEXT,
-      opening       NUMERIC(16,2) NOT NULL DEFAULT 0,
-      opening_on    DATE NOT NULL,
+      opening       NUMERIC(16,2),
+      opening_on    DATE,
       sheet_url     TEXT,                    -- the spending sheet, published as CSV
       active        BOOLEAN NOT NULL DEFAULT TRUE,
       created_at    TIMESTAMPTZ DEFAULT NOW()
@@ -50,6 +50,21 @@ export async function initBanking() {
   await pool.query(`
     CREATE INDEX IF NOT EXISTS banks_realm ON banks (realm_id, active)
   `);
+
+  // A bank whose balance nobody has to hand yet is still a bank - it is added
+  // now and the opening figure is typed in when somebody has the statement.
+  // Until then it has none, which is a different thing from having nought.
+  await pool.query(`ALTER TABLE banks ALTER COLUMN opening DROP NOT NULL`);
+  await pool.query(`ALTER TABLE banks ALTER COLUMN opening_on DROP NOT NULL`);
+
+  // **The time of day the opening balance is true of.**
+  //
+  // Asked for so it is plain which movements come after it. Every feed here
+  // carries a **date and no clock** - a courier settles on a day, a spending
+  // sheet is written by day - so the cut itself is still by day, and this is
+  // the record of the moment rather than a filter. Said out loud on the screen,
+  // because a field that looks like it filters and does not is worse than none.
+  await pool.query(`ALTER TABLE banks ADD COLUMN IF NOT EXISTS opening_at TEXT`);
 
   // Every movement, whoever made it. `source` is who said so, and it is the
   // whole of the safety: a deposit the couriers wrote is replaced when they
@@ -173,8 +188,11 @@ function shapeBank(b) {
     iban: b.iban || '',
     branch: b.branch || '',
     notes: b.notes || '',
-    opening: n2(b.opening),
+    // null, not nought: a bank nobody has given a figure for yet
+    opening: b.opening == null ? null : n2(b.opening),
     openingOn: b.opening_on ? String(b.opening_on).slice(0, 10) : null,
+    openingAt: b.opening_at || '',
+    openingKnown: b.opening != null && !!b.opening_on,
     sheetUrl: b.sheet_url || '',
     active: b.active !== false
   };
@@ -184,8 +202,19 @@ export async function saveBank(realmId, bank) {
   const name = String(bank.name || '').trim();
   if (!name) throw new Error('The bank needs a name');
 
+  // Both or neither. A figure with no day it is true of says nothing, and a
+  // day with no figure is a bank waiting for its statement - which is allowed.
   const on = dayText(bank.openingOn);
-  if (!on) throw new Error('Give the day the opening balance is true of');
+  const hasFigure = bank.opening !== undefined && bank.opening !== null &&
+                    String(bank.opening).trim() !== '';
+  if (hasFigure && !on) {
+    throw new Error('Give the day that opening balance is true of');
+  }
+
+  // hh:mm, or nothing. Kept as it was typed - it is a clock reading, not a
+  // moment to be converted into another timezone.
+  const at = /^([01]?\d|2[0-3]):[0-5]\d$/.test(String(bank.openingAt || '').trim())
+    ? String(bank.openingAt).trim() : null;
 
   const id = Number(bank.id) || 0;
 
@@ -196,12 +225,12 @@ export async function saveBank(realmId, bank) {
     const r = await pool.query(
       `UPDATE banks SET name = $3, owner_name = $4, title = $5, account_no = $6,
               iban = $7, branch = $8, notes = $9, opening = $10, opening_on = $11,
-              sheet_url = $12, active = $13
+              sheet_url = $12, active = $13, opening_at = $14
         WHERE realm_id = $1 AND id = $2 RETURNING id`,
       [realmId, id, name, bank.ownerName || null, bank.title || null,
        bank.accountNo || null, bank.iban || null, bank.branch || null,
-       bank.notes || null, num(bank.opening), on, bank.sheetUrl || null,
-       bank.active !== false]
+       bank.notes || null, hasFigure ? num(bank.opening) : null, on,
+       bank.sheetUrl || null, bank.active !== false, at]
     );
     if (!r.rows.length) throw new Error('No such bank');
     return id;
@@ -209,11 +238,12 @@ export async function saveBank(realmId, bank) {
 
   const r = await pool.query(
     `INSERT INTO banks (realm_id, name, owner_name, title, account_no, iban,
-                        branch, notes, opening, opening_on, sheet_url)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) RETURNING id`,
+                        branch, notes, opening, opening_on, sheet_url, opening_at)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) RETURNING id`,
     [realmId, name, bank.ownerName || null, bank.title || null,
      bank.accountNo || null, bank.iban || null, bank.branch || null,
-     bank.notes || null, num(bank.opening), on, bank.sheetUrl || null]
+     bank.notes || null, hasFigure ? num(bank.opening) : null, on,
+     bank.sheetUrl || null, at]
   );
   return r.rows[0].id;
 }
@@ -319,7 +349,7 @@ const DEPOSIT_SQL = `
          ORDER BY from_date DESC, id DESC LIMIT 1
       ) l ON TRUE
       JOIN banks b ON b.id = l.bank_id AND b.realm_id = r.realm_id
-     WHERE r.paid_on >= b.opening_on
+     WHERE (b.opening_on IS NULL OR r.paid_on >= b.opening_on)
   )`;
 
 export async function postDeposits(realmId) {
@@ -544,7 +574,10 @@ export async function report(realmId, opts) {
     return {
       ...b,
       moved,
-      balance: n2(b.opening + moved),
+      // A bank with no opening figure yet has no balance either - what has
+      // moved since is shown, and the balance says so rather than reporting
+      // the movements as though they were the whole of it.
+      balance: b.opening == null ? null : n2(b.opening + moved),
       inAll: n2(s.in_all), outAll: n2(s.out_all),
       inYear: n2(s.in_year), outYear: n2(s.out_year),
       fromCouriersYear: n2(s.courier_year),
