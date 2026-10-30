@@ -877,7 +877,7 @@ export async function tidyCities(realmId) {
         SET city = INITCAP(city)
       WHERE realm_id = $1
         AND city IS NOT NULL
-        AND LENGTH(city) > 4
+        AND LENGTH(city) > 3
         AND city = UPPER(city)
         AND city <> INITCAP(city)`,
     [realmId]
@@ -887,18 +887,22 @@ export async function tidyCities(realmId) {
 
 // Which parcels still have a code where a city should be, grouped so the
 // screen can say what it is about to ask the courier.
-export async function codedCities(realmId, limit) {
+export async function codedCities(realmId, couriers, limit) {
+  const only = (couriers || []).filter(Boolean);
+  if (!only.length) return [];
+
   const r = await pool.query(
     `SELECT o.account_id, a.label, a.courier, o.city, COUNT(*) AS n
        FROM courier_orders o
        JOIN courier_accounts a ON a.id = o.account_id
       WHERE o.realm_id = $1
+        AND o.courier = ANY($2)
         AND o.city IS NOT NULL
-        AND o.city ~ '^[A-Z0-9.\-]{1,4}$'
+        AND o.city ~ '^[A-Z0-9.\-]{1,3}$'
       GROUP BY o.account_id, a.label, a.courier, o.city
       ORDER BY 5 DESC
       LIMIT ${Math.max(1, Number(limit) || 60)}`,
-    [realmId]
+    [realmId, only]
   );
   return r.rows.map(x => ({
     accountId: x.account_id, label: x.label, courier: x.courier,
@@ -913,7 +917,7 @@ export async function codedTrackings(realmId, accountId, limit) {
     `SELECT tracking FROM courier_orders
       WHERE realm_id = $1 AND account_id = $2
         AND city IS NOT NULL
-        AND city ~ '^[A-Z0-9.\-]{1,4}$'
+        AND city ~ '^[A-Z0-9.\-]{1,3}$'
       ORDER BY booked_on DESC NULLS LAST
       LIMIT ${Math.max(1, Number(limit) || 200)}`,
     [realmId, Number(accountId)]

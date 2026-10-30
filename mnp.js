@@ -628,6 +628,11 @@ export const adapter = {
   peek,
   key: 'mnp',
   name: 'M&P',
+  // **Their monthly report writes a city as a code** - RWP, ISB, FSD -
+  // while their tracking call writes the name. So M&P is the one courier
+  // whose short city values are worth asking about; PostEx's SWAT and
+  // DINA are towns, not codes, and must be left alone.
+  cityCodes: true,
   // **They do deduct**, and the parcel does not show it.
   //
   // Their tracking call reports `AmountPaid` equal to the whole `CODAmount`,

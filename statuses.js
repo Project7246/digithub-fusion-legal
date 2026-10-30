@@ -188,9 +188,11 @@ export function cityName(v) {
   const s = String(v == null ? '' : v).trim().replace(/\s+/g, ' ');
   if (!s) return '';
 
-  // A short all-capitals word with no space in it is a courier's code, and it
-  // is left alone so the fix-up can still recognise it.
-  if (/^[A-Z0-9.\-]{1,4}$/.test(s)) return s;
+  // A very short all-capitals word may be a courier's code, and it is left
+  // alone so the fix-up can still recognise it. **Three letters, not four**:
+  // SWAT and DINA are towns PostEx deliver to, and calling them codes sent
+  // the app off to ask a courier about a name it had already given.
+  if (/^[A-Z0-9.\-]{1,3}$/.test(s)) return s;
 
   // Anything else that is shouted is put into the shape every other courier
   // writes it in. A word already mixed-case is left as its writer wrote it.
@@ -200,8 +202,10 @@ export function cityName(v) {
   return s;
 }
 
-// Whether a value is one of those courier codes rather than a place anybody
-// would recognise.
+// Whether a value **might** be one of those courier codes. Shape alone cannot
+// settle it - SWAT is a town and RWP is a code, and both are short and
+// shouted - so this is only ever the first half of the test. The second half
+// is the courier: only an adapter that says `cityCodes` writes them at all.
 export function looksLikeCode(v) {
-  return /^[A-Z0-9.\-]{1,4}$/.test(String(v == null ? '' : v).trim());
+  return /^[A-Z0-9.\-]{1,3}$/.test(String(v == null ? '' : v).trim());
 }

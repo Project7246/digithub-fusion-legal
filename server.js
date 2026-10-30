@@ -9070,10 +9070,15 @@ app.post('/api/courier/cityfix', async (req, res) => {
   try {
     const tidied = await tidyCities(realmId);
 
-    // What is left is codes. Only an adapter that can be asked about parcels
-    // by name can answer, and it is asked in one batch per account per call -
-    // pressing it again picks up where it stopped.
-    const left = await codedCities(realmId);
+    // **Only the couriers that actually write codes are hunted.** Shape alone
+    // cannot tell RWP from SWAT - one is M&P's code for Rawalpindi and the
+    // other is a town PostEx deliver to - so the adapter says which it is
+    // (`cityCodes`), and PostEx's short names are left exactly as PostEx
+    // wrote them.
+    const coded = Object.values(ADAPTERS)
+      .filter(a => a.cityCodes === true).map(a => a.key);
+
+    const left = await codedCities(realmId, coded);
     const byAccount = new Map();
     left.forEach(x => byAccount.set(x.accountId,
       (byAccount.get(x.accountId) || 0) + x.parcels));
@@ -9089,23 +9094,36 @@ app.post('/api/courier/cityfix', async (req, res) => {
         continue;
       }
 
-      const want = await codedTrackings(realmId, accountId,
-        Number(process.env.CITYFIX_BATCH) || 200);
-      if (!want.length) continue;
+      // Their tracking call takes two hundred at a time, so one press works
+      // through several batches rather than making somebody press it twenty
+      // times. It stops on the first batch that names nothing, which is what
+      // a courier that cannot help looks like.
+      const BATCH = Math.max(1, Number(process.env.CITYFIX_BATCH) || 200);
+      const ROUNDS = Math.max(1, Number(process.env.CITYFIX_ROUNDS) || 12);
 
+      let askedAbout = 0, named = 0, note = '';
       try {
-        const fresh = await a.refreshKnown(acc.token, want, credsOf(acc));
-        const named = fresh.filter(o => o && o.tracking && o.city &&
-                                        !/^[A-Z0-9.\-]{1,4}$/.test(o.city));
-        if (fresh.length) await saveOrders(realmId, acc.id, acc.courier, fresh);
-        asked.push({ account: acc.label, parcels, askedAbout: want.length,
-                     named: named.length, note: '' });
+        for (let round = 0; round < ROUNDS; round++) {
+          const want = await codedTrackings(realmId, accountId, BATCH);
+          if (!want.length) break;
+
+          const fresh = await a.refreshKnown(acc.token, want, credsOf(acc));
+          const got = fresh.filter(o => o && o.tracking && o.city &&
+                                        !/^[A-Z0-9.\-]{1,3}$/.test(o.city));
+          if (fresh.length) await saveOrders(realmId, acc.id, acc.courier, fresh);
+
+          askedAbout += want.length;
+          named += got.length;
+          if (!got.length) { note = 'the courier gave no name for these'; break; }
+        }
       } catch (e) {
-        asked.push({ account: acc.label, parcels, named: 0, note: e.message });
+        note = e.message;
       }
+      asked.push({ account: acc.label, parcels, askedAbout, named, note });
     }
 
-    res.json({ ok: true, tidied, stillCoded: await codedCities(realmId), asked });
+    res.json({ ok: true, tidied, asked,
+               stillCoded: await codedCities(realmId, coded) });
   } catch (e) {
     res.status(500).json({ error: e.message });
   }
