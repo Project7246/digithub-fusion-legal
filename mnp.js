@@ -45,10 +45,22 @@ const TRACK_BASE = (process.env.MNP_TRACK_BASE ||
 // "Delivered") and the report's prefixed code ("RS-Return to Shipper"). Both
 // are here; anything else goes through the word rules in statuses.js.
 const GROUPS = {
-  // Read off a live account: a delivery that found nobody is still the
-  // courier's to deal with, not an unknown.
-  'nsc-no such consignee':      'transit',
-  'nsc':                        'transit',
+  // Read off a live account on 30 Oct 2026. Every one of these is a parcel
+  // M&P still hold - a delivery that did not come off is not an unknown, and
+  // "other" is where a parcel goes to be forgotten. Their own code is kept in
+  // front of the words, which is how their report writes it.
+  'nsc-no such consignee':        'transit',
+  'nsc':                          'transit',
+  'ica-incomplete address':       'transit',
+  'can-consignee not available':  'transit',
+  'ul-unable to locate':          'transit',
+  'fcd-friday closed':            'transit',
+  'reached at destination':       'transit',
+  // Sent on to another branch, still moving.
+  'fwt-forward to':               'transit',
+  // Outside the places they serve - it will come back, so it is on its way
+  // back rather than lost.
+  'nsa-non service area':         'returning',
   'booked':                   'booked',
   'manifested':               'booked',
   'picked up':                'transit',
