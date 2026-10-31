@@ -2885,6 +2885,15 @@ refused (viewer role). `DEMO=off` in DigitalOcean switches it off. Terms and Pri
 
 ### Banking CPR net and status - owner decision, 31 Oct 2026
 
+Follow-up, 1 Nov: the owner wants the Banking tables compact like the Logistics
+receipts table: smaller rows, tighter padding and headers that fit the width.
+Read-only inspection of M&P's Payment_Report showed invoice totals repeated
+on consignment rows, and row NetPayable is that row's RRAmount less that
+repeated invoice. Summing those rows is not an authoritative bank payment;
+the report also omits withholding fields. Correcting the payment source needs
+the portal's payment summary, not a guessed deduction formula. Until that
+source is verified, the existing M&P CPR net is not verified against the bank.
+
 Banking reads the courier CPR's own `net_amount`, after the courier's charges,
 GST, withholdings and other deductions. Never substitute a sum of parcel COD
 for that bank amount. Logistics and Finance retain their existing calculations.
