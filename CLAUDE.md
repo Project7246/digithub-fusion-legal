@@ -2883,6 +2883,40 @@ refused (viewer role). `DEMO=off` in DigitalOcean switches it off. Terms and Pri
 
 ## Banking: the banks, and what moves through them
 
+### Banking CPR net and status - owner decision, 31 Oct 2026
+
+Banking reads the courier CPR's own `net_amount`, after the courier's charges,
+GST, withholdings and other deductions. Never substitute a sum of parcel COD
+for that bank amount. Logistics and Finance retain their existing calculations.
+
+- **To receive is only generated pending CPRs**, confirmed by the owner on
+  31 Oct. Delivered orders without a CPR are not Banking receivables.
+- Confirmed, transferred, processed and the existing closed/paid/cleared
+  statuses mean received. Pending/open CPRs stay receivable and never increase
+  the balance. Unknown statuses are named for review rather than guessed paid.
+- Received money follows the bank link effective on its payment date; pending
+  CPRs follow the current bank. The opening date excludes earlier deposits.
+- The Banking report is a read-only projection of CPR covers, manual entries
+  and the live published spending CSV. Historical generated `bank_moves` are
+  retained, not rewritten or counted a second time. Explicit old deposit bank
+  corrections remain respected. No new tables or migrations are needed.
+- Fiscal year In and Out accumulate actual movements from 1 July to 30 June.
+  Live balance is opening plus actual received money and other movements,
+  less expenses; pending CPRs are excluded. An unreadable spending sheet makes
+  the balance unavailable and shows an error rather than a misleading total.
+- Bank title is prominent, bank name underneath. Explicit received/receivable
+  buttons open a separate list below the bank table; clicking a bank row does
+  not expand it. CPR references open detail with an Excel download. Missing
+  courier detail is shown as unavailable, never as a made-up zero.
+- Refresh reads current CPR data and refreshes the CSV (a short in-memory cache
+  otherwise avoids repeat calls). Returning to a visible tab after a minute
+  refreshes it; no always-on database poller was added.
+- `node tools/banking-check.mjs` and `node tools/banking-report-check.mjs` use
+  synthetic data only; the latter stubs SQL and CSV, checking the report,
+  status transitions, isolation and Excel without touching production.
+  `node tools/banking-ui-check.mjs` executes the page script with a DOM stub
+  to check separate lists and popup logic; it does not claim visual browser QA.
+
 Asked for on 30 Oct 2026, with the reason attached: the management wants one
 live report - every bank account, what is in it, what is still to come, what
 has been paid and received **during the tax year** - instead of assembling it

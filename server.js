@@ -199,6 +199,7 @@ import { startHousekeeping, cleanUp, lastClean } from './housekeeping.js';
 import { reachCourier } from './reach.js';
 import { absorbPayment } from './traxlive.js';
 import { absorbPayouts, bankSaid, bankDrift } from './mnplive.js';
+import { createBankingRouter } from './banking-router.js';
 import { relayState } from './wire.js';
 import {
   read as readGrant, write as writeGrant, mayApp, inModule as inAccessModule,
@@ -9225,13 +9226,15 @@ app.get('/api/courier/peek', async (req, res) => {
 // Fusion's own, every route of it: the banks are the company's money and the
 // courier sign-ins sit beside them. requireBoss, not requireAdmin.
 
+app.use('/api/bank', createBankingRouter({ requireBoss, requireCompany }));
+
 app.get('/api/bank/report', async (req, res) => {
   if (!await requireBoss(req, res)) return;
   const realmId = await requireCompany(req, res);
   if (!realmId) return;
   try {
     res.setHeader('Cache-Control', 'no-store');
-    const out = await bankReport(realmId, { year: req.query.year });
+    const out = await bankReport(realmId, { year: req.query.year, fresh: req.query.fresh === '1' });
     res.json(Object.assign(out, { today: bankToday() }));
   } catch (e) {
     res.status(500).json({ error: e.message });

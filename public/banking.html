@@ -58,6 +58,36 @@
   .chg .who{margin-left:auto;color:var(--faint);font-size:11.5px}
   .warn{background:var(--warn-soft);color:var(--warn);padding:10px 14px;border-radius:7px;
     font-size:12.5px;margin-bottom:12px}
+  .bkidentity strong{display:block;font-family:var(--head);font-size:14px;white-space:nowrap}
+  .bkidentity small,.bkdate{display:block;color:var(--muted);font-family:var(--sans);font-size:11px;margin-top:4px}
+  .bkbanks td{vertical-align:middle;padding:16px 14px!important}
+  .bkbanks th{background:var(--panel-2)}
+  .bklive{background:var(--accent-soft);font-weight:600;color:var(--ink);white-space:nowrap}
+  .bktotal{background:var(--ink);color:white;border-radius:0 10px 10px 0}
+  .bktotal span{color:var(--line)}
+  .bkactions{display:flex;flex-direction:column;gap:6px;align-items:flex-start}
+  .bkactions button{white-space:nowrap}
+  .bkheading{display:flex;align-items:center;gap:12px;padding-bottom:12px}
+  .bkheading h2{margin:0;flex:1}
+  .bkreceipts{margin-top:20px;scroll-margin-top:18px}
+  .bkref{border:0;background:transparent;color:var(--accent-deep);text-decoration:underline;
+    cursor:pointer;font:500 12px var(--mono);padding:3px 0;text-align:left}
+  .bkstatus{display:inline-block;border-radius:20px;padding:3px 9px;background:var(--panel-2);
+    font:500 11px var(--sans);white-space:nowrap;color:var(--muted)}
+  .bkstatus.received{background:var(--ok-soft);color:var(--ok)}
+  .bkstatus.waiting{background:var(--warn-soft);color:var(--warn)}
+  .bkdialog{width:min(1380px,96vw);max-height:90vh;border:1px solid var(--line);border-radius:12px;
+    padding:0;color:var(--text);background:var(--panel);box-shadow:0 20px 80px #18232a40}
+  .bkdialog::backdrop{background:#18232a99}
+  .bkdialog .bkheading{position:sticky;top:0;background:var(--panel);z-index:1;padding:16px 20px;
+    border-bottom:1px solid var(--line);flex-wrap:wrap}
+  #bkDetailBody{padding:18px 20px}
+  .bksummary{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:10px;margin:14px 0}
+  .bksummary div{padding:10px 14px;border:1px solid var(--line);border-radius:7px}
+  .bksummary span{display:block;font-size:11px;color:var(--muted)}
+  .bksummary b{font:500 16px var(--mono)}
+  .bksummary .bknet{background:var(--accent-soft);border-color:var(--accent)}
+  .bkdialog td{white-space:nowrap}
 </style>
 </head>
 <body>
@@ -95,13 +125,19 @@
   </div>
 </div>
 
+<dialog id="bkDialog" class="bkdialog" aria-labelledby="bkDetailTitle">
+  <div class="bkheading"><h2 id="bkDetailTitle">CPR</h2>
+    <button class="mini" id="bkDownload" disabled>Download Excel</button>
+    <button class="mini" id="bkDetailClose" aria-label="Close CPR detail">Close</button></div>
+  <div id="bkDetailBody"></div>
+</dialog>
 <script src="/nav.js"></script>
 <script>
 "use strict";
 (function(){
   var $ = function(id){ return document.getElementById(id); };
   var NAMES = { postex:'PostEx', trax:'Trax', mnp:'M&P' };
-  var S = { tab:'report', report:null, links:null, drift:[], today:'', editing:null };
+  var S = { tab:'report', report:null, links:null, drift:[], today:'', editing:null, selectedBank:null, receiptFilter:'receivable', loadedAt:0 };
 
   function esc(s){
     return String(s == null ? '' : s)
@@ -114,8 +150,105 @@
   }
   function cname(k){ return NAMES[k] || k; }
 
+  var detailRequest = 0;
+  var currentDetail = null;
+  function wireReceiptLinks(host){
+    host.querySelectorAll('[data-cpr]').forEach(function(button){
+      button.addEventListener('click', function(){
+        openReceipt(button.getAttribute('data-account'), button.getAttribute('data-cpr'));
+      });
+    });
+    var close = host.querySelector('#bkListClose');
+    if(close) close.addEventListener('click', function(){
+      S.selectedBank = null;
+      $('bankCprList').innerHTML = '';
+    });
+  }
+
+  function openReceipt(account, ref){
+    var request = ++detailRequest;
+    currentDetail = null;
+    $('bkDetailTitle').textContent = 'CPR ' + ref;
+    $('bkDownload').disabled = true;
+    $('bkDetailBody').innerHTML = '<div class="fxnone">Reading CPR…</div>';
+    if(!$('bkDialog').open) $('bkDialog').showModal();
+    get('/api/bank/cpr?account=' + encodeURIComponent(account) + '&ref=' + encodeURIComponent(ref))
+      .then(function(d){
+        if(request !== detailRequest) return;
+        currentDetail = { account:account, ref:ref };
+        $('bkDownload').disabled = false;
+        var r = d.receipt;
+        var fields = [ ['gross','COD / gross collections'], ['charges','Courier charges / recovered invoices'],
+          ['tax','GST'], ['salesTax','Withholding sales tax'], ['incomeTax','Withholding income tax'],
+          ['withholding','Total withholding'], ['miscellaneous','Miscellaneous charges'],
+          ['carryForward','Carry forward'], ['adjustment','Adjustment'],
+          ['otherDifference','Other deductions / difference'], ['net','Net bank amount'] ];
+        var columns = [ ['tracking','Tracking'], ['orderRef','Order'], ['status','Status'], ['city','City'],
+          ['bookedOn','Booked'], ['deliveredOn','Delivered / returned'], ['settledOn','Paid'],
+          ['amount','COD'], ['received','Collected'], ['fee','Courier charges'], ['upfrontCharges','Upfront charges'],
+          ['tax','GST'], ['whSalesTax','WH sales tax'], ['whIncomeTax','WH income tax'],
+          ['upfront','Upfront paid'], ['reserve','Reserve'], ['net','Net'], ['notes','Notes'] ];
+        var numeric = ['amount','received','fee','upfrontCharges','tax','whSalesTax','whIncomeTax','upfront','reserve','net'];
+        var bank = r.paidToBank || r.paidToAccount ? '<div class="lognote">Paid to ' +
+          esc(r.paidToBank) + ' · ' + esc(r.paidToAccount) +
+          (r.instrument ? ' · ' + esc(r.instrument) : '') + '</div>' : '';
+        var adjustments = (d.adjustments || []).length ? '<h3>Adjustments</h3><div class="wrapx">' +
+          '<table class="plain"><tbody>' + d.adjustments.map(function(a){
+            return '<tr>' + Object.keys(a).map(function(k){
+              return '<td><small class="bkdate">' + esc(k) + '</small>' +
+                esc(typeof a[k] === 'object' ? JSON.stringify(a[k]) : a[k]) + '</td>';
+            }).join('') + '</tr>';
+          }).join('') + '</tbody></table></div>' : '';
+        $('bkDetailBody').innerHTML =
+          (d.warning ? '<div class="warn">' + esc(d.warning) + '</div>' : '') +
+          '<div>' + esc(cname(r.courier)) + ' · ' + esc(r.account) + ' · ' +
+            statusPill(r.status, (S.report.receipts.find(function(x){
+              return x.accountId === Number(account) && x.cpr === ref;
+            }) || {}).state) + '</div>' + bank +
+          '<div class="bksummary">' + fields.filter(function(f){
+            return ['gross','charges','tax','withholding','net'].indexOf(f[0]) >= 0 || d.summary[f[0]] != null;
+          }).map(function(f){
+            return '<div class="' + (f[0] === 'net' ? 'bknet' : '') + '"><span>' + f[1] +
+              '</span><b>' + amount(d.summary[f[0]]) + '</b></div>';
+          }).join('') + '</div>' + adjustments +
+          '<h3>Orders · ' + d.orders.length + '</h3>' +
+          (d.orders.length ? '<div class="wrapx"><table class="plain"><thead><tr>' +
+            columns.map(function(f){ return '<th>' + f[1] + '</th>'; }).join('') + '</tr></thead><tbody>' +
+            d.orders.map(function(o){ return '<tr>' + columns.map(function(f){
+              return '<td class="' + (numeric.indexOf(f[0]) >= 0 ? 'n' : '') + '">' +
+                (numeric.indexOf(f[0]) >= 0 ? amount(o[f[0]]) : esc(o[f[0]] || '—')) + '</td>';
+            }).join('') + '</tr>'; }).join('') + '</tbody></table></div>' :
+            '<div class="fxnone">Order detail has not been supplied for this CPR yet.</div>');
+      }).catch(function(e){
+        if(request === detailRequest) $('bkDetailBody').innerHTML = '<div class="warn">' + esc(e.message) + '</div>';
+      });
+  }
+  $('bkDetailClose').addEventListener('click', function(){ $('bkDialog').close(); });
+  $('bkDialog').addEventListener('close', function(){ ++detailRequest; currentDetail = null; });
+  $('bkDownload').addEventListener('click', function(){
+    if(!currentDetail) return;
+    var current = currentDetail;
+    var button = $('bkDownload');
+    button.disabled = true;
+    fetch('/api/bank/cpr?account=' + encodeURIComponent(current.account) + '&ref=' +
+      encodeURIComponent(current.ref) + '&download=xlsx', { cache:'no-store' }).then(function(r){
+        if(!r.ok) return r.json().then(function(d){ throw new Error(d.error || 'Download failed'); });
+        return r.blob();
+      }).then(function(blob){
+        var url = URL.createObjectURL(blob);
+        var a = document.createElement('a');
+        a.href = url;
+        a.download = 'CPR-' + current.ref.replace(/[^A-Za-z0-9_.-]/g,'_') + '.xlsx';
+        document.body.appendChild(a); a.click(); a.remove();
+        setTimeout(function(){ URL.revokeObjectURL(url); }, 1000);
+      }).catch(function(e){
+        var warning = document.createElement('div'); warning.className = 'warn';
+        warning.textContent = e.message; $('bkDetailBody').prepend(warning);
+      }).finally(function(){ button.disabled = !currentDetail; });
+  });
+
   function get(url){
-    return fetch(url, { cache:'no-store' }).then(function(r){ return r.json(); })
+    return fetch(url, { cache:'no-store', signal:AbortSignal.timeout(45000) }).then(function(r){ return r.json(); })
       .then(function(d){ if(d.error) throw new Error(d.error); return d; });
   }
   function post(url, body){
@@ -127,85 +260,101 @@
 
   /* ---------- the banks ---------- */
 
+  function amount(value){ return value == null ? '—' : money(value); }
+  function statusPill(status, state){
+    return '<span class="bkstatus ' + (state === 'received' ? 'received' :
+      state === 'receivable' ? 'waiting' : '') + '">' + esc(status || 'Unknown') + '</span>';
+  }
+  function cprButton(r){
+    return '<button class="bkref" data-cpr="' + esc(r.cpr || r.ref) +
+      '" data-account="' + r.accountId + '">' + esc(r.cpr || r.ref) + '</button>';
+  }
+
   function reportView(){
     var d = S.report;
     if(!d) return '<div class="fxnone">One moment…</div>';
-
-    var live = d.banks.filter(function(b){ return b.active; });
-    if(!live.length){
-      return '<div class="sheet"><div class="sec">' +
-        '<h2>No bank accounts yet</h2>' +
-        '<div class="fxnone">Add one under <b>Add or edit a bank</b>. It asks for the ' +
-        'balance and the day that balance is true of — nothing before that day is ' +
-        'ever counted, so the balance stays the one you typed.</div></div></div>';
-    }
-
-    var rows = d.banks.map(function(b){
-      return '<tr class="click" data-bank="' + b.id + '">' +
-        // **The account title is what a bank is known by**, and the bank's own
-        // name is the lesser half of it. The owner's name is not in this list
-        // at all - it is on the record, where somebody looks it up, and a
-        // column of business names is not how anybody picks an account.
-        '<td class="nm">' + esc(b.title || b.name) +
-          (b.active ? '' : ' <span class="pill">closed</span>') +
-          '<br><span style="font-size:11.5px;color:var(--faint)">' +
-          esc(b.title ? b.name : '') + (b.accountNo ? ' · ' + esc(b.accountNo) : '') +
-          '</span></td>' +
-        '<td class="n">' + (b.openingKnown
-            ? money(b.opening) + '<br><span style="font-size:11px;color:var(--faint)">' +
-              esc(b.openingOn || '') + (b.openingAt ? ' ' + esc(b.openingAt) : '') + '</span>'
-            : '<span style="color:var(--warn)">not set yet</span>') + '</td>' +
-        '<td class="n pos">' + money(b.inYear) + '</td>' +
-        '<td class="n neg">' + money(b.outYear) + '</td>' +
-        '<td class="n"><b>' + (b.balance == null
-            ? '<span style="color:var(--faint)">—</span>' : money(b.balance)) + '</b></td>' +
-        '<td class="n">' + money(b.receivable) +
-          (b.receivableParcels ? '<br><span style="font-size:11px;color:var(--faint)">' +
-            b.receivableParcels + ' parcels</span>' : '') + '</td>' +
-      '</tr>' +
-      '<tr class="kids" id="bk' + b.id + '" style="display:none">' +
-        '<td colspan="6" style="background:var(--panel-2);padding:0"></td></tr>';
+    if(!d.banks.length) return '<div class="sheet"><div class="sec"><h2>No bank accounts yet</h2>' +
+      '<div class="fxnone">Add one under <b>Add or edit a bank</b>.</div></div></div>';
+    var warnings = (d.warnings || []).map(function(w){
+      return '<div class="warn">' + esc(w.bank) + ': ' + esc(w.message) +
+        '. Live balance is unavailable until the sheet can be read.</div>';
     }).join('');
-
-    return '<div class="sheet"><div class="figs4">' +
-        '<div><span>In the banks now</span><b>' + money(d.totals.balance) + '</b>' +
-          '<small>' + live.length + ' account' + (live.length === 1 ? '' : 's') + '</small></div>' +
-        '<div><span>Still to receive</span><b>' + money(d.totals.receivable) + '</b>' +
-          '<small>couriers hold it</small></div>' +
-        '<div><span>Received this tax year</span><b>' + money(d.totals.inYear) + '</b>' +
-          '<small>' + esc(d.year.from) + ' to ' + esc(d.year.to) + '</small></div>' +
-        '<div><span>Paid this tax year</span><b>' + money(d.totals.outYear) + '</b>' +
-          '<small>from the spending sheets</small></div>' +
+    var unplaced = (d.unplaced || []).filter(function(r){
+      return r.why !== 'Before the opening balance date';
+    });
+    if(unplaced.length) warnings += '<details class="warn"><summary>' + unplaced.length +
+      ' CPRs need checking</summary>' + unplaced.map(function(r){
+        return '<div>' + cprButton(r) + ' · ' + esc(r.account) + ' · ' +
+          esc(r.status || 'Unknown') + ' · ' + esc(r.why) + '</div>';
+      }).join('') + '</details>';
+    var rows = d.banks.map(function(b){
+      return '<tr><td class="bkidentity"><strong>' + esc(b.title || b.name) + '</strong>' +
+        '<small>' + esc(b.name) + (b.accountNo ? ' · ' + esc(b.accountNo) : '') +
+        (b.active ? '' : ' · Closed') + '</small></td>' +
+        '<td class="n">' + amount(b.opening) + '<small class="bkdate">' +
+          esc(b.openingOn || 'Opening not set') + (b.openingAt ? ' ' + esc(b.openingAt) : '') + '</small></td>' +
+        '<td class="n pos">' + (b.balanceIncomplete ? '—' : money(b.inYear)) + '</td>' +
+        '<td class="n neg">' + (b.expenseIncomplete ? '—' : money(b.outYear)) + '</td>' +
+        '<td class="n">' + money(b.fromCouriersYear) + '</td>' +
+        '<td class="n">' + money(b.receivable) + '</td>' +
+        '<td><div class="bkactions"><button class="mini" data-cpr-list="received" data-bank-id="' + b.id +
+          '">View received CPR (' + b.receivedCprs + ')</button>' +
+          '<button class="mini" data-cpr-list="receivable" data-bank-id="' + b.id +
+          '">View receivable CPR (' + b.receivableCprs + ')</button></div></td>' +
+        '<td class="n bklive">' + amount(b.balance) + '</td></tr>';
+    }).join('');
+    return warnings + '<div class="sheet"><div class="figs4">' +
+      '<div><span>Fiscal year In</span><b>' + amount(d.totals.inYear) + '</b></div>' +
+      '<div><span>Fiscal year Out</span><b>' + amount(d.totals.outYear) + '</b></div>' +
+      '<div><span>To receive · pending CPRs</span><b>' + amount(d.totals.receivable) + '</b></div>' +
+      '<div class="bktotal"><span>Live balance</span><b>' + amount(d.totals.balance) + '</b></div>' +
       '</div></div>' +
+      '<div class="sheet" style="margin-top:20px"><div class="sec bkheading">' +
+        '<h2>Bank accounts</h2><button class="mini" id="bkRefresh">Refresh</button></div>' +
+        '<div class="wrapx"><table class="plain bkbanks"><thead><tr>' +
+        '<th>Account title / Bank</th><th class="n">Opening</th><th class="n">Fiscal year In</th>' +
+        '<th class="n">Fiscal year Out</th><th class="n">Received CPRs · FY</th><th class="n">To receive</th>' +
+        '<th>CPRs</th><th class="n bklive">Live balance</th></tr></thead><tbody>' + rows + '</tbody>' +
+        '</table></div></div><div id="bankCprList">' + receiptListView() + '</div>' +
+      '<div class="sheet" style="margin-top:20px"><div class="sec bkheading">' +
+      '<h2>What moved last</h2><span class="aside">Latest 60 · CPR status included</span></div>' +
+      '<div class="wrapx">' + movesTable(d.moves) + '</div></div>';
+  }
 
-      '<div class="sheet" style="margin-top:20px"><div class="sec" style="padding:0">' +
-        '<div class="wrapx"><table class="plain"><thead><tr>' +
-          '<th>Bank</th><th class="n">Opening</th><th class="n">In this year</th>' +
-          '<th class="n">Out this year</th><th class="n">Balance now</th>' +
-          '<th class="n">To receive</th>' +
-        '</tr></thead><tbody>' + rows + '</tbody></table></div>' +
-      '</div></div>' +
-
-      '<div class="sheet" style="margin-top:20px">' +
-        '<div class="sec" style="padding-bottom:0;border-bottom:0">' +
-          '<h2>What moved last<span class="aside">60 entries</span></h2></div>' +
-        '<div class="sec" style="padding:0"><div class="wrapx">' + movesTable(d.moves) +
-        '</div></div></div>';
+  function receiptListView(){
+    if(!S.selectedBank || !S.report) return '';
+    var b = S.report.banks.find(function(x){ return x.id === S.selectedBank; });
+    if(!b) return '';
+    var received = S.receiptFilter === 'received';
+    var rows = (S.report.receipts || []).filter(function(r){
+      return r.bankId === b.id && r.included && r.state === S.receiptFilter &&
+        (!received || r.on >= S.report.year.from && r.on <= S.report.year.to);
+    });
+    return '<div class="sheet bkreceipts"><div class="sec bkheading"><h2>' +
+      esc(b.title || b.name) + ' · ' + (received ? 'Received CPRs' : 'Receivable CPRs') +
+      '</h2><button class="mini" id="bkListClose">Close list</button></div>' +
+      (rows.length ? '<div class="wrapx"><table class="plain"><thead><tr>' +
+        '<th>CPR reference</th><th>Courier / account</th><th>Created</th><th>Paid</th><th>Status</th>' +
+        '<th class="n">Net amount</th></tr></thead><tbody>' + rows.map(function(r){
+          return '<tr><td>' + cprButton(r) + '</td><td>' + esc(cname(r.courier)) +
+            '<small class="bkdate">' + esc(r.account) + '</small></td><td>' + esc(r.createdOn || '—') +
+            '</td><td>' + esc(r.paidOn || '—') + '</td><td>' + statusPill(r.status, r.state) +
+            '</td><td class="n">' + amount(r.net) + '</td></tr>';
+        }).join('') + '</tbody></table></div>' : '<div class="fxnone">No ' +
+          (received ? 'received' : 'pending') + ' CPRs.</div>') + '</div>';
   }
 
   function movesTable(moves){
-    if(!moves.length) return '<div class="lognote">Nothing has moved yet.</div>';
-    var rows = moves.map(function(m){
-      return '<tr>' +
-        '<td class="n">' + esc(m.on) + '</td>' +
-        '<td>' + esc(m.bank) + '</td>' +
-        '<td>' + esc(kindWord(m)) + '</td>' +
-        '<td>' + esc(m.ref || m.note || '') + '</td>' +
-        '<td class="n ' + (m.amount < 0 ? 'neg' : 'pos') + '">' + money(m.amount) + '</td>' +
-      '</tr>';
-    }).join('');
+    if(!moves.length) return '<div class="lognote">No movements or generated CPRs yet.</div>';
     return '<table class="plain"><thead><tr><th>Date</th><th>Bank</th><th>What</th>' +
-      '<th>Reference</th><th class="n">Amount</th></tr></thead><tbody>' + rows + '</tbody></table>';
+      '<th>Reference</th><th>Status</th><th class="n">Net amount</th></tr></thead><tbody>' +
+      moves.map(function(m){
+        return '<tr><td>' + esc(m.on || '—') + '</td><td>' + esc(m.bank) + '</td>' +
+          '<td>' + esc(kindWord(m)) + '</td><td>' + (m.kind === 'courier' ? cprButton(m) :
+          esc(m.note || m.ref || '')) + '</td><td>' + statusPill(m.status, m.state) + '</td>' +
+          '<td class="n ' + (m.state === 'receivable' ? '' : Number(m.amount) < 0 ? 'neg' : 'pos') +
+          '">' + amount(m.amount) + '</td></tr>';
+      }).join('') + '</tbody></table>';
   }
 
   function kindWord(m){
@@ -303,8 +452,8 @@
         'account was paying into <b>on the day it paid</b>, not the bank it pays into ' +
         'today. So changing the bank never moves money that has already landed, and the ' +
         'list underneath each account is the record of every change.</p>' +
-        '<div class="acts"><button class="solid" id="postNow">Put the couriers’ ' +
-        'payments into the banks</button><span class="msg" id="postMsg"></span></div>' +
+        '<div class="acts"><button class="solid" id="postNow">Refresh the couriers’ ' +
+        'CPRs</button><span class="msg" id="postMsg"></span></div>' +
       '</div></div>' + cards;
   }
 
@@ -444,29 +593,22 @@
   function wire(){
     var v = $('view');
 
-    v.querySelectorAll('[data-bank]').forEach(function(tr){
-      tr.addEventListener('click', function(){
-        var id = tr.getAttribute('data-bank');
-        var kids = document.getElementById('bk' + id);
-        if(!kids) return;
-        if(kids.style.display !== 'none'){ kids.style.display = 'none'; return; }
-        kids.style.display = '';
-        var cell = kids.querySelector('td');
-        if(cell.getAttribute('data-done')) return;
-        cell.innerHTML = '<div class="lognote">Reading…</div>';
-        get('/api/bank/one?id=' + id).then(function(d){
-          cell.setAttribute('data-done', '1');
-          cell.innerHTML = '<div class="lognote">' + esc(d.bank.name) +
-            (d.bank.iban ? ' · ' + esc(d.bank.iban) : '') +
-            (d.bank.notes ? ' · ' + esc(d.bank.notes) : '') +
-            ' · ' + esc(d.year.from) + ' to ' + esc(d.year.to) + '</div>' +
-            '<div class="wrapx">' + movesTable(d.moves.map(function(m){
-              return Object.assign({}, m, { bank: d.bank.name });
-            })) + '</div>';
-        }).catch(function(e){
-          cell.innerHTML = '<div class="lognote">' + esc(e.message) + '</div>';
-        });
+    v.querySelectorAll('[data-cpr-list]').forEach(function(button){
+      button.addEventListener('click', function(){
+        S.selectedBank = Number(button.getAttribute('data-bank-id'));
+        S.receiptFilter = button.getAttribute('data-cpr-list');
+        var list = $('bankCprList');
+        list.innerHTML = receiptListView();
+        wireReceiptLinks(list);
+        list.scrollIntoView({ behavior:'smooth', block:'start' });
       });
+    });
+    wireReceiptLinks(v);
+    var refresh = $('bkRefresh');
+    if(refresh) refresh.addEventListener('click', function(){
+      refresh.disabled = true;
+      refresh.textContent = 'Refreshing…';
+      load(true);
     });
 
     var postNow = $('postNow');
@@ -474,7 +616,7 @@
       postNow.disabled = true;
       say($('postMsg'), '', 'Working…');
       post('/api/bank/post', {}).then(function(d){
-        say($('postMsg'), 'good', d.posted + ' payment' + (d.posted === 1 ? '' : 's') + ' written.');
+        say($('postMsg'), 'good', d.posted + ' received CPR' + (d.posted === 1 ? '' : 's') + ' linked.');
         return load();
       }).catch(function(e){
         postNow.disabled = false;
@@ -602,11 +744,12 @@
     });
   }
 
-  function load(){
-    return Promise.all([ get('/api/bank/report'), get('/api/bank/links'),
+  function load(fresh){
+    return Promise.all([ get('/api/bank/report' + (fresh === true ? '?fresh=1' : '')), get('/api/bank/links'),
                          get('/api/bank/drift').catch(function(){ return { drift: [] }; }) ])
       .then(function(a){
         S.report = a[0];
+        S.loadedAt = Date.now();
         S.links = a[1];
         S.drift = (a[2] && a[2].drift) || [];
         S.today = a[0].today || S.today;
@@ -645,6 +788,9 @@
       }
     } catch (err) {}
 
+    document.addEventListener('visibilitychange', function(){
+      if(!document.hidden && Date.now() - S.loadedAt > 60000) load();
+    });
     load();
   }).catch(function(){
     $('view').innerHTML = '<div class="fxnone">Could not reach the server.</div>';

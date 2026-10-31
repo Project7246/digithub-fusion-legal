@@ -23,7 +23,15 @@
 // figure on the report is cut by that and by nothing else.
 
 import { pool } from './db.js';
-import { deductingCouriers } from './adapters.js';
+import { buildReport, receiptProjection } from './banking-cprs.js';
+import { addMoney } from './banking-money.js';
+
+function calendarDay(value) {
+  if (!value) return null;
+  if (value instanceof Date) return value.getFullYear() + '-' +
+    String(value.getMonth() + 1).padStart(2, '0') + '-' + String(value.getDate()).padStart(2, '0');
+  return String(value).slice(0, 10);
+}
 
 /* ==================== the tables ==================== */
 
@@ -129,13 +137,8 @@ export async function initBanking() {
 /* ==================== small things ==================== */
 
 const n2 = v => Math.round(Number(v || 0) * 100) / 100;
-// What a parcel is worth to us. Most couriers take their charges out of what
-// they send; M&P pay the whole COD and bill their charges separately, so
-// netting theirs off would understate what they owe by exactly their charges.
-// One list, built from the adapters - see deductingCouriers().
-const NET_OF = '(o.amount - CASE WHEN o.courier IN (' +
-  deductingCouriers().map(k => "'" + k + "'").join(',') +
-  ') THEN COALESCE(o.fee,0) + COALESCE(o.tax,0) ELSE 0 END)';
+// CPR covers supply the bank net, including M&P's invoice recovery. Parcel
+// pricing belongs to Logistics and is not a substitute for a bank deposit.
 
 const num = v => {
   const f = parseFloat(String(v == null ? '' : v).replace(/[^0-9.\-]/g, ''));
@@ -152,8 +155,8 @@ export function dayText(v) {
 }
 
 export function todayText() {
-  const d = new Date();
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  return new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Karachi',
+    year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
 }
 
 // 1 July to 30 June, named by the year it ends in. Theirs, and the only year
@@ -189,8 +192,8 @@ function shapeBank(b) {
     branch: b.branch || '',
     notes: b.notes || '',
     // null, not nought: a bank nobody has given a figure for yet
-    opening: b.opening == null ? null : n2(b.opening),
-    openingOn: b.opening_on ? String(b.opening_on).slice(0, 10) : null,
+    opening: b.opening == null ? null : String(b.opening),
+    openingOn: calendarDay(b.opening_on),
     openingAt: b.opening_at || '',
     openingKnown: b.opening != null && !!b.opening_on,
     sheetUrl: b.sheet_url || '',
@@ -282,7 +285,7 @@ export async function listLinks(realmId, accountId) {
     courier: x.courier || '',
     bankId: x.bank_id,
     bankName: x.bank_name,
-    from: String(x.from_date).slice(0, 10),
+    from: calendarDay(x.from_date),
     note: x.note || '',
     madeBy: x.made_by || '',
     madeAt: x.created_at
@@ -323,90 +326,26 @@ export async function unlink(realmId, id) {
 // whatever came before - "yad rhy ky wo balance ky pichy wali transaction bank
 // na uthay".
 
-const DEPOSIT_SQL = `
-  WITH receipt AS (
-    SELECT o.realm_id, o.account_id, o.cpr_number,
-           MIN(o.settled_on) AS paid_on,
-           COALESCE(SUM(${NET_OF}), 0) AS net
-      FROM courier_orders o
-     WHERE o.realm_id = $1
-       AND o.cpr_number IS NOT NULL AND o.cpr_number <> ''
-       AND o.settled_on IS NOT NULL
-       AND (o.settled IS TRUE OR EXISTS (
-             SELECT 1 FROM courier_cprs c
-              WHERE c.realm_id = o.realm_id AND c.account_id = o.account_id
-                AND c.cpr_number = o.cpr_number
-                AND UPPER(COALESCE(c.status,'')) = 'CLOSED'))
-     GROUP BY o.realm_id, o.account_id, o.cpr_number
-  ),
-  placed AS (
-    SELECT r.*, l.bank_id, b.opening_on
-      FROM receipt r
-      JOIN LATERAL (
-        SELECT bank_id FROM bank_links
-         WHERE realm_id = r.realm_id AND account_id = r.account_id
-           AND from_date <= r.paid_on
-         ORDER BY from_date DESC, id DESC LIMIT 1
-      ) l ON TRUE
-      JOIN banks b ON b.id = l.bank_id AND b.realm_id = r.realm_id
-     WHERE (b.opening_on IS NULL OR r.paid_on >= b.opening_on)
-  )`;
-
+// Courier deposits are now a live read of CPR covers. Do not rewrite or
+// delete historical bank_moves; the report replaces their old COD projection
+// with the current receipt net and status. Existing endpoint remains compatible.
 export async function postDeposits(realmId) {
-  const r = await pool.query(
-    `${DEPOSIT_SQL}
-     INSERT INTO bank_moves
-       (realm_id, bank_id, on_date, amount, kind, source, ref, account_id, note)
-     SELECT p.realm_id, p.bank_id, p.paid_on, p.net, 'courier', 'courier',
-            p.cpr_number, p.account_id, NULL
-       FROM placed p
-     ON CONFLICT (realm_id, source, ref)
-       WHERE source <> 'hand' AND ref IS NOT NULL
-       DO UPDATE SET amount  = EXCLUDED.amount,
-                     on_date = EXCLUDED.on_date,
-                     bank_id = EXCLUDED.bank_id
-     RETURNING id`,
-    [realmId]
-  );
-  return r.rowCount;
+  const data = await receiptProjection(realmId, await listBanks(realmId, { all: true }), todayText());
+  return data.receipts.filter(r => r.included && r.state === 'received').length;
 }
 
-// Receipts that are paid and have nowhere to land, with the reason. A figure
-// missing from a bank must say why rather than simply not be there.
 export async function homeless(realmId) {
-  const r = await pool.query(
-    `SELECT o.account_id, a.label, a.courier, COUNT(DISTINCT o.cpr_number) AS receipts,
-            COALESCE(SUM(${NET_OF}),0) AS net,
-            MIN(o.settled_on) AS first_on, MAX(o.settled_on) AS last_on,
-            EXISTS (SELECT 1 FROM bank_links l
-                     WHERE l.realm_id = o.realm_id AND l.account_id = o.account_id) AS has_link
-       FROM courier_orders o
-       JOIN courier_accounts a ON a.id = o.account_id
-      WHERE o.realm_id = $1
-        AND o.cpr_number IS NOT NULL AND o.cpr_number <> ''
-        AND o.settled_on IS NOT NULL
-        AND NOT EXISTS (
-          SELECT 1 FROM bank_moves m
-           WHERE m.realm_id = o.realm_id AND m.source = 'courier'
-             AND m.ref = o.cpr_number)
-      GROUP BY o.account_id, a.label, a.courier, o.realm_id
-      ORDER BY 5 DESC`,
-    [realmId]
-  );
-
-  return r.rows.map(x => ({
-    accountId: x.account_id,
-    label: x.label,
-    courier: x.courier,
-    receipts: Number(x.receipts),
-    net: n2(x.net),
-    firstOn: x.first_on ? String(x.first_on).slice(0, 10) : null,
-    lastOn: x.last_on ? String(x.last_on).slice(0, 10) : null,
-    // the two reasons, told apart, because the fix is different for each
-    why: x.has_link
-      ? 'paid before the bank it goes to was opened, or before the date it was set from'
-      : 'no bank is set for this courier account yet'
-  }));
+  const data = await receiptProjection(realmId, await listBanks(realmId, { all: true }), todayText());
+  const byAccount = new Map();
+  for (const r of data.receipts.filter(r => !r.included && r.state === 'received')) {
+    const key = r.accountId + ':' + r.why;
+    const row = byAccount.get(key) || { accountId: r.accountId, label: r.account,
+      courier: r.courier, receipts: 0, values: [], why: r.why };
+    row.receipts++;
+    row.values.push(r.net);
+    byAccount.set(key, row);
+  }
+  return [...byAccount.values()].map(({ values, ...row }) => ({ ...row, net: addMoney(values) }));
 }
 
 /* ==================== by hand: transfers and adjustments ==================== */
@@ -496,168 +435,32 @@ export async function dropMove(realmId, id) {
 // pays into **now**, because that is where it will land.
 
 export async function receivable(realmId) {
-  const r = await pool.query(
-    `SELECT l.bank_id, COALESCE(SUM(${NET_OF}),0) AS owed,
-            COUNT(*) AS parcels
-       FROM courier_orders o
-       JOIN LATERAL (
-         SELECT bank_id FROM bank_links
-          WHERE realm_id = o.realm_id AND account_id = o.account_id
-            AND from_date <= CURRENT_DATE
-          ORDER BY from_date DESC, id DESC LIMIT 1
-       ) l ON TRUE
-      WHERE o.realm_id = $1
-        AND o.status_group = 'delivered'
-        AND NOT (o.settled IS TRUE OR EXISTS (
-              SELECT 1 FROM courier_cprs c
-               WHERE c.realm_id = o.realm_id AND c.account_id = o.account_id
-                 AND c.cpr_number = o.cpr_number
-                 AND UPPER(COALESCE(c.status,'')) = 'CLOSED'))
-      GROUP BY l.bank_id`,
-    [realmId]
-  );
-
+  const data = await receiptProjection(realmId, await listBanks(realmId, { all: true }), todayText());
   const out = new Map();
-  r.rows.forEach(x => out.set(Number(x.bank_id),
-    { owed: n2(x.owed), parcels: Number(x.parcels) }));
+  for (const r of data.receipts.filter(r => r.included && r.state === 'receivable')) {
+    const row = out.get(r.bankId) || { owed: '0.00', cprs: 0 };
+    row.owed = addMoney([row.owed, r.net]);
+    row.cprs++;
+    out.set(r.bankId, row);
+  }
   return out;
 }
 
-/* ==================== the report the management asked for ==================== */
-
-export async function report(realmId, opts) {
-  const year = taxYear(opts && opts.year);
-
-  const [banks, sums, owed, recent] = await Promise.all([
-    listBanks(realmId, { all: true }),
-
-    // Everything each bank has ever moved, and the part of it inside the tax
-    // year, in one pass - a report page that fires a query per bank is fifty
-    // wake-ups for one screen.
-    pool.query(
-      `SELECT bank_id,
-              COALESCE(SUM(amount),0) AS net,
-              COALESCE(SUM(amount) FILTER (WHERE amount > 0),0) AS in_all,
-              COALESCE(SUM(-amount) FILTER (WHERE amount < 0),0) AS out_all,
-              COALESCE(SUM(amount) FILTER (WHERE amount > 0
-                        AND on_date BETWEEN $2 AND $3),0) AS in_year,
-              COALESCE(SUM(-amount) FILTER (WHERE amount < 0
-                        AND on_date BETWEEN $2 AND $3),0) AS out_year,
-              COALESCE(SUM(amount) FILTER (WHERE kind = 'courier'
-                        AND on_date BETWEEN $2 AND $3),0) AS courier_year,
-              MAX(on_date) AS last_on
-         FROM bank_moves
-        WHERE realm_id = $1
-        GROUP BY bank_id`,
-      [realmId, year.from, year.to]),
-
-    receivable(realmId),
-
-    pool.query(
-      `SELECT m.*, b.name AS bank_name, a.label AS account_label
-         FROM bank_moves m
-         JOIN banks b ON b.id = m.bank_id
-         LEFT JOIN courier_accounts a ON a.id = m.account_id
-        WHERE m.realm_id = $1
-        ORDER BY m.on_date DESC, m.id DESC
-        LIMIT 60`,
-      [realmId])
-  ]);
-
-  const by = new Map();
-  sums.rows.forEach(x => by.set(Number(x.bank_id), x));
-
-  const rows = banks.map(b => {
-    const s = by.get(b.id) || {};
-    const moved = n2(s.net);
-    const r = owed.get(b.id) || { owed: 0, parcels: 0 };
-    return {
-      ...b,
-      moved,
-      // A bank with no opening figure yet has no balance either - what has
-      // moved since is shown, and the balance says so rather than reporting
-      // the movements as though they were the whole of it.
-      balance: b.opening == null ? null : n2(b.opening + moved),
-      inAll: n2(s.in_all), outAll: n2(s.out_all),
-      inYear: n2(s.in_year), outYear: n2(s.out_year),
-      fromCouriersYear: n2(s.courier_year),
-      receivable: r.owed,
-      receivableParcels: r.parcels,
-      lastOn: s.last_on ? String(s.last_on).slice(0, 10) : null
-    };
-  });
-
-  const total = (k) => n2(rows.reduce((a, x) => a + Number(x[k] || 0), 0));
-
-  return {
-    year,
-    banks: rows,
-    totals: {
-      opening: total('opening'),
-      balance: total('balance'),
-      inYear: total('inYear'),
-      outYear: total('outYear'),
-      receivable: total('receivable'),
-      // What we owe is not in this app yet - it is in the books, and saying
-      // nought for it would be a figure nobody could argue with and nobody
-      // should trust.
-      payable: null
-    },
-    moves: recent.rows.map(m => ({
-      id: m.id,
-      bankId: m.bank_id,
-      bank: m.bank_name,
-      on: String(m.on_date).slice(0, 10),
-      amount: n2(m.amount),
-      kind: m.kind,
-      source: m.source,
-      ref: m.ref || '',
-      account: m.account_label || '',
-      note: m.note || '',
-      madeBy: m.made_by || ''
-    }))
-  };
+export async function report(realmId, opts = {}) {
+  return buildReport(realmId, { banks: await listBanks(realmId, { all: true }),
+    year: taxYear(opts.year), today: todayText(), parseSheet: readSpendSheet,
+    fresh: !!opts.fresh, allMoves: !!opts.allMoves });
 }
 
-/* ==================== one bank, opened ==================== */
-
-export async function bankSheet(realmId, bankId, opts) {
-  const id = Number(bankId);
-  const year = taxYear(opts && opts.year);
-
-  const bank = (await pool.query(
-    `SELECT * FROM banks WHERE realm_id = $1 AND id = $2`, [realmId, id])).rows[0];
+export async function bankSheet(realmId, bankId, opts = {}) {
+  const data = await report(realmId, { ...opts, allMoves: true });
+  const bank = data.banks.find(b => b.id === Number(bankId));
   if (!bank) throw new Error('No such bank');
-
-  const moves = await pool.query(
-    `SELECT m.*, a.label AS account_label, o.name AS other_name
-       FROM bank_moves m
-       LEFT JOIN courier_accounts a ON a.id = m.account_id
-       LEFT JOIN banks o ON o.id = m.other_bank_id
-      WHERE m.realm_id = $1 AND m.bank_id = $2
-        AND m.on_date BETWEEN $3 AND $4
-      ORDER BY m.on_date DESC, m.id DESC
-      LIMIT 500`,
-    [realmId, id, (opts && dayText(opts.from)) || year.from,
-     (opts && dayText(opts.to)) || year.to]
-  );
-
-  return {
-    bank: shapeBank(bank),
-    year,
-    moves: moves.rows.map(m => ({
-      id: m.id,
-      on: String(m.on_date).slice(0, 10),
-      amount: n2(m.amount),
-      kind: m.kind,
-      source: m.source,
-      ref: m.ref || '',
-      account: m.account_label || '',
-      other: m.other_name || '',
-      note: m.note || '',
-      madeBy: m.made_by || ''
-    }))
-  };
+  const from = dayText(opts.from) || data.year.from;
+  const to = dayText(opts.to) || data.year.to;
+  return { bank, year: data.year, warnings: data.warnings,
+    receipts: data.receipts.filter(r => r.bankId === bank.id),
+    moves: data.moves.filter(m => m.bankId === bank.id && m.on >= from && m.on <= to).slice(0, 500) };
 }
 
 /* ==================== the spending sheet ==================== */
@@ -750,19 +553,26 @@ export function readSpendSheet(text) {
   const words = rows[head].map(x => cell(x).toLowerCase());
   const find = re => words.findIndex(w => re.test(w));
   const iDay = find(/date|day|tareekh/);
-  const iAmt = find(/amount|amt|debit|paid|spend|kharch/);
+  const iAmt = find(/amount|amt|^rs$|rupee|debit|paid|spend|kharch/);
   const iFor = find(/detail|particular|descri|note|purpose|head|narration|reason/);
 
   const out = [];
+  let invalidRows = 0;
   for (let i = head + 1; i < rows.length; i++) {
     const r = rows[i];
+    if (!r.some(v => cell(v))) continue;
+    // Footer totals are not transactions. An unreadable expense must be
+    // reported, rather than disappearing from a live balance.
+    if (!cell(r[iDay]) && /total|balance/i.test(r.map(cell).join(' '))) continue;
     const day = sheetDay(r[iDay]);
     const amount = Math.abs(num(r[iAmt]));
-    if (!day || !amount) continue;
+    if (!day || !cell(r[iAmt]) || !Number.isFinite(amount) ||
+        !/\d/.test(cell(r[iAmt]))) { invalidRows++; continue; }
+    if (!amount) continue;
     const note = cell(iFor > -1 ? r[iFor] : '') || 'spending';
-    out.push({ day: day, amount: amount, note: note, key: keyOf(day, amount, note) });
+    out.push({ day: day, amount: n2(amount), note: note, key: keyOf(day, amount, note) });
   }
-  return { rows: out, trouble: out.length ? null : 'no rows with a date and an amount' };
+  return { rows: out, trouble: invalidRows ? invalidRows + ' spending row(s) could not be read' : null };
 }
 
 // Read the sheet and write what is in it, for one bank.
@@ -794,8 +604,9 @@ export async function pullSheet(realmId, bankId, opts) {
   }
 
   const read = readSpendSheet(text);
-  const opening = String(b.opening_on).slice(0, 10);
-  const rows = read.rows.filter(x => x.day >= opening);
+  if (read.trouble) throw new Error(read.trouble);
+  const opening = calendarDay(b.opening_on);
+  const rows = read.rows.filter(x => !opening || x.day >= opening);
 
   const client = await pool.connect();
   let written = 0, gone = 0;

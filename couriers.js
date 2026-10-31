@@ -228,6 +228,57 @@ export async function saveCprs(realmId, accountId, courier, rows) {
   return good.length;
 }
 
+// Read-only interface for Banking. Keep courier tables and field names here;
+// Banking consumes the receipt's net, never reconstructs it from parcel COD.
+export async function bankingReceipts(realmId) {
+  const r = await pool.query(
+    `WITH parcel_dates AS (
+       SELECT account_id, cpr_number, MIN(settled_on) AS paid_on, COUNT(*) AS orders
+         FROM courier_orders
+        WHERE realm_id = $1 AND cpr_number IS NOT NULL AND cpr_number <> ''
+        GROUP BY account_id, cpr_number
+     )
+     SELECT COALESCE(c.account_id,p.account_id) AS account_id,
+            COALESCE(c.cpr_number,p.cpr_number) AS cpr_number,
+            COALESCE(c.courier,a.courier) AS courier, a.label, c.remote_id,
+            c.status, c.net_amount, c.gross_amount, c.charge_amount,
+            c.cod_amount, c.charges_amount, c.tax_amount, c.wh_amount,
+            c.orders_count, COALESCE(p.orders,0) AS linked_orders,
+            to_char(c.created_on AT TIME ZONE 'Asia/Karachi', 'YYYY-MM-DD') AS created_day,
+            COALESCE(to_char(c.approved_on AT TIME ZONE 'Asia/Karachi', 'YYYY-MM-DD'),
+                     to_char(p.paid_on, 'YYYY-MM-DD')) AS paid_day,
+            c.paid_to_bank, c.paid_to_account, c.instrument, c.pay_mode
+       FROM (SELECT * FROM courier_cprs WHERE realm_id = $1) c
+       FULL JOIN parcel_dates p ON p.account_id = c.account_id AND p.cpr_number = c.cpr_number
+       JOIN courier_accounts a ON a.realm_id = $1 AND a.id = COALESCE(c.account_id,p.account_id)
+      WHERE COALESCE(c.cpr_number,p.cpr_number) <> ''
+      ORDER BY c.created_on DESC NULLS LAST, c.id DESC`, [realmId]);
+  return r.rows.map(c => ({
+    accountId: Number(c.account_id), cpr: c.cpr_number, courier: c.courier,
+    account: c.label, remoteId: c.remote_id, status: c.status || '',
+    net: c.net_amount, gross: c.gross_amount ?? c.cod_amount,
+    charges: c.charge_amount ?? c.charges_amount, tax: c.tax_amount,
+    withholding: c.wh_amount, orders: c.orders_count == null ? null : Number(c.orders_count),
+    linkedOrders: Number(c.linked_orders), createdOn: c.created_day, paidOn: c.paid_day,
+    paidToBank: c.paid_to_bank || '', paidToAccount: c.paid_to_account || '',
+    instrument: c.instrument || '', mode: c.pay_mode || ''
+  }));
+}
+
+export async function bankingReceiptOrders(realmId, accountId, cpr) {
+  const r = await pool.query(
+    `SELECT tracking, order_ref, city, status, amount, fee, tax,
+            to_char(booked_on, 'YYYY-MM-DD') AS booked_day,
+            to_char(delivered_on, 'YYYY-MM-DD') AS delivered_day,
+            to_char(settled_on, 'YYYY-MM-DD') AS paid_day
+       FROM courier_orders
+      WHERE realm_id = $1 AND account_id = $2 AND cpr_number = $3
+      ORDER BY tracking`, [realmId, Number(accountId), String(cpr)]);
+  return r.rows.map(o => ({ tracking: o.tracking, orderRef: o.order_ref || '',
+    city: o.city || '', status: o.status || '', amount: o.amount, fee: o.fee,
+    tax: o.tax, bookedOn: o.booked_day, deliveredOn: o.delivered_day, settledOn: o.paid_day }));
+}
+
 export async function listPortalCprs(realmId, opts) {
   const where = ['c.realm_id = $1'];
   const args = [realmId];
