@@ -1,10 +1,13 @@
 // Synthetic fixtures only; no production database is contacted.
 import assert from 'node:assert/strict';
-import { columnBreakdown, paymentWorkbook, correctTransaction, removeFiscalSetup, historyTransactions, fiscalHistory } from '../banking-history.js';
+import { columnBreakdown, paymentWorkbook, correctTransaction, removeFiscalSetup, historyTransactions, fiscalHistory, historyWorkbook } from '../banking-history.js';
 import { pool } from '../db.js';
 import express from 'express';
 import { createBankingRouter } from '../banking-router.js';
 import XLSX from 'xlsx';
+const logBook=XLSX.read(historyWorkbook({transactions:[{id:1,type:'in',entries:[{bankId:1,on:'2026-10-12',amount:'25.00',note:'Sample'}]}]},'entry',[{id:1,name:'Sample Bank'}]),{type:'buffer'});
+const logValues=XLSX.utils.sheet_to_json(logBook.Sheets['Banking log'],{header:1});
+assert.equal(logValues[1][3],'Sample Bank');assert.equal(logValues[1][5],25);
 const fiscalRows=[{id:2,bank_id:1,fiscal_year:2027,opening_in:'0.00',opening_out:'0.00',previous_id:1,in_day:'2026-10-13',out_day:'2026-10-13'},
   {id:1,bank_id:1,fiscal_year:2027,opening_in:'58055.43',opening_out:'0.00',in_day:'2026-10-13',out_day:'2026-10-13'}];
 assert.equal(fiscalHistory(fiscalRows,[]).length,0,'legacy cleared opening and superseded original both disappear');

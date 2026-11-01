@@ -11,6 +11,7 @@ const elements = new Map();
 const element = id => {
   if (!elements.has(id)) elements.set(id, { innerHTML: '', textContent: '', disabled: false,
     open: false, events: {}, addEventListener(type, handler) { this.events[type] = handler; },
+    querySelectorAll(){return [];},
     showModal() { this.open = true; }, close() { this.open = false; this.events.close?.(); } });
   return elements.get(id);
 };
@@ -27,7 +28,7 @@ const sandbox = { console, setTimeout, clearTimeout, AbortSignal, URL, Date,
   }) }; }
 };
 vm.runInNewContext(script.replace(/\}\)\(\);\s*$/, `
-  globalThis.checkUi = { S, reportView, receiptListView, openReceipt, entriesView, spendingView, openPayments, setupLog, transactionLog };
+  globalThis.checkUi = { S, reportView, receiptListView, openReceipt, entriesView, spendingView, openPayments, setupLog, transactionLog, openLog };
 })();`), sandbox);
 const ui = sandbox.checkUi;
 ui.S.report = { year: { from: '2026-07-01', to: '2027-06-30' },
@@ -84,6 +85,14 @@ assert.match(ui.setupLog(),/data-remove-setup="3"/);
 assert.match(ui.transactionLog('entry'),/Saved deposit/);
 assert.match(ui.transactionLog('entry'),/data-edit-transaction="4"/);
 assert.match(ui.transactionLog('entry'),/data-remove-transaction="4"/);
+assert.match(ui.entriesView(),/data-view-log="entry"/);
+assert.match(ui.entriesView(),/data-view-log="setup"/);
+assert.match(ui.entriesView(),/data-view-log="transfer"/);
+assert.doesNotMatch(ui.entriesView(),/Saved deposit|Fiscal opening log - all banks/,'log tables are absent from the default page');
+ui.openLog('entry');
+assert.equal(element('bkLogDialog').open,true);
+assert.match(element('bkLogBody').innerHTML,/Saved deposit/);
+assert.match(element('bkLogDownload').href,/download=xlsx&kind=entry/);
 ui.S.history.transactions[0].reversed=true;
 assert.match(ui.transactionLog('entry'),/Updated/);
 assert.doesNotMatch(ui.transactionLog('entry'),/data-remove-transaction="4"/);

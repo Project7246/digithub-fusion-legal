@@ -1,5 +1,13 @@
 # Digithub Fusion - project notes for Claude
 
+## Log presentation - 2 Nov 2026
+
+Owner requested that logs not grow the entry page. Fiscal opening, transfer,
+manual In/Out and bank-opening history show View log buttons by default. Tables
+open only in a dialog, with Excel download of the same visible, company-scoped
+records. Preserve Edit/Remove: close the dialog to edit in the existing form;
+removal keeps the existing audited behavior. Never export hidden deleted chains.
+
 ## Latest owner balance/log rule - 2 Nov 2026 (supersedes earlier balance notes)
 
 Live Balance = Opening Balance + full selected Fiscal Year In - full selected

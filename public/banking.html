@@ -176,6 +176,7 @@
   <div id="bkDetailBody"></div>
 </dialog>
 <dialog id="bkPaymentDialog" class="bkdialog" aria-label="Bank payments"><div class="bkheading"><h2>Google Sheet payments</h2><button class="mini" id="bkPaymentsClose">Close</button></div><div id="spendingPreview" style="padding:12px"></div></dialog>
+<dialog id="bkLogDialog" class="bkdialog" aria-labelledby="bkLogTitle"><div class="bkheading"><h2 id="bkLogTitle">Banking log</h2><a class="mini" id="bkLogDownload">Download Excel</a><button class="mini" id="bkLogClose">Close</button></div><div id="bkLogMsg" class="msg bad"></div><div id="bkLogBody" style="padding:12px"></div></dialog>
 <script src="/nav.js"></script>
 <script>
 "use strict";
@@ -337,6 +338,20 @@
     var b=S.report.banks.find(function(x){return x.id===Number(id);});
     return b ? (b.title || b.name)+' - '+b.name : 'Bank '+id;
   }
+  var LOG_NAMES={setup:'Fiscal opening log',transfer:'Transfer log',entry:'Transaction In / Out log',opening:'Bank opening / details history'};
+  function logButton(kind){
+    return '<div class="acts" style="margin-bottom:14px"><button class="mini" data-view-log="'+kind+'">View '+esc(LOG_NAMES[kind])+'</button></div>';
+  }
+  function closeLog(){if($('bkLogDialog').open)$('bkLogDialog').close();}
+  function openLog(kind){
+    if(!LOG_NAMES[kind])return;
+    $('bkLogTitle').textContent=LOG_NAMES[kind];$('bkLogMsg').textContent='';
+    $('bkLogDownload').href='/api/bank/history?download=xlsx&kind='+encodeURIComponent(kind);
+    $('bkLogBody').innerHTML=kind==='setup'?setupLog():kind==='opening'?openingLog():transactionLog(kind);
+    wireLogActions($('bkLogBody'));
+    if(!$('bkLogDialog').open)$('bkLogDialog').showModal();
+  }
+  $('bkLogClose').addEventListener('click',closeLog);
   function transactionLog(kind){
     var rows=(S.history.transactions || []).filter(function(t){return kind==='transfer'?t.type==='transfer':t.type!=='transfer';});
     return '<h3 style="font-size:13px;margin-top:18px">'+(kind==='transfer'?'Transfer log':'Transaction In / Out log')+'</h3><div class="wrapx"><table class="plain"><thead><tr><th>Entry</th><th>Date</th><th>Bank / direction</th><th class="n">Amount</th><th>Reference / note</th><th>Status / saved by</th><th>Actions</th></tr></thead><tbody>'+rows.map(function(t){
@@ -622,7 +637,7 @@
       return '<option value="' + b.id + '">' + esc((b.title || b.name) + ' - ' + b.name) + '</option>';
     }).join('');
 
-    return setupView(banks,opts) + setupLog() + '<div class="sheet" style="margin-bottom:16px"><div class="sec">' +
+    return setupView(banks,opts) + logButton('setup') + '<div class="sheet" style="margin-bottom:16px"><div class="sec">' +
         '<h2>Move money between banks</h2>' +
         '<div class="form">' +
           '<div><label>Out of</label><select id="tFrom">' + opts + '</select></div>' +
@@ -632,7 +647,7 @@
           '<div class="wide"><label>Note</label><input type="text" id="tNote"></div>' +
         '</div>' +
         '<div class="acts"><button class="solid" id="tGo">Transfer</button>' +
-        '<span class="msg" id="tMsg"></span><button class="mini" data-cancel-edit>Cancel edit</button></div>' + transactionLog('transfer') +
+        '<span class="msg" id="tMsg"></span><button class="mini" data-cancel-edit>Cancel edit</button></div>' + logButton('transfer') +
       '</div></div>' +
 
       '<div class="sheet" style="margin-bottom:16px"><div class="sec">' +
@@ -645,7 +660,7 @@
           '<div class="wide"><label>What it is for</label><input type="text" id="aNote"></div>' +
         '</div>' +
         '<div class="acts"><button class="solid" id="aGo">Save the entry</button>' +
-        '<span class="msg" id="aMsg"></span><button class="mini" data-cancel-edit>Cancel edit</button></div>' + transactionLog('entry') +
+        '<span class="msg" id="aMsg"></span><button class="mini" data-cancel-edit>Cancel edit</button></div>' + logButton('entry') +
       '</div></div>' +
 
       '<div class="sheet"><div class="sec" style="padding-bottom:0;border-bottom:0">' +
@@ -736,7 +751,7 @@
     v.innerHTML = S.tab === 'report'   ? reportView()
                 : S.tab === 'couriers' ? couriersView()
                 : S.tab === 'entries'  ? entriesView()
-                : addView()+openingLog();
+                : addView()+logButton('opening');
     wire();
   }
 
@@ -747,6 +762,32 @@
   }
 
   var breakdownRequest=0, paymentRequest=0;
+  function wireLogActions(host){
+    host.querySelectorAll('[data-edit-transaction]').forEach(function(b){b.addEventListener('click',function(){
+      closeLog();S.editTransaction=S.history.transactions.find(function(t){return String(t.id)===b.getAttribute('data-edit-transaction');});
+      draw();
+    });});
+    host.querySelectorAll('[data-cancel-edit]').forEach(function(b){b.addEventListener('click',function(){S.editTransaction=null;draw();});});
+    host.querySelectorAll('[data-remove-transaction]').forEach(function(b){b.addEventListener('click',function(){
+      if(!window.confirm('Remove this entry and reverse its bank impact? Its audit record will remain.'))return;
+      b.disabled=true;post('/api/bank/correct-transaction',{id:b.getAttribute('data-remove-transaction')})
+        .then(function(){closeLog();S.editTransaction=null;return load();}).catch(function(e){say($('bkLogMsg'),'bad',e.message);b.disabled=false;});
+    });});
+    host.querySelectorAll('[data-edit-setup]').forEach(function(b){b.addEventListener('click',function(){
+      closeLog();var r=S.history.setups.find(function(x){return String(x.id)===b.getAttribute('data-edit-setup');});
+      S.setupBankId=r.bankId;
+      $('sBank').value=r.bankId;$('sBank').disabled=true;$('sYear').value=r.fiscalYear;S.editSetup=r.id;
+      $('sIn').value=r.openingIn;$('sOut').value=r.openingOut;$('sInFrom').value=r.inFrom;$('sOutFrom').value=r.outFrom;
+      $('sSave').textContent='Save correction';$('sSave').scrollIntoView({behavior:'smooth',block:'center'});
+      say($('sMsg'),'','To move to a different bank, remove this opening and enter it on the correct bank.');
+    });});
+    host.querySelectorAll('[data-remove-setup]').forEach(function(b){b.addEventListener('click',function(){
+      if(!window.confirm('Remove these historical Opening In/Out amounts? A zero replacement and the full history will remain.'))return;
+      b.disabled=true;post('/api/bank/remove-setup',{id:b.getAttribute('data-remove-setup')})
+        .then(function(){closeLog();return load();}).catch(function(e){say($('bkLogMsg'),'bad',e.message);b.disabled=false;});
+    });});
+
+  }
   function wire(){
     ++breakdownRequest;
     var v = $('view');
@@ -767,29 +808,8 @@
         .catch(function(e){if($('bankCprList'))$('bankCprList').innerHTML='<div class="warn">'+esc(e.message)+'</div>';});
     });});
     if(S.breakdown && $('bankCprList'))wireBreakdown($('bankCprList'));
-    v.querySelectorAll('[data-edit-transaction]').forEach(function(b){b.addEventListener('click',function(){
-      S.editTransaction=S.history.transactions.find(function(t){return String(t.id)===b.getAttribute('data-edit-transaction');});
-      draw();
-    });});
-    v.querySelectorAll('[data-cancel-edit]').forEach(function(b){b.addEventListener('click',function(){S.editTransaction=null;draw();});});
-    v.querySelectorAll('[data-remove-transaction]').forEach(function(b){b.addEventListener('click',function(){
-      if(!window.confirm('Remove this entry and reverse its bank impact? Its audit record will remain.'))return;
-      b.disabled=true;post('/api/bank/correct-transaction',{id:b.getAttribute('data-remove-transaction')})
-        .then(function(){S.editTransaction=null;return load();}).catch(function(e){say($('historyMsg'),'bad',e.message);b.disabled=false;});
-    });});
-    v.querySelectorAll('[data-edit-setup]').forEach(function(b){b.addEventListener('click',function(){
-      var r=S.history.setups.find(function(x){return String(x.id)===b.getAttribute('data-edit-setup');});
-      S.setupBankId=r.bankId;
-      $('sBank').value=r.bankId;$('sBank').disabled=true;$('sYear').value=r.fiscalYear;S.editSetup=r.id;
-      $('sIn').value=r.openingIn;$('sOut').value=r.openingOut;$('sInFrom').value=r.inFrom;$('sOutFrom').value=r.outFrom;
-      $('sSave').textContent='Save correction';$('sSave').scrollIntoView({behavior:'smooth',block:'center'});
-      say($('sMsg'),'','To move to a different bank, remove this opening and enter it on the correct bank.');
-    });});
-    v.querySelectorAll('[data-remove-setup]').forEach(function(b){b.addEventListener('click',function(){
-      if(!window.confirm('Remove these historical Opening In/Out amounts? A zero replacement and the full history will remain.'))return;
-      b.disabled=true;post('/api/bank/remove-setup',{id:b.getAttribute('data-remove-setup')})
-        .then(function(){return load();}).catch(function(e){say($('historyMsg'),'bad',e.message);b.disabled=false;});
-    });});
+    wireLogActions(v);
+    v.querySelectorAll('[data-view-log]').forEach(function(b){b.addEventListener('click',function(){openLog(b.getAttribute('data-view-log'));});});
 
     v.querySelectorAll('[data-bank-view]').forEach(function(button){
       button.addEventListener('click', function(){

@@ -5,7 +5,7 @@ import { saveBankingSetup, recordBankEntry, bankingSetups } from './banking-setu
 import { listBanks, saveBank, todayText, readSpendSheet, report as bankReport, taxYear } from './banking.js';
 import { pool } from './db.js';
 import { liveSpend } from './banking-cprs.js';
-import { bankingHistory, correctTransaction, removeFiscalSetup, columnBreakdown, paymentWorkbook } from './banking-history.js';
+import { bankingHistory, correctTransaction, removeFiscalSetup, columnBreakdown, paymentWorkbook, historyWorkbook } from './banking-history.js';
 
 export function createBankingRouter({ requireBoss, requireCompany }) {
   const router = express.Router();
@@ -27,7 +27,18 @@ export function createBankingRouter({ requireBoss, requireCompany }) {
   router.get('/history',async(req,res)=>{
     if(!await requireBoss(req,res))return;
     const realm=await requireCompany(req,res);if(!realm)return;
-    try{res.setHeader('Cache-Control','no-store');res.json(await bankingHistory(realm));}
+    try{
+      res.setHeader('Cache-Control','no-store');
+      const history=await bankingHistory(realm);
+      if(req.query.download==='xlsx'){
+        if(!['setup','opening','entry','transfer'].includes(req.query.kind))throw new Error('Select a valid log');
+        const workbook=historyWorkbook(history,req.query.kind,await listBanks(realm,{all:true}));
+        res.setHeader('Content-Type','application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+        res.setHeader('Content-Disposition',`attachment; filename="Banking-${req.query.kind}-log.xlsx"`);
+        return res.send(workbook);
+      }
+      res.json(history);
+    }
     catch(e){res.status(400).json({error:e.message});}
   });
   router.post('/correct-transaction',async(req,res)=>{

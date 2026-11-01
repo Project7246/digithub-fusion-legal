@@ -36,6 +36,23 @@ export function paymentWorkbook(rows) {
   return XLSX.write(wb,{type:'buffer',bookType:'xlsx'});
 }
 
+export function historyWorkbook(history,kind,banks=[]) {
+  const bank=id=>{const b=banks.find(b=>b.id===Number(id));return b?(b.title||b.name):'Bank '+id;};
+  const number=v=>v==null?'':Number(v);
+  let rows;
+  if(kind==='setup') rows=[['Record','Bank','Fiscal year','Opening In','Opening Out','In start','Out start','Status','Saved by','Saved at'],
+    ...(history.setups||[]).map(r=>[r.id,bank(r.bankId),r.fiscalYear,number(r.openingIn),number(r.openingOut),r.inFrom,r.outFrom,r.active?'Current':'Superseded',r.actor,r.createdAt])];
+  else if(kind==='opening') rows=[['Record','Bank','Previous opening','New opening','Opening date','Saved by','Saved at'],
+    ...(history.openings||[]).map(r=>[r.id,bank(r.bankId),number(r.before?.opening),number(r.after?.opening),r.after?.opening_on||'',r.actor,r.createdAt])];
+  else if(kind==='entry'||kind==='transfer') rows=[['Entry','Type','Date','Bank','Direction','Amount','Reference / note','Status','Saved by','Saved at'],
+    ...(history.transactions||[]).filter(r=>kind==='transfer'?r.type==='transfer':r.type!=='transfer').flatMap(r=>
+      r.entries.map(e=>[r.id,r.type,e.on,bank(e.bankId),money(e.amount)<0n?'Out':'In',number(e.amount),e.note||'',r.reversed?'Updated':'Active',r.actor,r.createdAt]))];
+  else throw new Error('Select a valid log');
+  const ws=XLSX.utils.aoa_to_sheet(rows);ws['!cols']=rows[0].map(()=>({wch:24}));
+  const wb=XLSX.utils.book_new();XLSX.utils.book_append_sheet(wb,ws,'Banking log');
+  return XLSX.write(wb,{type:'buffer',bookType:'xlsx'});
+}
+
 export function historyTransactions(audits,moves) {
   const byMove=new Map(moves.map(m=>[String(m.id),m]));
   const isEntry=a=>['in','out','transfer'].includes(a.action);
