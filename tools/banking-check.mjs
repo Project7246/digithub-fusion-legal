@@ -79,6 +79,9 @@ const manualBeforeCutoff=bankFigures({opening:'100.00',openingOn:'2026-10-13',in
   {source:'sheet',on:'2026-10-12',amount:'-500.00'}],{...year,year:2027},'2026-11-01');
 assert.equal(manualBeforeCutoff.inYear,'1000.00');assert.equal(manualBeforeCutoff.outYear,'200.00');
 assert.equal(manualBeforeCutoff.balance,'900.00','selected-year manual In/Out participates in balance before automatic cutoffs');
+assert.equal(bankFigures({opening:'100.00',openingOn:'2026-11-01',inFrom:'2026-10-13'},[
+  {state:'received',on:'2026-10-13',net:'50.00'}],[],{...year,year:2027},'2026-11-02').balance,'150.00',
+  'explicit CPR start date overrides the bank default, independently of statement balance date');
 assert.equal(figures.balance, '950000.00');
 assert.equal(figures.inYear, '870000.00');
 assert.equal(figures.outYear, '20000.00');

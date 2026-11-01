@@ -71,7 +71,7 @@ export function placeReceipts(receipts, banks, links, moves, today) {
     if (!bank) why = 'No bank linked for this CPR';
     else if (state === 'received' && !on) why = 'Payment date not supplied';
     else if (state === 'received' && on > today) why = 'Payment date is in the future';
-    else if (state === 'received' && bank.openingOn && on < bank.openingOn) {
+    else if (state === 'received' && !bank.inFrom && bank.openingOn && on < bank.openingOn) {
       why = 'Before the opening balance date';
     }
     else if (state === 'received' && bank.inFrom && on < bank.inFrom) {
@@ -88,9 +88,11 @@ export function placeReceipts(receipts, banks, links, moves, today) {
 }
 
 export function bankFigures(bank, receipts, moves, year, today) {
-  const valid = on => on && on <= today && (!bank.openingOn || on >= bank.openingOn);
-  const afterStart = (on, value) => !bank[money(value) < 0n ? 'outFrom' : 'inFrom'] ||
-    on >= bank[money(value) < 0n ? 'outFrom' : 'inFrom'];
+  const valid = on => on && on <= today;
+  const afterStart = (on, value) => {
+    const start=bank[money(value)<0n?'outFrom':'inFrom'] || bank.openingOn;
+    return !start || on>=start;
+  };
   const actual = [
     ...receipts.filter(r => r.state === 'received' && money(r.net) >= 0n && valid(r.on))
       .map(r => ({ on: r.on, amount: r.net })),

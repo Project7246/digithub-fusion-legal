@@ -21,6 +21,12 @@ try {
   await assert.rejects(saveBankingSetup('fixture',{...setup,inFrom:'2026-06-30'},'owner'),/fiscal year/);
   await assert.rejects(saveBankingSetup('fixture',{...setup,openingIn:'-1'},'owner'),/non-negative/);
   calls=[];
+  await saveBankingSetup('fixture',{...setup,openingBalance:'100.25',openingBalanceOn:'2026-07-01'},'owner');
+  assert.deepEqual(calls.find(c=>c.sql.includes('UPDATE banks')).args.slice(2),['100.25','2026-07-01']);
+  assert.ok(calls.some(c=>c.args[2]==='bank-opening'));
+  assert.equal(calls.at(-1).sql,'COMMIT');
+  await assert.rejects(saveBankingSetup('fixture',{...setup,openingBalance:'100.25',openingBalanceOn:''},'owner'),/valid opening balance date/);
+  calls=[];
   await recordBankEntry('fixture',{type:'transfer',fromBank:1,toBank:2,on:'2026-10-20',amount:'100.25',note:'Transfer'},'owner');
   const entries=calls.filter(c=>c.sql.includes('INSERT INTO bank_moves'));
   assert.equal(entries.length,2);

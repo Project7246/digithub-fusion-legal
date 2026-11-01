@@ -37,12 +37,22 @@ export async function saveBankingSetup(realmId,input,actor,transaction=null) {
   try {
     if(!transaction)await c.query('BEGIN');
     await c.query("SELECT set_config('app.realm_id',$1,true)",[realmId]);
-    const b=await c.query('SELECT id,opening_on FROM banks WHERE realm_id=$1 AND id=$2 FOR UPDATE',[realmId,bankId]);
+    const b=await c.query("SELECT id,opening,opening_on,to_char(opening_balance_on,'YYYY-MM-DD') AS balance_day FROM banks WHERE realm_id=$1 AND id=$2 FOR UPDATE",[realmId,bankId]);
     if(!b.rows.length) throw new Error('No such bank in this company');
     if(input.expectedId) {
       const latest=await c.query('SELECT id FROM banking_setups WHERE realm_id=$1 AND bank_id=$2 AND fiscal_year=$3 ORDER BY id DESC LIMIT 1',
         [realmId,bankId,fiscalYear]);
       if(String(latest.rows[0]?.id)!==String(input.expectedId))throw new Error('Fiscal opening changed; refresh before correcting it');
+    }
+    if(Object.hasOwn(input,'openingBalance')){
+      const hasBalance=String(input.openingBalance??'').trim()!=='';
+      const opening=hasBalance?addMoney([input.openingBalance]):null;
+      let balanceOn=null;
+      if(hasBalance){try{balanceOn=day(input.openingBalanceOn);}catch{throw new Error('Select a valid opening balance date');}}
+      await c.query('UPDATE banks SET opening=$3,opening_balance_on=$4 WHERE realm_id=$1 AND id=$2',[realmId,bankId,opening,balanceOn]);
+      await c.query('INSERT INTO banking_entry_audit (realm_id,actor,action,new_value) VALUES ($1,$2,$3,$4::jsonb)',
+        [realmId,actor,'bank-opening',JSON.stringify([{bankId,before:{opening:b.rows[0].opening,opening_balance_on:b.rows[0].balance_day},
+          after:{opening,opening_balance_on:balanceOn}}])]);
     }
     const saved=await c.query(`INSERT INTO banking_setups (realm_id,bank_id,fiscal_year,opening_in,opening_out,
       in_from,out_from,actor,previous_id)

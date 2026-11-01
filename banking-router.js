@@ -6,9 +6,26 @@ import { listBanks, saveBank, todayText, readSpendSheet, report as bankReport, t
 import { pool } from './db.js';
 import { liveSpend } from './banking-cprs.js';
 import { bankingHistory, correctTransaction, removeFiscalSetup, moveFiscalSetup, columnBreakdown, paymentWorkbook, historyWorkbook } from './banking-history.js';
+import { archiveCsv } from './banking-archive.js';
 
 export function createBankingRouter({ requireBoss, requireCompany }) {
   const router = express.Router();
+  router.get('/archive-export',async(req,res)=>{
+    if(!await requireBoss(req,res))return;
+    const realm=await requireCompany(req,res);if(!realm)return;
+    try{
+      res.setHeader('Cache-Control','no-store');res.setHeader('Content-Type','text/csv; charset=utf-8');
+      res.setHeader('Content-Disposition','attachment; filename="Banking-saved-CPRs.csv"');
+      for await(const chunk of archiveCsv(realm)){
+        if(res.destroyed)return;
+        if(!res.write(chunk))await new Promise(resolve=>{
+          const done=()=>{res.off('drain',done);res.off('close',done);resolve();};
+          res.once('drain',done);res.once('close',done);
+        });
+      }
+      res.end();
+    }catch(e){if(res.headersSent)res.destroy(e);else res.status(500).json({error:'Saved CPR export unavailable'});}
+  });
   router.post('/save',async(req,res)=>{
     const who=await requireBoss(req,res);if(!who)return;
     const realm=await requireCompany(req,res);if(!realm)return;
@@ -88,8 +105,8 @@ export function createBankingRouter({ requireBoss, requireCompany }) {
       res.setHeader('Cache-Control','no-store');
       const year=taxYear(req.query.year),today=todayText(),configured={...bank,...setup};
       const rows=(await liveSpend(realm,configured,readSpendSheet,true,today)).filter(r=>r.on>=year.from &&
-        r.on<=year.to && r.on<=today && (!bank.openingOn||r.on>=bank.openingOn) &&
-        (!setup?.outFrom||r.on>=setup.outFrom) && (!req.query.month||r.on.slice(0,7)===req.query.month));
+        r.on<=year.to && r.on<=today && r.on>=(setup?.outFrom||bank.openingOn||'') &&
+        (!req.query.month||r.on.slice(0,7)===req.query.month));
       if(req.query.download==='xlsx') {
         res.setHeader('Content-Type','application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
         res.setHeader('Content-Disposition',`attachment; filename="Bank-${bank.id}-payments.xlsx"`);

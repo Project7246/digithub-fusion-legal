@@ -7,7 +7,7 @@ export function columnBreakdown(report, bankId, column) {
   const bank=report.banks.find(b=>b.id===Number(bankId));
   if(!bank || !['opening','inYear','outYear'].includes(column)) throw new Error('Select a bank and money column');
   if(column==='opening') return {bank,column,total:bank.opening,rows:[{
-    on:bank.openingOn,amount:bank.opening,note:'Opening bank balance',source:'opening'}]};
+    on:bank.openingBalanceOn,amount:bank.opening,note:'Opening bank balance',source:'opening'}]};
   const incoming=column==='inYear';
   const rows=report.moves.filter(m=>m.bankId===bank.id && m.affectsBalance!==false &&
     m.on>=report.year.from && m.on<=report.year.to && m.amount!=null &&
@@ -43,7 +43,7 @@ export function historyWorkbook(history,kind,banks=[]) {
   if(kind==='setup') rows=[['Record','Bank','Fiscal year','Opening In','Opening Out','In start','Out start','Status','Saved by','Saved at'],
     ...(history.setups||[]).map(r=>[r.id,bank(r.bankId),r.fiscalYear,number(r.openingIn),number(r.openingOut),r.inFrom,r.outFrom,r.active?'Current':'Superseded',r.actor,r.createdAt])];
   else if(kind==='opening') rows=[['Record','Bank','Previous opening','New opening','Opening date','Saved by','Saved at'],
-    ...(history.openings||[]).map(r=>[r.id,bank(r.bankId),number(r.before?.opening),number(r.after?.opening),r.after?.opening_on||'',r.actor,r.createdAt])];
+    ...(history.openings||[]).map(r=>[r.id,bank(r.bankId),number(r.before?.opening),number(r.after?.opening),r.after?.opening_balance_on||'',r.actor,r.createdAt])];
   else if(kind==='entry'||kind==='transfer') rows=[['Entry','Type','Date','Bank','Direction','Amount','Reference / note','Status','Saved by','Saved at'],
     ...(history.transactions||[]).filter(r=>kind==='transfer'?r.type==='transfer':r.type!=='transfer').flatMap(r=>
       r.entries.map(e=>[r.id,r.type,e.on,bank(e.bankId),money(e.amount)<0n?'Out':'In',number(e.amount),e.note||'',r.reversed?'Updated':'Active',r.actor,r.createdAt]))];

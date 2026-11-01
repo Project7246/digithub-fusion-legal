@@ -26,6 +26,7 @@ import { pool } from './db.js';
 import { buildReport, receiptProjection } from './banking-cprs.js';
 import { addMoney } from './banking-money.js';
 import { initBankingSetup, bankingSetups } from './banking-setup.js';
+import { initBankingArchive } from './banking-archive.js';
 
 function calendarDay(value) {
   if (!value) return null;
@@ -134,6 +135,7 @@ export async function initBanking() {
       ON bank_links (realm_id, account_id, from_date DESC)
   `);
   await initBankingSetup();
+  await initBankingArchive();
 }
 
 /* ==================== small things ==================== */
@@ -195,9 +197,10 @@ function shapeBank(b) {
     notes: b.notes || '',
     // null, not nought: a bank nobody has given a figure for yet
     opening: b.opening == null ? null : String(b.opening),
+    openingBalanceOn: calendarDay(b.opening_balance_on),
     openingOn: calendarDay(b.opening_on),
     openingAt: b.opening_at || '',
-    openingKnown: b.opening != null && !!b.opening_on,
+    openingKnown: b.opening != null,
     sheetUrl: b.sheet_url || '',
     active: b.active !== false
   };

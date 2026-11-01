@@ -67,7 +67,9 @@ ui.S.bankView = 'activity';
 assert.match(ui.reportView(), /<h2>Recent activity/);
 assert.doesNotMatch(ui.reportView(), /<table class="plain bkbanks"/);
 ui.S.bankView = 'accounts';
-assert.match(ui.entriesView(), /Fiscal opening In \/ Out/);
+assert.match(ui.entriesView(), /Opening &amp; fiscal totals/);
+assert.match(ui.entriesView(),/id="sBalance"/);assert.match(ui.entriesView(),/id="sBalanceOn"/);
+assert.match(ui.entriesView(),/CPR sync from/);assert.match(ui.entriesView(),/Sheet sync from/);
 assert.match(ui.entriesView(), /id="aType"/);
 ui.S.spendingRows=[{on:'2026-10-21',amount:'-200.00',details:Array.from({length:16},(_,i)=>({value:i===2?'Receiver':i===6?'Sender':i===13?'Account head':i===15?'Combined remarks':''}))},
   {on:'2026-09-21',amount:'-100.00',details:[]}];

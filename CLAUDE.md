@@ -1,5 +1,45 @@
 # Digithub Fusion - project notes for Claude
 
+## Clear Banking setup and retained CPRs - 2 Nov 2026
+
+Owner's UI rule for future forms: short accurate headings/labels, aligned fields,
+plain language understandable without accounting jargon. Put long explanations
+behind an adjacent ! help icon, not paragraphs inside labels. Banking daily tabs
+are Live balance & CPRs and Transactions; Bank / courier links and Bank settings
+are secondary setup tabs. The old Courier payments label described linkage badly.
+
+Opening balance and its statement Balance date are entered under Transactions
+in the Opening & fiscal totals card, beside aligned Fiscal In and Fiscal Out
+groups. Bank settings has Auto sync from (formerly True on); it is not the
+statement balance date. Explicit CPR/Sheet start dates override that bank default.
+Manual entries still follow fiscal year; balance formula remains opening + fiscal
+In - fiscal Out. New baseline dates are nullable for old records; never invent
+an old statement date. Blank opening means unknown, not zero. Opening edits and
+fiscal totals save with audit in one transaction. Bank moves keep source bank's
+opening; changing the selected bank loads that bank's actual opening fields.
+
+Banking-only migration 003 adds the statement date and a company-scoped RLS CPR
+archive with no courier-account FK. Logistics files/calculations/sync are untouched.
+Each existing Banking refresh retains all available CPR covers from the named
+courier read boundary; missing live fields never erase saved money. Merge by
+company/account/CPR, no duplicate bank deposits. Old account removal or credentials
+disconnect cannot cascade-delete the Banking copy already retained.
+
+Detail JSON is allow-listed, versioned, gzip compressed, hash deduplicated and
+read only when needed; report queries never load order blobs. No credentials or
+uploaded Excel files are retained. Full detail is saved on first read and then
+served offline. Missing details get at most two attempts per Banking-triggered
+batch, paced/metered by existing compute budget, with 6-hour retry backoff. No new
+timer or Logistics polling. The UI shows saved cover/detail counts: do not claim
+unfetched portal detail is archived or tell the owner to disconnect before required
+detail coverage is complete. Unsupported live detail uses saved local orders and
+states missing information honestly. No automatic retention deletion of bank records.
+
+Saved CPR covers export as streamed company CSV (300-row keyset pages), working
+details export through existing CPR Excel from retained JSON. Archive updates have
+compact audit entries. Portal failure must not prevent export of saved full detail.
+This archive is not an offsite backup; no hosting/env/DNS/deployment changes here.
+
 ## Fiscal opening bank correction - 2 Nov 2026
 
 Owner requested changing the bank while editing a fiscal opening. Keep the bank

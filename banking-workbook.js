@@ -31,7 +31,8 @@ export function receiptWorkbook(detail) {
     ...SUMMARY_FIELDS.map(([key, label]) => [label,
       detail.summary[key] == null ? 'Not supplied' : Number(detail.summary[key])]),
     ['Available orders', detail.orders.length], ['Expected orders', r.orders ?? 'Not supplied'],
-    ['Detail warning', detail.warning || '']];
+    ['Detail warning', detail.warning || ''],['Banking detail saved at',detail.archive?.savedAt||'Not retained yet'],
+    ['Banking detail complete',detail.archive?.complete?'Yes':'Partial / not retained yet']];
   const wb = XLSX.utils.book_new();
   const append = (name, values) => {
     const ws = XLSX.utils.aoa_to_sheet(values);

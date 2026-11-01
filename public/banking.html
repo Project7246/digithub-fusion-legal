@@ -20,6 +20,19 @@
     font:500 12px var(--sans);color:var(--muted);cursor:pointer}
   .pills button:hover{background:var(--panel-2);color:var(--ink)}
   .pills button.on{background:var(--ink);color:#fff}
+  .pills{display:flex;width:100%;box-sizing:border-box}
+  .bk-settings-tabs{margin-left:auto;display:flex;gap:3px;border-left:1px solid var(--line);padding-left:8px}
+  .bk-help{display:inline-flex;align-items:center;justify-content:center;width:15px;height:15px;margin-left:4px;border:1px solid #98b5b3;border-radius:50%;font:600 10px var(--sans);color:var(--muted);cursor:help;vertical-align:middle}
+  .bk-help:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+  .bk-account-fields{grid-template-columns:minmax(220px,2fr) minmax(130px,1fr);margin:16px 0}
+  .bk-opening-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px}
+  .bk-opening-group{padding:16px;border:1px solid var(--line);border-radius:9px;background:#f8fbfa;min-width:0}
+  .bk-opening-group h3{margin:0 0 14px;font:600 14px var(--sans)}
+  .bk-opening-group label{display:block;margin:12px 0 6px;font-size:11px}
+  .bk-opening-group input{width:100%;box-sizing:border-box;height:40px;min-width:0}
+  .banking-page .form input:not([type="checkbox"]):not([type="radio"]),.banking-page .form select{box-sizing:border-box;min-width:0;width:100%;height:40px;font:13px var(--sans)}
+  .bk-opening-group input{font:13px var(--sans);font-variant-numeric:tabular-nums}
+  @media(max-width:800px){.bk-opening-grid{grid-template-columns:1fr}.bk-settings-tabs{margin-left:0;border-left:0;padding-left:0}.bk-account-fields{grid-template-columns:1fr}}
   table.plain{width:100%;border-collapse:collapse;font:11.5px var(--sans)}
   table.plain th{font:500 11px var(--sans);letter-spacing:0;text-transform:none;
     color:var(--muted);padding:7px 8px;border-bottom:1px solid #bccfce;white-space:nowrap;background:#edf4f3}
@@ -151,10 +164,9 @@
     <div class="shell">
       <div id="body" class="hide">
         <div class="pills" id="tabs">
-          <button data-tab="report" class="on">The banks</button>
-          <button data-tab="couriers">Courier payments</button>
-          <button data-tab="entries">Transfers and entries</button>
-          <button data-tab="add">Add or edit a bank</button>
+          <button data-tab="report" class="on">Live balance &amp; CPRs</button>
+          <button data-tab="entries">Transactions</button>
+          <span class="bk-settings-tabs"><button data-tab="couriers">Bank / courier links</button><button data-tab="add">Bank settings</button></span>
         </div>
         <div id="view"><div class="fxnone">One moment…</div></div>
       </div>
@@ -259,6 +271,8 @@
           }).join('') + '</tbody></table></div>' : '';
         $('bkDetailBody').innerHTML =
           (d.warning ? '<div class="warn">' + esc(d.warning) + '</div>' : '') +
+          (d.archive?'<div class="lognote">'+(d.archive.complete?'Saved Banking detail':'Partial Banking detail')+
+            (d.archive.savedAt?' - '+esc(d.archive.savedAt):'')+'</div>':'')+
           '<div>' + esc(cname(r.courier)) + ' · ' + esc(r.account) + ' · ' +
             statusPill(r.status, (S.report.receipts.find(function(x){
               return x.accountId === Number(account) && x.cpr === ref;
@@ -374,7 +388,7 @@
     }).join('')+'</tbody></table></div></div></div>';
   }
   function openingLog(){
-    return '<div class="sheet"><div class="sec"><h3 style="font-size:13px">Bank opening / details history</h3><p class="hint">Earlier balances were saved without history. Current openings are listed above; changes from this update are recorded below.</p><div class="wrapx"><table class="plain"><thead><tr><th>Record / bank</th><th>Saved by / when</th><th class="n">Previous opening</th><th class="n">New opening</th><th>Opening date</th></tr></thead><tbody>'+(S.history.openings||[]).map(function(r){return '<tr><td>#'+esc(r.id)+' '+esc(bankLabel(r.bankId))+'</td><td>'+esc(r.actor)+'<small class="bkdate">'+esc(r.createdAt)+'</small></td><td class="n">'+amount(r.before && r.before.opening)+'</td><td class="n">'+amount(r.after && r.after.opening)+'</td><td>'+esc(r.after && r.after.opening_on || '')+'</td></tr>';}).join('')+'</tbody></table></div></div></div>';
+    return '<div class="sheet"><div class="sec"><h3 style="font-size:13px">Bank opening / details history</h3><p class="hint">Opening changes are recorded here. Older edits may not have saved history.</p><div class="wrapx"><table class="plain"><thead><tr><th>Record / bank</th><th>Saved by / when</th><th class="n">Previous opening</th><th class="n">New opening</th><th>Opening date</th></tr></thead><tbody>'+(S.history.openings||[]).map(function(r){return '<tr><td>#'+esc(r.id)+' '+esc(bankLabel(r.bankId))+'</td><td>'+esc(r.actor)+'<small class="bkdate">'+esc(r.createdAt)+'</small></td><td class="n">'+amount(r.before && r.before.opening)+'</td><td class="n">'+amount(r.after && r.after.opening)+'</td><td>'+esc(r.after && (r.after.opening_balance_on || r.after.opening_on) || '')+'</td></tr>';}).join('')+'</tbody></table></div></div></div>';
   }
   function openPayments(id){
     var request=++paymentRequest;
@@ -439,8 +453,8 @@
       return '<tr><td class="bkidentity"><strong title="' + esc(b.title || b.name) + '">' +
         esc(b.title || b.name) + '</strong><small title="' + esc(b.name) + '">' +
         esc(b.name) + (b.active ? '' : ' · Closed') + '</small></td>' +
-        '<td class="n">' + columnAmount(b,'opening',b.opening) + '<small class="bkdate">' + esc(b.openingOn || 'Not set') +
-          (b.openingAt ? ' ' + esc(b.openingAt) : '') + '</small></td>' +
+        '<td class="n">' + columnAmount(b,'opening',b.opening) + '<small class="bkdate">' + esc(b.openingBalanceOn || 'Balance date not set') +
+          '</small></td>' +
         '<td class="n pos">' + columnAmount(b,'inYear',(b.incomeIncomplete ?? b.balanceIncomplete)?null:b.inYear) + '</td>' +
         '<td class="n neg">' + columnAmount(b,'outYear',b.expenseIncomplete?null:b.outYear) + '</td>' +
         '<td class="n">' + cprAmount(b,'received') + '</td><td class="n">' + cprAmount(b,'receivable') + '</td>' +
@@ -457,7 +471,7 @@
       '<button class="mini" id="bkRefresh">Refresh</button></div></div>';
     return '<div class="bkstats">' + statCard('inYear','Fiscal year In') + statCard('outYear','Fiscal year Out') +
       statCard('receivable','To receive · pending CPRs') + statCard('balance','Live balance',true) + '</div>' + issues +
-      '<div class="sheet">' + toolbar + (activity ? '<div class="wrapx">' + movesTable(d.moves) + '</div>' :
+      (d.archive?'<div class="lognote">Saved CPRs: '+d.archive.receipts+' &middot; Full details saved: '+d.archive.details+' <a href="/api/bank/archive-export">Export saved CPRs</a> '+help('CPR summaries are retained whenever Banking refreshes. Missing details are saved in small budgeted batches while Banking is used. Keep the portal connected until required details are saved.')+'</div>':'')+'<div class="sheet">' + toolbar + (activity ? '<div class="wrapx">' + movesTable(d.moves) + '</div>' :
         '<div class="wrapx"><table class="plain bkbanks"><thead><tr><th>Bank account</th><th class="n">Opening</th>' +
         '<th class="n">Year in</th><th class="n">Year out</th><th class="n">Received · FY</th><th class="n">To receive</th>' +
         '<th class="n bklive">Live balance</th></tr></thead><tbody>' + rows + '</tbody>' + totals + '</table></div>') +
@@ -602,17 +616,25 @@
       '</div></div>' + cards;
   }
 
+  function help(text){return '<span class="bk-help" tabindex="0" role="img" aria-label="'+esc(text)+'" title="'+esc(text)+'">!</span>';}
+  function fillOpeningBalance(bankId){
+    var b=S.report.banks.find(function(x){return x.id===Number(bankId);}) || {};
+    $('sBalance').value=b.opening==null?'':b.opening;$('sBalanceOn').value=b.openingBalanceOn || '';
+  }
   function setupView(banks,opts){
-    return '<div class="sheet" style="margin-bottom:16px"><div class="sec"><h2>Fiscal opening In / Out</h2>' +
-      '<p class="hint">Enter historical totals yourself. Start dates filter automatic CPR/sheet feeds only. Manual entries follow their fiscal year. Live balance = opening balance + fiscal year In - fiscal year Out.</p>' +
-      '<div class="form"><div><label>Bank account</label><select id="sBank">'+opts+'</select></div>' +
-      '<div><label>Fiscal year</label><input id="sYear" value="'+esc(S.report.year.year)+'" disabled></div>' +
-      '<div><label>Opening In</label><input id="sIn" type="number" min="0" step="0.01"></div>' +
-      '<div><label>New Transaction In from (inclusive)</label><input id="sInFrom" type="date"></div>' +
-      '<div><label>Opening Out</label><input id="sOut" type="number" min="0" step="0.01"></div>' +
-      '<div><label>New Transaction Out from (inclusive)</label><input id="sOutFrom" type="date"></div>' +
-      '</div><p class="hint">Google Sheet Sender Bank Account must match the selected Bank Name. No other field is used for matching.</p>' +
-      '<div class="acts"><button class="solid" id="sSave">Save opening totals</button><button class="mini" id="sCancel">Cancel edit</button><span class="msg" id="sMsg"></span></div>' + logButton('setup') + '</div></div>';
+    return '<div class="sheet" style="margin-bottom:16px"><div class="sec"><h2>Opening &amp; fiscal totals '+help('Live balance = opening balance + full fiscal year In - full fiscal year Out. Add historical totals before the automatic feed start dates.')+'</h2>' +
+      '<div class="form bk-account-fields"><div><label>Bank account</label><select id="sBank">'+opts+'</select></div>' +
+      '<div><label>Fiscal year '+help('1 July to 30 June, named by its ending year. Manual entries count by their transaction fiscal year.')+'</label><input id="sYear" value="'+esc(S.report.year.year)+'" disabled></div></div>' +
+      '<div class="bk-opening-grid"><section class="bk-opening-group"><h3>Opening balance '+help('Your bank statement balance on the balance date. It is separate from historical incoming and outgoing totals.')+'</h3>' +
+      '<label>Amount</label><input id="sBalance" type="number" step="0.01" placeholder="Statement opening balance">' +
+      '<label>Balance date '+help('The date this opening balance belongs to, for example 1 July. It does not control automatic syncing.')+'</label><input id="sBalanceOn" type="date"></section>' +
+      '<section class="bk-opening-group"><h3>Fiscal In '+help('Total money received in this fiscal year before the CPR sync date below. Do not include the same receipt twice.')+'</h3>' +
+      '<label>Previous In</label><input id="sIn" type="number" min="0" step="0.01">' +
+      '<label>CPR sync from '+help('Include automatic received CPRs on and after this date. Manual entries are not restricted by this cutoff.')+'</label><input id="sInFrom" type="date"></section>' +
+      '<section class="bk-opening-group"><h3>Fiscal Out '+help('Total actual bank spending in this fiscal year before the Sheet sync date below. Courier deductions are already included in net CPRs.')+'</h3>' +
+      '<label>Previous Out</label><input id="sOut" type="number" min="0" step="0.01">' +
+      '<label>Sheet sync from '+help('Include matching Google Sheet payments on and after this date. Match Sender Bank Account only to this bank name.')+'</label><input id="sOutFrom" type="date"></section></div>' +
+      '<div class="acts"><button class="solid" id="sSave">Save balances</button><button class="mini" id="sCancel">Cancel edit</button><span class="msg" id="sMsg"></span></div>' + logButton('setup') + '</div></div>';
   }
   function spendingView(){
     var months=Array.from(new Set(S.spendingRows.map(function(r){return r.on.slice(0,7);}))).sort().reverse();
@@ -698,17 +720,13 @@
 
     return '<div class="sheet" style="margin-bottom:16px"><div class="sec">' +
         '<h2>' + (b.id ? 'Edit ' + esc(b.title || b.name) : 'A new bank account') +
-          '<span class="aside">nothing before the opening date is ever counted</span></h2>' +
-        '<p class="hint" style="margin:0 0 12px">Leave the opening balance blank ' +
-        'until you have the statement — the account still works, and what ' +
-        'moves is recorded. The time is kept with the balance; every feed here ' +
-        'carries a date and no clock, so the cut itself is by day.</p>' +
+          '<span class="aside">account details and automatic feeds</span></h2>' +
         '<div class="form">' +
           '<div><label>Bank name</label><input type="text" id="bName" value="' +
             esc(b.name || '') + '" placeholder="Alfalah — current"></div>' +
           '<div><label>Account title</label><input type="text" id="bTitle" value="' +
             esc(b.title || '') + '"></div>' +
-          '<div><label>In whose name</label><input type="text" id="bOwner" value="' +
+          '<div><label>Account owner</label><input type="text" id="bOwner" value="' +
             esc(b.ownerName || '') + '" placeholder="the business it belongs to"></div>' +
           '<div><label>Account number</label><input type="text" id="bNo" value="' +
             esc(b.accountNo || '') + '"></div>' +
@@ -716,12 +734,9 @@
             esc(b.iban || '') + '"></div>' +
           '<div><label>Branch</label><input type="text" id="bBranch" value="' +
             esc(b.branch || '') + '"></div>' +
-          '<div><label>Opening balance</label><input type="number" id="bOpen" step="0.01" value="' +
-            esc(b.opening == null ? '' : b.opening) +
-            '" placeholder="leave it blank until you have the statement"></div>' +
-          '<div><label>True on</label><input type="date" id="bOpenOn" value="' +
+          '<div><label>Auto sync from '+help('Start picking automatic CPR and Google Sheet transactions from this date. Opening balance and its balance date are entered under Transactions.')+'</label><input type="date" id="bOpenOn" value="' +
             esc(b.openingOn || S.today) + '"></div>' +
-          '<div><label>At</label><input type="time" id="bOpenAt" value="' +
+          '<div><label>Reference time '+help('Optional note only. Courier and Sheet feeds use calendar dates, not time-of-day filtering.')+'</label><input type="time" id="bOpenAt" value="' +
             esc(b.openingAt || '') + '"></div>' +
           '<div class="wide"><label>Spending Google Sheet or published CSV</label>' +
             '<input type="text" id="bSheet" value="' + esc(b.sheetUrl || '') + '" ' +
@@ -785,7 +800,7 @@
     host.querySelectorAll('[data-edit-setup]').forEach(function(b){b.addEventListener('click',function(){
       closeLog();var r=S.history.setups.find(function(x){return String(x.id)===b.getAttribute('data-edit-setup');});
       S.setupBankId=r.bankId;
-      $('sBank').value=r.bankId;$('sBank').disabled=false;S.editSetupSource=r.bankId;$('sYear').value=r.fiscalYear;S.editSetup=r.id;
+      $('sBank').value=r.bankId;$('sBank').disabled=false;S.editSetupSource=r.bankId;fillOpeningBalance(r.bankId);$('sYear').value=r.fiscalYear;S.editSetup=r.id;
       $('sIn').value=r.openingIn;$('sOut').value=r.openingOut;$('sInFrom').value=r.inFrom;$('sOutFrom').value=r.outFrom;
       $('sSave').textContent='Save correction';$('sSave').scrollIntoView({behavior:'smooth',block:'center'});
       markFormDirty();
@@ -935,7 +950,7 @@
     if($('sCancel'))$('sCancel').addEventListener('click',function(){draw();});
     if($('sBank')) {
       function fillSetup(){
-        S.editSetupSource=null;
+        S.editSetupSource=null;fillOpeningBalance($('sBank').value);
         var b=S.report.banks.find(function(x){return x.id===Number($('sBank').value);}) || {};
         $('sIn').value=b.openingIn || '0.00'; $('sOut').value=b.openingOut || '0.00';
         $('sInFrom').value=b.inFrom || b.openingOn || S.today;
@@ -943,12 +958,12 @@
         S.editSetup=b.setupId || null;
         $('sYear').value=S.report.year.year;
       }
-      $('sBank').addEventListener('change',function(){if(!S.editSetupSource)fillSetup();});fillSetup();
+      $('sBank').addEventListener('change',function(){fillOpeningBalance($('sBank').value);if(!S.editSetupSource)fillSetup();});fillSetup();
       $('sSave').addEventListener('click',function(){
         var button=$('sSave');button.disabled=true;
         post('/api/bank/setup',{bankId:Number($('sBank').value),fiscalYear:Number($('sYear').value),
           openingIn:$('sIn').value,openingOut:$('sOut').value,inFrom:$('sInFrom').value,
-          outFrom:$('sOutFrom').value,expectedId:S.editSetup || undefined,sourceBankId:S.editSetupSource || undefined})
+          outFrom:$('sOutFrom').value,openingBalance:$('sBalance').value,openingBalanceOn:$('sBalanceOn').value,expectedId:S.editSetup || undefined,sourceBankId:S.editSetupSource || undefined})
           .then(function(){return load();}).catch(function(e){say($('sMsg'),'bad',e.message);})
           .finally(function(){button.disabled=false;});
       });
@@ -975,7 +990,7 @@
         name: $('bName').value, title: $('bTitle').value,
         ownerName: $('bOwner').value, accountNo: $('bNo').value,
         iban: $('bIban').value, branch: $('bBranch').value,
-        opening: $('bOpen').value, openingOn: $('bOpenOn').value,
+        opening: S.editing ? S.editing.opening : null, openingOn: $('bOpenOn').value,
         openingAt: $('bOpenAt') ? $('bOpenAt').value : '',
         sheetUrl: $('bSheet').value, notes: $('bNotes').value
       };
