@@ -5,7 +5,7 @@ import { saveBankingSetup, recordBankEntry, bankingSetups } from './banking-setu
 import { listBanks, saveBank, todayText, readSpendSheet, report as bankReport, taxYear } from './banking.js';
 import { pool } from './db.js';
 import { liveSpend } from './banking-cprs.js';
-import { bankingHistory, correctTransaction, removeFiscalSetup, columnBreakdown, paymentWorkbook, historyWorkbook } from './banking-history.js';
+import { bankingHistory, correctTransaction, removeFiscalSetup, moveFiscalSetup, columnBreakdown, paymentWorkbook, historyWorkbook } from './banking-history.js';
 
 export function createBankingRouter({ requireBoss, requireCompany }) {
   const router = express.Router();
@@ -63,7 +63,12 @@ export function createBankingRouter({ requireBoss, requireCompany }) {
   router.post('/setup', async(req,res)=>{
     const who=await requireBoss(req,res); if(!who)return;
     const realm=await requireCompany(req,res);if(!realm)return;
-    try {await saveBankingSetup(realm,req.body||{},who.email||'boss');res.json({ok:true});}
+    try {
+      const input=req.body||{};
+      if(input.sourceBankId && Number(input.sourceBankId)!==Number(input.bankId))await moveFiscalSetup(realm,input,who.email||'boss');
+      else await saveBankingSetup(realm,input,who.email||'boss');
+      res.json({ok:true});
+    }
     catch(e){res.status(400).json({error:e.message});}
   });
   router.post('/transaction',async(req,res)=>{

@@ -82,15 +82,17 @@ export function fiscalHistory(rows,audits) {
   const explicitSaves=new Set(audits.filter(a=>a.action==='save-setup').flatMap(a=>a.new_value.map(e=>String(e.setupId))));
   function hide(id){while(id && !hidden.has(String(id))){hidden.add(String(id));id=byId.get(String(id))?.previous_id;}}
   for(const a of audits.filter(a=>a.action==='remove-setup')) for(const e of a.new_value){hide(e.setupId);hide(e.clearedSetupId);}
+  for(const a of audits.filter(a=>a.action==='move-setup'))for(const e of a.new_value)hidden.add(String(e.clearedSetupId));
   // Earlier Remove saved a zero reset with the original start dates, without
   // an action marker. Keep that clearing row and its earlier chain out of view.
   for(const s of rows){const p=byId.get(String(s.previous_id));
     if(p && !explicitSaves.has(String(s.id)) && money(s.opening_in)===0n && money(s.opening_out)===0n &&
       s.in_day===p.in_day && s.out_day===p.out_day)hide(s.id);
   }
-  const seen=new Set();
+  const latest=new Map();
+  for(const s of rows){const key=s.bank_id+':'+s.fiscal_year;if(!latest.has(key))latest.set(key,String(s.id));}
   return rows.filter(s=>!hidden.has(String(s.id))).map(s=>{
-    const key=s.bank_id+':'+s.fiscal_year,active=!seen.has(key);seen.add(key);
+    const key=s.bank_id+':'+s.fiscal_year,active=latest.get(key)===String(s.id);
     return {id:s.id,bankId:s.bank_id,bank:s.title||s.name,fiscalYear:s.fiscal_year,openingIn:s.opening_in,
       openingOut:s.opening_out,inFrom:s.in_day,outFrom:s.out_day,actor:s.actor,createdAt:s.created_at,active};
   });
@@ -147,6 +149,29 @@ export async function removeFiscalSetup(realmId,id,actor) {
       inFrom:s.in_day,outFrom:s.out_day,expectedId:id},actor,c);
     await c.query('INSERT INTO banking_entry_audit (realm_id,actor,action,new_value) VALUES ($1,$2,$3,$4::jsonb)',
       [realmId,actor,'remove-setup',JSON.stringify([{setupId:id,clearedSetupId:clearedId}])]);
+    await c.query('COMMIT');
+  }catch(e){await c.query('ROLLBACK');throw e;}finally{c.release();}
+}
+
+export async function moveFiscalSetup(realmId,input,actor) {
+  const from=Number(input.sourceBankId),to=Number(input.bankId),year=Number(input.fiscalYear);
+  if(!Number.isSafeInteger(from)||!Number.isSafeInteger(to)||from<=0||to<=0||from===to||!input.expectedId)
+    throw new Error('Select the original record and a different bank');
+  const c=await pool.connect();
+  try{
+    await c.query('BEGIN');await c.query("SELECT set_config('app.realm_id',$1,true)",[realmId]);
+    const owned=await c.query('SELECT id FROM banks WHERE realm_id=$1 AND id=ANY($2::int[]) ORDER BY id FOR UPDATE',[realmId,[from,to]]);
+    if(owned.rows.length!==2)throw new Error('No such bank in this company');
+    const found=await c.query(`SELECT *,to_char(in_from,'YYYY-MM-DD') AS in_day,to_char(out_from,'YYYY-MM-DD') AS out_day
+      FROM banking_setups WHERE realm_id=$1 AND id=$2 AND bank_id=$3 AND fiscal_year=$4`,[realmId,input.expectedId,from,year]);
+    const source=found.rows[0];if(!source)throw new Error('No matching original fiscal opening');
+    const target=(await c.query('SELECT id,opening_in,opening_out FROM banking_setups WHERE realm_id=$1 AND bank_id=$2 AND fiscal_year=$3 ORDER BY id DESC LIMIT 1',[realmId,to,year])).rows[0];
+    if(target&&(money(target.opening_in)!==0n||money(target.opening_out)!==0n))throw new Error('Selected bank already has fiscal amounts. Edit or remove those first; nothing was moved.');
+    const cleared=await saveBankingSetup(realmId,{bankId:from,fiscalYear:year,openingIn:'0.00',openingOut:'0.00',
+      inFrom:source.in_day,outFrom:source.out_day,expectedId:input.expectedId},actor,c);
+    const saved=await saveBankingSetup(realmId,{...input,bankId:to,expectedId:target?.id},actor,c);
+    await c.query('INSERT INTO banking_entry_audit (realm_id,actor,action,new_value) VALUES ($1,$2,$3,$4::jsonb)',
+      [realmId,actor,'move-setup',JSON.stringify([{fromBank:from,toBank:to,sourceSetupId:input.expectedId,clearedSetupId:cleared,newSetupId:saved}])]);
     await c.query('COMMIT');
   }catch(e){await c.query('ROLLBACK');throw e;}finally{c.release();}
 }

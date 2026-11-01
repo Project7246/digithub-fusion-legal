@@ -785,11 +785,11 @@
     host.querySelectorAll('[data-edit-setup]').forEach(function(b){b.addEventListener('click',function(){
       closeLog();var r=S.history.setups.find(function(x){return String(x.id)===b.getAttribute('data-edit-setup');});
       S.setupBankId=r.bankId;
-      $('sBank').value=r.bankId;$('sBank').disabled=true;$('sYear').value=r.fiscalYear;S.editSetup=r.id;
+      $('sBank').value=r.bankId;$('sBank').disabled=false;S.editSetupSource=r.bankId;$('sYear').value=r.fiscalYear;S.editSetup=r.id;
       $('sIn').value=r.openingIn;$('sOut').value=r.openingOut;$('sInFrom').value=r.inFrom;$('sOutFrom').value=r.outFrom;
       $('sSave').textContent='Save correction';$('sSave').scrollIntoView({behavior:'smooth',block:'center'});
       markFormDirty();
-      say($('sMsg'),'','To move to a different bank, remove this opening and enter it on the correct bank.');
+      say($('sMsg'),'','Choose the correct bank and save. The previous bank is cleared and the edit history is retained.');
     });});
     host.querySelectorAll('[data-remove-setup]').forEach(function(b){b.addEventListener('click',function(){
       if(!window.confirm('Remove these historical Opening In/Out amounts? A zero replacement and the full history will remain.'))return;
@@ -935,6 +935,7 @@
     if($('sCancel'))$('sCancel').addEventListener('click',function(){draw();});
     if($('sBank')) {
       function fillSetup(){
+        S.editSetupSource=null;
         var b=S.report.banks.find(function(x){return x.id===Number($('sBank').value);}) || {};
         $('sIn').value=b.openingIn || '0.00'; $('sOut').value=b.openingOut || '0.00';
         $('sInFrom').value=b.inFrom || b.openingOn || S.today;
@@ -942,12 +943,12 @@
         S.editSetup=b.setupId || null;
         $('sYear').value=S.report.year.year;
       }
-      $('sBank').addEventListener('change',fillSetup);fillSetup();
+      $('sBank').addEventListener('change',function(){if(!S.editSetupSource)fillSetup();});fillSetup();
       $('sSave').addEventListener('click',function(){
         var button=$('sSave');button.disabled=true;
         post('/api/bank/setup',{bankId:Number($('sBank').value),fiscalYear:Number($('sYear').value),
           openingIn:$('sIn').value,openingOut:$('sOut').value,inFrom:$('sInFrom').value,
-          outFrom:$('sOutFrom').value,expectedId:S.editSetup || undefined})
+          outFrom:$('sOutFrom').value,expectedId:S.editSetup || undefined,sourceBankId:S.editSetupSource || undefined})
           .then(function(){return load();}).catch(function(e){say($('sMsg'),'bad',e.message);})
           .finally(function(){button.disabled=false;});
       });

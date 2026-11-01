@@ -1,5 +1,14 @@
 # Digithub Fusion - project notes for Claude
 
+## Fiscal opening bank correction - 2 Nov 2026
+
+Owner requested changing the bank while editing a fiscal opening. Keep the bank
+selector enabled and retain typed amounts/dates when changing the edit's bank.
+Save atomically clears the original bank's fiscal totals and appends them to
+the selected bank, with existing audit/history preserved. Reject occupied target
+fiscal amounts rather than silently overwrite them. Stale source versions and
+failed audits roll back everything. No schema or deployment setup changes.
+
 ## Banking input preservation - 2 Nov 2026
 
 Alt-Tab/visibility refresh must never erase unsaved Banking form input. Track

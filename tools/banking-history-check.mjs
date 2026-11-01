@@ -1,6 +1,6 @@
 // Synthetic fixtures only; no production database is contacted.
 import assert from 'node:assert/strict';
-import { columnBreakdown, paymentWorkbook, correctTransaction, removeFiscalSetup, historyTransactions, fiscalHistory, historyWorkbook } from '../banking-history.js';
+import { columnBreakdown, paymentWorkbook, correctTransaction, removeFiscalSetup, moveFiscalSetup, historyTransactions, fiscalHistory, historyWorkbook } from '../banking-history.js';
 import { pool } from '../db.js';
 import express from 'express';
 import { createBankingRouter } from '../banking-router.js';
@@ -13,6 +13,9 @@ const fiscalRows=[{id:2,bank_id:1,fiscal_year:2027,opening_in:'0.00',opening_out
 assert.equal(fiscalHistory(fiscalRows,[]).length,0,'legacy cleared opening and superseded original both disappear');
 assert.equal(fiscalHistory(fiscalRows,[{action:'save-setup',new_value:[{setupId:2}]}]).length,2,'explicit edit to zero retains change history');
 assert.equal(fiscalHistory(fiscalRows,[{action:'remove-setup',new_value:[{setupId:1,clearedSetupId:2}]}]).length,0);
+const movedHistory=fiscalHistory(fiscalRows,[{action:'save-setup',new_value:[{setupId:2}]},
+  {action:'move-setup',new_value:[{clearedSetupId:2}]}]);
+assert.equal(movedHistory.length,1);assert.equal(movedHistory[0].active,false,'source history stays, without editable cleared row');
 assert.equal(fiscalHistory([{...fiscalRows[0],opening_in:'25.00'},fiscalRows[1]],[]).length,2,'edit history remains for active amounts');
 const entry=(id,time)=>({id,action:'in',actor:'owner',transaction_time:time,new_value:[{id,bankId:1,amount:'10.00'}]});
 const legacyAudits=[entry(1,'one'),entry(2,'two'),entry(3,'three'),entry(4,'four'),
@@ -46,7 +49,7 @@ const rows=XLSX.utils.sheet_to_json(wb.Sheets.Payments,{header:1});
 assert.equal(rows[1][2],'Receiver');assert.equal(rows[1][3],20);assert.equal(rows.at(-1)[3],20);
 assert.ok(rows[1].includes('Combined remarks'));
 const originalConnect=pool.connect;
-let calls=[],already=false,failAudit=false,stale=false,missing=false;
+let calls=[],already=false,failAudit=false,stale=false,missing=false,targetOccupied=false;
 let server;
 pool.connect=async()=>({release(){},async query(sql,args=[]){
   calls.push({sql,args});
@@ -56,6 +59,7 @@ pool.connect=async()=>({release(){},async query(sql,args=[]){
     {id:2,bank_id:2,on:'2026-10-21',amount:'100.00',kind:'transfer',other_bank_id:1}]};
   if(sql.includes('SELECT *,to_char'))return {rows:[{id:5,bank_id:1,fiscal_year:2027,in_day:'2026-10-20',out_day:'2026-10-20'}]};
   if(sql.includes('SELECT id FROM banking_setups'))return {rows:[{id:stale?6:5}]};
+  if(sql.includes('SELECT id,opening_in,opening_out'))return {rows:targetOccupied?[{id:8,opening_in:'10.00',opening_out:'0.00'}]:[]};
   if(sql.includes('FROM banks'))return {rows:(Array.isArray(args[1])?args[1]:[args[1]]).map(id=>({id}))};
   if(sql.includes('INSERT INTO banking_entry_audit')&&failAudit)throw Error('synthetic audit failure');
   return {rows:[{id:100+calls.length}]};
@@ -83,6 +87,20 @@ try {
   await assert.rejects(removeFiscalSetup('fixture',5,'owner'),/changed/);
   assert.equal(calls.at(-1).sql,'ROLLBACK');
   stale=false;calls=[];
+  const moved={sourceBankId:1,bankId:2,fiscalYear:2027,expectedId:5,openingIn:'25.00',openingOut:'5.00',inFrom:'2026-10-20',outFrom:'2026-10-20'};
+  await moveFiscalSetup('fixture',moved,'owner');
+  const setupWrites=calls.filter(c=>c.sql.includes('INSERT INTO banking_setups'));
+  assert.equal(setupWrites.length,2);
+  assert.deepEqual(setupWrites[0].args.slice(1,5),[1,2027,'0.00','0.00']);
+  assert.deepEqual(setupWrites[1].args.slice(1,5),[2,2027,'25.00','5.00']);
+  assert.equal(calls.filter(c=>c.sql==='BEGIN').length,1);assert.equal(calls.at(-1).sql,'COMMIT');
+  assert.ok(calls.some(c=>c.args[2]==='move-setup'));
+  calls=[];targetOccupied=true;
+  await assert.rejects(moveFiscalSetup('fixture',moved,'owner'),/already has fiscal amounts/);
+  assert.ok(!calls.some(c=>c.sql.includes('INSERT INTO banking_setups')));targetOccupied=false;
+  calls=[];failAudit=true;
+  await assert.rejects(moveFiscalSetup('fixture',moved,'owner'),/audit failure/);
+  assert.equal(calls.at(-1).sql,'ROLLBACK');failAudit=false;calls=[];
   const app=express();app.use(express.json());
   app.use('/api/bank',createBankingRouter({requireBoss:async()=>({email:'owner'}),requireCompany:async()=> 'fixture'}));
   server=await new Promise(resolve=>{const s=app.listen(0,'127.0.0.1',()=>resolve(s));});
