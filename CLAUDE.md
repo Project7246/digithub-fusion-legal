@@ -1,5 +1,28 @@
 # Digithub Fusion - project notes for Claude
 
+## Banking reviewable entries and payment detail - 1 Nov 2026
+
+Owner requested visible logs below fiscal-opening, transfer and manual In/Out
+forms, including wrong-bank entries, edit/remove actions, and source lists under
+Opening, Year In and Year Out arrow buttons. Logs cover all banks and preserve
+actor, saved time, superseded setup versions and reversed transactions.
+
+Use existing setup/audit tables; no new schema or deployment configuration.
+Edit/remove posted manual transactions by atomic reversal plus replacement,
+including both sides of transfers. Original and reversal moves remain stored,
+but the report excludes both so cancellation never inflates fiscal In or Out.
+Repeated reversal and stale fiscal correction must fail safely. Clearing a
+fiscal setup appends zero historical totals with the same cutoff dates, never
+deletes history. To move a fiscal opening to another bank, clear the wrong bank
+then enter the amounts on the correct bank. Opening bank edits now record old
+and new values atomically; do not invent audit history for earlier bank edits.
+
+View payments opens a dedicated dialog immediately, including read/matching
+errors. Month-filtered rows and Excel use the same fiscal/opening/Out cutoffs.
+Show date, receiver, sender bank, receiver bank, account head, combined remarks,
+reference/proof links and total. Source Google Sheet remains read-only. Keep
+negative CPRs visible in red with zero bank impact, as already specified.
+
 ## Banking manual fiscal openings and Google bank book - 1 Nov 2026
 
 Owner supplies historical fiscal Opening In and Opening Out; do not fetch

@@ -18,14 +18,16 @@ let requested;
 const sandbox = { console, setTimeout, clearTimeout, AbortSignal, URL, Date,
   document: { getElementById: element },
   window: { APP: { ready: new Promise(() => {}) } },
-  fetch: async url => { requested = url; return { json: async () => ({
+  fetch: async url => { requested = url; return { json: async () => url.includes('/spending?') ? {
+    bank:{id:1,name:'Sample Bank'},rows:[{on:'2026-10-21',amount:'-20.00',details:[{value:'Date'},{value:'Receiver Bank'},{value:'Popup Receiver'}]}]
+  } : ({
     receipt: { cpr: 'R<&1', courier: 'mnp', account: 'Synthetic account', status: 'Transferred' },
     summary: { gross: '1000000.00', charges: '130000.00', net: '870000.00' },
     orders: [{ tracking: 'TEST-1', orderRef: '<script>test</script>', amount: '1000000.00' }]
   }) }; }
 };
 vm.runInNewContext(script.replace(/\}\)\(\);\s*$/, `
-  globalThis.checkUi = { S, reportView, receiptListView, openReceipt, entriesView, spendingView };
+  globalThis.checkUi = { S, reportView, receiptListView, openReceipt, entriesView, spendingView, openPayments, setupLog, transactionLog };
 })();`), sandbox);
 const ui = sandbox.checkUi;
 ui.S.report = { year: { from: '2026-07-01', to: '2027-06-30' },
@@ -51,6 +53,9 @@ assert.match(view, /<tfoot>/);
 assert.match(view, /aria-label="View received CPR \(1\)"/);
 assert.doesNotMatch(view, /class="bkactions"/);
 assert.doesNotMatch(view, /PRIVATE-ACCOUNT-123/);
+assert.match(view,/data-column="opening"/);
+assert.match(view,/data-column="inYear"/);
+assert.match(view,/data-column="outYear"/);
 assert.ok(view.indexOf('id="bankCprList"') > view.indexOf('</table>'));
 ui.S.bankView = 'activity';
 assert.match(ui.reportView(), /<h2>Recent activity/);
@@ -65,6 +70,20 @@ assert.match(ui.spendingView(),/Combined remarks/);
 assert.match(ui.spendingView(),/Account head/);
 assert.match(ui.spendingView(),/200\.00/);
 assert.doesNotMatch(ui.spendingView(),/2026-09-21/);
+assert.match(ui.spendingView(),/Download Excel/);
+assert.match(ui.spendingView(),/download=xlsx&month=2026-10/);
+ui.S.history={setups:[{id:3,bankId:1,fiscalYear:2027,openingIn:'50.00',openingOut:'20.00',active:true}],
+  transactions:[{id:4,type:'in',entries:[{bankId:1,on:'2026-10-21',amount:'25.00',note:'Saved deposit'}]}]};
+assert.match(ui.setupLog(),/data-edit-setup="3"/);
+assert.match(ui.setupLog(),/data-remove-setup="3"/);
+assert.match(ui.transactionLog('entry'),/Saved deposit/);
+assert.match(ui.transactionLog('entry'),/data-edit-transaction="4"/);
+assert.match(ui.transactionLog('entry'),/data-remove-transaction="4"/);
+ui.openPayments(1);
+assert.equal(element('bkPaymentDialog').open,true,'View payments opens a modal immediately, before the read completes');
+await new Promise(resolve=>setImmediate(resolve));
+assert.match(element('spendingPreview').innerHTML,/Popup Receiver/);
+assert.match(element('spendingPreview').innerHTML,/download=xlsx/);
 ui.S.selectedBank = 1; ui.S.receiptFilter = 'receivable';
 assert.match(ui.receiptListView(), /PENDING-1/);
 assert.doesNotMatch(ui.receiptListView(), /R&lt;&amp;1/);

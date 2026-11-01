@@ -203,7 +203,7 @@ function shapeBank(b) {
   };
 }
 
-export async function saveBank(realmId, bank) {
+export async function saveBank(realmId, bank, connection = pool) {
   const name = String(bank.name || '').trim();
   if (!name) throw new Error('The bank needs a name');
 
@@ -227,7 +227,7 @@ export async function saveBank(realmId, bank) {
   // from the wrong statement is found a day later. What cannot be undone by
   // correcting it is the movements, which are rows of their own.
   if (id) {
-    const r = await pool.query(
+    const r = await connection.query(
       `UPDATE banks SET name = $3, owner_name = $4, title = $5, account_no = $6,
               iban = $7, branch = $8, notes = $9, opening = $10, opening_on = $11,
               sheet_url = $12, active = $13, opening_at = $14
@@ -241,7 +241,7 @@ export async function saveBank(realmId, bank) {
     return id;
   }
 
-  const r = await pool.query(
+  const r = await connection.query(
     `INSERT INTO banks (realm_id, name, owner_name, title, account_no, iban,
                         branch, notes, opening, opening_on, sheet_url, opening_at)
      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) RETURNING id`,

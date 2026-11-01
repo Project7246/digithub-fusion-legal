@@ -13,10 +13,10 @@ export async function initBankingSetup() {
   } catch(e) {await c.query('ROLLBACK');throw e;} finally {c.release();}
 }
 export async function bankingSetups(realmId, year) {
-  const r=await pool.query(`SELECT DISTINCT ON (bank_id) bank_id,fiscal_year,opening_in,opening_out,
+  const r=await pool.query(`SELECT DISTINCT ON (bank_id) id,bank_id,fiscal_year,opening_in,opening_out,
     to_char(in_from,'YYYY-MM-DD') AS in_from,to_char(out_from,'YYYY-MM-DD') AS out_from
     FROM banking_setups WHERE realm_id=$1 AND fiscal_year=$2 ORDER BY bank_id,id DESC`,[realmId,year]);
-  return r.rows.map(s=>({bankId:Number(s.bank_id),fiscalYear:s.fiscal_year,openingIn:s.opening_in,
+  return r.rows.map(s=>({setupId:s.id,bankId:Number(s.bank_id),fiscalYear:s.fiscal_year,openingIn:s.opening_in,
     openingOut:s.opening_out,inFrom:s.in_from,outFrom:s.out_from}));
 }
 function day(s) {
@@ -24,7 +24,7 @@ function day(s) {
   if(new Date(s+'T00:00:00Z').toISOString().slice(0,10)!==s) throw new Error('Select a valid start date');
   return s;
 }
-export async function saveBankingSetup(realmId,input,actor) {
+export async function saveBankingSetup(realmId,input,actor,transaction=null) {
   const fiscalYear=Number(input.fiscalYear),bankId=Number(input.bankId);
   if(!Number.isSafeInteger(fiscalYear)||fiscalYear<2001||fiscalYear>2100||!Number.isSafeInteger(bankId)||bankId<=0)
     throw new Error('Select a bank and fiscal year');
@@ -33,31 +33,36 @@ export async function saveBankingSetup(realmId,input,actor) {
     throw new Error('Start dates must be in the selected fiscal year');
   for(const field of ['openingIn','openingOut']) if(input[field]==null||String(input[field]).trim()===''||money(input[field])<0n)
     throw new Error('Enter non-negative Opening In and Opening Out; use 0 for none');
-  const c=await pool.connect();
+  const c=transaction || await pool.connect();
   try {
-    await c.query('BEGIN');
+    if(!transaction)await c.query('BEGIN');
     await c.query("SELECT set_config('app.realm_id',$1,true)",[realmId]);
     const b=await c.query('SELECT id,opening_on FROM banks WHERE realm_id=$1 AND id=$2 FOR UPDATE',[realmId,bankId]);
     if(!b.rows.length) throw new Error('No such bank in this company');
+    if(input.expectedId) {
+      const latest=await c.query('SELECT id FROM banking_setups WHERE realm_id=$1 AND bank_id=$2 AND fiscal_year=$3 ORDER BY id DESC LIMIT 1',
+        [realmId,bankId,fiscalYear]);
+      if(String(latest.rows[0]?.id)!==String(input.expectedId))throw new Error('Fiscal opening changed; refresh before correcting it');
+    }
     await c.query(`INSERT INTO banking_setups (realm_id,bank_id,fiscal_year,opening_in,opening_out,
       in_from,out_from,actor,previous_id)
       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,(SELECT id FROM banking_setups
         WHERE realm_id=$1 AND bank_id=$2 AND fiscal_year=$3 ORDER BY id DESC LIMIT 1))`,
       [realmId,bankId,fiscalYear,addMoney([input.openingIn]),addMoney([input.openingOut]),inFrom,outFrom,
         actor]);
-    await c.query('COMMIT');
-  } catch(e) {await c.query('ROLLBACK');throw e;} finally {c.release();}
+    if(!transaction)await c.query('COMMIT');
+  } catch(e) {if(!transaction)await c.query('ROLLBACK');throw e;} finally {if(!transaction)c.release();}
 }
-export async function recordBankEntry(realmId,input,actor) {
+export async function recordBankEntry(realmId,input,actor,transaction=null) {
   const on=day(input.on),value=addMoney([input.amount]);
   if(money(value)<=0n) throw new Error('Enter an amount greater than zero');
   if(!['in','out','transfer'].includes(input.type)) throw new Error('Select Transaction In, Out or transfer');
   if(input.type!=='transfer'&&!String(input.note||'').trim()) throw new Error('Enter a reference or description');
   const ids=input.type==='transfer'?[Number(input.fromBank),Number(input.toBank)]:[Number(input.bankId)];
   if(ids.some(id=>!Number.isSafeInteger(id)||id<=0)||new Set(ids).size!==ids.length) throw new Error('Select different valid banks');
-  const c=await pool.connect();
+  const c=transaction || await pool.connect();
   try {
-    await c.query('BEGIN');
+    if(!transaction)await c.query('BEGIN');
     await c.query("SELECT set_config('app.realm_id',$1,true)",[realmId]);
     const owned=await c.query('SELECT id FROM banks WHERE realm_id=$1 AND id=ANY($2::int[]) FOR UPDATE',[realmId,ids]);
     if(owned.rows.length!==ids.length) throw new Error('No such bank in this company');
@@ -71,6 +76,6 @@ export async function recordBankEntry(realmId,input,actor) {
     }
     await c.query('INSERT INTO banking_entry_audit (realm_id,actor,action,new_value) VALUES ($1,$2,$3,$4::jsonb)',
       [realmId,actor,input.type,JSON.stringify(entries)]);
-    await c.query('COMMIT');return entries;
-  } catch(e) {await c.query('ROLLBACK');throw e;} finally {c.release();}
+    if(!transaction)await c.query('COMMIT');return entries;
+  } catch(e) {if(!transaction)await c.query('ROLLBACK');throw e;} finally {if(!transaction)c.release();}
 }

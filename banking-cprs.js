@@ -50,7 +50,12 @@ export async function receiptProjection(realmId, banks, today) {
                   FROM bank_links WHERE realm_id = $1`, [realmId]),
     pool.query(`SELECT id, bank_id, account_id, to_char(on_date,'YYYY-MM-DD') AS day,
                        amount, kind, source, ref, note, made_by, other_bank_id
-                  FROM bank_moves WHERE realm_id = $1`, [realmId])
+                  FROM bank_moves WHERE realm_id = $1
+                    AND NOT EXISTS (SELECT 1 FROM banking_entry_audit a,
+                      LATERAL jsonb_array_elements(CASE WHEN jsonb_typeof(a.new_value)='array'
+                        THEN a.new_value ELSE '[]'::jsonb END) e
+                      WHERE a.realm_id=$1 AND a.action LIKE 'reverse:%'
+                        AND (e->>'id'=bank_moves.id::text OR e->>'reversesMoveId'=bank_moves.id::text))`, [realmId])
   ]);
   const links = linkRows.rows.map(l => ({ id: Number(l.id), accountId: Number(l.account_id),
     bankId: Number(l.bank_id), from: l.from_day }));

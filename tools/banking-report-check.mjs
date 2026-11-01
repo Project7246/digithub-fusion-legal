@@ -41,7 +41,8 @@ pool.query = async (sql, args) => {
     { id: 5, bank_id: 1, day: '2026-08-03', amount: '-20000.00',
       kind: 'spend', source: 'sheet', ref: 'old-sheet-copy' }
   ] };
-  if (sql.includes('FROM banks')) return { rows: [{ id: 1, name: 'Sample Bank',
+  if (sql.includes('FROM banking_setups')) return {rows:[]};
+  if (sql.includes('FROM banks')) return { rows: [{ id: 1, name: 'Sample Bank',sheet_url:'https://fixture.invalid/expenses.csv',
     opening: '100000.00', opening_on: new Date(2026, 6, 1) }] };
   if (sql.includes('FROM courier_orders')) {
     if (args[1] === 2) return { rows: [] };
@@ -150,6 +151,19 @@ try {
   assert.equal(summaryRows.find(row => row[0] === 'Net bank amount')[1], 870000);
   assert.equal(workbook.Sheets.Orders.B2.t, 's', 'order references are text, never spreadsheet formulas');
   assert.equal(workbook.Sheets.Orders.B2.f, undefined);
+  globalThis.fetch=async()=>new Response('Date,Amount,Description\n03/08/2026,20000,Fuel\n03/09/2026,5000,Rent\n');
+  const spendingBase=base.replace('/cpr','/spending')+'?bank=1&year=2027&month=2026-08';
+  const payments=await oldFetch(spendingBase,{headers});
+  assert.equal(payments.status,200);
+  const paymentRows=(await payments.json()).rows;
+  assert.equal(paymentRows.length,1);assert.equal(paymentRows[0].amount,'-20000.00');
+  const paymentsExcel=await oldFetch(spendingBase+'&download=xlsx',{headers});
+  assert.equal(paymentsExcel.status,200);
+  const paymentBook=XLSX.read(Buffer.from(await paymentsExcel.arrayBuffer()),{type:'buffer'});
+  const paymentValues=XLSX.utils.sheet_to_json(paymentBook.Sheets.Payments,{header:1});
+  assert.equal(paymentValues.at(-1)[3],20000,'Excel uses the same month and total as the popup');
+  assert.equal((await oldFetch(spendingBase)).status,403);
+  assert.equal((await oldFetch(spendingBase,{headers:{...headers,'x-fixture-realm':'other-company'}})).status,400);
 
   console.log('Banking report checks passed: authoritative net, pending/received transitions, no duplicate old deposits, dated links, live CSV additions/removals, sheet failure, company isolation, boss guard and Excel workbook.');
 } finally {

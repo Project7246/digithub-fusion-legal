@@ -1,0 +1,71 @@
+// Synthetic fixtures only; no production database is contacted.
+import assert from 'node:assert/strict';
+import { columnBreakdown, paymentWorkbook, correctTransaction, removeFiscalSetup } from '../banking-history.js';
+import { pool } from '../db.js';
+import express from 'express';
+import { createBankingRouter } from '../banking-router.js';
+import XLSX from 'xlsx';
+const report={year:{year:2027,from:'2026-07-01',to:'2027-06-30'},banks:[{id:1,opening:'100.00',openingOn:'2026-10-20',
+  openingIn:'500.00',openingOut:'400.00',fiscalYear:2027,inYear:'550.00',outYear:'420.00'}],moves:[
+  {bankId:1,on:'2026-10-21',amount:'50.00',source:'hand',note:'Deposit'},
+  {bankId:1,on:'2026-10-21',amount:'-20.00',source:'sheet',note:'Expense'},
+  {bankId:1,on:'2026-10-21',amount:'-500.00',source:'courier',affectsBalance:false}]};
+assert.equal(columnBreakdown(report,1,'inYear').rows.length,2);
+assert.equal(columnBreakdown(report,1,'outYear').total,'420.00');
+assert.equal(columnBreakdown(report,1,'outYear').rows.length,2,'negative CPR never becomes Out');
+assert.equal(columnBreakdown(report,1,'opening').rows[0].amount,'100.00');
+const wb=XLSX.read(paymentWorkbook([{on:'2026-10-21',amount:'-20.00',details:Array.from({length:16},(_,i)=>({value:
+  i===2?'Receiver':i===6?'Sender':i===13?'Expense head':i===15?'Combined remarks':''})),rowUrl:'https://example.invalid/row'}]),{type:'buffer'});
+const rows=XLSX.utils.sheet_to_json(wb.Sheets.Payments,{header:1});
+assert.equal(rows[1][2],'Receiver');assert.equal(rows[1][3],20);assert.equal(rows.at(-1)[3],20);
+assert.ok(rows[1].includes('Combined remarks'));
+const originalConnect=pool.connect;
+let calls=[],already=false,failAudit=false,stale=false,missing=false;
+let server;
+pool.connect=async()=>({release(){},async query(sql,args=[]){
+  calls.push({sql,args});
+  if(sql.includes('SELECT id,action,new_value'))return {rows:missing?[]:[{id:7,action:'transfer',new_value:[{id:1},{id:2}]}]};
+  if(sql.includes('SELECT id FROM banking_entry_audit'))return {rows:already?[{id:9}]:[]};
+  if(sql.includes('FROM bank_moves'))return {rows:[{id:1,bank_id:1,on:'2026-10-21',amount:'-100.00',kind:'transfer',other_bank_id:2},
+    {id:2,bank_id:2,on:'2026-10-21',amount:'100.00',kind:'transfer',other_bank_id:1}]};
+  if(sql.includes('SELECT *,to_char'))return {rows:[{id:5,bank_id:1,fiscal_year:2027,in_day:'2026-10-20',out_day:'2026-10-20'}]};
+  if(sql.includes('SELECT id FROM banking_setups'))return {rows:[{id:stale?6:5}]};
+  if(sql.includes('FROM banks'))return {rows:(Array.isArray(args[1])?args[1]:[args[1]]).map(id=>({id}))};
+  if(sql.includes('INSERT INTO banking_entry_audit')&&failAudit)throw Error('synthetic audit failure');
+  return {rows:[{id:100+calls.length}]};
+}});
+try {
+  await correctTransaction('fixture',7,{type:'transfer',fromBank:1,toBank:3,on:'2026-10-22',amount:'80.00',note:'Corrected bank'},'owner');
+  const inserts=calls.filter(c=>c.sql.includes('INSERT INTO bank_moves'));
+  assert.deepEqual(inserts.map(c=>c.args[3]),['100.00','-100.00','-80.00','80.00']);
+  assert.equal(calls.filter(c=>c.sql==='BEGIN').length,1,'one transaction covers both-bank reversal and replacement');
+  assert.equal(calls.at(-1).sql,'COMMIT');
+  assert.ok(calls.some(c=>c.args[2]==='reverse:7'));
+  assert.doesNotMatch(calls.map(c=>c.sql).join(' '),/\bUPDATE bank_moves|\bDELETE\b/);
+  calls=[];already=true;
+  await assert.rejects(correctTransaction('fixture',7,null,'owner'),/already reversed/);
+  assert.ok(!calls.some(c=>c.sql.includes('INSERT INTO bank_moves')));already=false;
+  calls=[];missing=true;
+  await assert.rejects(correctTransaction('other-company',7,null,'owner'),/this company/);missing=false;
+  calls=[];failAudit=true;
+  await assert.rejects(correctTransaction('fixture',7,null,'owner'),/audit failure/);
+  assert.equal(calls.at(-1).sql,'ROLLBACK');failAudit=false;
+  calls=[];await removeFiscalSetup('fixture',5,'owner');
+  assert.deepEqual(calls.find(c=>c.sql.includes('INSERT INTO banking_setups')).args.slice(3,5),['0.00','0.00']);
+  calls=[];stale=true;
+  await assert.rejects(removeFiscalSetup('fixture',5,'owner'),/changed/);
+  assert.equal(calls.at(-1).sql,'ROLLBACK');
+  stale=false;calls=[];
+  const app=express();app.use(express.json());
+  app.use('/api/bank',createBankingRouter({requireBoss:async()=>({email:'owner'}),requireCompany:async()=> 'fixture'}));
+  server=await new Promise(resolve=>{const s=app.listen(0,'127.0.0.1',()=>resolve(s));});
+  const url='http://127.0.0.1:'+server.address().port+'/api/bank/save';
+  const request={method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id:1,name:'Fixture Bank',opening:'100.00',openingOn:'2026-10-20'})};
+  assert.equal((await fetch(url,request)).status,200);
+  assert.ok(calls.some(c=>c.args[2]==='bank-opening'));
+  assert.equal(calls.at(-1).sql,'COMMIT');
+  calls=[];failAudit=true;
+  assert.equal((await fetch(url,request)).status,400);
+  assert.equal(calls.at(-1).sql,'ROLLBACK','bank opening cannot change without its old/new audit');
+}finally{pool.connect=originalConnect;if(server)await new Promise(resolve=>server.close(resolve));}
+console.log('Banking history checks passed: opening and fiscal drilldowns reconcile, negative CPR excluded, payment export preserves details and total.');
