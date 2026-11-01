@@ -2894,6 +2894,33 @@ the report also omits withholding fields. Correcting the payment source needs
 the portal's payment summary, not a guessed deduction formula. Until that
 source is verified, the existing M&P CPR net is not verified against the bank.
 
+Resolved source, 1 Nov: the owner provided the consignment export and authorized
+read-only study of the M&P portal. Its consolidated source is
+`CustomerPortalAPI/api/reports/paymentinstrumentreport`, one row per payment.
+The list's `NetPayable` is **before IBFT fee**; subtract `IBFTFee` once, as the
+portal does. `TaxAmount` is withholding and is already reflected in that net.
+The detail endpoint `paymentinstrumentdetailreport` returns the final net
+in `paymentHead.netPayable` (do not subtract the fee again), invoice breakdown
+and all consignments, including separate charge-only and COD-only rows.
+
+- `mnpportal.js` reads the current public portal client's gateway credential
+  into memory at runtime. No credential literal, new environment setting or
+  browser session is stored. Responses must match the saved courier account.
+- `mnplive.js` saves consolidated covers, never sums invoice/net columns from
+  the old COD API. An IBFT instrument confirms receipt; a generated payment
+  without that confirmed instrument remains pending.
+- `migrations/001_courier_cpr_audit.sql` adds the company-scoped RLS audit table.
+  Correction and audit commit together; QuickBooks receipt/journal fields are
+  untouched. The existing budgeted keeper refreshes the last 120 days of M&P
+  payment covers, correcting old sums and following pending payments.
+- Logistics CPR gross, invoice, withholding, bank fee and net use those covers
+  even when only some COD parcels are linked locally. Banking popup/Excel use
+  the portal's full detail; invoice GST is labelled included in the invoice.
+- `node tools/mnp-payments-check.mjs` and `node tools/mnp-store-check.mjs` check
+  synthetic figures, account isolation, one-time migration, atomic audit,
+  rollback, duplicate payments and the Logistics totals. A separate read-only
+  live check matched the owner's CPR in both list and detail without using DB.
+
 Banking reads the courier CPR's own `net_amount`, after the courier's charges,
 GST, withholdings and other deductions. Never substitute a sum of parcel COD
 for that bank amount. Logistics and Finance retain their existing calculations.

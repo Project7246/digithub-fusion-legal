@@ -3,6 +3,7 @@
 import { pool } from './db.js';
 import { bankingReceipts, bankingReceiptOrders } from './couriers.js';
 import { cprDetail } from './cprlive.js';
+import { mnpReceiptDetail } from './mnplive.js';
 import { addMoney, bankFigures, placeReceipts } from './banking-money.js';
 
 const sheets = new Map();
@@ -121,7 +122,7 @@ export async function receiptDetail(realmId, accountId, cpr) {
   if (!receipt) throw new Error('No such CPR in this company');
   let orders = await bankingReceiptOrders(realmId, accountId, cpr);
   let summary = { gross: receipt.gross, charges: receipt.charges, tax: receipt.tax,
-    withholding: receipt.withholding, net: receipt.net };
+    withholding: receipt.withholding, bankFee: receipt.bankFee, net: receipt.net };
   let adjustments = [];
   let warning = '';
   if (receipt.courier === 'postex' && receipt.remoteId) {
@@ -135,6 +136,18 @@ export async function receiptDetail(realmId, accountId, cpr) {
       adjustments = live.adjustments;
       orders = live.orders;
     } catch (e) { warning = 'Live courier detail unavailable; showing saved data: ' + e.message; }
+  }
+  if (receipt.courier === 'mnp') {
+    try {
+      const live = await mnpReceiptDetail(realmId, accountId, receipt.cpr);
+      summary = { ...live.summary, bankFee: receipt.bankFee };
+      orders = live.orders;
+      receipt.paidToBank = live.paidToBank || receipt.paidToBank;
+      receipt.paidToAccount = live.paidToAccount || receipt.paidToAccount;
+      if (addMoney([summary.net]) !== addMoney([receipt.net])) {
+        warning = 'Courier summary differs from saved CPR; refresh this courier account to update the bank report';
+      }
+    } catch (e) { warning = 'Live M&P detail unavailable; showing saved data: ' + e.message; }
   }
   const expected = receipt.orders;
   if (expected != null && orders.length < expected) {

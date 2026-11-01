@@ -1,5 +1,6 @@
 import { pool } from './db.js';
 import { encrypt, decrypt } from './secrets.js';
+import { initCprAudit, recordCprChanges } from './cpr-audit.js';
 
 // Courier accounts, one row per account. PostEx-RB and PostEx-AH are two rows
 // sharing one adapter; a whole new courier is a new adapter, not new tables.
@@ -156,11 +157,12 @@ export async function initCouriers() {
       ADD COLUMN IF NOT EXISTS wh_amount       NUMERIC(14,2),
       ADD COLUMN IF NOT EXISTS orders_count    INTEGER
   `);
+  await initCprAudit();
 }
 
 // A receipt seen again is updated, never duplicated. What we have already
 // done with it in QuickBooks is ours, so those columns are left alone.
-export async function saveCprs(realmId, accountId, courier, rows) {
+export async function saveCprs(realmId, accountId, courier, rows, queryable = pool) {
   // One receipt number can arrive twice in one answer - M&P list a payment
   // once per sub-account it covers. Postgres refuses a whole statement that
   // touches the same row twice ("cannot affect row a second time"), so the
@@ -191,12 +193,12 @@ export async function saveCprs(realmId, accountId, courier, rows) {
         JSON.stringify(c.raw || {}),
         c.paidToName || null, c.paidToBank || null, c.paidToAccount || null,
         c.instrument || null, c.mode || null,
-        c.grossAmount == null ? null : Number(c.grossAmount),
-        c.chargeAmount == null ? null : Number(c.chargeAmount)
+        c.grossAmount == null ? null : c.grossAmount,
+        c.chargeAmount == null ? null : c.chargeAmount
       );
     });
 
-    await pool.query(
+    await queryable.query(
       `INSERT INTO courier_cprs
          (realm_id, account_id, courier, cpr_number, remote_id, status, status_id,
           net_amount, created_on, approved_on, raw,
@@ -228,6 +230,53 @@ export async function saveCprs(realmId, accountId, courier, rows) {
   return good.length;
 }
 
+// M&P cover corrections and their audit trail commit together. QuickBooks
+// payment/journal columns are deliberately outside this update path.
+export async function saveMnpCprs(realmId, accountId, rows) {
+  if (!rows.length) return 0;
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    await client.query("SELECT set_config('app.realm_id', $1, true)", [realmId]);
+    await client.query('SELECT pg_advisory_xact_lock(hashtext($1))', ['mnp-cpr:' + realmId + ':' + accountId]);
+    const before = await client.query(
+      `SELECT cpr_number, net_amount, gross_amount, charge_amount, wh_amount, status, raw,
+              to_char(created_on AT TIME ZONE 'Asia/Karachi','YYYY-MM-DD') AS created_day,
+              to_char(approved_on AT TIME ZONE 'Asia/Karachi','YYYY-MM-DD') AS approved_day,
+              paid_to_bank, paid_to_account, instrument, pay_mode
+         FROM courier_cprs WHERE realm_id = $1 AND account_id = $2 AND cpr_number = ANY($3::text[])
+         FOR UPDATE`, [realmId, Number(accountId), rows.map(r => r.cprNumber)]);
+    const byRef = new Map(before.rows.map(r => [r.cpr_number, r]));
+    const snapshot = r => r ? { net: String(r.net_amount), gross: String(r.gross_amount),
+      invoice: String(r.charge_amount), withholding: String(r.wh_amount), status: r.status,
+      bankFee: r.raw?.paymentSummary?.bankFee ?? null, source: r.raw?.source ?? null,
+      createdOn: r.created_day ?? null, approvedOn: r.approved_day ?? null,
+      bank: r.paid_to_bank ?? null, bankAccount: r.paid_to_account ?? null,
+      instrument: r.instrument ?? null, mode: r.pay_mode ?? null } : null;
+    const changes = rows.map(r => ({ cpr: r.cprNumber, old_value: snapshot(byRef.get(r.cprNumber)),
+      new_value: { net: r.netAmount, gross: r.grossAmount, invoice: r.chargeAmount,
+        withholding: r.raw.paymentSummary.withholding, status: r.status,
+        bankFee: r.raw.paymentSummary.bankFee, source: r.raw.source,
+        createdOn: r.createdOn, approvedOn: r.approvedOn,
+        bank: r.paidToBank || byRef.get(r.cprNumber)?.paid_to_bank || null,
+        bankAccount: r.paidToAccount || byRef.get(r.cprNumber)?.paid_to_account || null,
+        instrument: r.instrument || byRef.get(r.cprNumber)?.instrument || null,
+        mode: r.mode || byRef.get(r.cprNumber)?.pay_mode || null } }))
+      .filter(c => JSON.stringify(c.old_value) !== JSON.stringify(c.new_value));
+    await saveCprs(realmId, accountId, 'mnp', rows, client);
+    await client.query(
+      `UPDATE courier_cprs c SET wh_amount = x.withholding, cod_amount = x.gross
+         FROM jsonb_to_recordset($3::jsonb) AS x(cpr TEXT, withholding NUMERIC, gross NUMERIC)
+        WHERE c.realm_id = $1 AND c.account_id = $2 AND c.cpr_number = x.cpr`,
+      [realmId, Number(accountId), JSON.stringify(rows.map(r => ({ cpr: r.cprNumber,
+        withholding: r.raw.paymentSummary.withholding, gross: r.grossAmount })))]);
+    await recordCprChanges(client, realmId, accountId, changes);
+    await client.query('COMMIT');
+    return rows.length;
+  } catch (e) { await client.query('ROLLBACK'); throw e; }
+  finally { client.release(); }
+}
+
 // Read-only interface for Banking. Keep courier tables and field names here;
 // Banking consumes the receipt's net, never reconstructs it from parcel COD.
 export async function bankingReceipts(realmId) {
@@ -247,7 +296,8 @@ export async function bankingReceipts(realmId) {
             to_char(c.created_on AT TIME ZONE 'Asia/Karachi', 'YYYY-MM-DD') AS created_day,
             COALESCE(to_char(c.approved_on AT TIME ZONE 'Asia/Karachi', 'YYYY-MM-DD'),
                      to_char(p.paid_on, 'YYYY-MM-DD')) AS paid_day,
-            c.paid_to_bank, c.paid_to_account, c.instrument, c.pay_mode
+            c.paid_to_bank, c.paid_to_account, c.instrument, c.pay_mode,
+            c.raw->'paymentSummary'->>'bankFee' AS bank_fee
        FROM (SELECT * FROM courier_cprs WHERE realm_id = $1) c
        FULL JOIN parcel_dates p ON p.account_id = c.account_id AND p.cpr_number = c.cpr_number
        JOIN courier_accounts a ON a.realm_id = $1 AND a.id = COALESCE(c.account_id,p.account_id)
@@ -261,7 +311,7 @@ export async function bankingReceipts(realmId) {
     withholding: c.wh_amount, orders: c.orders_count == null ? null : Number(c.orders_count),
     linkedOrders: Number(c.linked_orders), createdOn: c.created_day, paidOn: c.paid_day,
     paidToBank: c.paid_to_bank || '', paidToAccount: c.paid_to_account || '',
-    instrument: c.instrument || '', mode: c.pay_mode || ''
+    instrument: c.instrument || '', mode: c.pay_mode || '', bankFee: c.bank_fee ?? null
   }));
 }
 

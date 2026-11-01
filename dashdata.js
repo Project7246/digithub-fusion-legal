@@ -706,7 +706,11 @@ export async function recentCprs(realmId, opts) {
             MAX(c.pay_mode)      AS pay_mode,
             MAX(c.paid_to_bank)  AS paid_to_bank,
             MAX(c.paid_to_account) AS paid_to_account,
-            MAX(c.paid_to_name)  AS paid_to_name
+            MAX(c.paid_to_name)  AS paid_to_name,
+            MAX(c.wh_amount) AS cover_wh,
+            MAX(c.raw->>'source') AS payment_source,
+            MAX(CASE WHEN c.raw->>'source' = 'mnp-portal-payment-v1'
+              THEN (c.raw->'paymentSummary'->>'bankFee')::numeric END) AS bank_fee
        FROM courier_orders o
        JOIN courier_accounts a ON a.id = o.account_id
        LEFT JOIN courier_cprs c
@@ -719,7 +723,12 @@ export async function recentCprs(realmId, opts) {
       LIMIT ${Number(opts.limit) || 200}`, args);
 
   return r.rows.map(x => {
-    const amount = r2(x.amount), charges = r2(x.charges);
+    const consolidated = x.courier === 'mnp' && x.payment_source === 'mnp-portal-payment-v1';
+    const amount = consolidated ? r2(x.gross_amount) : r2(x.amount);
+    const fee = consolidated ? r2(x.charge_amount) : r2(x.fee);
+    const tax = consolidated ? r2(x.cover_wh) : r2(x.tax);
+    const bankFee = consolidated ? r2(x.bank_fee) : null;
+    const charges = consolidated ? r2(fee + tax + bankFee) : r2(x.charges);
     return {
       cpr: x.cpr_number,
       accountId: x.account_id,
@@ -729,8 +738,7 @@ export async function recentCprs(realmId, opts) {
       orders: Number(x.orders),
       amount,
       charges,
-      fee: r2(x.fee),
-      tax: r2(x.tax),
+      fee, tax, bankFee, parcelFee: r2(x.fee),
       // What they actually paid against this receipt. A courier that deducts
       // pays the COD less its charges; M&P pay the whole COD and bill their
       // charges on an invoice of their own, so taking them off here would

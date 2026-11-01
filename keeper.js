@@ -21,6 +21,7 @@ import {
 } from './couriers.js';
 import { adapterFor } from './adapters.js';
 import { chaseMoney } from './courierlive.js';
+import { absorbPayouts } from './mnplive.js';
 import {
   beginBackground, endBackground, nextGapMinutes, mayRun, computeState
 } from './compute.js';
@@ -223,6 +224,18 @@ async function catchUpOne(realmId, acc) {
       // and not worth failing the sweep over
       mine.settleError = e.message;
     }
+  }
+
+  // Same budgeted sweep, one consolidated payment-list call. Re-read the
+  // catch-up window so an older pending CPR can become paid and old report
+  // totals are corrected without waiting for another parcel to move.
+  if (acc.courier === 'mnp' && typeof a.fetchPayouts === 'function') {
+    try {
+      const paymentTo = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Karachi',
+        year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
+      const payments = await absorbPayouts(realmId, acc, shift(paymentTo, -MAX_CATCHUP), paymentTo);
+      mine.payments = payments.payments;
+    } catch (e) { mine.settleError = 'M&P payments: ' + e.message; }
   }
 
   state.sweptAt[acc.id] = Date.now();

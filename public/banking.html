@@ -187,14 +187,18 @@
         var fields = [ ['gross','COD / gross collections'], ['charges','Courier charges / recovered invoices'],
           ['tax','GST'], ['salesTax','Withholding sales tax'], ['incomeTax','Withholding income tax'],
           ['withholding','Total withholding'], ['miscellaneous','Miscellaneous charges'],
+          ['bankFee','IBFT / bank fee'], ['shipping','Shipping charges (within invoice)'],
+          ['fuel','Fuel surcharge (within invoice)'], ['invoiceGst','GST (included in invoice)'],
+          ['extraCharges','Extra charges (within invoice)'],
           ['carryForward','Carry forward'], ['adjustment','Adjustment'],
           ['otherDifference','Other deductions / difference'], ['net','Net bank amount'] ];
         var columns = [ ['tracking','Tracking'], ['orderRef','Order'], ['status','Status'], ['city','City'],
           ['bookedOn','Booked'], ['deliveredOn','Delivered / returned'], ['settledOn','Paid'],
           ['amount','COD'], ['received','Collected'], ['fee','Courier charges'], ['upfrontCharges','Upfront charges'],
           ['tax','GST'], ['whSalesTax','WH sales tax'], ['whIncomeTax','WH income tax'],
-          ['upfront','Upfront paid'], ['reserve','Reserve'], ['net','Net'], ['notes','Notes'] ];
-        var numeric = ['amount','received','fee','upfrontCharges','tax','whSalesTax','whIncomeTax','upfront','reserve','net'];
+          ['upfront','Upfront paid'], ['reserve','Reserve'], ['net','Net'], ['notes','Notes'],
+          ['invoiceAmount','Invoice allocation'], ['taxableAmount','Taxable amount'], ['withholding','Total WH tax'] ];
+        var numeric = ['amount','received','fee','upfrontCharges','tax','whSalesTax','whIncomeTax','upfront','reserve','net','invoiceAmount','taxableAmount','withholding'];
         var bank = r.paidToBank || r.paidToAccount ? '<div class="lognote">Paid to ' +
           esc(r.paidToBank) + ' · ' + esc(r.paidToAccount) +
           (r.instrument ? ' · ' + esc(r.instrument) : '') + '</div>' : '';
@@ -212,6 +216,7 @@
               return x.accountId === Number(account) && x.cpr === ref;
             }) || {}).state) + '</div>' + bank +
           '<div class="bksummary">' + fields.filter(function(f){
+            if(f[0] === 'tax' && d.summary.invoiceGst != null) return false;
             return ['gross','charges','tax','withholding','net'].indexOf(f[0]) >= 0 || d.summary[f[0]] != null;
           }).map(function(f){
             return '<div class="' + (f[0] === 'net' ? 'bknet' : '') + '"><span>' + f[1] +

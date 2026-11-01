@@ -555,6 +555,7 @@
           '</div>';
 
 
+        var showBankFee = list.some(function(c){ return c.bankFee != null; });
         var rows = list.map(function(c, i){
           return '<tr class="click rrow" data-i="' + i + '">' +
             '<td class="mono">' + esc(c.cpr) + '</td>' +
@@ -565,6 +566,7 @@
             '<td class="r">' + full(c.amount) + '</td>' +
             '<td class="r">' + full(c.fee == null ? c.charges : c.fee) + '</td>' +
             '<td class="r">' + full(c.tax || 0) + '</td>' +
+            (showBankFee ? '<td class="r">' + (c.bankFee == null ? '—' : full(c.bankFee)) + '</td>' : '') +
             '<td class="r"><b>' + full(c.net) + '</b></td>' +
             '<td>' + (c.inBooks
               ? '<span class="pill ok">in QuickBooks</span>'
@@ -584,6 +586,7 @@
           '<tr><th>Receipt</th><th>Courier</th><th>Account</th><th>Paid on</th>' +
           '<th class="r">Parcels</th><th class="r">Collected</th>' +
           '<th class="r">Charges</th><th class="r">Tax</th>' +
+          (showBankFee ? '<th class="r">Bank fee</th>' : '') +
           '<th class="r">Net</th><th>In the books</th></tr>' +
           rows + '</table></div>' +
           '<div class="note">One row per receipt number, whichever courier it came ' +
@@ -998,11 +1001,12 @@
         ? line('Invoices recovered from it', -c.charge)
         : line('Courier charges', -(c.fee == null ? c.charges : c.fee))) +
       ((c.tax || 0) ? line('Tax deducted', -(c.tax || 0)) : '') +
+      ((c.bankFee || 0) ? line('IBFT / bank fee', -c.bankFee) : '') +
       ((kept != null && c.charge == null) ? line('Kept in all', -kept) : '') +
       line('Paid to us', c.net, 'big') +
-      (c.charge != null && c.fee
+      (c.charge != null && (c.parcelFee == null ? c.fee : c.parcelFee)
         ? '<div class="note" style="margin-top:8px">The parcels below carry ' +
-          full(c.fee) + ' of invoiced charges of their own. A payment settles ' +
+          full(c.parcelFee == null ? c.fee : c.parcelFee) + ' of invoiced charges of their own. A payment settles ' +
           'whatever the courier chose to bill against it, which is not always ' +
           'the parcels in it.</div>'
         : '');

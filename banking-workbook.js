@@ -4,6 +4,9 @@ export const SUMMARY_FIELDS = [
   ['gross', 'COD / gross collections'], ['charges', 'Courier charges / recovered invoices'],
   ['tax', 'GST'], ['salesTax', 'Withholding sales tax'],
   ['incomeTax', 'Withholding income tax'], ['withholding', 'Total withholding'],
+  ['bankFee', 'IBFT / bank fee'], ['shipping', 'Shipping charges (within invoice)'],
+  ['fuel', 'Fuel surcharge (within invoice)'], ['invoiceGst', 'GST (included in invoice)'],
+  ['extraCharges', 'Extra charges (within invoice)'],
   ['miscellaneous', 'Miscellaneous charges'], ['carryForward', 'Carry forward'],
   ['adjustment', 'Adjustment'], ['otherDifference', 'Other deductions / reconciliation difference'],
   ['net', 'Net bank amount']
@@ -15,7 +18,8 @@ export const ORDER_FIELDS = [
   ['settledOn', 'Paid'], ['amount', 'COD'], ['received', 'Collected'],
   ['fee', 'Courier charges'], ['upfrontCharges', 'Upfront charges'], ['tax', 'GST'],
   ['whSalesTax', 'WH sales tax'], ['whIncomeTax', 'WH income tax'],
-  ['upfront', 'Upfront paid'], ['reserve', 'Reserve'], ['net', 'Net'], ['notes', 'Notes']
+  ['upfront', 'Upfront paid'], ['reserve', 'Reserve'], ['net', 'Net'], ['notes', 'Notes'],
+  ['invoiceAmount', 'Invoice allocation'], ['taxableAmount', 'Taxable amount'], ['withholding', 'Total WH tax']
 ];
 
 export function receiptWorkbook(detail) {
@@ -37,7 +41,7 @@ export function receiptWorkbook(detail) {
   };
   append('CPR summary', rows);
   const numeric = new Set(['amount', 'received', 'fee', 'upfrontCharges', 'tax',
-    'whSalesTax', 'whIncomeTax', 'upfront', 'reserve', 'net']);
+    'whSalesTax', 'whIncomeTax', 'upfront', 'reserve', 'net', 'invoiceAmount', 'taxableAmount', 'withholding']);
   append('Orders', [ORDER_FIELDS.map(f => f[1]), ...detail.orders.map(o =>
     ORDER_FIELDS.map(([key]) => o[key] == null ? '' : numeric.has(key) ? Number(o[key]) : o[key]))]);
   if (detail.adjustments?.length) {

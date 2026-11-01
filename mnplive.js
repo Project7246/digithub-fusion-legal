@@ -1,32 +1,12 @@
-// M&P's payments, and the bank they went into.
-//
-// The other two couriers tell us about money as it happens - PostEx on its
-// payment call, Trax on a webhook. M&P have no webhook of any kind, so their
-// money is **asked for**: `Reports/Payment_Report`, a span of days at a time.
-//
-// What comes back is one row per payment and a block around it naming the
-// account it was sent to:
-//
-//   row    serial_no, PaymentID, PaidOn, RRAmount, InvoiceAmount, NetPayable,
-//          InstrumentMode, InstrumentNumber
-//   block  BeneficiaryName, BankName, BeneficiaryBankAccount, AccountNo,
-//          BranchName, ZoneName
-//
-// Two things come out of that, and the second is the point of this file.
-//
-// **The money.** `NetPayable` is `RRAmount` less `InvoiceAmount` - what
-// actually reached the bank - so it is the receipt's net, and the gross and
-// the charge are kept beside it rather than being worked back out later.
-//
-// **The bank.** M&P say on every payment which account they sent it to. So
-// when somebody changes the account with the courier, the courier's own next
-// payment says so - and Fusion can put that beside the bank it has on file and
-// ask whether to follow it, instead of the change being noticed on a statement
-// weeks later. That is what `bankSaid()` is for, and the Banking screen reads
-// it.
+// M&P payment covers come from the portal's consolidated instrument report.
+// One payment is one row: its net includes withholding, and the portal's
+// published IBFT fee is subtracted once. The COD API Payment_Report is a
+// consignment report with repeated invoice totals and is not a bank receipt.
+// Corrections are saved atomically with a company-scoped audit record.
 
 import { adapterFor } from './adapters.js';
-import { saveCprs, credsOf } from './couriers.js';
+import { saveMnpCprs, credsOf, getAccount } from './couriers.js';
+import { paymentDetail } from './mnpportal.js';
 import { pool } from './db.js';
 
 const n2 = v => Math.round(Number(v || 0) * 100) / 100;
@@ -38,62 +18,30 @@ export async function absorbPayouts(realmId, acc, from, to) {
 
   const list = await a.fetchPayouts(acc.token, from, to, credsOf(acc));
 
-  // **Their report is per consignment, not per payment.** One October came
-  // back with three thousand rows and the receipts under them hold a hundred
-  // and fifty parcels apiece - so a row is one parcel's share of a payment,
-  // and the payment is what the rows add up to. Keeping one row per payment
-  // number put one parcel's figures on a receipt worth a hundred and fifty of
-  // them: a receipt of 326,262 collected showed a net of 1,147.
-  const byPayment = new Map();
-  (list || []).forEach(p => {
-    if (!p || !p.paymentId) return;
-    const key = String(p.paymentId);
-    const sum = byPayment.get(key) || {
-      paymentId: key, paidOn: null, amount: 0, invoiced: 0, netPayable: 0,
-      mode: '', instrument: '', bank: '', beneficiary: '', bankAccount: '',
-      account: '', lines: 0
-    };
-
-    sum.amount     += Number(p.amount) || 0;
-    sum.invoiced   += Number(p.invoiced) || 0;
-    sum.netPayable += Number(p.netPayable) || 0;
-    sum.lines      += 1;
-
-    // the earliest day it was paid on - they repeat it on every line
-    if (p.paidOn && (!sum.paidOn || p.paidOn < sum.paidOn)) sum.paidOn = p.paidOn;
-
-    // whichever line actually carries each of these: a line that says nothing
-    // about the bank does not erase what another line said
-    ['mode', 'instrument', 'bank', 'beneficiary', 'bankAccount', 'account']
-      .forEach(k => { if (!sum[k] && p[k]) sum[k] = p[k]; });
-
-    byPayment.set(key, sum);
-  });
-
-  const rows = [...byPayment.values()].map(p => ({
-    cprNumber:  String(p.paymentId),
-    remoteId:   String(p.paymentId),
-    // A payment that exists is money that moved, which is what CLOSED means
-    // everywhere else here - the finance screens read that word and not the
-    // courier's own.
-    status:     'CLOSED',
-    netAmount:  n2(p.netPayable),
-    grossAmount: n2(p.amount),
-    chargeAmount: n2(p.invoiced),
-    createdOn:  p.paidOn || null,
-    approvedOn: p.paidOn || null,
-    paidToName:    p.beneficiary || null,
-    paidToBank:    p.bank || null,
-    paidToAccount: p.bankAccount || null,
-    instrument:    p.instrument || null,
-    mode:          p.mode || null,
-    raw: { via: 'payment report', account: p.account || '', lines: p.lines }
+  if (list.some(p => !p.consolidated)) throw new Error('M&P bank payments require consolidated totals');
+  const rows = list.map(p => ({
+    cprNumber: p.paymentId, remoteId: p.paymentId, status: p.status,
+    netAmount: p.netPayable, grossAmount: p.amount, chargeAmount: p.invoiced,
+    createdOn: p.paidOn, approvedOn: p.status === 'CLOSED' ? p.paidOn : null,
+    paidToName: p.beneficiary || null, paidToBank: p.bank || null,
+    paidToAccount: p.bankAccount || null, instrument: p.instrument || null,
+    mode: p.mode || null,
+    raw: { source: 'mnp-portal-payment-v1', account: p.account,
+      paymentSummary: { withholding: p.withholding, bankFee: p.bankFee,
+        beforeBankFee: p.beforeBankFee } }
   }));
-
   if (!rows.length) return { payments: 0 };
-
-  await saveCprs(realmId, acc.id, acc.courier, rows);
+  await saveMnpCprs(realmId, acc.id, rows);
   return { payments: rows.length };
+}
+
+export async function mnpReceiptDetail(realmId, accountId, paymentId) {
+  const account = await getAccount(realmId, accountId);
+  if (!account || account.courier !== 'mnp') throw new Error('No such M&P account in this company');
+  const credentials = credsOf(account);
+  const accountNo = credentials.account || credentials.accountNo;
+  if (!accountNo) throw new Error('Validate this M&P account before reading receipt detail');
+  return paymentDetail(accountNo, paymentId);
 }
 
 /* ==================== has the bank changed? ==================== */

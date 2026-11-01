@@ -33,6 +33,7 @@ import { makeGrouper, num, day, cityName } from './statuses.js';
 const stamp = v => day(v, 'mdy');
 import { flatten, pick } from './hooks.js';
 import { qs, call, rows } from './wire.js';
+import { fetchPayouts as portalPayouts } from './mnpportal.js';
 
 const BASE = (process.env.MNP_BASE || 'https://mnpcourier.com/mycodapi/api')
   .replace(/\/+$/, '');
@@ -629,46 +630,9 @@ export async function fetchAreas(token, extra) {
 }
 
 export async function fetchPayouts(token, from, to, extra) {
-  const got = await report(token, extra, '/Reports/Payment_Report',
-    id => ({ dateFrom: from, dateTo: to, locationID: id }),
-    all => {
-      const out = [];
-      all.forEach(block => {
-        const list = Array.isArray(block && block.Details) ? block.Details : [];
-        list.forEach(row => out.push(Object.assign({ __block: block }, row)));
-      });
-      return out;
-    });
-
-  const out = [];
-  {
-    const list = got.rows || [];
-    {
-      list.forEach(row => {
-        const block = row.__block || {};
-        out.push({
-          paymentId:  String(row.PaymentID || '').trim(),
-          paidOn:     day(row.PaidOn),
-          amount:     num(row.RRAmount),
-          invoiced:   num(row.InvoiceAmount),
-          netPayable: num(row.NetPayable),
-          mode:       row.InstrumentMode || '',
-          instrument: String(row.InstrumentNumber || '').trim(),
-          // where they sent it. They name the beneficiary and the IBAN on
-          // every payment, which is how a bank changed with the courier shows
-          // up here rather than on a statement weeks later.
-          bank:        (block && block.BankName) || '',
-          beneficiary: (block && (block.BeneficiaryName || block.AcccountName ||
-                                  block.AccountName)) || '',
-          bankAccount: (block && (block.BeneficiaryBankAccount ||
-                                  block.BeneficiaryAccount)) || '',
-          branch:      (block && block.BranchName) || '',
-          account:     (block && block.AccountNo) || ''
-        });
-      });
-    }
-  }
-  return out;
+  // The portal has one consolidated record per payment, including withholding
+  // and IBFT fee. Never sum the COD API's repeated per-consignment invoices.
+  return portalPayouts(accountOf(extra), from, to);
 }
 
 export const adapter = {
@@ -683,24 +647,9 @@ export const adapter = {
   cityCodes: true,
   // **They do deduct**, and the parcel does not show it.
   //
-  // Their tracking call reports `AmountPaid` equal to the whole `CODAmount`,
-  // which reads as "nothing was kept" and is what this was first written to.
-  // Their payment report says otherwise, and it is the one that describes the
-  // money that actually moved:
-  //
-  //     PaymentID 20261533146 - RRAmount 6943, InvoiceAmount 13286,
-  //     NetPayable -6343, IBFT
-  //
-  // NetPayable is RRAmount less InvoiceAmount, so what reaches the bank is the
-  // COD **net of their invoices** - the same shape as PostEx and Trax, told
-  // in two places instead of one. So M&P are left on the default here, and
-  // `fee` on a parcel is what they invoiced for carrying it.
-  //
-  // What is still not settled, and should not be guessed at: that payment's
-  // InvoiceAmount (13,286) is not that parcel's invoice (109.25), so a
-  // payment carries invoices beyond the parcels it pays for. Until the two
-  // are reconciled, the receivable is right per parcel and a payment's own
-  // net is the figure to trust for the bank.
+  // Tracking describes each parcel; bank payments come from the consolidated
+  // portal instrument report, including withholding and IBFT fee. Never
+  // aggregate the COD API's repeated per-consignment invoice/net columns.
   base: BASE,
   // their public tracking screen is a different host on a different network,
   // so one of the two being reachable says nothing about the other
