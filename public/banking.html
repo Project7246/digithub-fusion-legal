@@ -341,7 +341,7 @@
     var rows=(S.history.transactions || []).filter(function(t){return kind==='transfer'?t.type==='transfer':t.type!=='transfer';});
     return '<h3 style="font-size:13px;margin-top:18px">'+(kind==='transfer'?'Transfer log':'Transaction In / Out log')+'</h3><div class="wrapx"><table class="plain"><thead><tr><th>Entry</th><th>Date</th><th>Bank / direction</th><th class="n">Amount</th><th>Reference / note</th><th>Status / saved by</th><th>Actions</th></tr></thead><tbody>'+rows.map(function(t){
       var e=t.entries[0] || {};
-      return '<tr><td>#'+esc(t.id)+' '+esc(t.type)+'</td><td>'+esc(e.on)+'</td><td>'+t.entries.map(function(x){return esc(bankLabel(x.bankId))+' ('+(Number(x.amount)<0?'Out':'In')+')';}).join('<br>')+'</td><td class="n">'+amount(Math.abs(Number(e.amount)))+'</td><td>'+esc(e.note)+'</td><td>'+ (t.reversed?'Reversed':'Active')+'<small class="bkdate">'+esc(t.actor)+'<br>'+esc(t.createdAt)+'</small></td><td>'+(!t.reversed?'<button class="mini" data-edit-transaction="'+t.id+'">Edit</button> <button class="mini" data-remove-transaction="'+t.id+'">Remove</button>':'')+'</td></tr>';
+      return '<tr><td>#'+esc(t.id)+' '+esc(t.type)+'</td><td>'+esc(e.on)+'</td><td>'+t.entries.map(function(x){return esc(bankLabel(x.bankId))+' ('+(Number(x.amount)<0?'Out':'In')+')';}).join('<br>')+'</td><td class="n">'+amount(Math.abs(Number(e.amount)))+'</td><td>'+esc(e.note)+'</td><td>'+ (t.reversed?'Updated':'Active')+'<small class="bkdate">'+esc(t.actor)+'<br>'+esc(t.createdAt)+'</small></td><td>'+(!t.reversed?'<button class="mini" data-edit-transaction="'+t.id+'">Edit</button> <button class="mini" data-remove-transaction="'+t.id+'">Remove</button>':'')+'</td></tr>';
     }).join('')+'</tbody></table></div>';
   }
   function setupLog(){

@@ -7,6 +7,13 @@ forms, including wrong-bank entries, edit/remove actions, and source lists under
 Opening, Year In and Year Out arrow buttons. Logs cover all banks and preserve
 actor, saved time, superseded setup versions and reversed transactions.
 
+Owner clarified: removed manual In/Out and transfer entries must disappear
+from the visible transaction log; edited entries keep their change history as
+Updated. Audit and money reversals remain stored. New reversal payloads mark
+edit versus remove explicitly. Older edit replacements share the reversal's
+exact PostgreSQL transaction timestamp; use full timestamp text for compatibility,
+not JS millisecond dates. Do not rewrite old production audit rows to hide them.
+
 Use existing setup/audit tables; no new schema or deployment configuration.
 Edit/remove posted manual transactions by atomic reversal plus replacement,
 including both sides of transfers. Original and reversal moves remain stored,

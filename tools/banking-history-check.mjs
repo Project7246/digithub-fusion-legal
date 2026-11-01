@@ -1,10 +1,20 @@
 // Synthetic fixtures only; no production database is contacted.
 import assert from 'node:assert/strict';
-import { columnBreakdown, paymentWorkbook, correctTransaction, removeFiscalSetup } from '../banking-history.js';
+import { columnBreakdown, paymentWorkbook, correctTransaction, removeFiscalSetup, historyTransactions } from '../banking-history.js';
 import { pool } from '../db.js';
 import express from 'express';
 import { createBankingRouter } from '../banking-router.js';
 import XLSX from 'xlsx';
+const entry=(id,time)=>({id,action:'in',actor:'owner',transaction_time:time,new_value:[{id,bankId:1,amount:'10.00'}]});
+const legacyAudits=[entry(1,'one'),entry(2,'two'),entry(3,'three'),entry(4,'four'),
+  ...[1,2,3].map(id=>({id:10+id,action:'reverse:'+id,actor:'owner',transaction_time:'delete-'+id,new_value:[{id:20+id}]})),
+  {id:14,action:'reverse:4',actor:'owner',transaction_time:'edit-exact-microseconds',new_value:[{id:24}]},
+  entry(15,'edit-exact-microseconds')];
+const visible=historyTransactions(legacyAudits,[]);
+assert.deepEqual(visible.map(t=>t.id),[4,15],'three earlier removals disappear, earlier edit and its replacement remain');
+assert.equal(visible[0].reversed,true);
+assert.equal(historyTransactions([entry(1,'one'),{id:2,action:'reverse:1',new_value:[{operation:'remove'}]}],[]).length,0);
+assert.equal(historyTransactions([entry(1,'one'),{id:2,action:'reverse:1',new_value:[{operation:'edit'}]}],[]).length,1);
 const report={year:{year:2027,from:'2026-07-01',to:'2027-06-30'},banks:[{id:1,opening:'100.00',openingOn:'2026-10-20',
   openingIn:'500.00',openingOut:'400.00',fiscalYear:2027,inYear:'550.00',outYear:'420.00'}],moves:[
   {bankId:1,on:'2026-10-21',amount:'50.00',source:'hand',note:'Deposit'},
@@ -41,6 +51,7 @@ try {
   assert.equal(calls.filter(c=>c.sql==='BEGIN').length,1,'one transaction covers both-bank reversal and replacement');
   assert.equal(calls.at(-1).sql,'COMMIT');
   assert.ok(calls.some(c=>c.args[2]==='reverse:7'));
+  assert.equal(JSON.parse(calls.find(c=>c.args[2]==='reverse:7').args[3])[0].operation,'edit');
   assert.doesNotMatch(calls.map(c=>c.sql).join(' '),/\bUPDATE bank_moves|\bDELETE\b/);
   calls=[];already=true;
   await assert.rejects(correctTransaction('fixture',7,null,'owner'),/already reversed/);
