@@ -189,6 +189,14 @@
     return String(s == null ? '' : s)
       .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
   }
+  var draftDirty=false,draftRevision=0;
+  function markFormDirty(){draftDirty=true;draftRevision++;}
+  function trackFormInput(e){if(e.target.matches('input,select,textarea'))markFormDirty();}
+  $('view').addEventListener('input',trackFormInput);
+  $('view').addEventListener('change',trackFormInput);
+  function refreshOnReturn(){
+    if(!document.hidden && !draftDirty && Date.now()-S.loadedAt>60000)return load(false,true);
+  }
   function money(n){
     var v = Math.round((Number(n) || 0) * 100) / 100;
     var s = Math.abs(v).toFixed(2).replace(/\B(?=(\d{3})+(?!\d)\.)/g, ',');
@@ -604,7 +612,7 @@
       '<div><label>Opening Out</label><input id="sOut" type="number" min="0" step="0.01"></div>' +
       '<div><label>New Transaction Out from (inclusive)</label><input id="sOutFrom" type="date"></div>' +
       '</div><p class="hint">Google Sheet Sender Bank Account must match the selected Bank Name. No other field is used for matching.</p>' +
-      '<div class="acts"><button class="solid" id="sSave">Save opening totals</button><button class="mini" id="sCancel">Cancel edit</button><span class="msg" id="sMsg"></span></div></div></div>';
+      '<div class="acts"><button class="solid" id="sSave">Save opening totals</button><button class="mini" id="sCancel">Cancel edit</button><span class="msg" id="sMsg"></span></div>' + logButton('setup') + '</div></div>';
   }
   function spendingView(){
     var months=Array.from(new Set(S.spendingRows.map(function(r){return r.on.slice(0,7);}))).sort().reverse();
@@ -637,7 +645,7 @@
       return '<option value="' + b.id + '">' + esc((b.title || b.name) + ' - ' + b.name) + '</option>';
     }).join('');
 
-    return setupView(banks,opts) + logButton('setup') + '<div class="sheet" style="margin-bottom:16px"><div class="sec">' +
+    return setupView(banks,opts) + '<div class="sheet" style="margin-bottom:16px"><div class="sec">' +
         '<h2>Move money between banks</h2>' +
         '<div class="form">' +
           '<div><label>Out of</label><select id="tFrom">' + opts + '</select></div>' +
@@ -747,6 +755,7 @@
   /* ---------- drawing and wiring ---------- */
 
   function draw(){
+    draftDirty=false;
     var v = $('view');
     v.innerHTML = S.tab === 'report'   ? reportView()
                 : S.tab === 'couriers' ? couriersView()
@@ -765,7 +774,7 @@
   function wireLogActions(host){
     host.querySelectorAll('[data-edit-transaction]').forEach(function(b){b.addEventListener('click',function(){
       closeLog();S.editTransaction=S.history.transactions.find(function(t){return String(t.id)===b.getAttribute('data-edit-transaction');});
-      draw();
+      draw();markFormDirty();
     });});
     host.querySelectorAll('[data-cancel-edit]').forEach(function(b){b.addEventListener('click',function(){S.editTransaction=null;draw();});});
     host.querySelectorAll('[data-remove-transaction]').forEach(function(b){b.addEventListener('click',function(){
@@ -779,6 +788,7 @@
       $('sBank').value=r.bankId;$('sBank').disabled=true;$('sYear').value=r.fiscalYear;S.editSetup=r.id;
       $('sIn').value=r.openingIn;$('sOut').value=r.openingOut;$('sInFrom').value=r.inFrom;$('sOutFrom').value=r.outFrom;
       $('sSave').textContent='Save correction';$('sSave').scrollIntoView({behavior:'smooth',block:'center'});
+      markFormDirty();
       say($('sMsg'),'','To move to a different bank, remove this opening and enter it on the correct bank.');
     });});
     host.querySelectorAll('[data-remove-setup]').forEach(function(b){b.addEventListener('click',function(){
@@ -999,10 +1009,13 @@
     });
   }
 
-  function load(fresh){
+  function load(fresh,background){
+    if(background && draftDirty)return Promise.resolve();
+    var revision=draftRevision,tab=S.tab;
     return Promise.all([ get('/api/bank/report' + (fresh === true ? '?fresh=1' : '')), get('/api/bank/links'),
                          get('/api/bank/drift').catch(function(){ return { drift: [] }; }), get('/api/bank/history') ])
       .then(function(a){
+        if(background && (draftDirty || draftRevision!==revision || S.tab!==tab))return;
         S.report = a[0]; S.history=a[3];S.breakdown=null;
         S.loadedAt = Date.now();
         S.links = a[1];
@@ -1013,6 +1026,7 @@
         draw();
       })
       .catch(function(e){
+        if(background && (draftDirty || draftRevision!==revision || S.tab!==tab))return;
         $('view').innerHTML = '<div class="sheet"><div class="sec"><div class="fxnone">' +
           'Could not read it: ' + esc(e.message) + '</div></div></div>';
       });
@@ -1043,9 +1057,7 @@
       }
     } catch (err) {}
 
-    document.addEventListener('visibilitychange', function(){
-      if(!document.hidden && Date.now() - S.loadedAt > 60000) load();
-    });
+    document.addEventListener('visibilitychange',refreshOnReturn);
     load();
   }).catch(function(){
     $('view').innerHTML = '<div class="fxnone">Could not reach the server.</div>';

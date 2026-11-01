@@ -28,7 +28,7 @@ const sandbox = { console, setTimeout, clearTimeout, AbortSignal, URL, Date,
   }) }; }
 };
 vm.runInNewContext(script.replace(/\}\)\(\);\s*$/, `
-  globalThis.checkUi = { S, reportView, receiptListView, openReceipt, entriesView, spendingView, openPayments, setupLog, transactionLog, openLog };
+  globalThis.checkUi = { S, reportView, receiptListView, openReceipt, entriesView, spendingView, openPayments, setupLog, transactionLog, openLog, load, refreshOnReturn };
 })();`), sandbox);
 const ui = sandbox.checkUi;
 ui.S.report = { year: { from: '2026-07-01', to: '2027-06-30' },
@@ -122,4 +122,21 @@ view = ui.reportView();
 assert.match(view, /1 of 2 accounts · available total/);
 assert.match(view, /950,000\.00<sup class="bk-star"/);
 assert.match(view, /<tfoot>[\s\S]*950,000\.00<sup class="bk-star"/);
+const originalReport=ui.S.report;
+const originalView=element('view').innerHTML;
+let resolveReport,backgroundReads=0;
+const delayedReport=new Promise(resolve=>{resolveReport=resolve;});
+sandbox.fetch=async url=>{backgroundReads++;return {json:()=>url.includes('/report')?delayedReport:Promise.resolve({})};};
+const backgroundLoad=ui.load(false,true);
+element('sIn').value='57897188.96';
+element('view').events.input({target:{matches:()=>true}});
+resolveReport(originalReport);
+await backgroundLoad;
+assert.equal(element('sIn').value,'57897188.96');
+assert.equal(element('view').innerHTML,originalView,'in-flight background refresh cannot replace a form after typing begins');
+ui.S.loadedAt=0;
+const readsBeforeReturn=backgroundReads;
+for(let i=0;i<4;i++)await ui.refreshOnReturn();
+assert.equal(backgroundReads,readsBeforeReturn,'repeated Alt-Tab returns never refresh an unsaved draft');
+assert.equal(element('sIn').value,'57897188.96');
 console.log('Banking UI checks passed: compact amount actions, all column totals, partial-total disclosure, separate activity view, CPR lists, escaped content, popup and Excel action. Visual browser QA is separate.');

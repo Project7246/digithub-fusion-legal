@@ -1,5 +1,13 @@
 # Digithub Fusion - project notes for Claude
 
+## Banking input preservation - 2 Nov 2026
+
+Alt-Tab/visibility refresh must never erase unsaved Banking form input. Track
+input/change revisions: skip background reads while dirty and discard in-flight
+background results/errors if the form changes or the user switches views.
+Explicit saves/cancels keep existing behavior. Fiscal View log belongs inside
+its fiscal opening card, alongside that section's actions.
+
 ## Log presentation - 2 Nov 2026
 
 Owner requested that logs not grow the entry page. Fiscal opening, transfer,
