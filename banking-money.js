@@ -100,13 +100,14 @@ export function bankFigures(bank, receipts, moves, year, today) {
   const net = sum(m => valid(m.on));
   const inYear = sum(m => m.on >= year.from && m.on <= year.to && money(m.amount) > 0n);
   const outYear = -sum(m => m.on >= year.from && m.on <= year.to && money(m.amount) < 0n);
+  const fiscalIn=inYear+(bank.fiscalYear===year.year?money(bank.openingIn):0n);
+  const fiscalOut=outYear+(bank.fiscalYear===year.year?money(bank.openingOut):0n);
   return {
     moved: decimal(net),
-    balance: bank.opening == null ? null : decimal(money(bank.opening) + net),
+    balance: bank.opening == null ? null : decimal(money(bank.opening) + fiscalIn - fiscalOut),
     inAll: decimal(sum(m => money(m.amount) > 0n)),
     outAll: decimal(-sum(m => money(m.amount) < 0n)),
-    inYear: decimal(inYear + (bank.fiscalYear === year.year ? money(bank.openingIn) : 0n)),
-    outYear: decimal(outYear + (bank.fiscalYear === year.year ? money(bank.openingOut) : 0n)),
+    inYear: decimal(fiscalIn), outYear: decimal(fiscalOut),
     receivable: addMoney(receipts.filter(r => r.state === 'receivable' && money(r.net) >= 0n).map(r => r.net))
   };
 }

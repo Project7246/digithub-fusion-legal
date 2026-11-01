@@ -581,7 +581,7 @@
 
   function setupView(banks,opts){
     return '<div class="sheet" style="margin-bottom:16px"><div class="sec"><h2>Fiscal opening In / Out</h2>' +
-      '<p class="hint">Enter historical totals yourself. Start dates filter automatic CPR/sheet feeds only. Manual entries follow their fiscal year. Historical totals do not change the opening bank balance twice.</p>' +
+      '<p class="hint">Enter historical totals yourself. Start dates filter automatic CPR/sheet feeds only. Manual entries follow their fiscal year. Live balance = opening balance + fiscal year In - fiscal year Out.</p>' +
       '<div class="form"><div><label>Bank account</label><select id="sBank">'+opts+'</select></div>' +
       '<div><label>Fiscal year</label><input id="sYear" value="'+esc(S.report.year.year)+'" disabled></div>' +
       '<div><label>Opening In</label><input id="sIn" type="number" min="0" step="0.01"></div>' +

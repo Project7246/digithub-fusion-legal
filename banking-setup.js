@@ -44,13 +44,16 @@ export async function saveBankingSetup(realmId,input,actor,transaction=null) {
         [realmId,bankId,fiscalYear]);
       if(String(latest.rows[0]?.id)!==String(input.expectedId))throw new Error('Fiscal opening changed; refresh before correcting it');
     }
-    await c.query(`INSERT INTO banking_setups (realm_id,bank_id,fiscal_year,opening_in,opening_out,
+    const saved=await c.query(`INSERT INTO banking_setups (realm_id,bank_id,fiscal_year,opening_in,opening_out,
       in_from,out_from,actor,previous_id)
       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,(SELECT id FROM banking_setups
-        WHERE realm_id=$1 AND bank_id=$2 AND fiscal_year=$3 ORDER BY id DESC LIMIT 1))`,
+        WHERE realm_id=$1 AND bank_id=$2 AND fiscal_year=$3 ORDER BY id DESC LIMIT 1)) RETURNING id`,
       [realmId,bankId,fiscalYear,addMoney([input.openingIn]),addMoney([input.openingOut]),inFrom,outFrom,
         actor]);
+    await c.query('INSERT INTO banking_entry_audit (realm_id,actor,action,new_value) VALUES ($1,$2,$3,$4::jsonb)',
+      [realmId,actor,'save-setup',JSON.stringify([{setupId:saved.rows[0].id}])]);
     if(!transaction)await c.query('COMMIT');
+    return saved.rows[0].id;
   } catch(e) {if(!transaction)await c.query('ROLLBACK');throw e;} finally {if(!transaction)c.release();}
 }
 export async function recordBankEntry(realmId,input,actor,transaction=null) {

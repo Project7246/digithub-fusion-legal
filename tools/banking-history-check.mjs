@@ -1,10 +1,16 @@
 // Synthetic fixtures only; no production database is contacted.
 import assert from 'node:assert/strict';
-import { columnBreakdown, paymentWorkbook, correctTransaction, removeFiscalSetup, historyTransactions } from '../banking-history.js';
+import { columnBreakdown, paymentWorkbook, correctTransaction, removeFiscalSetup, historyTransactions, fiscalHistory } from '../banking-history.js';
 import { pool } from '../db.js';
 import express from 'express';
 import { createBankingRouter } from '../banking-router.js';
 import XLSX from 'xlsx';
+const fiscalRows=[{id:2,bank_id:1,fiscal_year:2027,opening_in:'0.00',opening_out:'0.00',previous_id:1,in_day:'2026-10-13',out_day:'2026-10-13'},
+  {id:1,bank_id:1,fiscal_year:2027,opening_in:'58055.43',opening_out:'0.00',in_day:'2026-10-13',out_day:'2026-10-13'}];
+assert.equal(fiscalHistory(fiscalRows,[]).length,0,'legacy cleared opening and superseded original both disappear');
+assert.equal(fiscalHistory(fiscalRows,[{action:'save-setup',new_value:[{setupId:2}]}]).length,2,'explicit edit to zero retains change history');
+assert.equal(fiscalHistory(fiscalRows,[{action:'remove-setup',new_value:[{setupId:1,clearedSetupId:2}]}]).length,0);
+assert.equal(fiscalHistory([{...fiscalRows[0],opening_in:'25.00'},fiscalRows[1]],[]).length,2,'edit history remains for active amounts');
 const entry=(id,time)=>({id,action:'in',actor:'owner',transaction_time:time,new_value:[{id,bankId:1,amount:'10.00'}]});
 const legacyAudits=[entry(1,'one'),entry(2,'two'),entry(3,'three'),entry(4,'four'),
   ...[1,2,3].map(id=>({id:10+id,action:'reverse:'+id,actor:'owner',transaction_time:'delete-'+id,new_value:[{id:20+id}]})),

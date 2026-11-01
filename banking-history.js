@@ -60,6 +60,25 @@ export function historyTransactions(audits,moves) {
     entries:a.new_value.map(e=>({...e,note:byMove.get(String(e.id))?.note||''}))}));
 }
 
+export function fiscalHistory(rows,audits) {
+  const byId=new Map(rows.map(s=>[String(s.id),s])),hidden=new Set();
+  const explicitSaves=new Set(audits.filter(a=>a.action==='save-setup').flatMap(a=>a.new_value.map(e=>String(e.setupId))));
+  function hide(id){while(id && !hidden.has(String(id))){hidden.add(String(id));id=byId.get(String(id))?.previous_id;}}
+  for(const a of audits.filter(a=>a.action==='remove-setup')) for(const e of a.new_value){hide(e.setupId);hide(e.clearedSetupId);}
+  // Earlier Remove saved a zero reset with the original start dates, without
+  // an action marker. Keep that clearing row and its earlier chain out of view.
+  for(const s of rows){const p=byId.get(String(s.previous_id));
+    if(p && !explicitSaves.has(String(s.id)) && money(s.opening_in)===0n && money(s.opening_out)===0n &&
+      s.in_day===p.in_day && s.out_day===p.out_day)hide(s.id);
+  }
+  const seen=new Set();
+  return rows.filter(s=>!hidden.has(String(s.id))).map(s=>{
+    const key=s.bank_id+':'+s.fiscal_year,active=!seen.has(key);seen.add(key);
+    return {id:s.id,bankId:s.bank_id,bank:s.title||s.name,fiscalYear:s.fiscal_year,openingIn:s.opening_in,
+      openingOut:s.opening_out,inFrom:s.in_day,outFrom:s.out_day,actor:s.actor,createdAt:s.created_at,active};
+  });
+}
+
 export async function bankingHistory(realmId) {
   const [audits,setups,moves]=await Promise.all([
     pool.query('SELECT id,action,new_value,actor,created_at,created_at::text AS transaction_time FROM banking_entry_audit WHERE realm_id=$1 ORDER BY id DESC',[realmId]),
@@ -69,13 +88,8 @@ export async function bankingHistory(realmId) {
     pool.query(`SELECT id,bank_id,amount,to_char(on_date,'YYYY-MM-DD') AS on,note,kind,other_bank_id
       FROM bank_moves WHERE realm_id=$1 AND source='hand' ORDER BY id DESC`,[realmId])]);
   const transactions=historyTransactions(audits.rows,moves.rows);
-  const seen=new Set();
   return {transactions,openings:audits.rows.filter(a=>a.action==='bank-opening').map(a=>({
-    id:a.id,actor:a.actor,createdAt:a.created_at,...a.new_value[0]})),setups:setups.rows.map(s=>{
-    const key=s.bank_id+':'+s.fiscal_year,active=!seen.has(key);seen.add(key);
-    return {id:s.id,bankId:s.bank_id,bank:s.title||s.name,fiscalYear:s.fiscal_year,openingIn:s.opening_in,
-      openingOut:s.opening_out,inFrom:s.in_day,outFrom:s.out_day,actor:s.actor,createdAt:s.created_at,active};
-  })};
+    id:a.id,actor:a.actor,createdAt:a.created_at,...a.new_value[0]})),setups:fiscalHistory(setups.rows,audits.rows)};
 }
 
 export async function correctTransaction(realmId,id,replacement,actor) {
@@ -112,8 +126,10 @@ export async function removeFiscalSetup(realmId,id,actor) {
     await c.query('BEGIN');await c.query("SELECT set_config('app.realm_id',$1,true)",[realmId]);
     const r=await c.query("SELECT *,to_char(in_from,'YYYY-MM-DD') AS in_day,to_char(out_from,'YYYY-MM-DD') AS out_day FROM banking_setups WHERE realm_id=$1 AND id=$2",[realmId,id]);
     const s=r.rows[0];if(!s)throw new Error('No such fiscal opening');
-    await saveBankingSetup(realmId,{bankId:s.bank_id,fiscalYear:s.fiscal_year,openingIn:'0.00',openingOut:'0.00',
+    const clearedId=await saveBankingSetup(realmId,{bankId:s.bank_id,fiscalYear:s.fiscal_year,openingIn:'0.00',openingOut:'0.00',
       inFrom:s.in_day,outFrom:s.out_day,expectedId:id},actor,c);
+    await c.query('INSERT INTO banking_entry_audit (realm_id,actor,action,new_value) VALUES ($1,$2,$3,$4::jsonb)',
+      [realmId,actor,'remove-setup',JSON.stringify([{setupId:id,clearedSetupId:clearedId}])]);
     await c.query('COMMIT');
   }catch(e){await c.query('ROLLBACK');throw e;}finally{c.release();}
 }

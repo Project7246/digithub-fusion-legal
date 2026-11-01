@@ -64,21 +64,21 @@ const seeded = bankFigures({ opening: '100000.00', openingOn: '2026-10-20',
   { on: '2026-10-21', amount: '-20000.00', source: 'sheet' }], { ...year, year: 2027 }, '2026-10-31');
 assert.equal(seeded.inYear, '906712.00', 'manual opening In plus only new net receipts');
 assert.equal(seeded.outYear, '420000.00', 'manual opening Out plus expenses after selected start');
-assert.equal(seeded.balance, '486712.00', 'historical In/Out must not change current opening balance twice');
+assert.equal(seeded.balance, '586712.00', 'opening plus full fiscal In minus full fiscal Out');
 const manualSeed=bankFigures({opening:'100000.00',openingOn:'2026-10-20',fiscalYear:2027,
   openingIn:'500000.00',openingOut:'400000.00',inFrom:'2026-10-20',outFrom:'2026-10-20'},[],[
   {on:'2026-10-19',amount:'999999.00'},
   {on:'2026-10-21',amount:'2500.00'},{on:'2026-10-21',amount:'-1000.00'}],
   {...year,year:2027},'2026-10-31');
 assert.equal(manualSeed.inYear,'502500.00');assert.equal(manualSeed.outYear,'401000.00');
-assert.equal(manualSeed.balance,'101500.00','opening balance is separate from historical fiscal turnover');
+assert.equal(manualSeed.balance,'201500.00','historical fiscal totals participate in the requested balance formula');
 const manualBeforeCutoff=bankFigures({opening:'100.00',openingOn:'2026-10-13',inFrom:'2026-10-13',outFrom:'2026-10-13'},[],[
   {source:'hand',on:'2026-10-12',amount:'1000.00'},
   {source:'hand',on:'2026-10-12',amount:'-200.00'},
   {source:'hand',on:'2026-06-30',amount:'9999.00'},
   {source:'sheet',on:'2026-10-12',amount:'-500.00'}],{...year,year:2027},'2026-11-01');
 assert.equal(manualBeforeCutoff.inYear,'1000.00');assert.equal(manualBeforeCutoff.outYear,'200.00');
-assert.equal(manualBeforeCutoff.balance,'100.00','historical turnover must not double count money already in the bank opening balance');
+assert.equal(manualBeforeCutoff.balance,'900.00','selected-year manual In/Out participates in balance before automatic cutoffs');
 assert.equal(figures.balance, '950000.00');
 assert.equal(figures.inYear, '870000.00');
 assert.equal(figures.outYear, '20000.00');

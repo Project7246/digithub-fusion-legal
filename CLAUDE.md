@@ -1,5 +1,17 @@
 # Digithub Fusion - project notes for Claude
 
+## Latest owner balance/log rule - 2 Nov 2026 (supersedes earlier balance notes)
+
+Live Balance = Opening Balance + full selected Fiscal Year In - full selected
+Fiscal Year Out, including historical fiscal opening totals and manual entries.
+Do not exclude historical fiscal turnover from this formula. Automatic feed
+cutoffs and manual fiscal-year selection remain as already specified. Deleted
+fiscal setups, zero clearing replacements and their previous versions disappear
+from visible logs; edit history stays for active entries. Store explicit setup
+save/remove actions in the existing audit table, without deleting stored history.
+Earlier unmarked zero resets with unchanged cutoff dates are treated as clears
+for display compatibility; future explicit edits to zero retain their history.
+
 Owner clarification, 1 Nov: In/Out start dates apply to automatic CPR/Sheet
 feeds only. Manual hand entries and transfers count in Year In/Out by their
 transaction fiscal year even before automatic start/opening dates. Include
