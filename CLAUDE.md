@@ -1,5 +1,23 @@
 # Digithub Fusion - project notes for Claude
 
+## Twice-daily Banking retention - 2 Nov 2026
+
+Owner requested server-side Banking archive runs daily at 15:00 and 22:00
+Asia/Karachi (10:00/17:00 UTC), independent of browser, login or user computer.
+banking-schedule.js starts from existing initBanking, no hosting/env changes.
+The timeout does not query the database between slots. Restart checks the latest
+due slot only. Durable company-scoped append-only archive-schedule audit events
+and transactional advisory locking prevent repeat/completing another live run;
+stale one-hour claims can retry. No new table or migration for scheduling.
+Retain available covers via the named courier boundary, then attempt up to 20
+missing details per company within a shared three-minute launch budget, serially.
+Use existing compute meter/guard: nearly exhausted allowance holds background
+work; failures are counted, not silently called complete coverage. Details keep
+their existing retry backoff. Existing Logistics ingestion/keeper stays unchanged.
+Two daily retention runs do not guarantee every old detail is fetched immediately.
+DigitalOcean must be running; after downtime catch up latest slot on restart.
+This supersedes the earlier statement that retention has no independent timer.
+
 ## Clear Banking setup and retained CPRs - 2 Nov 2026
 
 Owner's UI rule for future forms: short accurate headings/labels, aligned fields,

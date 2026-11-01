@@ -27,6 +27,7 @@ import { buildReport, receiptProjection } from './banking-cprs.js';
 import { addMoney } from './banking-money.js';
 import { initBankingSetup, bankingSetups } from './banking-setup.js';
 import { initBankingArchive } from './banking-archive.js';
+import { startBankingSchedule } from './banking-schedule.js';
 
 function calendarDay(value) {
   if (!value) return null;
@@ -136,6 +137,7 @@ export async function initBanking() {
   `);
   await initBankingSetup();
   await initBankingArchive();
+  startBankingSchedule();
 }
 
 /* ==================== small things ==================== */
