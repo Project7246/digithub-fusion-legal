@@ -177,7 +177,7 @@
 (function(){
   var $ = function(id){ return document.getElementById(id); };
   var NAMES = { postex:'PostEx', trax:'Trax', mnp:'M&P' };
-  var S = { tab:'report', report:null, links:null, drift:[], today:'', editing:null, selectedBank:null, receiptFilter:'receivable', bankView:'accounts', loadedAt:0 };
+  var S = { tab:'report', report:null, links:null, drift:[], today:'', editing:null, selectedBank:null, receiptFilter:'receivable', bankView:'accounts', loadedAt:0, spendingRows:[], spendingMonth:'' };
 
   function esc(s){
     return String(s == null ? '' : s)
@@ -354,7 +354,7 @@
     var warnings = (d.warnings || []).map(function(w){
       return '<div>' + esc(w.bank) + ' · ' + esc(w.message) + '</div>';
     }).join('');
-    var unplaced = (d.unplaced || []).filter(function(r){ return r.why !== 'Before the opening balance date'; });
+    var unplaced = (d.unplaced || []).filter(function(r){ return r.why !== 'Before the opening balance date' && r.why !== 'Before the Transaction In start date'; });
     var issueCount = unplaced.length + (d.warnings || []).length;
     var issues = issueCount ? '<details class="bk-issues"><summary>' + issueCount +
       ' items need checking</summary><div class="bk-issues-body">' + warnings + unplaced.map(function(r){
@@ -501,7 +501,7 @@
             '<div><label>Pays into</label><select data-k="bank" data-acc="' + a.id + '">' +
               banks.map(function(b){
                 return '<option value="' + b.id + '"' +
-                  (now && now.bankId === b.id ? ' selected' : '') + '>' + esc(b.name) + '</option>';
+                  (now && now.bankId === b.id ? ' selected' : '') + '>' + esc((b.title || b.name) + ' ? ' + b.name) + '</option>';
               }).join('') + '</select></div>' +
             '<div><label>From this date</label>' +
               '<input type="date" data-k="from" data-acc="' + a.id + '" value="' +
@@ -529,6 +529,39 @@
       '</div></div>' + cards;
   }
 
+  function setupView(banks,opts){
+    return '<div class="sheet" style="margin-bottom:16px"><div class="sec"><h2>Fiscal opening In / Out</h2>' +
+      '<p class="hint">Enter historical totals yourself. No transactions before the selected start dates are added. These historical totals do not change the opening bank balance twice.</p>' +
+      '<div class="form"><div><label>Bank account</label><select id="sBank">'+opts+'</select></div>' +
+      '<div><label>Fiscal year</label><input value="'+esc(S.report.year.year)+'" disabled></div>' +
+      '<div><label>Opening In</label><input id="sIn" type="number" min="0" step="0.01"></div>' +
+      '<div><label>New Transaction In from (inclusive)</label><input id="sInFrom" type="date"></div>' +
+      '<div><label>Opening Out</label><input id="sOut" type="number" min="0" step="0.01"></div>' +
+      '<div><label>New Transaction Out from (inclusive)</label><input id="sOutFrom" type="date"></div>' +
+      '</div><p class="hint">Google Sheet Sender Bank Account must match the selected Bank Name. No other field is used for matching.</p>' +
+      '<div class="acts"><button class="solid" id="sSave">Save opening totals</button><span class="msg" id="sMsg"></span></div></div></div>';
+  }
+  function spendingView(){
+    var months=Array.from(new Set(S.spendingRows.map(function(r){return r.on.slice(0,7);}))).sort().reverse();
+    var rows=S.spendingRows.filter(function(r){return !S.spendingMonth || r.on.slice(0,7)===S.spendingMonth;});
+    function value(r,index){return r.details && r.details[index] && r.details[index].value || '';}
+    var total=rows.reduce(function(n,r){return n+BigInt(String(r.amount).replace('-','').replace('.',''));},0n);
+    return '<div class="sheet bkreceipts"><div class="sec bkheading"><h2>Bank payments - '+rows.length+' rows</h2>' +
+      '<select id="spendMonth" aria-label="Payment month"><option value="">All matched months</option>'+months.map(function(m){return '<option'+(m===S.spendingMonth?' selected':'')+'>'+esc(m)+'</option>';}).join('')+'</select></div>' +
+      '<div class="wrapx"><table class="plain"><thead><tr><th>Date</th><th>Receiver</th><th class="n">Amount sent</th><th>Sender bank</th><th>Remarks / combined narration</th><th>Account head</th><th>Reference</th></tr></thead><tbody>'+rows.map(function(r){
+        var url=r.rowUrl || '';
+        var ref=value(r,7), link=r.details && r.details[7] && r.details[7].link;
+        var safe=function(u){return /^https?:\/\//i.test(u||'');};
+        return '<tr><td>'+esc(r.on)+'</td><td>'+esc(value(r,2) || r.note)+'</td><td class="n">'+money(Math.abs(Number(r.amount)))+'</td><td>'+esc(value(r,6))+'</td><td>'+esc(value(r,15) || value(r,12) || r.note)+'</td><td>'+esc(value(r,13))+'</td><td>'+
+          (safe(link)?'<a target="_blank" rel="noopener noreferrer" href="'+esc(link)+'">'+esc(ref || 'Proof')+'</a>':esc(ref))+
+          (safe(url)?' <a target="_blank" rel="noopener noreferrer" href="'+esc(url)+'">Source row</a>':'')+'</td></tr>';
+      }).join('')+'</tbody><tfoot><tr><td colspan="2">Total</td><td class="n">'+money(String(total/100n)+'.'+String(total%100n).padStart(2,'0'))+'</td><td colspan="4"></td></tr></tfoot></table></div></div>';
+  }
+  function renderSpending(){
+    $('spendingPreview').innerHTML=spendingView();
+    $('spendMonth').addEventListener('change',function(){S.spendingMonth=this.value;renderSpending();});
+  }
+
   /* ---------- transfers, adjustments ---------- */
 
   function entriesView(){
@@ -536,10 +569,10 @@
     if(!banks.length) return '<div class="fxnone">Add a bank first.</div>';
 
     var opts = banks.map(function(b){
-      return '<option value="' + b.id + '">' + esc(b.name) + '</option>';
+      return '<option value="' + b.id + '">' + esc((b.title || b.name) + ' - ' + b.name) + '</option>';
     }).join('');
 
-    return '<div class="sheet" style="margin-bottom:16px"><div class="sec">' +
+    return setupView(banks,opts) + '<div class="sheet" style="margin-bottom:16px"><div class="sec">' +
         '<h2>Move money between banks</h2>' +
         '<div class="form">' +
           '<div><label>Out of</label><select id="tFrom">' + opts + '</select></div>' +
@@ -553,11 +586,12 @@
       '</div></div>' +
 
       '<div class="sheet" style="margin-bottom:16px"><div class="sec">' +
-        '<h2>Adjustment<span class="aside">a minus takes it off</span></h2>' +
+        '<h2>Transaction In / Out</h2>' +
         '<div class="form">' +
           '<div><label>Bank</label><select id="aBank">' + opts + '</select></div>' +
           '<div><label>Date</label><input type="date" id="aOn" value="' + esc(S.today) + '"></div>' +
-          '<div><label>Amount</label><input type="number" id="aAmt" step="0.01"></div>' +
+          '<div><label>Type</label><select id="aType"><option value="in">Transaction In</option><option value="out">Transaction Out</option></select></div>' +
+          '<div><label>Amount</label><input type="number" id="aAmt" min="0.01" step="0.01"></div>' +
           '<div class="wide"><label>What it is for</label><input type="text" id="aNote"></div>' +
         '</div>' +
         '<div class="acts"><button class="solid" id="aGo">Save the entry</button>' +
@@ -577,10 +611,10 @@
                 'you edit the bank</span>') + '</td>' +
             '<td class="n neg">' + money(b.outYear) + '</td>' +
             '<td>' + (b.sheetUrl
-              ? '<button class="mini" data-sheet="' + b.id + '">Read it now</button>' : '') +
+              ? '<button class="mini" data-sheet="' + b.id + '">View payments</button>' : '') +
               '<span class="msg" data-sheetmsg="' + b.id + '"></span></td></tr>';
         }).join('') +
-        '</tbody></table></div></div></div>';
+        '</tbody></table></div></div></div><div id="spendingPreview"></div>';
   }
 
   /* ---------- add or edit a bank ---------- */
@@ -616,7 +650,7 @@
             esc(b.openingOn || S.today) + '"></div>' +
           '<div><label>At</label><input type="time" id="bOpenAt" value="' +
             esc(b.openingAt || '') + '"></div>' +
-          '<div class="wide"><label>Spending sheet (published CSV)</label>' +
+          '<div class="wide"><label>Spending Google Sheet or published CSV</label>' +
             '<input type="text" id="bSheet" value="' + esc(b.sheetUrl || '') + '" ' +
             'placeholder="Google Sheets → File → Share → Publish to the web → CSV"></div>' +
           '<div class="wide"><label>Notes</label><input type="text" id="bNotes" value="' +
@@ -749,7 +783,7 @@
     var tGo = $('tGo');
     if(tGo) tGo.addEventListener('click', function(){
       say($('tMsg'), '', 'Working…');
-      post('/api/bank/transfer', { fromBank: Number($('tFrom').value),
+      post('/api/bank/transaction', { type:'transfer', fromBank: Number($('tFrom').value),
           toBank: Number($('tTo').value), on: $('tOn').value,
           amount: $('tAmt').value, note: $('tNote').value })
         .then(function(){ say($('tMsg'), 'good', 'Moved.'); return load(); })
@@ -759,25 +793,37 @@
     var aGo = $('aGo');
     if(aGo) aGo.addEventListener('click', function(){
       say($('aMsg'), '', 'Working…');
-      post('/api/bank/adjust', { bankId: Number($('aBank').value), on: $('aOn').value,
+      post('/api/bank/transaction', { type:$('aType').value, bankId: Number($('aBank').value), on: $('aOn').value,
           amount: $('aAmt').value, note: $('aNote').value })
         .then(function(){ say($('aMsg'), 'good', 'Saved.'); return load(); })
         .catch(function(e){ say($('aMsg'), 'bad', e.message); });
     });
 
+    if($('sBank')) {
+      function fillSetup(){
+        var b=S.report.banks.find(function(x){return x.id===Number($('sBank').value);}) || {};
+        $('sIn').value=b.openingIn || '0.00'; $('sOut').value=b.openingOut || '0.00';
+        $('sInFrom').value=b.inFrom || b.openingOn || S.today;
+        $('sOutFrom').value=b.outFrom || b.openingOn || S.today;
+      }
+      $('sBank').addEventListener('change',fillSetup);fillSetup();
+      $('sSave').addEventListener('click',function(){
+        var button=$('sSave');button.disabled=true;
+        post('/api/bank/setup',{bankId:Number($('sBank').value),fiscalYear:S.report.year.year,
+          openingIn:$('sIn').value,openingOut:$('sOut').value,inFrom:$('sInFrom').value,
+          outFrom:$('sOutFrom').value})
+          .then(function(){return load();}).catch(function(e){say($('sMsg'),'bad',e.message);})
+          .finally(function(){button.disabled=false;});
+      });
+    }
     v.querySelectorAll('[data-sheet]').forEach(function(b){
-      b.addEventListener('click', function(){
-        var id = b.getAttribute('data-sheet');
-        var msg = v.querySelector('[data-sheetmsg="' + id + '"]');
-        b.disabled = true;
-        say(msg, '', ' Reading…');
-        post('/api/bank/sheet', { id: Number(id), fresh: true }).then(function(d){
-          say(msg, 'good', ' ' + d.written + ' rows in' +
-            (d.gone ? ', ' + d.gone + ' taken off' : '') +
-            (d.before ? ', ' + d.before + ' before the opening date left out' : '') + '.');
-          b.disabled = false;
-          return load();
-        }).catch(function(e){ b.disabled = false; say(msg, 'bad', ' ' + e.message); });
+      b.addEventListener('click',function(){
+        b.disabled=true;
+        var msg=v.querySelector('[data-sheetmsg="'+b.getAttribute('data-sheet')+'"]');
+        say(msg,'','Reading...');
+        get('/api/bank/spending?bank='+b.getAttribute('data-sheet')+'&year='+S.report.year.year)
+          .then(function(d){S.spendingRows=d.rows;S.spendingMonth='';renderSpending();say(msg,'good',d.rows.length+' matched rows');})
+          .catch(function(e){say(msg,'bad',e.message);}).finally(function(){b.disabled=false;});
       });
     });
 

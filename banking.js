@@ -25,6 +25,7 @@
 import { pool } from './db.js';
 import { buildReport, receiptProjection } from './banking-cprs.js';
 import { addMoney } from './banking-money.js';
+import { initBankingSetup, bankingSetups } from './banking-setup.js';
 
 function calendarDay(value) {
   if (!value) return null;
@@ -132,6 +133,7 @@ export async function initBanking() {
     CREATE INDEX IF NOT EXISTS bank_links_read
       ON bank_links (realm_id, account_id, from_date DESC)
   `);
+  await initBankingSetup();
 }
 
 /* ==================== small things ==================== */
@@ -421,10 +423,12 @@ export async function moveDeposit(realmId, { moveId, toBank, by }) {
 export async function dropMove(realmId, id) {
   const r = await pool.query(
     `DELETE FROM bank_moves
-      WHERE realm_id = $1 AND id = $2 AND source = 'hand'`,
+      WHERE realm_id = $1 AND id = $2 AND source = 'hand'
+        AND NOT EXISTS (SELECT 1 FROM banking_entry_audit a WHERE a.realm_id=$1
+          AND a.new_value @> jsonb_build_array(jsonb_build_object('id',bank_moves.id)))`,
     [realmId, Number(id)]
   );
-  if (!r.rowCount) throw new Error('Only an entry somebody made by hand can be removed');
+  if (!r.rowCount) throw new Error('Audited entries cannot be removed; record an opposite entry with a reference. Only older hand entries can be removed.');
   return true;
 }
 
@@ -447,8 +451,10 @@ export async function receivable(realmId) {
 }
 
 export async function report(realmId, opts = {}) {
-  return buildReport(realmId, { banks: await listBanks(realmId, { all: true }),
-    year: taxYear(opts.year), today: todayText(), parseSheet: readSpendSheet,
+  const year=taxYear(opts.year);
+  const [banks,setups]=await Promise.all([listBanks(realmId,{all:true}),bankingSetups(realmId,year.year)]);
+  return buildReport(realmId, { banks: banks.map(b=>({...b,...setups.find(s=>s.bankId===b.id)})),
+    year, today: todayText(), parseSheet: readSpendSheet,
     fresh: !!opts.fresh, allMoves: !!opts.allMoves });
 }
 
@@ -536,7 +542,7 @@ function keyOf(day, amount, note) {
   return 'sheet:' + h.toString(16) + ':' + day;
 }
 
-export function readSpendSheet(text) {
+export function readSpendSheet(text, bank = {}) {
   const rows = csvRows(String(text || ''));
   if (!rows.length) return { rows: [], trouble: 'the sheet came back empty' };
 
@@ -553,13 +559,18 @@ export function readSpendSheet(text) {
   const words = rows[head].map(x => cell(x).toLowerCase());
   const find = re => words.findIndex(w => re.test(w));
   const iDay = find(/date|day|tareekh/);
-  const iAmt = find(/amount|amt|^rs$|rupee|debit|paid|spend|kharch/);
+  const sent = find(/^amount sent$/);
+  const iAmt = sent >= 0 ? sent : find(/amount|amt|^rs$|rupee|debit|paid|spend|kharch/);
+  const sender = find(/^sender bank account$/);
+  const normal = v => cell(v).replace(/\s+/g,' ').toLowerCase();
+  if(sender >= 0 && !normal(bank.name)) return {rows:[],trouble:'Bank Name is required for exact Sender Bank Account matching'};
   const iFor = find(/detail|particular|descri|note|purpose|head|narration|reason/);
 
   const out = [];
   let invalidRows = 0;
   for (let i = head + 1; i < rows.length; i++) {
     const r = rows[i];
+    if(sender >= 0 && normal(r[sender]) !== normal(bank.name)) continue;
     if (!r.some(v => cell(v))) continue;
     // Footer totals are not transactions. An unreadable expense must be
     // reported, rather than disappearing from a live balance.

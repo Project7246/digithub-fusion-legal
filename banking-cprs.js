@@ -5,13 +5,19 @@ import { bankingReceipts, bankingReceiptOrders } from './couriers.js';
 import { cprDetail } from './cprlive.js';
 import { mnpReceiptDetail } from './mnplive.js';
 import { addMoney, bankFigures, placeReceipts, reportTotals } from './banking-money.js';
+import { googleSheetId, googleSpend } from './banking-sheets.js';
 
 const sheets = new Map();
 const pendingSheets = new Map();
 const SHEET_LIFE = 60 * 1000;
 
-export async function liveSpend(realmId, bank, parseSheet, fresh = false) {
-  const key = JSON.stringify([realmId, bank.id, bank.sheetUrl]);
+export async function liveSpend(realmId, bank, parseSheet, fresh = false, today = new Date().toISOString().slice(0,10)) {
+  if(googleSheetId(bank.sheetUrl)) {
+    const rows=await googleSpend(realmId,bank,today,fresh);
+    return rows.map(r=>({...r,on:r.day,amount:addMoney(['-'+r.amount]),ref:r.key,
+      kind:'spend',source:'sheet',bankId:bank.id}));
+  }
+  const key = JSON.stringify([realmId, bank.id, bank.sheetUrl, bank.name]);
   const kept = sheets.get(key);
   if (!fresh && kept && Date.now() - kept.at < SHEET_LIFE) return kept.value;
   if (pendingSheets.has(key)) return pendingSheets.get(key);
@@ -22,7 +28,7 @@ export async function liveSpend(realmId, bank, parseSheet, fresh = false) {
     if (!response.ok) throw new Error('Spending sheet answered ' + response.status);
     const text = await response.text();
     if (/<html/i.test(text.slice(0, 400))) throw new Error('Spending sheet returned HTML; publish it as CSV');
-    const result = parseSheet(text);
+    const result = parseSheet(text, bank);
     if (result.trouble) throw new Error(result.trouble);
     const unique = new Map();
     result.rows.forEach(r => unique.set(r.key, { on: r.day,
@@ -60,7 +66,13 @@ export async function buildReport(realmId, { banks, year, today, parseSheet, fre
   const warnings = [];
   const sheetMoves = await Promise.all(banks.map(async b => {
     if (!b.sheetUrl) return [];
-    try { return await liveSpend(realmId, b, parseSheet, fresh); }
+    const id=googleSheetId(b.sheetUrl);
+    if(id && banks.some(other=>other.id!==b.id && googleSheetId(other.sheetUrl)===id &&
+      other.name.trim().toLowerCase()===b.name.trim().toLowerCase())) {
+      warnings.push({bankId:b.id,bank:b.title||b.name,message:'Duplicate Bank Name for the same Google Sheet; use distinct exact sender names to prevent double counting'});
+      return [];
+    }
+    try { return await liveSpend(realmId, b, parseSheet, fresh, today); }
     catch (e) { warnings.push({ bankId: b.id, bank: b.title || b.name, message: e.message }); return []; }
   }));
   const linkedSheets = new Set(banks.filter(b => b.sheetUrl).map(b => b.id));
@@ -76,6 +88,7 @@ export async function buildReport(realmId, { banks, year, today, parseSheet, fre
     const failed = warnings.some(w => w.bankId === b.id);
     const uncertain = data.receipts.some(r => r.bankId === b.id && !r.included &&
       (r.state === 'unknown' || r.why === 'Net amount not supplied' ||
+       r.why === 'Negative CPR net requires review; not a bank withdrawal' ||
        r.why === 'Payment date not supplied'));
     const paid = receipts.filter(r => r.state === 'received' && r.on <= today &&
       r.on >= year.from && r.on <= year.to);
@@ -91,7 +104,8 @@ export async function buildReport(realmId, { banks, year, today, parseSheet, fre
   const byBank = new Map(rows.map(b => [b.id, b]));
   const movementRows = moves.filter(m => {
     const b = byBank.get(m.bankId);
-    return b && m.on <= today && (!b.openingOn || m.on >= b.openingOn);
+    return b && m.on <= today && (!b.openingOn || m.on >= b.openingOn) &&
+      (!(Number(m.amount)<0?b.outFrom:b.inFrom) || m.on >= (Number(m.amount)<0?b.outFrom:b.inFrom));
   }).map(m => ({ ...m, bank: byBank.get(m.bankId)?.title || byBank.get(m.bankId)?.name,
     status: 'Recorded', account: '', amount: String(m.amount) }));
   const cprMoves = data.receipts.filter(r => r.bankId && r.state !== 'excluded' &&

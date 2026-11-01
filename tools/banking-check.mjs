@@ -30,6 +30,16 @@ assert.equal(placed[1].bankId, 2, 'pending CPR uses the current bank');
 assert.equal(placed[2].included, false, 'opening already includes earlier money');
 assert.equal(placed[3].included, false, 'missing payment date must not invent an incoming payment');
 assert.notEqual(placed[0].key, placed[1].key, 'same CPR number on different accounts stays separate');
+for(const courier of ['postex','mnp','trax','daewoo','future-courier']) {
+  const [r]=placeReceipts([{accountId:1,cpr:'NET',courier,status:'Processed',paidOn:'2026-10-21',
+    net:'406712.00',charges:'24886.00',tax:'17333.00'}],[{id:1,openingOn:'2026-10-20'}],
+    [{accountId:1,bankId:1,from:'2026-10-20'}],[],'2026-10-31');
+  const f=bankFigures({opening:'0.00',openingOn:'2026-10-20'},[r],[],{from:'2026-07-01',to:'2027-06-30'},'2026-10-31');
+  assert.equal(f.balance,'406712.00');assert.equal(f.outYear,'0.00',courier+' deductions never become bank Out');
+}
+const [negative]=placeReceipts([{accountId:1,cpr:'NEG',status:'Processed',paidOn:'2026-10-21',net:'-50.00'}],
+  [{id:1}],[{accountId:1,bankId:1,from:'2026-01-01'}],[],'2026-10-31');
+assert.equal(negative.included,false,'a negative CPR is a review item, never an automatic withdrawal');
 
 const bank = { opening: '100000.00', openingOn: '2026-07-01' };
 const receipts = [
@@ -40,6 +50,16 @@ const receipts = [
 const moves = [{ on: '2026-08-03', amount: '-20000.00' }];
 const year = { from: '2026-07-01', to: '2027-06-30' };
 const figures = bankFigures(bank, receipts, moves, year, '2026-10-31');
+const seeded = bankFigures({ opening: '100000.00', openingOn: '2026-10-20',
+  openingIn: '500000.00', openingOut: '400000.00', fiscalYear: 2027,
+  inFrom: '2026-10-20', outFrom: '2026-10-21' }, [
+  { state: 'received', on: '2026-07-01', net: '999999.00' },
+  { state: 'received', on: '2026-10-20', net: '406712.00', charges: '24886.00', withholding: '17333.00' }
+], [{ on: '2026-10-20', amount: '-300.00', source: 'sheet' },
+  { on: '2026-10-21', amount: '-20000.00', source: 'sheet' }], { ...year, year: 2027 }, '2026-10-31');
+assert.equal(seeded.inYear, '906712.00', 'manual opening In plus only new net receipts');
+assert.equal(seeded.outYear, '420000.00', 'manual opening Out plus expenses after selected start');
+assert.equal(seeded.balance, '486712.00', 'historical In/Out must not change current opening balance twice');
 assert.equal(figures.balance, '950000.00');
 assert.equal(figures.inYear, '870000.00');
 assert.equal(figures.outYear, '20000.00');

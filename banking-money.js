@@ -74,9 +74,13 @@ export function placeReceipts(receipts, banks, links, moves, today) {
     else if (state === 'received' && bank.openingOn && on < bank.openingOn) {
       why = 'Before the opening balance date';
     }
+    else if (state === 'received' && bank.inFrom && on < bank.inFrom) {
+      why = 'Before the Transaction In start date';
+    }
     if (state === 'unknown') why = 'Payment status not recognised';
     if (state === 'excluded') why = 'CPR cancelled or rejected';
     if (r.net == null) why = 'Net amount not supplied';
+    else if (money(r.net) < 0n) why = 'Negative CPR net requires review; not a bank withdrawal';
     return { ...r, key: String(r.accountId) + ':' + r.cpr, state, on: on || null,
       bankId, bank: bank?.title || bank?.name || '', included: !why, why };
   });
@@ -84,11 +88,13 @@ export function placeReceipts(receipts, banks, links, moves, today) {
 
 export function bankFigures(bank, receipts, moves, year, today) {
   const valid = on => on && on <= today && (!bank.openingOn || on >= bank.openingOn);
+  const afterStart = (on, value) => !bank[money(value) < 0n ? 'outFrom' : 'inFrom'] ||
+    on >= bank[money(value) < 0n ? 'outFrom' : 'inFrom'];
   const actual = [
     ...receipts.filter(r => r.state === 'received' && valid(r.on))
       .map(r => ({ on: r.on, amount: r.net })),
     ...moves.filter(m => valid(m.on))
-  ];
+  ].filter(m => afterStart(m.on, m.amount));
   const sum = filter => actual.filter(filter).reduce((n, m) => n + money(m.amount), 0n);
   const net = sum(() => true);
   const inYear = sum(m => m.on >= year.from && m.on <= year.to && money(m.amount) > 0n);
@@ -98,7 +104,8 @@ export function bankFigures(bank, receipts, moves, year, today) {
     balance: bank.opening == null ? null : decimal(money(bank.opening) + net),
     inAll: decimal(sum(m => money(m.amount) > 0n)),
     outAll: decimal(-sum(m => money(m.amount) < 0n)),
-    inYear: decimal(inYear), outYear: decimal(outYear),
+    inYear: decimal(inYear + (bank.fiscalYear === year.year ? money(bank.openingIn) : 0n)),
+    outYear: decimal(outYear + (bank.fiscalYear === year.year ? money(bank.openingOut) : 0n)),
     receivable: addMoney(receipts.filter(r => r.state === 'receivable').map(r => r.net))
   };
 }

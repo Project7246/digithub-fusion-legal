@@ -1,5 +1,33 @@
 # Digithub Fusion - project notes for Claude
 
+## Banking manual fiscal openings and Google bank book - 1 Nov 2026
+
+Owner supplies historical fiscal Opening In and Opening Out; do not fetch
+transactions back to 1 July to reconstruct them. In/Out each have an inclusive
+start date. Historical totals seed fiscal columns only, never add money already
+included in the dated opening bank balance twice. Live balance is dated opening
+balance plus new actual bank In minus new actual bank Out. Opening date remains
+the earliest balance cutoff. Courier deductions are already included in CPR net;
+never post them as separate Out, for any courier. Negative CPR net is review,
+not proof of a bank withdrawal. Separate delivery bills actually paid from the
+bank and present in the spending sheet remain real Out.
+
+Owner explicitly approved necessary Banking schema/audit additions. Migration
+002 adds append-only company-scoped fiscal setup history and entry audit; no
+existing balance or movement is overwritten. Manual In/Out and paired transfers
+commit with audit; audited entries cannot use the old delete endpoint.
+
+Google workbook is read-only. Monthly tabs with the existing month/year format
+are discovered on refresh, including future months. Match ONLY portal Bank Name
+to column G Sender Bank Account, never receiver bank, account title, narration
+or an alias. Owner will align the names later; mismatches must be visible rather
+than silently attached elsewhere. Amount Sent (E) is bank Out; Amount Received,
+Payable and MR/PC allocation totals are not substituted. Preserve row identity,
+all display values and proof links; month-filtered view shows receiver, sender,
+date, amount, combined narration (P, fallback M), account head (N), reference
+and a source-row link. Existing published bank-specific CSV remains supported.
+Do not edit the source Google Sheet, dropdowns, sharing or credentials.
+
 ## Banking compact view decision - 1 Nov 2026
 
 Owner requested a compact modern Banking table, clearer buttons, Live Balance
