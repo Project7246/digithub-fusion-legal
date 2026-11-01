@@ -72,6 +72,13 @@ const manualSeed=bankFigures({opening:'100000.00',openingOn:'2026-10-20',fiscalY
   {...year,year:2027},'2026-10-31');
 assert.equal(manualSeed.inYear,'502500.00');assert.equal(manualSeed.outYear,'401000.00');
 assert.equal(manualSeed.balance,'101500.00','opening balance is separate from historical fiscal turnover');
+const manualBeforeCutoff=bankFigures({opening:'100.00',openingOn:'2026-10-13',inFrom:'2026-10-13',outFrom:'2026-10-13'},[],[
+  {source:'hand',on:'2026-10-12',amount:'1000.00'},
+  {source:'hand',on:'2026-10-12',amount:'-200.00'},
+  {source:'hand',on:'2026-06-30',amount:'9999.00'},
+  {source:'sheet',on:'2026-10-12',amount:'-500.00'}],{...year,year:2027},'2026-11-01');
+assert.equal(manualBeforeCutoff.inYear,'1000.00');assert.equal(manualBeforeCutoff.outYear,'200.00');
+assert.equal(manualBeforeCutoff.balance,'100.00','historical turnover must not double count money already in the bank opening balance');
 assert.equal(figures.balance, '950000.00');
 assert.equal(figures.inYear, '870000.00');
 assert.equal(figures.outYear, '20000.00');

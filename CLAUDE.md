@@ -1,5 +1,14 @@
 # Digithub Fusion - project notes for Claude
 
+Owner clarification, 1 Nov: In/Out start dates apply to automatic CPR/Sheet
+feeds only. Manual hand entries and transfers count in Year In/Out by their
+transaction fiscal year even before automatic start/opening dates. Include
+them in fiscal drilldowns too. Opening bank balance remains separate: manual
+movements before its dated balance are historical turnover, already covered by
+that opening, and do not change live balance twice. Entries after opening count
+in live balance regardless of automatic feed start dates. Never auto-recreate
+deleted entries or change the owner's stored figures.
+
 ## Banking reviewable entries and payment detail - 1 Nov 2026
 
 Owner requested visible logs below fiscal-opening, transfer and manual In/Out

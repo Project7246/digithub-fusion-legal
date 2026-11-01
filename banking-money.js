@@ -94,10 +94,10 @@ export function bankFigures(bank, receipts, moves, year, today) {
   const actual = [
     ...receipts.filter(r => r.state === 'received' && money(r.net) >= 0n && valid(r.on))
       .map(r => ({ on: r.on, amount: r.net })),
-    ...moves.filter(m => valid(m.on))
-  ].filter(m => afterStart(m.on, m.amount));
+    ...moves.filter(m => m.source==='hand' ? m.on && m.on<=today : valid(m.on))
+  ].filter(m => m.source==='hand' || afterStart(m.on, m.amount));
   const sum = filter => actual.filter(filter).reduce((n, m) => n + money(m.amount), 0n);
-  const net = sum(() => true);
+  const net = sum(m => valid(m.on));
   const inYear = sum(m => m.on >= year.from && m.on <= year.to && money(m.amount) > 0n);
   const outYear = -sum(m => m.on >= year.from && m.on <= year.to && money(m.amount) < 0n);
   return {
