@@ -16,6 +16,8 @@ XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(values), 'Oct 2025');
 const settings = {name:'My bank',outFrom:'2026-10-20'};
 const rows = workbookSpend(wb, settings, '2026-10-31', 'synthetic-id');
 assert.equal(rows.length,2);
+assert.equal(workbookSpend(wb,{...settings,outFrom:'2026-07-01',sheetFrom:'2026-10-31'},'2026-10-31','synthetic-id').length,0,
+ 'explicit Sheet start overrides old fiscal cutoff and excludes earlier payments');
 assert.equal(rows[0].amount,'200.00', 'Amount Sent, never Amount Received or allocation columns');
 assert.equal(rows[0].details[7].link,'https://example.invalid/proof');
 assert.equal(rows[0].details[12].value,'Delivery bill paid separately');

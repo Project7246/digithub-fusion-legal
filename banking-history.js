@@ -42,6 +42,8 @@ export function historyWorkbook(history,kind,banks=[]) {
   let rows;
   if(kind==='setup') rows=[['Record','Bank','Fiscal year','Opening In','Opening Out','In start','Out start','Status','Saved by','Saved at'],
     ...(history.setups||[]).map(r=>[r.id,bank(r.bankId),r.fiscalYear,number(r.openingIn),number(r.openingOut),r.inFrom,r.outFrom,r.active?'Current':'Superseded',r.actor,r.createdAt])];
+  else if(kind==='sheet') rows=[['Record','Bank','Previous sheet','Previous start','Sheet','Pick payments from','Saved by','Saved at'],
+    ...(history.sheets||[]).map(r=>[r.id,bank(r.bankId),r.before?.sheet_url||'',r.before?.sheet_from||'',r.after?.sheet_url||'',r.after?.sheet_from||'',r.actor,r.createdAt])];
   else if(kind==='opening') rows=[['Record','Bank','Previous opening','New opening','Opening date','Saved by','Saved at'],
     ...(history.openings||[]).map(r=>[r.id,bank(r.bankId),number(r.before?.opening),number(r.after?.opening),r.after?.opening_balance_on||'',r.actor,r.createdAt])];
   else if(kind==='entry'||kind==='transfer') rows=[['Entry','Type','Date','Bank','Direction','Amount','Reference / note','Status','Saved by','Saved at'],
@@ -82,7 +84,7 @@ export function fiscalHistory(rows,audits) {
   const explicitSaves=new Set(audits.filter(a=>a.action==='save-setup').flatMap(a=>a.new_value.map(e=>String(e.setupId))));
   function hide(id){while(id && !hidden.has(String(id))){hidden.add(String(id));id=byId.get(String(id))?.previous_id;}}
   for(const a of audits.filter(a=>a.action==='remove-setup')) for(const e of a.new_value){hide(e.setupId);hide(e.clearedSetupId);}
-  for(const a of audits.filter(a=>a.action==='move-setup'))for(const e of a.new_value)hidden.add(String(e.clearedSetupId));
+  for(const a of audits.filter(a=>a.action==='move-setup'))for(const e of a.new_value){hide(e.clearedSetupId);hide(e.sourceSetupId);}
   // Earlier Remove saved a zero reset with the original start dates, without
   // an action marker. Keep that clearing row and its earlier chain out of view.
   for(const s of rows){const p=byId.get(String(s.previous_id));
@@ -107,7 +109,11 @@ export async function bankingHistory(realmId) {
     pool.query(`SELECT id,bank_id,amount,to_char(on_date,'YYYY-MM-DD') AS on,note,kind,other_bank_id
       FROM bank_moves WHERE realm_id=$1 AND source='hand' ORDER BY id DESC`,[realmId])]);
   const transactions=historyTransactions(audits.rows,moves.rows);
-  return {transactions,openings:audits.rows.filter(a=>a.action==='bank-opening').map(a=>({
+  const sheetSnapshot=v=>v?{sheet_url:v.sheet_url||'',sheet_from:v.sheet_from?String(v.sheet_from).slice(0,10):null}:null;
+  const sheets=audits.rows.filter(a=>a.action==='bank-sheet'||a.action==='bank-opening'&&
+    a.new_value.some(e=>e.before?.sheet_url!==e.after?.sheet_url||e.before?.sheet_from!==e.after?.sheet_from))
+    .flatMap(a=>a.new_value.map(e=>({id:a.id,actor:a.actor,createdAt:a.created_at,...e,before:sheetSnapshot(e.before),after:sheetSnapshot(e.after)})));
+  return {transactions,sheets,openings:audits.rows.filter(a=>a.action==='bank-opening').map(a=>({
     id:a.id,actor:a.actor,createdAt:a.created_at,...a.new_value[0]})),setups:fiscalHistory(setups.rows,audits.rows)};
 }
 

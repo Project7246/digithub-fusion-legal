@@ -22,9 +22,9 @@ export async function initNotify() {
   );
 }
 
-export async function notify(sub, { kind, title, body, link }) {
+export async function notify(sub, { kind, title, body, link }, connection=pool) {
   if (!sub || !title) return;
-  await pool.query(
+  await connection.query(
     `INSERT INTO notifications (user_sub, kind, title, body, link)
      VALUES ($1, $2, $3, $4, $5)`,
     [sub, kind || 'note', title, body || null, link || null]

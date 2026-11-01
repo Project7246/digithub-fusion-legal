@@ -11,6 +11,7 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@600;700;800&family=Roboto:wght@400;500&family=Roboto+Mono:wght@400;500&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="/app.css">
+<link rel="stylesheet" href="/tiles.css">
 <style>
   .banking-page .shell{max-width:none;padding:18px 24px 30px}
   .banking-page .topline{padding-left:24px;padding-right:24px}
@@ -32,6 +33,17 @@
   .bk-opening-group input{width:100%;box-sizing:border-box;height:40px;min-width:0}
   .banking-page .form input:not([type="checkbox"]):not([type="radio"]),.banking-page .form select{box-sizing:border-box;min-width:0;width:100%;height:40px;font:13px var(--sans)}
   .bk-opening-group input{font:13px var(--sans);font-variant-numeric:tabular-nums}
+  .bk-launcher{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:18px;margin:20px 0}
+  .bk-door{text-align:left;border:1px solid var(--line);border-radius:14px;background:#fff;padding:24px;cursor:pointer;color:var(--ink)}
+  .bk-door:hover{border-color:var(--accent);box-shadow:0 8px 24px #153b3612;transform:translateY(-2px)}
+  .bk-door b{display:block;font:700 17px var(--sans);margin:14px 0 7px}.bk-door small{font:13px var(--sans);color:var(--muted)}
+  .bk-door .bk-icon{display:block;width:58px;height:58px}.bk-icon svg{width:100%;height:100%}
+  .banking-page #view .form{padding:16px;border:1px solid var(--line);border-radius:10px;background:#f8fbfa;gap:16px;align-items:start;margin:16px 0}
+  .banking-page #view .bk-account-fields{padding:0;border:0;background:none}
+  .banking-page #view .form label{display:block;min-height:16px;margin-bottom:7px;letter-spacing:.07em;font-size:11px}
+  .banking-page #view .form .wide{grid-column:1/-1}
+  #bkBack{margin-right:10px}.banking-page .sec>h2{font:600 15px var(--sans)}
+  @media(max-width:640px){.bk-launcher{grid-template-columns:1fr}.banking-page #view .form{grid-template-columns:1fr}}
   @media(max-width:800px){.bk-opening-grid{grid-template-columns:1fr}.bk-settings-tabs{margin-left:0;border-left:0;padding-left:0}.bk-account-fields{grid-template-columns:1fr}}
   table.plain{width:100%;border-collapse:collapse;font:11.5px var(--sans)}
   table.plain th{font:500 11px var(--sans);letter-spacing:0;text-transform:none;
@@ -163,6 +175,7 @@
 
     <div class="shell">
       <div id="body" class="hide">
+        <button class="mini" id="bkBack" type="button" aria-label="Back to previous Banking screen">&#8592; Back</button>
         <div class="pills" id="tabs">
           <button data-tab="report" class="on">Live balance &amp; CPRs</button>
           <button data-tab="entries">Transactions</button>
@@ -190,6 +203,8 @@
 <dialog id="bkPaymentDialog" class="bkdialog" aria-label="Bank payments"><div class="bkheading"><h2>Google Sheet payments</h2><button class="mini" id="bkPaymentsClose">Close</button></div><div id="spendingPreview" style="padding:12px"></div></dialog>
 <dialog id="bkLogDialog" class="bkdialog" aria-labelledby="bkLogTitle"><div class="bkheading"><h2 id="bkLogTitle">Banking log</h2><a class="mini" id="bkLogDownload">Download Excel</a><button class="mini" id="bkLogClose">Close</button></div><div id="bkLogMsg" class="msg bad"></div><div id="bkLogBody" style="padding:12px"></div></dialog>
 <script src="/nav.js"></script>
+<script src="/tiles.js"></script>
+<script src="/messages.js"></script>
 <script>
 "use strict";
 (function(){
@@ -360,7 +375,7 @@
     var b=S.report.banks.find(function(x){return x.id===Number(id);});
     return b ? (b.title || b.name)+' - '+b.name : 'Bank '+id;
   }
-  var LOG_NAMES={setup:'Fiscal opening log',transfer:'Transfer log',entry:'Transaction In / Out log',opening:'Bank opening / details history'};
+  var LOG_NAMES={setup:'Fiscal opening log',transfer:'Transfer log',entry:'Transaction In / Out log',opening:'Bank opening / details history',sheet:'Sheet connection log'};
   function logButton(kind){
     return '<div class="acts" style="margin-bottom:14px"><button class="mini" data-view-log="'+kind+'">View '+esc(LOG_NAMES[kind])+'</button></div>';
   }
@@ -369,11 +384,12 @@
     if(!LOG_NAMES[kind])return;
     $('bkLogTitle').textContent=LOG_NAMES[kind];$('bkLogMsg').textContent='';
     $('bkLogDownload').href='/api/bank/history?download=xlsx&kind='+encodeURIComponent(kind);
-    $('bkLogBody').innerHTML=kind==='setup'?setupLog():kind==='opening'?openingLog():transactionLog(kind);
+    $('bkLogBody').innerHTML=kind==='setup'?setupLog():kind==='opening'?openingLog():kind==='sheet'?sheetLog():transactionLog(kind);
     wireLogActions($('bkLogBody'));
     if(!$('bkLogDialog').open)$('bkLogDialog').showModal();
   }
   $('bkLogClose').addEventListener('click',closeLog);
+  function sheetLog(){return '<div class="wrapx"><table class="plain"><thead><tr><th>Bank</th><th>Previous start</th><th>Pick payments from</th><th>Sheet</th><th>Saved by / when</th></tr></thead><tbody>'+(S.history.sheets||[]).map(function(r){return '<tr><td>'+esc(bankLabel(r.bankId))+'</td><td>'+esc(r.before&&r.before.sheet_from||'')+'</td><td>'+esc(r.after&&r.after.sheet_from||'Not set')+'</td><td>'+esc(r.after&&r.after.sheet_url||'Not linked')+'</td><td>'+esc(r.actor)+'<small class="bkdate">'+esc(r.createdAt)+'</small></td></tr>';}).join('')+'</tbody></table></div>';}
   function transactionLog(kind){
     var rows=(S.history.transactions || []).filter(function(t){return kind==='transfer'?t.type==='transfer':t.type!=='transfer';});
     return '<h3 style="font-size:13px;margin-top:18px">'+(kind==='transfer'?'Transfer log':'Transaction In / Out log')+'</h3><div class="wrapx"><table class="plain"><thead><tr><th>Entry</th><th>Date</th><th>Bank / direction</th><th class="n">Amount</th><th>Reference / note</th><th>Status / saved by</th><th>Actions</th></tr></thead><tbody>'+rows.map(function(t){
@@ -606,11 +622,7 @@
 
     return drift + warn +
       '<div class="sheet" style="margin-bottom:16px"><div class="sec">' +
-        '<h2>How this works<span class="aside">read once</span></h2>' +
-        '<p class="hint" style="margin:0">A courier payment goes into the bank that ' +
-        'account was paying into <b>on the day it paid</b>, not the bank it pays into ' +
-        'today. So changing the bank never moves money that has already landed, and the ' +
-        'list underneath each account is the record of every change.</p>' +
+        '<h2>Bank / courier links '+help('Payments use the bank linked on their payment date. A new link does not move old payments. Each account keeps its dated link history below.')+'</h2>' +
         '<div class="acts"><button class="solid" id="postNow">Refresh the couriers’ ' +
         'CPRs</button><span class="msg" id="postMsg"></span></div>' +
       '</div></div>' + cards;
@@ -681,7 +693,7 @@
       '</div></div>' +
 
       '<div class="sheet" style="margin-bottom:16px"><div class="sec">' +
-        '<h2>Transaction In / Out</h2>' +
+        '<h2>Transaction In / Out '+help('Record actual bank money in or out. Manual entries count in their fiscal year independently of automatic feed start dates.')+'</h2>' +
         '<div class="form">' +
           '<div><label>Bank</label><select id="aBank">' + opts + '</select></div>' +
           '<div><label>Date</label><input type="date" id="aOn" value="' + esc(S.today) + '"></div>' +
@@ -734,13 +746,15 @@
             esc(b.iban || '') + '"></div>' +
           '<div><label>Branch</label><input type="text" id="bBranch" value="' +
             esc(b.branch || '') + '"></div>' +
-          '<div><label>Auto sync from '+help('Start picking automatic CPR and Google Sheet transactions from this date. Opening balance and its balance date are entered under Transactions.')+'</label><input type="date" id="bOpenOn" value="' +
+          '<div><label>CPR sync from '+help('Start automatic courier receipts from this date. Sheet payments have their own start date below. Opening balance is entered under Transactions.')+'</label><input type="date" id="bOpenOn" value="' +
             esc(b.openingOn || S.today) + '"></div>' +
           '<div><label>Reference time '+help('Optional note only. Courier and Sheet feeds use calendar dates, not time-of-day filtering.')+'</label><input type="time" id="bOpenAt" value="' +
             esc(b.openingAt || '') + '"></div>' +
           '<div class="wide"><label>Spending Google Sheet or published CSV</label>' +
             '<input type="text" id="bSheet" value="' + esc(b.sheetUrl || '') + '" ' +
             'placeholder="Google Sheets → File → Share → Publish to the web → CSV"></div>' +
+          '<div><label>Sheet payments from '+help('Only matching Sender Bank Account payments on or after this date count. This date does not filter manual entries or CPRs.')+'</label><input id="bSheetFrom" type="date" value="'+esc(b.sheetFrom||b.outFrom||b.openingOn||'')+'"></div>'+
+          '<div class="wide">'+logButton('sheet')+'</div>'+
           '<div class="wide"><label>Notes</label><input type="text" id="bNotes" value="' +
             esc(b.notes || '') + '"></div>' +
         '</div>' +
@@ -769,13 +783,27 @@
 
   /* ---------- drawing and wiring ---------- */
 
+  function homeView(){return '<h2>Banking</h2><div class="bk-launcher">'+[
+    ['report','cash','Live balance & CPRs','Balances, received payments and receivables'],
+    ['entries','shuffle','Transactions','Opening totals, bank transfers and entries'],
+    ['couriers','box','Bank / courier links','Choose where each courier pays'],
+    ['add','wallet','Bank settings','Bank details and Google Sheet start dates']
+  ].map(function(t){return '<button class="bk-door" data-open-tab="'+t[0]+'"><span class="bk-icon">'+window.FUSION.mark(t[1])+'</span><b>'+t[2]+'</b><small>'+t[3]+'</small></button>';}).join('')+'</div>';}
+  function openTab(tab,push){
+    S.tab=tab;
+    if(push)history.pushState({bankTab:tab},'',tab==='home'?'/banking':'/banking?view='+tab);
+    draw();window.scrollTo({top:0,behavior:'smooth'});
+  }
   function draw(){
     draftDirty=false;
     var v = $('view');
-    v.innerHTML = S.tab === 'report'   ? reportView()
+    $('tabs').style.display=S.tab==='home'?'none':'flex';
+    $('tabs').querySelectorAll('[data-tab]').forEach(function(b){b.classList.toggle('on',b.getAttribute('data-tab')===S.tab);});
+    v.innerHTML = S.tab === 'home' ? homeView() : S.tab === 'report'   ? reportView()
                 : S.tab === 'couriers' ? couriersView()
                 : S.tab === 'entries'  ? entriesView()
                 : addView()+logButton('opening');
+    v.querySelectorAll('[data-open-tab]').forEach(function(b){b.addEventListener('click',function(){openTab(b.dataset.openTab,true);});});
     wire();
   }
 
@@ -954,7 +982,7 @@
         var b=S.report.banks.find(function(x){return x.id===Number($('sBank').value);}) || {};
         $('sIn').value=b.openingIn || '0.00'; $('sOut').value=b.openingOut || '0.00';
         $('sInFrom').value=b.inFrom || b.openingOn || S.today;
-        $('sOutFrom').value=b.outFrom || b.openingOn || S.today;
+        $('sOutFrom').value=b.sheetFrom || b.outFrom || b.openingOn || S.today;
         S.editSetup=b.setupId || null;
         $('sYear').value=S.report.year.year;
       }
@@ -992,7 +1020,7 @@
         iban: $('bIban').value, branch: $('bBranch').value,
         opening: S.editing ? S.editing.opening : null, openingOn: $('bOpenOn').value,
         openingAt: $('bOpenAt') ? $('bOpenAt').value : '',
-        sheetUrl: $('bSheet').value, notes: $('bNotes').value
+        sheetUrl: $('bSheet').value, sheetFrom:$('bSheetFrom').value, notes: $('bNotes').value
       };
       bSave.disabled = true;
       say($('bMsg'), '', 'Saving…');
@@ -1055,16 +1083,12 @@
     $('tabs').addEventListener('click', function(e){
       var b = e.target.closest('button[data-tab]');
       if(!b) return;
-      S.tab = b.getAttribute('data-tab');
-      [].slice.call($('tabs').querySelectorAll('button')).forEach(function(x){
-        x.classList.toggle('on', x === b);
-      });
-      try { sessionStorage.setItem('bank:tab', S.tab); } catch (err) {}
-      draw();
+      openTab(b.getAttribute('data-tab'),true);
     });
 
     try {
-      var kept = sessionStorage.getItem('bank:tab');
+      var kept = new URLSearchParams(location.search).get('view') || 'home';
+      if(!['home','report','entries','couriers','add'].includes(kept))kept='home';
       if(kept){
         S.tab = kept;
         [].slice.call($('tabs').querySelectorAll('button')).forEach(function(x){
@@ -1072,6 +1096,8 @@
         });
       }
     } catch (err) {}
+    $('bkBack').addEventListener('click',function(){if(S.tab==='home')location.href='/';else if(history.state&&history.state.bankTab)history.back();else openTab('home',false);});
+    window.addEventListener('popstate',function(){openTab(new URLSearchParams(location.search).get('view')||'home',false);});
 
     document.addEventListener('visibilitychange',refreshOnReturn);
     load();

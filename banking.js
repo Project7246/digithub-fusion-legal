@@ -28,6 +28,7 @@ import { addMoney } from './banking-money.js';
 import { initBankingSetup, bankingSetups } from './banking-setup.js';
 import { initBankingArchive } from './banking-archive.js';
 import { startBankingSchedule } from './banking-schedule.js';
+import { initBankingSheetSettings, sheetStart } from './banking-sheet-settings.js';
 
 function calendarDay(value) {
   if (!value) return null;
@@ -137,6 +138,7 @@ export async function initBanking() {
   `);
   await initBankingSetup();
   await initBankingArchive();
+  await initBankingSheetSettings();
   startBankingSchedule();
 }
 
@@ -204,6 +206,7 @@ function shapeBank(b) {
     openingAt: b.opening_at || '',
     openingKnown: b.opening != null,
     sheetUrl: b.sheet_url || '',
+    sheetFrom: calendarDay(b.sheet_from),
     active: b.active !== false
   };
 }
@@ -211,6 +214,8 @@ function shapeBank(b) {
 export async function saveBank(realmId, bank, connection = pool) {
   const name = String(bank.name || '').trim();
   if (!name) throw new Error('The bank needs a name');
+  const sheetFrom=sheetStart(bank.sheetFrom);
+  if(bank.sheetUrl && Object.hasOwn(bank,'sheetFrom') && !sheetFrom)throw new Error('Select the date to start picking Sheet payments');
 
   // Both or neither. A figure with no day it is true of says nothing, and a
   // day with no figure is a bank waiting for its statement - which is allowed.
@@ -235,12 +240,12 @@ export async function saveBank(realmId, bank, connection = pool) {
     const r = await connection.query(
       `UPDATE banks SET name = $3, owner_name = $4, title = $5, account_no = $6,
               iban = $7, branch = $8, notes = $9, opening = $10, opening_on = $11,
-              sheet_url = $12, active = $13, opening_at = $14
+              sheet_url = $12, active = $13, opening_at = $14, sheet_from = CASE WHEN $16::boolean THEN $15::date ELSE sheet_from END
         WHERE realm_id = $1 AND id = $2 RETURNING id`,
       [realmId, id, name, bank.ownerName || null, bank.title || null,
        bank.accountNo || null, bank.iban || null, bank.branch || null,
        bank.notes || null, hasFigure ? num(bank.opening) : null, on,
-       bank.sheetUrl || null, bank.active !== false, at]
+       bank.sheetUrl || null, bank.active !== false, at, sheetFrom,Object.hasOwn(bank,'sheetFrom')]
     );
     if (!r.rows.length) throw new Error('No such bank');
     return id;
@@ -248,12 +253,12 @@ export async function saveBank(realmId, bank, connection = pool) {
 
   const r = await connection.query(
     `INSERT INTO banks (realm_id, name, owner_name, title, account_no, iban,
-                        branch, notes, opening, opening_on, sheet_url, opening_at)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) RETURNING id`,
+                        branch, notes, opening, opening_on, sheet_url, opening_at, sheet_from)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) RETURNING id`,
     [realmId, name, bank.ownerName || null, bank.title || null,
      bank.accountNo || null, bank.iban || null, bank.branch || null,
      bank.notes || null, hasFigure ? num(bank.opening) : null, on,
-     bank.sheetUrl || null, at]
+     bank.sheetUrl || null, at, sheetFrom]
   );
   return r.rows[0].id;
 }

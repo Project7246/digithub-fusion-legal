@@ -107,8 +107,10 @@
       .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
   }
 
+  var markId=0;
   function mark(name){
-    return '<svg viewBox="0 0 48 48" aria-hidden="true">' + (ICONS[name] || ICONS.box) + '</svg>';
+    var id='fx3d'+(++markId),body=(ICONS[name]||ICONS.box).replace(/#222F34/g,'url(#'+id+'s)').replace(/#11BAB5/g,'url(#'+id+'t)');
+    return '<svg viewBox="0 0 48 52" aria-hidden="true"><defs><linearGradient id="'+id+'s" x2=".8" y2="1"><stop stop-color="#64828d"/><stop offset=".45" stop-color="#334d58"/><stop offset="1" stop-color="#172c36"/></linearGradient><linearGradient id="'+id+'t" x2=".8" y2="1"><stop stop-color="#a2f7ec"/><stop offset=".45" stop-color="#30cdbb"/><stop offset="1" stop-color="#078f89"/></linearGradient></defs><ellipse cx="24" cy="46" rx="17" ry="3" fill="#173c46" opacity=".12"/><g transform="translate(0 3)" opacity=".32">'+(ICONS[name]||ICONS.box)+'</g><g>'+body+'</g></svg>';
   }
 
   // One shelf's worth. The section's own modules, flattened out of the groups

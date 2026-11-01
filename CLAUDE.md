@@ -1,5 +1,41 @@
 # Digithub Fusion - project notes for Claude
 
+## Banking cards, Sheet cutoff and internal messages - 2 Nov 2026
+
+Owner requested one consistent Banking card/form design: aligned fields, short
+headings, ! help for long explanations, compact tables. /banking opens four
+launcher cards, with existing tabs inside each view and a visible Back arrow.
+Use URL/history for Banking views rather than reopening the last tab on entry.
+Launcher icons use the shared SVG tiles with dimensional gradients/depth, also
+on the Fusion home page. Do not remove Finance or other modules' app navigation.
+Only Banking replaces its redundant Overview rail with company team messages.
+
+Moved-away fiscal setup source chains must disappear from visible logs/Excel,
+including Superseded versions. Keep their database audit intact; edits on an
+active chain still retain history. Do not delete stored money/audit rows.
+
+Migration 004 adds banks.sheet_from, an independent Sheet payments start date
+beside the Sheet URL. It overrides old fiscal/default feed dates for Sheet Out
+only. Transactions' Sheet sync field writes the same setting atomically with
+audit. Manual entries/CPRs keep their separate rules. Sheet connection history
+opens by button beside the URL; its date/source changes export to Excel. Never
+guess or rewrite the owner's existing payment dates or historical totals.
+
+Internal chat is its own messages.js module/router/table (migration 005, RLS).
+Participants come through users.messageUsers: active authorized members of the
+same current company only. Session determines sender and company. Threads are
+private between the two participants, 50-row keyset pages; messages persist.
+Snapshot the stored full sender name and timestamp; notify via existing bell
+atomically with the message, no external messaging. Unique client key prevents
+duplicate sends/notifications after network retry. Read acknowledgements stop
+at the displayed message ID. Banking rail opens conversation dialog; recipients
+can open /messages from the bell without being granted financial Banking access.
+Other modules' left navigation remains unchanged. Typed chat drafts are per
+company/user/recipient in session storage. Only active open chat polls (60s,
+stops after 2 idle minutes or hidden tab), no always-on database polling.
+No production test messages: verify routing/notifications with synthetic fixtures;
+owner checks actual two-user delivery/replies with their own authorized users.
+
 ## Twice-daily Banking retention - 2 Nov 2026
 
 Owner requested server-side Banking archive runs daily at 15:00 and 22:00

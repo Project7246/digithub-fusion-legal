@@ -28,7 +28,7 @@ export function workbookSpend(wb, bank, today, id) {
     const parts=name.trim().split(/\s+/);
     const month=['jan','feb','mar','apr','may','jun','jul','aug','sep','oct','nov','dec'].indexOf(parts[0].slice(0,3).toLowerCase())+1;
     const prefix=parts[1]+'-'+String(month).padStart(2,'0');
-    const start=bank.outFrom||bank.openingOn;
+    const start=bank.sheetFrom||bank.outFrom||bank.openingOn;
     if(start && prefix<start.slice(0,7) || prefix>today.slice(0,7)) continue;
     const ws = wb.Sheets[name];
     if (!ws['!ref']) continue;

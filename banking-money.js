@@ -90,7 +90,7 @@ export function placeReceipts(receipts, banks, links, moves, today) {
 export function bankFigures(bank, receipts, moves, year, today) {
   const valid = on => on && on <= today;
   const afterStart = (on, value) => {
-    const start=bank[money(value)<0n?'outFrom':'inFrom'] || bank.openingOn;
+    const start=(money(value)<0n ? bank.sheetFrom||bank.outFrom : bank.inFrom) || bank.openingOn;
     return !start || on>=start;
   };
   const actual = [

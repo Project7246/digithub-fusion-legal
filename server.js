@@ -200,6 +200,7 @@ import { reachCourier } from './reach.js';
 import { absorbPayment } from './traxlive.js';
 import { absorbPayouts, bankSaid, bankDrift } from './mnplive.js';
 import { createBankingRouter } from './banking-router.js';
+import { initMessages, createMessagesRouter } from './messages.js';
 import { relayState } from './wire.js';
 import {
   read as readGrant, write as writeGrant, mayApp, inModule as inAccessModule,
@@ -1369,6 +1370,7 @@ const USER_MAY_POST = new Set([
   '/auth/code', '/auth/signup', '/auth/in', '/auth/forgot', '/auth/reset',
   // a person's own bell: reading it and emptying it are their own business
   '/api/notifications/read', '/api/notifications/clear',
+  '/api/messages/send', '/api/messages/read',
   // their own HR record: their form, their check-in, their own leave. The
   // employee is never taken from the request - it is looked up from who is
   // signed in - so there is no address anybody can type to reach somebody else.
@@ -9227,6 +9229,7 @@ app.get('/api/courier/peek', async (req, res) => {
 // courier sign-ins sit beside them. requireBoss, not requireAdmin.
 
 app.use('/api/bank', createBankingRouter({ requireBoss, requireCompany }));
+app.use('/api/messages',createMessagesRouter({requireCompany,currentUser}));
 
 app.get('/api/bank/report', async (req, res) => {
   if (!await requireBoss(req, res)) return;
@@ -14569,6 +14572,7 @@ initDb()
   .then(() => initCouriers())
   .then(() => initRates())
   .then(() => initBanking())
+  .then(() => initMessages())
   .then(() => initShopify())
   .then(() => initHr())
   .then(() => initHrPay())

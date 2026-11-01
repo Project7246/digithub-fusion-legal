@@ -120,7 +120,7 @@ export async function buildReport(realmId, { banks, year, today, parseSheet, fre
   const movementRows = moves.filter(m => {
     const b = byBank.get(m.bankId);
     return b && m.on <= today && (m.source==='hand' ||
-      m.on>=((Number(m.amount)<0?b.outFrom:b.inFrom)||b.openingOn||''));
+      m.on>=((Number(m.amount)<0?b.sheetFrom||b.outFrom:b.inFrom)||b.openingOn||''));
   }).map(m => ({ ...m, bank: byBank.get(m.bankId)?.title || byBank.get(m.bankId)?.name,
     status: 'Recorded', account: '', amount: String(m.amount) }));
   const cprMoves = data.receipts.filter(r => r.bankId && r.state !== 'excluded' &&

@@ -117,6 +117,14 @@ export async function userOwns(sub, realmId) {
   return r.rowCount > 0;
 }
 
+// Named identity boundary for internal company messages; never list another
+// company's users or expose credentials/email to the chat selector.
+export async function messageUsers(realmId){
+  const r=await pool.query(`SELECT u.sub,u.name FROM users u JOIN user_companies c ON c.user_sub=u.sub
+    WHERE c.realm_id=$1 AND u.allowed IS TRUE AND u.role<>'none' AND u.disabled IS NOT TRUE ORDER BY lower(u.name),u.sub`,[realmId]);
+  return r.rows.map(u=>({sub:u.sub,name:String(u.name||'User').trim()}));
+}
+
 export async function companiesForUser(sub) {
   const r = await pool.query(
     `SELECT c.realm_id, c.company_name

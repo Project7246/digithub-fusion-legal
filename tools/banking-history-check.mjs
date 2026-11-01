@@ -15,7 +15,7 @@ assert.equal(fiscalHistory(fiscalRows,[{action:'save-setup',new_value:[{setupId:
 assert.equal(fiscalHistory(fiscalRows,[{action:'remove-setup',new_value:[{setupId:1,clearedSetupId:2}]}]).length,0);
 const movedHistory=fiscalHistory(fiscalRows,[{action:'save-setup',new_value:[{setupId:2}]},
   {action:'move-setup',new_value:[{clearedSetupId:2}]}]);
-assert.equal(movedHistory.length,1);assert.equal(movedHistory[0].active,false,'source history stays, without editable cleared row');
+assert.equal(movedHistory.length,0,'moved-away source chain disappears from visible history');
 assert.equal(fiscalHistory([{...fiscalRows[0],opening_in:'25.00'},fiscalRows[1]],[]).length,2,'edit history remains for active amounts');
 const entry=(id,time)=>({id,action:'in',actor:'owner',transaction_time:time,new_value:[{id,bankId:1,amount:'10.00'}]});
 const legacyAudits=[entry(1,'one'),entry(2,'two'),entry(3,'three'),entry(4,'four'),
@@ -49,6 +49,10 @@ const rows=XLSX.utils.sheet_to_json(wb.Sheets.Payments,{header:1});
 assert.equal(rows[1][2],'Receiver');assert.equal(rows[1][3],20);assert.equal(rows.at(-1)[3],20);
 assert.ok(rows[1].includes('Combined remarks'));
 const originalConnect=pool.connect;
+const movedSourceRows=[{id:4,previous_id:3,bank_id:1,fiscal_year:2027,opening_in:'0',opening_out:'0'},
+ {id:3,bank_id:1,fiscal_year:2027,opening_in:'100',opening_out:'20'}];
+assert.equal(fiscalHistory(movedSourceRows,[{action:'move-setup',new_value:[{clearedSetupId:4,sourceSetupId:3}]}]).length,0,
+ 'moving a fiscal opening hides the cleared original chain, including superseded rows');
 let calls=[],already=false,failAudit=false,stale=false,missing=false,targetOccupied=false;
 let server;
 pool.connect=async()=>({release(){},async query(sql,args=[]){

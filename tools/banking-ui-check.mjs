@@ -18,7 +18,7 @@ const element = id => {
 let requested;
 const sandbox = { console, setTimeout, clearTimeout, AbortSignal, URL, Date,
   document: { getElementById: element },
-  window: { APP: { ready: new Promise(() => {}) } },
+  window: { APP: { ready: new Promise(() => {}) }, FUSION:{mark:()=>'<svg></svg>'} },
   fetch: async url => { requested = url; return { json: async () => url.includes('/spending?') ? {
     bank:{id:1,name:'Sample Bank'},rows:[{on:'2026-10-21',amount:'-20.00',details:[{value:'Date'},{value:'Receiver Bank'},{value:'Popup Receiver'}]}]
   } : ({
@@ -28,9 +28,11 @@ const sandbox = { console, setTimeout, clearTimeout, AbortSignal, URL, Date,
   }) }; }
 };
 vm.runInNewContext(script.replace(/\}\)\(\);\s*$/, `
-  globalThis.checkUi = { S, reportView, receiptListView, openReceipt, entriesView, spendingView, openPayments, setupLog, transactionLog, openLog, load, refreshOnReturn };
+  globalThis.checkUi = { S, homeView, addView, sheetLog, reportView, receiptListView, openReceipt, entriesView, spendingView, openPayments, setupLog, transactionLog, openLog, load, refreshOnReturn };
 })();`), sandbox);
 const ui = sandbox.checkUi;
+assert.equal((ui.homeView().match(/data-open-tab=/g)||[]).length,4,'Banking opens a four-card launcher');
+assert.match(html,/id="bkBack"/);
 ui.S.report = { year: { from: '2026-07-01', to: '2027-06-30' },
   banks: [{ id: 1, title: 'Synthetic <Trading>', name: 'Sample Bank', active: true,
     accountNo: 'PRIVATE-ACCOUNT-123', opening: '100000.00', inYear: '870000.00', outYear: '20000.00',

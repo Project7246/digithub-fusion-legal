@@ -48,7 +48,7 @@ export function createBankingRouter({ requireBoss, requireCompany }) {
       res.setHeader('Cache-Control','no-store');
       const history=await bankingHistory(realm);
       if(req.query.download==='xlsx'){
-        if(!['setup','opening','entry','transfer'].includes(req.query.kind))throw new Error('Select a valid log');
+        if(!['setup','opening','entry','transfer','sheet'].includes(req.query.kind))throw new Error('Select a valid log');
         const workbook=historyWorkbook(history,req.query.kind,await listBanks(realm,{all:true}));
         res.setHeader('Content-Type','application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
         res.setHeader('Content-Disposition',`attachment; filename="Banking-${req.query.kind}-log.xlsx"`);
@@ -105,7 +105,7 @@ export function createBankingRouter({ requireBoss, requireCompany }) {
       res.setHeader('Cache-Control','no-store');
       const year=taxYear(req.query.year),today=todayText(),configured={...bank,...setup};
       const rows=(await liveSpend(realm,configured,readSpendSheet,true,today)).filter(r=>r.on>=year.from &&
-        r.on<=year.to && r.on<=today && r.on>=(setup?.outFrom||bank.openingOn||'') &&
+        r.on<=year.to && r.on<=today && r.on>=(bank.sheetFrom||setup?.outFrom||bank.openingOn||'') &&
         (!req.query.month||r.on.slice(0,7)===req.query.month));
       if(req.query.download==='xlsx') {
         res.setHeader('Content-Type','application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
