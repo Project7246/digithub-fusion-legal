@@ -589,7 +589,7 @@
       '<div><label>Opening Out</label><input id="sOut" type="number" min="0" step="0.01"></div>' +
       '<div><label>New Transaction Out from (inclusive)</label><input id="sOutFrom" type="date"></div>' +
       '</div><p class="hint">Google Sheet Sender Bank Account must match the selected Bank Name. No other field is used for matching.</p>' +
-      '<div class="acts"><button class="solid" id="sSave">Save opening totals</button><span class="msg" id="sMsg"></span></div></div></div>';
+      '<div class="acts"><button class="solid" id="sSave">Save opening totals</button><button class="mini" id="sCancel">Cancel edit</button><span class="msg" id="sMsg"></span></div></div></div>';
   }
   function spendingView(){
     var months=Array.from(new Set(S.spendingRows.map(function(r){return r.on.slice(0,7);}))).sort().reverse();
@@ -779,6 +779,7 @@
     });});
     v.querySelectorAll('[data-edit-setup]').forEach(function(b){b.addEventListener('click',function(){
       var r=S.history.setups.find(function(x){return String(x.id)===b.getAttribute('data-edit-setup');});
+      S.setupBankId=r.bankId;
       $('sBank').value=r.bankId;$('sBank').disabled=true;$('sYear').value=r.fiscalYear;S.editSetup=r.id;
       $('sIn').value=r.openingIn;$('sOut').value=r.openingOut;$('sInFrom').value=r.inFrom;$('sOutFrom').value=r.outFrom;
       $('sSave').textContent='Save correction';$('sSave').scrollIntoView({behavior:'smooth',block:'center'});
@@ -874,26 +875,34 @@
 
     var tGo = $('tGo');
     if(tGo) tGo.addEventListener('click', function(){
+      tGo.disabled=true;
       say($('tMsg'), '', 'Working…');
       var body={type:'transfer',fromBank:Number($('tFrom').value),toBank:Number($('tTo').value),
         on:$('tOn').value,amount:$('tAmt').value,note:$('tNote').value};
       var edit=S.editTransaction && S.editTransaction.type==='transfer';
       post(edit?'/api/bank/correct-transaction':'/api/bank/transaction',edit?{id:S.editTransaction.id,replacement:body}:body)
         .then(function(){S.editTransaction=null;return load();})
-        .catch(function(e){ say($('tMsg'), 'bad', e.message); });
+        .catch(function(e){ say($('tMsg'), 'bad', e.message); }).finally(function(){tGo.disabled=false;});
     });
 
     var aGo = $('aGo');
     if(aGo) aGo.addEventListener('click', function(){
+      aGo.disabled=true;
       say($('aMsg'), '', 'Working…');
       var body={type:$('aType').value,bankId:Number($('aBank').value),on:$('aOn').value,
         amount:$('aAmt').value,note:$('aNote').value};
       var edit=S.editTransaction && S.editTransaction.type!=='transfer';
       post(edit?'/api/bank/correct-transaction':'/api/bank/transaction',edit?{id:S.editTransaction.id,replacement:body}:body)
         .then(function(){S.editTransaction=null;return load();})
-        .catch(function(e){ say($('aMsg'), 'bad', e.message); });
+        .catch(function(e){ say($('aMsg'), 'bad', e.message); }).finally(function(){aGo.disabled=false;});
     });
 
+    [['sBank','setupBankId'],['aBank','entryBankId'],['tFrom','transferFromId'],['tTo','transferToId']].forEach(function(pair){
+      var select=$(pair[0]);if(!select)return;
+      if(S[pair[1]] && S.report.banks.some(function(b){return b.id===Number(S[pair[1]]);}))select.value=S[pair[1]];
+      select.addEventListener('change',function(){S[pair[1]]=Number(select.value);});
+    });
+    if($('sCancel'))$('sCancel').addEventListener('click',function(){draw();});
     if($('sBank')) {
       function fillSetup(){
         var b=S.report.banks.find(function(x){return x.id===Number($('sBank').value);}) || {};
