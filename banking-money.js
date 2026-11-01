@@ -80,9 +80,10 @@ export function placeReceipts(receipts, banks, links, moves, today) {
     if (state === 'unknown') why = 'Payment status not recognised';
     if (state === 'excluded') why = 'CPR cancelled or rejected';
     if (r.net == null) why = 'Net amount not supplied';
-    else if (money(r.net) < 0n) why = 'Negative CPR net requires review; not a bank withdrawal';
+    const nonCash = r.net != null && money(r.net) < 0n;
+    if(nonCash && bank && state !== 'excluded') why = '';
     return { ...r, key: String(r.accountId) + ':' + r.cpr, state, on: on || null,
-      bankId, bank: bank?.title || bank?.name || '', included: !why, why };
+      bankId, bank: bank?.title || bank?.name || '', included: !why, why, nonCash };
   });
 }
 
@@ -91,7 +92,7 @@ export function bankFigures(bank, receipts, moves, year, today) {
   const afterStart = (on, value) => !bank[money(value) < 0n ? 'outFrom' : 'inFrom'] ||
     on >= bank[money(value) < 0n ? 'outFrom' : 'inFrom'];
   const actual = [
-    ...receipts.filter(r => r.state === 'received' && valid(r.on))
+    ...receipts.filter(r => r.state === 'received' && money(r.net) >= 0n && valid(r.on))
       .map(r => ({ on: r.on, amount: r.net })),
     ...moves.filter(m => valid(m.on))
   ].filter(m => afterStart(m.on, m.amount));
@@ -106,6 +107,6 @@ export function bankFigures(bank, receipts, moves, year, today) {
     outAll: decimal(-sum(m => money(m.amount) < 0n)),
     inYear: decimal(inYear + (bank.fiscalYear === year.year ? money(bank.openingIn) : 0n)),
     outYear: decimal(outYear + (bank.fiscalYear === year.year ? money(bank.openingOut) : 0n)),
-    receivable: addMoney(receipts.filter(r => r.state === 'receivable').map(r => r.net))
+    receivable: addMoney(receipts.filter(r => r.state === 'receivable' && money(r.net) >= 0n).map(r => r.net))
   };
 }

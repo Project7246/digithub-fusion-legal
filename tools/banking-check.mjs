@@ -39,7 +39,12 @@ for(const courier of ['postex','mnp','trax','daewoo','future-courier']) {
 }
 const [negative]=placeReceipts([{accountId:1,cpr:'NEG',status:'Processed',paidOn:'2026-10-21',net:'-50.00'}],
   [{id:1}],[{accountId:1,bankId:1,from:'2026-01-01'}],[],'2026-10-31');
-assert.equal(negative.included,false,'a negative CPR is a review item, never an automatic withdrawal');
+assert.equal(negative.included,true,'negative CPR remains in its bank CPR list');
+assert.equal(negative.why,'','a negative CPR needs no verification warning');
+const nf=bankFigures({opening:'100.00'},[negative,{...negative,state:'receivable'}],[],
+  {from:'2026-07-01',to:'2027-06-30'},'2026-10-31');
+assert.equal(nf.balance,'100.00');assert.equal(nf.inYear,'0.00');assert.equal(nf.outYear,'0.00');
+assert.equal(nf.receivable,'0.00','courier liability is not money due into this bank');
 
 const bank = { opening: '100000.00', openingOn: '2026-07-01' };
 const receipts = [

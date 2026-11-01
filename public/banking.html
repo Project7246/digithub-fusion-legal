@@ -20,17 +20,19 @@
     font:500 12px var(--sans);color:var(--muted);cursor:pointer}
   .pills button:hover{background:var(--panel-2);color:var(--ink)}
   .pills button.on{background:var(--ink);color:#fff}
-  table.plain{width:100%;border-collapse:collapse;font:12.5px var(--sans)}
+  table.plain{width:100%;border-collapse:collapse;font:11.5px var(--sans)}
   table.plain th{font:500 11px var(--sans);letter-spacing:0;text-transform:none;
-    color:var(--muted);padding:9px 12px;border-bottom:1px solid var(--line);white-space:nowrap}
-  table.plain td{padding:8px 12px;border-bottom:1px solid #edf1f1}
+    color:var(--muted);padding:7px 8px;border-bottom:1px solid #bccfce;white-space:nowrap;background:#edf4f3}
+  table.plain td{padding:5px 8px;border-bottom:1px solid #cfdddc;border-right:1px solid #e3eae9}
+  table.plain tbody tr:nth-child(even) td{background:#f5f9f8}
+  table.plain td:last-child{border-right:0}
   table.plain tr:last-child td{border-bottom:0}
   table.plain td.n,table.plain th.n{text-align:right}
   table.plain td.n{font-family:var(--sans);font-variant-numeric:tabular-nums}
   table.plain td.nm{font-weight:500}
   table.plain tr.click{cursor:pointer}
   table.plain tr.click:hover td{background:var(--panel-2)}
-  table.plain tfoot td{border-top:1px solid var(--line-2);background:#f0f5f5;font-weight:600;padding-top:12px;padding-bottom:12px}
+  table.plain tfoot td{border-top:1px solid #adc6c3;background:#eaf3f2;font-weight:600;padding-top:8px;padding-bottom:8px}
   .neg{color:var(--neg)} .pos{color:var(--ok)} .wrapx{overflow-x:auto}
   .banking-page #view .sheet{border-radius:12px;overflow:hidden}
   .banking-page #view button.mini{border:1px solid var(--line);border-radius:8px;padding:6px 11px;
@@ -82,13 +84,13 @@
   .chg .who{margin-left:auto;color:var(--faint);font-size:11.5px}
   .warn{background:var(--warn-soft);color:var(--warn);padding:10px 14px;border-radius:7px;
     font-size:12.5px;margin-bottom:12px}
-  .bkidentity strong{display:block;font:500 13px var(--sans);color:var(--ink);line-height:1.3}
+  .bkidentity strong{display:block;font:500 12px var(--sans);color:var(--ink);line-height:1.25}
   .bkidentity small,.bkdate{display:block;color:var(--muted);font:10.5px var(--sans);margin-top:3px;line-height:1.25}
   .bkbanks{table-layout:fixed}
-  table.bkbanks th{background:#f7f9f9;white-space:normal;padding:10px 9px;font-size:11px}
+  table.bkbanks th{background:#edf4f3;white-space:normal;padding:7px 8px;font-size:10.5px}
   .bkbanks th:first-child{width:25%}
   .bkbanks th:not(:first-child){width:12.5%}
-  table.bkbanks td{vertical-align:middle;padding:7px 9px;font-size:12.5px;line-height:1.25}
+  table.bkbanks td{vertical-align:middle;padding:5px 8px;font-size:11.5px;line-height:1.2}
   .bkbanks td.bkidentity{white-space:normal}
   .bkbanks .bkidentity strong,.bkbanks .bkidentity small{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
   .bkbanks td.n{white-space:nowrap;letter-spacing:-.025em;font-weight:500}
@@ -97,13 +99,13 @@
   .bkbanks tfoot td.bklive{background:#e0f1ef}
   .bk-amount-button{display:inline-flex;align-items:center;justify-content:flex-end;gap:4px;width:100%;
     border:1px solid transparent;border-radius:6px;padding:2px 0;background:transparent;color:inherit;
-    font:500 12.5px var(--sans);font-variant-numeric:tabular-nums;letter-spacing:-.025em;cursor:pointer;white-space:nowrap}
+    font:500 11.5px var(--sans);font-variant-numeric:tabular-nums;letter-spacing:-.025em;cursor:pointer;white-space:nowrap}
   .bk-amount-button:hover{color:var(--accent-deep);background:var(--accent-soft);border-color:#cfe9e6}
   .bk-amount-button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
   .bk-open-icon{width:11px;height:11px;flex-shrink:0;color:var(--faint)}
   .bk-amount-button:hover .bk-open-icon{color:var(--accent-deep)}
   .bk-count{display:block;font:10px var(--sans);color:var(--faint);margin-top:2px}
-  @media(min-width:1500px){table.bkbanks td{font-size:13px}.bk-amount-button{font-size:13px}}
+  @media(min-width:1500px){table.bkbanks td{font-size:12px}.bk-amount-button{font-size:12px}}
   @media(max-width:1150px){table.bkbanks th,table.bkbanks td{padding-left:6px;padding-right:6px}
     table.bkbanks td,.bk-amount-button{font-size:11.5px}.bkidentity strong{font-size:12px}.bkidentity small,.bkdate{font-size:10px}}
   @media(max-width:650px){.bkbanks{min-width:650px}}
@@ -365,8 +367,8 @@
     var pendingCount = d.totals.receivableCprs == null ? d.banks.reduce(function(n,b){ return n + b.receivableCprs; },0) : d.totals.receivableCprs;
     var rows = d.banks.map(function(b){
       return '<tr><td class="bkidentity"><strong title="' + esc(b.title || b.name) + '">' +
-        esc(b.title || b.name) + '</strong><small title="' + esc(b.name + (b.accountNo ? ' · ' + b.accountNo : '')) + '">' +
-        esc(b.name) + (b.accountNo ? ' · ' + esc(b.accountNo) : '') + (b.active ? '' : ' · Closed') + '</small></td>' +
+        esc(b.title || b.name) + '</strong><small title="' + esc(b.name) + '">' +
+        esc(b.name) + (b.active ? '' : ' · Closed') + '</small></td>' +
         '<td class="n">' + amount(b.opening) + '<small class="bkdate">' + esc(b.openingOn || 'Not set') +
           (b.openingAt ? ' ' + esc(b.openingAt) : '') + '</small></td>' +
         '<td class="n pos">' + (b.balanceIncomplete ? '<span class="bk-na">Needs check</span>' : money(b.inYear)) + '</td>' +
@@ -399,7 +401,7 @@
     var received = S.receiptFilter === 'received';
     var rows = (S.report.receipts || []).filter(function(r){
       return r.bankId === b.id && r.included && r.state === S.receiptFilter &&
-        (!received || r.on >= S.report.year.from && r.on <= S.report.year.to);
+        (r.nonCash || !received || r.on >= S.report.year.from && r.on <= S.report.year.to);
     });
     return '<div class="sheet bkreceipts"><div class="sec bkheading"><h2>' +
       esc(b.title || b.name) + ' · ' + (received ? 'Received CPRs' : 'Receivable CPRs') +
@@ -410,7 +412,8 @@
           return '<tr><td>' + cprButton(r) + '</td><td>' + esc(cname(r.courier)) +
             '<small class="bkdate">' + esc(r.account) + '</small></td><td>' + esc(r.createdOn || '—') +
             '</td><td>' + esc(r.paidOn || '—') + '</td><td>' + statusPill(r.status, r.state) +
-            '</td><td class="n">' + amount(r.net) + '</td></tr>';
+            '</td><td class="n' + (Number(r.net)<0 ? ' neg' : '') + '">' + amount(r.net) +
+            (Number(r.net)<0 ? '<small class="bkdate">Courier due; no bank movement</small>' : '') + '</td></tr>';
         }).join('') + '</tbody><tfoot><tr><td colspan="5">Total</td><td class="n">' +
           amount(received ? b.fromCouriersYear : b.receivable) + '</td></tr></tfoot></table></div>' : '<div class="fxnone">No ' +
           (received ? 'received' : 'pending') + ' CPRs.</div>') + '</div>';

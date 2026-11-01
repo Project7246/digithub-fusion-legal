@@ -30,7 +30,7 @@ vm.runInNewContext(script.replace(/\}\)\(\);\s*$/, `
 const ui = sandbox.checkUi;
 ui.S.report = { year: { from: '2026-07-01', to: '2027-06-30' },
   banks: [{ id: 1, title: 'Synthetic <Trading>', name: 'Sample Bank', active: true,
-    opening: '100000.00', inYear: '870000.00', outYear: '20000.00',
+    accountNo: 'PRIVATE-ACCOUNT-123', opening: '100000.00', inYear: '870000.00', outYear: '20000.00',
     fromCouriersYear: '870000.00', receivable: '430000.00', balance: '950000.00',
     receivedCprs: 1, receivableCprs: 1 }],
   totals: { opening: '100000.00', inYear: '870000.00', outYear: '20000.00', received: '870000.00',
@@ -50,6 +50,7 @@ assert.doesNotMatch(view, /data-bank=|class="kids"/);
 assert.match(view, /<tfoot>/);
 assert.match(view, /aria-label="View received CPR \(1\)"/);
 assert.doesNotMatch(view, /class="bkactions"/);
+assert.doesNotMatch(view, /PRIVATE-ACCOUNT-123/);
 assert.ok(view.indexOf('id="bankCprList"') > view.indexOf('</table>'));
 ui.S.bankView = 'activity';
 assert.match(ui.reportView(), /<h2>Recent activity/);
@@ -67,6 +68,9 @@ assert.doesNotMatch(ui.spendingView(),/2026-09-21/);
 ui.S.selectedBank = 1; ui.S.receiptFilter = 'receivable';
 assert.match(ui.receiptListView(), /PENDING-1/);
 assert.doesNotMatch(ui.receiptListView(), /R&lt;&amp;1/);
+ui.S.report.receipts.push({bankId:1,accountId:2,cpr:'NEGATIVE-1',state:'receivable',included:true,nonCash:true,net:'-500.00'});
+assert.match(ui.receiptListView(), /class="n neg">-500\.00/);
+assert.match(ui.receiptListView(), /Courier due; no bank movement/);
 ui.S.receiptFilter = 'received';
 assert.match(ui.receiptListView(), /R&lt;&amp;1/);
 assert.doesNotMatch(ui.receiptListView(), /PENDING-1/);

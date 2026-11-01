@@ -86,9 +86,8 @@ export async function buildReport(realmId, { banks, year, today, parseSheet, fre
     const ownMoves = moves.filter(m => m.bankId === b.id);
     const figures = bankFigures(b, receipts, ownMoves, year, today);
     const failed = warnings.some(w => w.bankId === b.id);
-    const uncertain = data.receipts.some(r => r.bankId === b.id && !r.included &&
+    const uncertain = data.receipts.some(r => r.bankId === b.id && !r.nonCash && !r.included &&
       (r.state === 'unknown' || r.why === 'Net amount not supplied' ||
-       r.why === 'Negative CPR net requires review; not a bank withdrawal' ||
        r.why === 'Payment date not supplied'));
     const paid = receipts.filter(r => r.state === 'received' && r.on <= today &&
       r.on >= year.from && r.on <= year.to);
@@ -96,7 +95,7 @@ export async function buildReport(realmId, { banks, year, today, parseSheet, fre
       .filter(d => d && d <= today).sort();
     return { ...b, ...figures, balance: failed || uncertain ? null : figures.balance,
       balanceIncomplete: failed || uncertain, expenseIncomplete: failed,
-      fromCouriersYear: addMoney(paid.map(r => r.net)),
+      fromCouriersYear: addMoney(paid.filter(r => !r.nonCash).map(r => r.net)),
       receivedCprs: paid.length,
       receivableCprs: receipts.filter(r => r.state === 'receivable').length,
       lastOn: dates.at(-1) || null };
@@ -113,7 +112,7 @@ export async function buildReport(realmId, { banks, year, today, parseSheet, fre
       bankId: r.bankId, bank: r.bank, on: r.on || r.createdOn || '',
       amount: r.net, kind: 'courier', source: 'courier', ref: r.cpr,
       accountId: r.accountId, account: r.account, status: r.status || 'Unknown',
-      state: r.state, note: '', affectsBalance: r.state === 'received' && r.included
+      state: r.state, note: '', affectsBalance: r.state === 'received' && r.included && !r.nonCash
     }));
   return { year, banks: rows, today, warnings,
     totals: reportTotals(rows),
@@ -121,7 +120,7 @@ export async function buildReport(realmId, { banks, year, today, parseSheet, fre
     moves: [...movementRows, ...cprMoves].sort((a, b) => b.on.localeCompare(a.on) ||
       String(b.ref).localeCompare(String(a.ref))).slice(0, allMoves ? undefined : 60),
     // A count is accompanied by its exact cause instead of a hidden zero.
-    unplaced: data.receipts.filter(r => !r.included && r.state !== 'excluded')
+    unplaced: data.receipts.filter(r => !r.nonCash && !r.included && r.state !== 'excluded')
   };
 }
 

@@ -8,8 +8,10 @@ start date. Historical totals seed fiscal columns only, never add money already
 included in the dated opening bank balance twice. Live balance is dated opening
 balance plus new actual bank In minus new actual bank Out. Opening date remains
 the earliest balance cutoff. Courier deductions are already included in CPR net;
-never post them as separate Out, for any courier. Negative CPR net is review,
-not proof of a bank withdrawal. Separate delivery bills actually paid from the
+never post them as separate Out, for any courier. Owner clarified negative CPR
+is courier liability, recovered from future settlements unless paid separately.
+Keep it red in the CPR list; exclude it from bank In, Out, receivable and balance,
+with no verification warning. Separate delivery bills actually paid from the
 bank and present in the spending sheet remain real Out.
 
 Owner explicitly approved necessary Banking schema/audit additions. Migration

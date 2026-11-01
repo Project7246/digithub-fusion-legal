@@ -68,6 +68,16 @@ try {
   assert.equal(first.moves.filter(m => m.kind === 'courier').length, 2);
   assert.equal(first.moves.find(m => m.state === 'receivable').affectsBalance, false);
   assert.equal(first.receipts.find(r => r.cpr === 'BEFORE').included, false);
+  covers.push({account_id:1,cpr_number:'NEGATIVE',courier:'mnp',label:'Sample account',status:'Processed',
+    net_amount:'-500.00',paid_day:'2026-08-03'});
+  const negativeReport=await buildReport('fixture-company',settings);
+  assert.equal(negativeReport.banks[0].balance,'950000.00');
+  assert.equal(negativeReport.banks[0].outYear,'20000.00');
+  assert.equal(negativeReport.banks[0].fromCouriersYear,'870000.00');
+  assert.equal(negativeReport.unplaced.some(r=>r.cpr==='NEGATIVE'),false);
+  assert.equal(negativeReport.receipts.find(r=>r.cpr==='NEGATIVE').included,true);
+  assert.equal(negativeReport.moves.find(r=>r.ref==='NEGATIVE').affectsBalance,false);
+  covers.pop();
   covers.push({ account_id: 1, cpr_number: 'MISSING-COVER', courier: 'mnp', label: 'Sample account',
     status: '', net_amount: null, linked_orders: 2, paid_day: '2026-08-03' });
   const uncertain = await buildReport('fixture-company', settings);
