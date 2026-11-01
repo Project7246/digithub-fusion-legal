@@ -12,34 +12,58 @@
 <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@600;700;800&family=Roboto:wght@400;500&family=Roboto+Mono:wght@400;500&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="/app.css">
 <style>
-  .pills{display:flex;gap:4px;flex-wrap:wrap;margin-bottom:16px}
-  .pills button{padding:7px 14px;border-radius:7px;border:1px solid var(--line);
-    background:var(--panel);font:inherit;font-size:13px;color:var(--muted);cursor:pointer}
-  .pills button.on{background:var(--ink);border-color:var(--ink);color:#fff;font-weight:500}
-
-  .figs4{display:grid;grid-template-columns:repeat(4,1fr);border-top:1px solid var(--line)}
-  .figs4 > div{padding:12px 15px;border-right:1px solid var(--line)}
-  .figs4 > div:last-child{border-right:0}
-  .figs4 span{display:block;font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;
-    color:var(--faint);margin-bottom:5px}
-  .figs4 b{font-family:var(--mono);font-size:20px;font-weight:500;font-variant-numeric:tabular-nums}
-  .figs4 small{display:block;font-size:11.5px;color:var(--muted);margin-top:3px}
-  @media (max-width:820px){ .figs4{grid-template-columns:repeat(2,1fr)} }
-
-  table.plain{width:100%;border-collapse:collapse;font-size:12px}
-  table.plain th{font-family:var(--mono);font-size:10px;letter-spacing:.09em;
-    text-transform:uppercase;color:var(--faint);font-weight:400;text-align:left;
-    padding:7px 8px;border-bottom:1px solid var(--line);white-space:nowrap}
-  table.plain td{padding:7px 8px;border-bottom:1px solid var(--line)}
+  .banking-page .shell{max-width:none;padding:18px 24px 30px}
+  .banking-page .topline{padding-left:24px;padding-right:24px}
+  .pills{display:inline-flex;gap:3px;flex-wrap:wrap;margin-bottom:16px;padding:4px;
+    border:1px solid var(--line);border-radius:11px;background:#fff}
+  .pills button{padding:7px 13px;border-radius:7px;border:0;background:transparent;
+    font:500 12px var(--sans);color:var(--muted);cursor:pointer}
+  .pills button:hover{background:var(--panel-2);color:var(--ink)}
+  .pills button.on{background:var(--ink);color:#fff}
+  table.plain{width:100%;border-collapse:collapse;font:12.5px var(--sans)}
+  table.plain th{font:500 11px var(--sans);letter-spacing:0;text-transform:none;
+    color:var(--muted);padding:9px 12px;border-bottom:1px solid var(--line);white-space:nowrap}
+  table.plain td{padding:8px 12px;border-bottom:1px solid #edf1f1}
   table.plain tr:last-child td{border-bottom:0}
   table.plain td.n,table.plain th.n{text-align:right}
-  table.plain td.n{font-family:var(--mono);font-variant-numeric:tabular-nums}
+  table.plain td.n{font-family:var(--sans);font-variant-numeric:tabular-nums}
   table.plain td.nm{font-weight:500}
   table.plain tr.click{cursor:pointer}
   table.plain tr.click:hover td{background:var(--panel-2)}
-  .neg{color:var(--neg)}
-  .pos{color:var(--ok)}
-  .wrapx{overflow-x:auto}
+  table.plain tfoot td{border-top:1px solid var(--line-2);background:#f0f5f5;font-weight:600;padding-top:12px;padding-bottom:12px}
+  .neg{color:var(--neg)} .pos{color:var(--ok)} .wrapx{overflow-x:auto}
+  .banking-page #view .sheet{border-radius:12px;overflow:hidden}
+  .banking-page #view button.mini{border:1px solid var(--line);border-radius:8px;padding:6px 11px;
+    font:500 12px var(--sans);background:#fff;color:var(--ink)}
+  .banking-page #view button.mini:hover{border-color:var(--accent-deep);color:var(--accent-deep);background:var(--accent-soft)}
+  .banking-page #view button.solid{background:var(--accent-deep);border-radius:8px}
+  .banking-page #view button.solid:hover{background:var(--ink)}
+  .bkstats{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;margin-bottom:14px}
+  .bkstat{padding:14px 16px;border:1px solid var(--line);border-radius:12px;background:#fff;min-width:0}
+  .bkstat-label{display:block;font:500 11.5px var(--sans);color:var(--muted);margin-bottom:7px}
+  .bkstat-value{display:block;font:500 clamp(19px,1.8vw,28px) var(--sans);letter-spacing:-.04em;font-variant-numeric:tabular-nums;white-space:nowrap}
+  .bkstat small{display:block;margin-top:6px;color:var(--muted);font:11px var(--sans)}
+  .bkstat.live{background:var(--ink);border-color:var(--ink);color:#fff}
+  .bkstat.live .bkstat-label,.bkstat.live small{color:#c6d6d7}
+  .bkstat.live .bkstat-value{color:var(--aqua)}
+  .bkstat-value.unavailable{font-size:17px;letter-spacing:0}
+  .bk-toolbar{display:flex;align-items:center;gap:12px;padding:12px 16px;border-bottom:1px solid var(--line);flex-wrap:wrap}
+  .bk-toolbar h2{margin:0;font:600 14px var(--sans);letter-spacing:0}
+  .bk-toolbar .bk-account-count{color:var(--muted);font-size:11px;font-weight:400;margin-left:7px}
+  .bk-toolbar-actions{display:flex;align-items:center;gap:9px;margin-left:auto}
+  .bk-segments{display:flex;gap:2px;padding:3px;border-radius:8px;background:#edf2f2}
+  .bk-segments button{font:500 11px var(--sans);padding:5px 9px;background:transparent;border:0;border-radius:6px;color:var(--muted);cursor:pointer}
+  .bk-segments button.on{background:#fff;color:var(--ink);box-shadow:0 1px 3px #18232a14}
+  .bk-issues{margin:0 0 12px;border:1px solid #ebdfc9;border-radius:9px;background:#fffaf2;color:var(--warn);font-size:12px}
+  .bk-issues summary{cursor:pointer;padding:8px 12px;font-weight:500}
+  .bk-issues-body{padding:0 12px 8px;max-height:220px;overflow:auto}
+  .bk-issues-body>div{padding:5px 0;border-top:1px solid #eee4d4}
+  .bk-star{font-size:11px;color:var(--warn);padding-left:2px;cursor:help}
+  .bkstat.live .bk-star{color:#f4d495}
+  .bk-na{font-size:11px;color:var(--warn);font-weight:500}
+  .bk-total-note{display:block;font-size:10px;font-weight:400;color:var(--muted);margin-top:3px}
+  @media(max-width:900px){.bkstats{gap:8px}.bkstat{padding:12px}.banking-page .shell{padding:14px 16px 24px}}
+  @media(max-width:620px){.bkstats{grid-template-columns:repeat(2,minmax(0,1fr))}.bkstat-value{font-size:22px}.bk-toolbar-actions{width:100%;margin-left:0;justify-content:space-between}}
 
   .form{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px}
   .form label{margin:0 0 5px}
@@ -58,23 +82,31 @@
   .chg .who{margin-left:auto;color:var(--faint);font-size:11.5px}
   .warn{background:var(--warn-soft);color:var(--warn);padding:10px 14px;border-radius:7px;
     font-size:12.5px;margin-bottom:12px}
-  .bkidentity strong{display:block;font-family:var(--sans);font-size:12px;line-height:1.3;overflow-wrap:anywhere}
-  .bkidentity small,.bkdate{display:block;color:var(--muted);font-family:var(--sans);font-size:10px;margin-top:2px;line-height:1.3}
+  .bkidentity strong{display:block;font:500 13px var(--sans);color:var(--ink);line-height:1.3}
+  .bkidentity small,.bkdate{display:block;color:var(--muted);font:10.5px var(--sans);margin-top:3px;line-height:1.25}
   .bkbanks{table-layout:fixed}
-  .bkbanks td{vertical-align:middle;padding:8px!important;font-size:11px}
-  .bkbanks td.bkidentity{white-space:normal;overflow-wrap:anywhere}
-  .bkbanks .bkidentity small{white-space:normal;overflow-wrap:anywhere}
-  .bkbanks th{background:var(--panel-2);white-space:normal;font-size:9px;letter-spacing:.025em;line-height:1.35}
-  .bkbanks th:first-child{width:16%}
-  .bkbanks th:nth-child(7){width:18%}
-  .bkbanks th:not(:first-child):not(:nth-child(7)){width:11%}
-  .bkbanks td.n{white-space:nowrap;letter-spacing:-.035em}
-  .bklive{background:var(--accent-soft);font-weight:600;color:var(--ink);white-space:nowrap}
-  .bktotal{background:var(--ink);color:white;border-radius:0 10px 10px 0}
-  .bktotal span{color:var(--line)}
-  .bkactions{display:flex;flex-direction:column;gap:3px;align-items:flex-start}
-  .bkactions .mini{white-space:normal;text-align:left;font-size:10px;padding:3px 6px;line-height:1.25;height:auto}
-  @media(max-width:1000px){.bkbanks{min-width:850px}}
+  table.bkbanks th{background:#f7f9f9;white-space:normal;padding:10px 9px;font-size:11px}
+  .bkbanks th:first-child{width:25%}
+  .bkbanks th:not(:first-child){width:12.5%}
+  table.bkbanks td{vertical-align:middle;padding:7px 9px;font-size:12.5px;line-height:1.25}
+  .bkbanks td.bkidentity{white-space:normal}
+  .bkbanks .bkidentity strong,.bkbanks .bkidentity small{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .bkbanks td.n{white-space:nowrap;letter-spacing:-.025em;font-weight:500}
+  .bkbanks tbody tr:hover td{background:#f6fafa}
+  .bkbanks td.bklive,.bkbanks th.bklive{background:#eff9f8;color:var(--accent-deep);font-weight:600}
+  .bkbanks tfoot td.bklive{background:#e0f1ef}
+  .bk-amount-button{display:inline-flex;align-items:center;justify-content:flex-end;gap:4px;width:100%;
+    border:1px solid transparent;border-radius:6px;padding:2px 0;background:transparent;color:inherit;
+    font:500 12.5px var(--sans);font-variant-numeric:tabular-nums;letter-spacing:-.025em;cursor:pointer;white-space:nowrap}
+  .bk-amount-button:hover{color:var(--accent-deep);background:var(--accent-soft);border-color:#cfe9e6}
+  .bk-amount-button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+  .bk-open-icon{width:11px;height:11px;flex-shrink:0;color:var(--faint)}
+  .bk-amount-button:hover .bk-open-icon{color:var(--accent-deep)}
+  .bk-count{display:block;font:10px var(--sans);color:var(--faint);margin-top:2px}
+  @media(min-width:1500px){table.bkbanks td{font-size:13px}.bk-amount-button{font-size:13px}}
+  @media(max-width:1150px){table.bkbanks th,table.bkbanks td{padding-left:6px;padding-right:6px}
+    table.bkbanks td,.bk-amount-button{font-size:11.5px}.bkidentity strong{font-size:12px}.bkidentity small,.bkdate{font-size:10px}}
+  @media(max-width:650px){.bkbanks{min-width:650px}}
   .bkheading{display:flex;align-items:center;gap:12px;padding-bottom:12px}
   .bkheading h2{margin:0;flex:1}
   .bkreceipts{margin-top:20px;scroll-margin-top:18px}
@@ -98,7 +130,7 @@
   .bkdialog td{white-space:nowrap}
 </style>
 </head>
-<body>
+<body class="banking-page">
 
 <div class="layout">
   <aside class="rail"></aside>
@@ -145,7 +177,7 @@
 (function(){
   var $ = function(id){ return document.getElementById(id); };
   var NAMES = { postex:'PostEx', trax:'Trax', mnp:'M&P' };
-  var S = { tab:'report', report:null, links:null, drift:[], today:'', editing:null, selectedBank:null, receiptFilter:'receivable', loadedAt:0 };
+  var S = { tab:'report', report:null, links:null, drift:[], today:'', editing:null, selectedBank:null, receiptFilter:'receivable', bankView:'accounts', loadedAt:0 };
 
   function esc(s){
     return String(s == null ? '' : s)
@@ -283,55 +315,81 @@
       '" data-account="' + r.accountId + '">' + esc(r.cpr || r.ref) + '</button>';
   }
 
+  function coverage(key){
+    var d = S.report;
+    return d.totals.coverage && d.totals.coverage[key] ||
+      { included:d.banks.length, total:d.banks.length, complete:true };
+  }
+  function partialMark(key){
+    var c = coverage(key);
+    return c.complete ? '' : '<sup class="bk-star" title="' + c.included + ' of ' + c.total +
+      ' accounts included; other accounts need checking">*</sup>';
+  }
+  function statCard(key, label, live){
+    var value = S.report.totals[key], c = coverage(key);
+    return '<div class="bkstat' + (live ? ' live' : '') + '"><span class="bkstat-label">' + label +
+      '</span><b class="bkstat-value' + (value == null ? ' unavailable' : '') + '">' +
+      (value == null ? 'Needs checking' : money(value)) + partialMark(key) + '</b><small>' +
+      (c.complete ? c.total + ' accounts' : c.included + ' of ' + c.total + ' accounts · available total') + '</small></div>';
+  }
+  function cprAmount(b, state){
+    var received = state === 'received';
+    var count = received ? b.receivedCprs : b.receivableCprs;
+    return '<button class="bk-amount-button" data-cpr-list="' + state + '" data-bank-id="' + b.id +
+      '" aria-label="View ' + state + ' CPR (' + count + ')" title="View ' + state + ' CPRs">' +
+      '<span>' + amount(received ? b.fromCouriersYear : b.receivable) + '</span>' +
+      '<svg class="bk-open-icon" viewBox="0 0 16 16" fill="none" aria-hidden="true">' +
+      '<path d="M6 4l4 4-4 4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>' +
+      '</button><small class="bk-count">' + count + ' CPR' + (count === 1 ? '' : 's') + '</small>';
+  }
+  function totalCell(key, extra){
+    return '<td class="n' + (key === 'balance' ? ' bklive' : '') + '">' +
+      amount(S.report.totals[key]) + partialMark(key) + (extra ? '<small class="bk-total-note">' + extra + '</small>' : '') + '</td>';
+  }
   function reportView(){
     var d = S.report;
     if(!d) return '<div class="fxnone">One moment…</div>';
     if(!d.banks.length) return '<div class="sheet"><div class="sec"><h2>No bank accounts yet</h2>' +
       '<div class="fxnone">Add one under <b>Add or edit a bank</b>.</div></div></div>';
     var warnings = (d.warnings || []).map(function(w){
-      return '<div class="warn">' + esc(w.bank) + ': ' + esc(w.message) +
-        '. Live balance is unavailable until the sheet can be read.</div>';
+      return '<div>' + esc(w.bank) + ' · ' + esc(w.message) + '</div>';
     }).join('');
-    var unplaced = (d.unplaced || []).filter(function(r){
-      return r.why !== 'Before the opening balance date';
-    });
-    if(unplaced.length) warnings += '<details class="warn"><summary>' + unplaced.length +
-      ' CPRs need checking</summary>' + unplaced.map(function(r){
+    var unplaced = (d.unplaced || []).filter(function(r){ return r.why !== 'Before the opening balance date'; });
+    var issueCount = unplaced.length + (d.warnings || []).length;
+    var issues = issueCount ? '<details class="bk-issues"><summary>' + issueCount +
+      ' items need checking</summary><div class="bk-issues-body">' + warnings + unplaced.map(function(r){
         return '<div>' + cprButton(r) + ' · ' + esc(r.account) + ' · ' +
           esc(r.status || 'Unknown') + ' · ' + esc(r.why) + '</div>';
-      }).join('') + '</details>';
+      }).join('') + '</div></details>' : '';
+    var receivedCount = d.totals.receivedCprs == null ? d.banks.reduce(function(n,b){ return n + b.receivedCprs; },0) : d.totals.receivedCprs;
+    var pendingCount = d.totals.receivableCprs == null ? d.banks.reduce(function(n,b){ return n + b.receivableCprs; },0) : d.totals.receivableCprs;
     var rows = d.banks.map(function(b){
-      return '<tr><td class="bkidentity"><strong>' + esc(b.title || b.name) + '</strong>' +
-        '<small>' + esc(b.name) + (b.accountNo ? ' · ' + esc(b.accountNo) : '') +
-        (b.active ? '' : ' · Closed') + '</small></td>' +
-        '<td class="n">' + amount(b.opening) + '<small class="bkdate">' +
-          esc(b.openingOn || 'Opening not set') + (b.openingAt ? ' ' + esc(b.openingAt) : '') + '</small></td>' +
-        '<td class="n pos">' + (b.balanceIncomplete ? '—' : money(b.inYear)) + '</td>' +
-        '<td class="n neg">' + (b.expenseIncomplete ? '—' : money(b.outYear)) + '</td>' +
-        '<td class="n">' + money(b.fromCouriersYear) + '</td>' +
-        '<td class="n">' + money(b.receivable) + '</td>' +
-        '<td><div class="bkactions"><button class="mini" data-cpr-list="received" data-bank-id="' + b.id +
-          '">View received CPR (' + b.receivedCprs + ')</button>' +
-          '<button class="mini" data-cpr-list="receivable" data-bank-id="' + b.id +
-          '">View receivable CPR (' + b.receivableCprs + ')</button></div></td>' +
-        '<td class="n bklive">' + amount(b.balance) + '</td></tr>';
+      return '<tr><td class="bkidentity"><strong title="' + esc(b.title || b.name) + '">' +
+        esc(b.title || b.name) + '</strong><small title="' + esc(b.name + (b.accountNo ? ' · ' + b.accountNo : '')) + '">' +
+        esc(b.name) + (b.accountNo ? ' · ' + esc(b.accountNo) : '') + (b.active ? '' : ' · Closed') + '</small></td>' +
+        '<td class="n">' + amount(b.opening) + '<small class="bkdate">' + esc(b.openingOn || 'Not set') +
+          (b.openingAt ? ' ' + esc(b.openingAt) : '') + '</small></td>' +
+        '<td class="n pos">' + (b.balanceIncomplete ? '<span class="bk-na">Needs check</span>' : money(b.inYear)) + '</td>' +
+        '<td class="n neg">' + (b.expenseIncomplete ? '<span class="bk-na">Needs check</span>' : money(b.outYear)) + '</td>' +
+        '<td class="n">' + cprAmount(b,'received') + '</td><td class="n">' + cprAmount(b,'receivable') + '</td>' +
+        '<td class="n bklive">' + (b.balance == null ? '<span class="bk-na">Needs check</span>' : money(b.balance)) + '</td></tr>';
     }).join('');
-    return warnings + '<div class="sheet"><div class="figs4">' +
-      '<div><span>Fiscal year In</span><b>' + amount(d.totals.inYear) + '</b></div>' +
-      '<div><span>Fiscal year Out</span><b>' + amount(d.totals.outYear) + '</b></div>' +
-      '<div><span>To receive · pending CPRs</span><b>' + amount(d.totals.receivable) + '</b></div>' +
-      '<div class="bktotal"><span>Live balance</span><b>' + amount(d.totals.balance) + '</b></div>' +
-      '</div></div>' +
-      '<div class="sheet" style="margin-top:20px"><div class="sec bkheading">' +
-        '<h2>Bank accounts</h2><button class="mini" id="bkRefresh">Refresh</button></div>' +
-        '<div class="wrapx"><table class="plain bkbanks"><thead><tr>' +
-        '<th>Account title / Bank</th><th class="n">Opening</th><th class="n">Fiscal year In</th>' +
-        '<th class="n">Fiscal year Out</th><th class="n">Received CPRs · FY</th><th class="n">To receive</th>' +
-        '<th>CPRs</th><th class="n bklive">Live balance</th></tr></thead><tbody>' + rows + '</tbody>' +
-        '</table></div></div><div id="bankCprList">' + receiptListView() + '</div>' +
-      '<div class="sheet" style="margin-top:20px"><div class="sec bkheading">' +
-      '<h2>What moved last</h2><span class="aside">Latest 60 · CPR status included</span></div>' +
-      '<div class="wrapx">' + movesTable(d.moves) + '</div></div>';
+    var totals = '<tfoot><tr><td>Total<small class="bk-total-note">' + d.banks.length + ' accounts</small></td>' +
+      totalCell('opening') + totalCell('inYear') + totalCell('outYear') + totalCell('received', receivedCount + ' CPRs') +
+      totalCell('receivable', pendingCount + ' CPRs') + totalCell('balance') + '</tr></tfoot>';
+    var activity = S.bankView === 'activity';
+    var toolbar = '<div class="bk-toolbar"><h2>' + (activity ? 'Recent activity' : 'Bank accounts') +
+      '<span class="bk-account-count">' + d.banks.length + ' accounts</span></h2><div class="bk-toolbar-actions">' +
+      '<div class="bk-segments" aria-label="Banking view"><button data-bank-view="accounts" class="' + (!activity ? 'on' : '') +
+      '">Accounts</button><button data-bank-view="activity" class="' + (activity ? 'on' : '') + '">Recent activity</button></div>' +
+      '<button class="mini" id="bkRefresh">Refresh</button></div></div>';
+    return '<div class="bkstats">' + statCard('inYear','Fiscal year In') + statCard('outYear','Fiscal year Out') +
+      statCard('receivable','To receive · pending CPRs') + statCard('balance','Live balance',true) + '</div>' + issues +
+      '<div class="sheet">' + toolbar + (activity ? '<div class="wrapx">' + movesTable(d.moves) + '</div>' :
+        '<div class="wrapx"><table class="plain bkbanks"><thead><tr><th>Bank account</th><th class="n">Opening</th>' +
+        '<th class="n">Year in</th><th class="n">Year out</th><th class="n">Received · FY</th><th class="n">To receive</th>' +
+        '<th class="n bklive">Live balance</th></tr></thead><tbody>' + rows + '</tbody>' + totals + '</table></div>') +
+      '</div>' + (!activity ? '<div id="bankCprList">' + receiptListView() + '</div>' : '');
   }
 
   function receiptListView(){
@@ -353,7 +411,8 @@
             '<small class="bkdate">' + esc(r.account) + '</small></td><td>' + esc(r.createdOn || '—') +
             '</td><td>' + esc(r.paidOn || '—') + '</td><td>' + statusPill(r.status, r.state) +
             '</td><td class="n">' + amount(r.net) + '</td></tr>';
-        }).join('') + '</tbody></table></div>' : '<div class="fxnone">No ' +
+        }).join('') + '</tbody><tfoot><tr><td colspan="5">Total</td><td class="n">' +
+          amount(received ? b.fromCouriersYear : b.receivable) + '</td></tr></tfoot></table></div>' : '<div class="fxnone">No ' +
           (received ? 'received' : 'pending') + ' CPRs.</div>') + '</div>';
   }
 
@@ -605,6 +664,13 @@
 
   function wire(){
     var v = $('view');
+
+    v.querySelectorAll('[data-bank-view]').forEach(function(button){
+      button.addEventListener('click', function(){
+        S.bankView = button.getAttribute('data-bank-view');
+        draw();
+      });
+    });
 
     v.querySelectorAll('[data-cpr-list]').forEach(function(button){
       button.addEventListener('click', function(){

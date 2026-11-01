@@ -1,5 +1,16 @@
 # Digithub Fusion - project notes for Claude
 
+## Banking compact view decision - 1 Nov 2026
+
+Owner requested a compact modern Banking table, clearer buttons, Live Balance
+and totals under every money column. Accounts and Recent activity have separate
+views; received/receivable amount buttons open the existing CPR lists and detail.
+Column totals use exact paisa and include available account figures. Incomplete
+coverage must show the included/total account count and a partial marker; never
+present missing balances as zero or a partial total as a complete bank balance.
+If no balance is available, show Needs checking. Preserve all existing CPR
+net/status rules, exports, linking and bank editing behavior.
+
 ## ARCHITECTURE RULES (read before every task)
 
 Given on 30 Oct 2026. These stand above everything else in this file. Read

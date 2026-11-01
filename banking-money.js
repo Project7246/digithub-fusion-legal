@@ -17,6 +17,29 @@ export function addMoney(values) {
   return decimal(values.reduce((sum, value) => sum + money(value), 0n));
 }
 
+// Column totals retain available figures and describe their coverage. Missing
+// amounts are never converted to zero or presented as a complete bank total.
+export function reportTotals(rows) {
+  const fields = {
+    opening: b => b.openingKnown === false ? null : b.opening,
+    inYear: b => b.balanceIncomplete ? null : b.inYear,
+    outYear: b => b.expenseIncomplete ? null : b.outYear,
+    received: b => b.fromCouriersYear,
+    receivable: b => b.receivable,
+    balance: b => b.balance
+  };
+  const totals = { coverage: {}, payable: null,
+    receivedCprs: rows.reduce((n, b) => n + (b.receivedCprs || 0), 0),
+    receivableCprs: rows.reduce((n, b) => n + (b.receivableCprs || 0), 0) };
+  for (const [key, read] of Object.entries(fields)) {
+    const values = rows.map(read).filter(v => v != null && v !== '');
+    totals[key] = values.length || !rows.length ? addMoney(values) : null;
+    totals.coverage[key] = { included: values.length, total: rows.length,
+      complete: values.length === rows.length };
+  }
+  return totals;
+}
+
 export function receiptState(status) {
   const text = String(status || '').trim().toLowerCase().replace(/[_-]+/g, ' ')
     .replace(/\s+/g, ' ').replace(/^payment (?:status )?/, '');

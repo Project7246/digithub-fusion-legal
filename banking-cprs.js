@@ -4,7 +4,7 @@ import { pool } from './db.js';
 import { bankingReceipts, bankingReceiptOrders } from './couriers.js';
 import { cprDetail } from './cprlive.js';
 import { mnpReceiptDetail } from './mnplive.js';
-import { addMoney, bankFigures, placeReceipts } from './banking-money.js';
+import { addMoney, bankFigures, placeReceipts, reportTotals } from './banking-money.js';
 
 const sheets = new Map();
 const pendingSheets = new Map();
@@ -88,7 +88,6 @@ export async function buildReport(realmId, { banks, year, today, parseSheet, fre
       receivableCprs: receipts.filter(r => r.state === 'receivable').length,
       lastOn: dates.at(-1) || null };
   });
-  const total = key => addMoney(rows.map(b => b[key]));
   const byBank = new Map(rows.map(b => [b.id, b]));
   const movementRows = moves.filter(m => {
     const b = byBank.get(m.bankId);
@@ -103,11 +102,7 @@ export async function buildReport(realmId, { banks, year, today, parseSheet, fre
       state: r.state, note: '', affectsBalance: r.state === 'received' && r.included
     }));
   return { year, banks: rows, today, warnings,
-    totals: { opening: total('opening'),
-      balance: rows.some(b => b.balance == null) ? null : total('balance'),
-      inYear: rows.some(b => b.balanceIncomplete) ? null : total('inYear'),
-      outYear: warnings.length ? null : total('outYear'),
-      received: total('fromCouriersYear'), receivable: total('receivable'), payable: null },
+    totals: reportTotals(rows),
     receipts: data.receipts,
     moves: [...movementRows, ...cprMoves].sort((a, b) => b.on.localeCompare(a.on) ||
       String(b.ref).localeCompare(String(a.ref))).slice(0, allMoves ? undefined : 60),

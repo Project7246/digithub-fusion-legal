@@ -73,6 +73,11 @@ try {
   const uncertain = await buildReport('fixture-company', settings);
   assert.equal(uncertain.banks[0].balance, null, 'missing courier net/status cannot masquerade as a verified balance');
   assert.equal(uncertain.unplaced.find(r => r.cpr === 'MISSING-COVER').why, 'Net amount not supplied');
+  const mixed = await buildReport('fixture-company', { ...settings,
+    banks: [banks[0], { id: 2, name: 'Second sample bank', opening: '50000.00', openingOn: '2026-07-01' }] });
+  assert.equal(mixed.totals.balance, '50000.00');
+  assert.deepEqual(mixed.totals.coverage.balance, { included: 1, total: 2, complete: false });
+  assert.equal(mixed.totals.opening, '150000.00');
   covers.pop();
   assert.equal(await postDeposits('fixture-company'), 1, 'legacy refresh does not write money');
 

@@ -1,6 +1,6 @@
 // Synthetic figures only. No database, courier API or production data is used.
 import assert from 'node:assert/strict';
-import { money, addMoney, receiptState, bankFigures, placeReceipts } from '../banking-money.js';
+import { money, addMoney, receiptState, bankFigures, placeReceipts, reportTotals } from '../banking-money.js';
 
 assert.equal(money('1000000.00'), 100000000n);
 assert.equal(addMoney(['0.10', '0.20']), '0.30');
@@ -50,4 +50,21 @@ assert.equal(bankFigures({ ...bank, opening: null }, receipts, moves, year,
   '2026-10-31').balance, null);
 assert.equal(bankFigures(bank, receipts, [...moves,
   { on: '2026-11-01', amount: '-500.00' }], year, '2026-10-31').balance, '950000.00');
+const totals = reportTotals([
+  { opening: '100000.00', balance: '950000.00', inYear: '870000.00', outYear: '20000.00',
+    fromCouriersYear: '870000.00', receivable: '430000.00', receivedCprs: 1, receivableCprs: 2 },
+  { opening: '50000.00', balance: null, balanceIncomplete: true, inYear: '100.00', outYear: '20.00',
+    fromCouriersYear: '100.00', receivable: '200.00', receivedCprs: 1, receivableCprs: 1 }
+]);
+assert.equal(totals.balance, '950000.00', 'one unknown bank must not erase available account totals');
+assert.equal(totals.coverage.balance.included, 1);
+assert.equal(totals.coverage.balance.total, 2);
+assert.equal(totals.coverage.balance.complete, false);
+assert.equal(totals.inYear, '870000.00');
+assert.equal(totals.outYear, '20020.00');
+assert.equal(totals.opening, '150000.00');
+assert.equal(totals.receivable, '430200.00');
+assert.equal(totals.receivedCprs, 2);
+assert.equal(reportTotals([{ balance: null }]).balance, null, 'no known balance must stay unavailable, never zero');
+assert.equal(reportTotals([{ balance: '0.00' }]).balance, '0.00', 'a real zero is a valid available total');
 console.log('Banking checks passed: exact paisa, CPR states, net receipts, opening cut-off, fiscal totals, pending exclusion, expenses, future dates and unknown opening.');

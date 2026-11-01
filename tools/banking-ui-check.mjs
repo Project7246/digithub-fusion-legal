@@ -33,7 +33,8 @@ ui.S.report = { year: { from: '2026-07-01', to: '2027-06-30' },
     opening: '100000.00', inYear: '870000.00', outYear: '20000.00',
     fromCouriersYear: '870000.00', receivable: '430000.00', balance: '950000.00',
     receivedCprs: 1, receivableCprs: 1 }],
-  totals: { inYear: '870000.00', outYear: '20000.00', receivable: '430000.00', balance: '950000.00' },
+  totals: { opening: '100000.00', inYear: '870000.00', outYear: '20000.00', received: '870000.00',
+    receivable: '430000.00', balance: '950000.00', receivedCprs: 1, receivableCprs: 1 },
   receipts: [
     { bankId: 1, accountId: 1, cpr: 'R<&1', state: 'received', included: true,
       on: '2026-08-02', net: '870000.00', status: 'Transferred' },
@@ -46,7 +47,14 @@ assert.match(view, /950,000\.00/);
 assert.match(view, /View received CPR \(1\)/);
 assert.match(view, /View receivable CPR \(1\)/);
 assert.doesNotMatch(view, /data-bank=|class="kids"/);
+assert.match(view, /<tfoot>/);
+assert.match(view, /aria-label="View received CPR \(1\)"/);
+assert.doesNotMatch(view, /class="bkactions"/);
 assert.ok(view.indexOf('id="bankCprList"') > view.indexOf('</table>'));
+ui.S.bankView = 'activity';
+assert.match(ui.reportView(), /<h2>Recent activity/);
+assert.doesNotMatch(ui.reportView(), /<table class="plain bkbanks"/);
+ui.S.bankView = 'accounts';
 ui.S.selectedBank = 1; ui.S.receiptFilter = 'receivable';
 assert.match(ui.receiptListView(), /PENDING-1/);
 assert.doesNotMatch(ui.receiptListView(), /R&lt;&amp;1/);
@@ -60,4 +68,9 @@ assert.equal(element('bkDialog').open, true);
 assert.equal(element('bkDownload').disabled, false);
 assert.match(element('bkDetailBody').innerHTML, /870,000\.00/);
 assert.match(element('bkDetailBody').innerHTML, /&lt;script&gt;test&lt;\/script&gt;/);
-console.log('Banking UI checks passed: separate CPR lists, bank rows do not expand, net balance, escaped content, CPR popup and enabled Excel download. Visual browser QA is separate.');
+ui.S.report.totals.coverage = { balance: { included: 1, total: 2, complete: false } };
+view = ui.reportView();
+assert.match(view, /1 of 2 accounts · available total/);
+assert.match(view, /950,000\.00<sup class="bk-star"/);
+assert.match(view, /<tfoot>[\s\S]*950,000\.00<sup class="bk-star"/);
+console.log('Banking UI checks passed: compact amount actions, all column totals, partial-total disclosure, separate activity view, CPR lists, escaped content, popup and Excel action. Visual browser QA is separate.');
