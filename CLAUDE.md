@@ -10,7 +10,10 @@ actor, saved time, superseded setup versions and reversed transactions.
 Owner clarified: removed manual In/Out and transfer entries must disappear
 from the visible transaction log; edited entries keep their change history as
 Updated. Audit and money reversals remain stored. New reversal payloads mark
-edit versus remove explicitly. Older edit replacements share the reversal's
+edit versus remove explicitly.
+If the latest edited version is removed, hide its entire prior edit chain too;
+Updated history stays visible only while the resulting entry remains active.
+Older edit replacements share the reversal's
 exact PostgreSQL transaction timestamp; use full timestamp text for compatibility,
 not JS millisecond dates. Do not rewrite old production audit rows to hide them.
 
@@ -43,6 +46,14 @@ is courier liability, recovered from future settlements unless paid separately.
 Keep it red in the CPR list; exclude it from bank In, Out, receivable and balance,
 with no verification warning. Separate delivery bills actually paid from the
 bank and present in the spending sheet remain real Out.
+
+Owner reaffirmed: opening bank balance is entered only as Opening Balance.
+Fiscal Opening In is the selected bank's historical incoming total in that
+fiscal year strictly before its selected In start date. New manual In and net
+received CPRs on/after the cutoff add to Year In. Out source failure or sheet
+name mismatch must not hide known Year In in rows, totals or drilldowns: track
+incomeIncomplete separately. Out and live balance remain unavailable if expenses
+cannot be read. Missing incoming CPR money still marks income incomplete.
 
 Owner explicitly approved necessary Banking schema/audit additions. Migration
 002 adds append-only company-scoped fiscal setup history and entry audit; no

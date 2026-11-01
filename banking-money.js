@@ -22,7 +22,7 @@ export function addMoney(values) {
 export function reportTotals(rows) {
   const fields = {
     opening: b => b.openingKnown === false ? null : b.opening,
-    inYear: b => b.balanceIncomplete ? null : b.inYear,
+    inYear: b => (b.incomeIncomplete ?? b.balanceIncomplete) ? null : b.inYear,
     outYear: b => b.expenseIncomplete ? null : b.outYear,
     received: b => b.fromCouriersYear,
     receivable: b => b.receivable,

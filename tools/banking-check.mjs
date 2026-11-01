@@ -65,6 +65,13 @@ const seeded = bankFigures({ opening: '100000.00', openingOn: '2026-10-20',
 assert.equal(seeded.inYear, '906712.00', 'manual opening In plus only new net receipts');
 assert.equal(seeded.outYear, '420000.00', 'manual opening Out plus expenses after selected start');
 assert.equal(seeded.balance, '486712.00', 'historical In/Out must not change current opening balance twice');
+const manualSeed=bankFigures({opening:'100000.00',openingOn:'2026-10-20',fiscalYear:2027,
+  openingIn:'500000.00',openingOut:'400000.00',inFrom:'2026-10-20',outFrom:'2026-10-20'},[],[
+  {on:'2026-10-19',amount:'999999.00'},
+  {on:'2026-10-21',amount:'2500.00'},{on:'2026-10-21',amount:'-1000.00'}],
+  {...year,year:2027},'2026-10-31');
+assert.equal(manualSeed.inYear,'502500.00');assert.equal(manualSeed.outYear,'401000.00');
+assert.equal(manualSeed.balance,'101500.00','opening balance is separate from historical fiscal turnover');
 assert.equal(figures.balance, '950000.00');
 assert.equal(figures.inYear, '870000.00');
 assert.equal(figures.outYear, '20000.00');

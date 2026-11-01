@@ -15,7 +15,7 @@ export function columnBreakdown(report, bankId, column) {
       amount:incoming?addMoney([m.amount]):addMoney([String(m.amount).replace(/^-/,'')])}));
   if(bank.fiscalYear===report.year.year) rows.unshift({on:incoming?bank.inFrom:bank.outFrom,
     amount:incoming?bank.openingIn:bank.openingOut,note:incoming?'Historical Opening In':'Historical Opening Out',source:'fiscal opening'});
-  const total=(incoming?bank.balanceIncomplete:bank.expenseIncomplete)?null:bank[column];
+  const total=(incoming?(bank.incomeIncomplete ?? bank.balanceIncomplete):bank.expenseIncomplete)?null:bank[column];
   return {bank,column,total,rows,warning:total==null?'Source data unavailable; rows below are the available entries':
     addMoney(rows.map(r=>r.amount))!==addMoney([bank[column]])?'Source total differs; refresh the report':''};
 }
@@ -42,12 +42,20 @@ export function historyTransactions(audits,moves) {
   const changes=new Map(audits.filter(a=>a.action.startsWith('reverse:')).map(a=>{
     // Legacy edits inserted a replacement in the same SQL transaction. Keep
     // PostgreSQL's exact timestamp text; JS Date truncates its microseconds.
-    const operation=a.new_value[0]?.operation || (a.transaction_time && audits.some(next=>
+    const replacement=a.transaction_time && audits.filter(next=>
       isEntry(next) && BigInt(next.id)>BigInt(a.id) && next.actor===a.actor &&
-      next.transaction_time===a.transaction_time)?'edit':'remove');
-    return [a.action.slice(8),operation];
+      next.transaction_time===a.transaction_time).sort((x,y)=>BigInt(x.id)<BigInt(y.id)?-1:1)[0];
+    const operation=a.new_value[0]?.operation || (replacement?'edit':'remove');
+    return [a.action.slice(8),{operation,replacementId:replacement && String(replacement.id)}];
   }));
-  return audits.filter(a=>isEntry(a) && changes.get(String(a.id))!=='remove').map(a=>({
+  function removed(id,seen=new Set()) {
+    const change=changes.get(String(id));
+    if(!change || seen.has(String(id)))return false;
+    if(change.operation==='remove')return true;
+    seen.add(String(id));
+    return !!change.replacementId && removed(change.replacementId,seen);
+  }
+  return audits.filter(a=>isEntry(a) && !removed(a.id)).map(a=>({
     id:a.id,type:a.action,actor:a.actor,createdAt:a.created_at,reversed:changes.has(String(a.id)),
     entries:a.new_value.map(e=>({...e,note:byMove.get(String(e.id))?.note||''}))}));
 }

@@ -100,6 +100,7 @@ export async function buildReport(realmId, { banks, year, today, parseSheet, fre
       .filter(d => d && d <= today).sort();
     return { ...b, ...figures, balance: failed || uncertain ? null : figures.balance,
       balanceIncomplete: failed || uncertain, expenseIncomplete: failed,
+      incomeIncomplete: uncertain,
       fromCouriersYear: addMoney(paid.filter(r => !r.nonCash).map(r => r.net)),
       receivedCprs: paid.length,
       receivableCprs: receipts.filter(r => r.state === 'receivable').length,

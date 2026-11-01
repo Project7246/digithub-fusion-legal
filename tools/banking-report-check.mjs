@@ -24,6 +24,7 @@ const covers = [
 const oldQuery = pool.query;
 const oldFetch = globalThis.fetch;
 const calls = [];
+const manualMoves=[];
 pool.query = async (sql, args) => {
   calls.push({ sql, args });
   assert.match(sql, /\bSELECT\b/i);
@@ -35,7 +36,7 @@ pool.query = async (sql, args) => {
     { id: 1, account_id: 1, bank_id: 1, from_day: '2026-01-01' },
     { id: 2, account_id: 2, bank_id: 1, from_day: '2026-01-01' }
   ] };
-  if (sql.includes('FROM bank_moves')) return { rows: [
+  if (sql.includes('FROM bank_moves')) return { rows: [...manualMoves,
     { id: 4, bank_id: 1, account_id: 1, day: '2026-08-02', amount: '1000000.00',
       kind: 'courier', source: 'courier', ref: 'CPR-TEST' },
     { id: 5, bank_id: 1, day: '2026-08-03', amount: '-20000.00',
@@ -120,6 +121,15 @@ try {
   assert.equal(failed.banks[0].balance, null);
   assert.equal(failed.totals.outYear, null);
   assert.equal(failed.warnings.length, 1);
+  manualMoves.push({id:50,bank_id:1,day:'2026-08-03',amount:'2500.00',kind:'adjust',source:'hand',note:'Manual incoming'});
+  const incomingWithFailedOut=await buildReport('fixture-company',{...settings,banks:[{...banks[0],
+    openingOn:'2026-08-01',fiscalYear:2027,openingIn:'500000.00',openingOut:'400000.00',inFrom:'2026-08-01',outFrom:'2026-08-01'}]});
+  assert.equal(incomingWithFailedOut.banks[0].inYear,'1372500.00');
+  assert.equal(incomingWithFailedOut.totals.inYear,'1372500.00','unreadable Out must not hide historical In, net CPR and manual In');
+  assert.equal(incomingWithFailedOut.banks[0].incomeIncomplete,false);
+  assert.equal(incomingWithFailedOut.banks[0].balance,null,'unknown spending must still block an unverified balance');
+  assert.equal(incomingWithFailedOut.totals.outYear,null);
+  manualMoves.pop();
 
   const app = express();
   app.use('/api/bank', createBankingRouter({

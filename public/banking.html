@@ -418,7 +418,7 @@
         esc(b.name) + (b.active ? '' : ' · Closed') + '</small></td>' +
         '<td class="n">' + columnAmount(b,'opening',b.opening) + '<small class="bkdate">' + esc(b.openingOn || 'Not set') +
           (b.openingAt ? ' ' + esc(b.openingAt) : '') + '</small></td>' +
-        '<td class="n pos">' + columnAmount(b,'inYear',b.balanceIncomplete?null:b.inYear) + '</td>' +
+        '<td class="n pos">' + columnAmount(b,'inYear',(b.incomeIncomplete ?? b.balanceIncomplete)?null:b.inYear) + '</td>' +
         '<td class="n neg">' + columnAmount(b,'outYear',b.expenseIncomplete?null:b.outYear) + '</td>' +
         '<td class="n">' + cprAmount(b,'received') + '</td><td class="n">' + cprAmount(b,'receivable') + '</td>' +
         '<td class="n bklive">' + (b.balance == null ? '<span class="bk-na">Needs check</span>' : money(b.balance)) + '</td></tr>';

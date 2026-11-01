@@ -13,6 +13,10 @@ const legacyAudits=[entry(1,'one'),entry(2,'two'),entry(3,'three'),entry(4,'four
 const visible=historyTransactions(legacyAudits,[]);
 assert.deepEqual(visible.map(t=>t.id),[4,15],'three earlier removals disappear, earlier edit and its replacement remain');
 assert.equal(visible[0].reversed,true);
+const removedChain=[...legacyAudits,{id:16,action:'reverse:15',transaction_time:'later-delete',actor:'owner',
+  new_value:[{id:26,operation:'remove'}]}];
+assert.equal(historyTransactions(removedChain,[]).length,0,
+  'removing the latest edited version also hides every earlier Updated version');
 assert.equal(historyTransactions([entry(1,'one'),{id:2,action:'reverse:1',new_value:[{operation:'remove'}]}],[]).length,0);
 assert.equal(historyTransactions([entry(1,'one'),{id:2,action:'reverse:1',new_value:[{operation:'edit'}]}],[]).length,1);
 const report={year:{year:2027,from:'2026-07-01',to:'2027-06-30'},banks:[{id:1,opening:'100.00',openingOn:'2026-10-20',
@@ -24,6 +28,9 @@ assert.equal(columnBreakdown(report,1,'inYear').rows.length,2);
 assert.equal(columnBreakdown(report,1,'outYear').total,'420.00');
 assert.equal(columnBreakdown(report,1,'outYear').rows.length,2,'negative CPR never becomes Out');
 assert.equal(columnBreakdown(report,1,'opening').rows[0].amount,'100.00');
+report.banks[0].balanceIncomplete=true;report.banks[0].incomeIncomplete=false;
+assert.equal(columnBreakdown(report,1,'inYear').total,'550.00','Year In drilldown remains available when only Out is unknown');
+delete report.banks[0].balanceIncomplete;delete report.banks[0].incomeIncomplete;
 const wb=XLSX.read(paymentWorkbook([{on:'2026-10-21',amount:'-20.00',details:Array.from({length:16},(_,i)=>({value:
   i===2?'Receiver':i===6?'Sender':i===13?'Expense head':i===15?'Combined remarks':''})),rowUrl:'https://example.invalid/row'}]),{type:'buffer'});
 const rows=XLSX.utils.sheet_to_json(wb.Sheets.Payments,{header:1});
