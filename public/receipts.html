@@ -245,9 +245,11 @@
 
         <div class="cbar">
           <select id="acct"></select>
+          <button data-days="0">Today</button>
+          <button data-days="6">7 days</button>
           <button data-days="29">30 days</button>
           <button data-days="89" class="on">3 months</button>
-          <button data-days="364">A year</button>
+          <button id="dateRange">Date range</button>
           <input type="date" id="from">
           <input type="date" id="to">
           <button class="on" id="go">Show</button>
@@ -408,6 +410,7 @@
       });
     });
 
+    $('dateRange').addEventListener('click', function(){ fromEl.focus(); if(fromEl.showPicker) fromEl.showPicker(); });
     $('go').addEventListener('click', function(){ checked = false; loadOurs(); load(); });
     $('q').addEventListener('input', draw);
     $('acct').addEventListener('change', function(){
@@ -489,6 +492,7 @@
   function cname(k){ return COURIER_NAME[k] || String(k || ''); }
 
   function loadOurs(){
+    if(courier === 'postex' || (scopeAccount && scopeAccount.courier === 'postex')) return;
     var p = new URLSearchParams();
     p.set('limit', '300');
     // The courier tab, or the one account the page was opened at. Without
@@ -505,6 +509,12 @@
         var list = d.cprs || [];
         if(d.error){ $('ours').innerHTML = ''; return; }
 
+        renderOurs(list);
+      })
+      .catch(function(){ $('ours').innerHTML = ''; $('cards').innerHTML = ''; });
+  }
+
+  function renderOurs(list){
         // Arriving from a figure on the courier dashboard, with that figure's
         // own list already chosen. The whole list is still read and the
         // heading says which part of it is being shown, so the card's number
@@ -603,8 +613,6 @@
             openReceipt(list[Number(tr.getAttribute('data-i'))]);
           });
         });
-      })
-      .catch(function(){ $('ours').innerHTML = ''; $('cards').innerHTML = ''; });
   }
 
   function loadAccounts(){
@@ -756,9 +764,11 @@
     p.set('to', toEl.value);
     p.set('account', account.id);
 
-    fetch('/api/receipts/list?'+p.toString(), { cache:'no-store' })
+    var requestScope = p.toString();
+    fetch('/api/receipts/list?'+requestScope, { cache:'no-store' })
       .then(function(r){ return r.json(); })
       .then(function(d){
+        if(!account || String(account.id) !== p.get('account') || fromEl.value !== p.get('from') || toEl.value !== p.get('to')) return;
         if(d.error){ $('out').innerHTML = '<div class="msg">'+esc(d.error)+'</div>'; return; }
 
         // no sign-in saved yet, or it stopped working
@@ -769,6 +779,14 @@
 
         $('signout').classList.remove('hide');
         all = d.cprs || [];
+        renderOurs(all.map(function(c){
+          var gross = c.codAmount == null ? null : c.codAmount;
+          return { cpr:c.cpr, accountId:c.accountId, account:c.account, courier:c.courier,
+            status:c.status, remoteId:c.remoteId, settledOn:c.approvedOn || c.createdOn,
+            orders:c.orders, amount:gross, net:c.netAmount,
+            charges:gross == null ? null : gross-c.netAmount, fee:c.charges,
+            tax:(c.taxAmount || 0)+(c.withholding || 0), inBooks:!!c.receivedOn };
+        }));
         draw(d.trouble);
 
         // A receipt received before this page could say so - or through the

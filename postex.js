@@ -185,7 +185,9 @@ export async function fetchOrders(token, from, to, statusId) {
   // the plain call first - it brings back most of them in one go
   try {
     (await askOrders(token, from, to, 0)).forEach(o => seen.set(o.tracking, o));
-  } catch (e) { /* the per-status sweep below may still work */ }
+  } catch (e) {
+    if (!STATUS_IDS.length) throw e;
+  }
 
   // then each status on its own, four at a time
   for (let i = 0; i < STATUS_IDS.length; i += 4) {

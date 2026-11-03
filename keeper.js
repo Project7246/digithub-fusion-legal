@@ -121,7 +121,19 @@ async function catchUpOne(realmId, acc) {
 
   // nothing yet: reach back a few months. otherwise: from a little before
   // the newest day we hold, so anything that changed since is picked up
-  const from = last ? shift(last, -(RECENT_DAYS - 1)) : shift(to, -MAX_CATCHUP);
+  let from = last ? shift(last, -(RECENT_DAYS - 1)) : shift(to, -MAX_CATCHUP);
+  if (acc.courier === 'postex') {
+    const pending = await pool.query(
+      `SELECT MIN(booked_on) AS day FROM courier_orders
+       WHERE realm_id = $1 AND account_id = $2
+         AND status_group NOT IN ('delivered','returned','cancelled','expired','lost','damaged')
+         AND booked_on >= $3::date`, [realmId, acc.id, shift(to, -MAX_CATCHUP)]);
+    const oldest = pending.rows[0]?.day;
+    if (oldest) {
+      const pendingDay = new Date(oldest).toISOString().slice(0,10);
+      if (pendingDay < from) from = pendingDay;
+    }
+  }
 
   const mine = state.accounts[acc.id] = {
     id: acc.id,

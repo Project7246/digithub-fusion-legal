@@ -336,7 +336,7 @@ export async function listPortalCprs(realmId, opts) {
   if (opts && opts.account) { args.push(Number(opts.account)); where.push(`c.account_id = $${args.length}`); }
   if (opts && opts.courier) { args.push(String(opts.courier)); where.push(`c.courier = $${args.length}`); }
   if (opts && opts.from)    { args.push(opts.from); where.push(`c.created_on >= $${args.length}`); }
-  if (opts && opts.to)      { args.push(opts.to + ' 23:59:59'); where.push(`c.created_on <= $${args.length}`); }
+  if (opts && opts.to)      { args.push(opts.to); where.push(`c.created_on < ($${args.length}::date + 1)`); }
 
   const r = await pool.query(
     `SELECT c.cpr_number, c.remote_id, c.account_id, a.label, c.courier,
@@ -673,6 +673,7 @@ export async function saveOrders(realmId, accountId, courier, rows) {
              THEN courier_orders.city
            ELSE EXCLUDED.city END,
          -- the same again for the two dates a lesser answer leaves empty
+         booked_on    = CASE WHEN EXCLUDED.courier = 'postex' THEN COALESCE(EXCLUDED.booked_on, courier_orders.booked_on) ELSE courier_orders.booked_on END,
          picked_on    = COALESCE(EXCLUDED.picked_on, courier_orders.picked_on),
          delivered_on = COALESCE(EXCLUDED.delivered_on, courier_orders.delivered_on),
          order_ref    = COALESCE(NULLIF(EXCLUDED.order_ref, ''), courier_orders.order_ref),

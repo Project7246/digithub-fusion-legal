@@ -924,8 +924,8 @@
         // screen say today. It said 0.00 over a table whose own closing line
         // said 8,136.00, which is one screen giving two answers.
         '<div class="k1 c-net open" data-due="1" data-alltime="1">' +
-          '<div class="lb">Net receivable &middot; all time</div>' +
-          '<div class="vl">' + full(EV.due || 0) + '</div>' +
+          '<div class="lb">Unpaid CPR net &middot; all time</div>' +
+          '<div class="vl">' + full(CE.due || 0) + '</div>' +
           '<div class="fn">' + n0(EV.dueOrders || 0) + ' parcels not received</div>' +
         '</div>' +
         // **Delivery dates, not booking dates.** The figure beside it is cut
@@ -973,7 +973,7 @@
 
     F.statement +=
       '<div class="sched">' +
-        '<h3>Receivable from couriers' +
+        '<h3>Delivered parcel estimate' +
           '<span class="aside">click a line for its parcels</span></h3>' +
         '<table class="stmt">' +
           '<tr><th>&nbsp;</th><th>Parcels</th><th>' + period + ' (Rs)</th>' +
@@ -990,7 +990,7 @@
           sRow('Less: received on closed CPRs',
                P.gotOrders, P.got, EV.gotOrders, EV.got,
                'less open', ' data-due="0"', 'less') +
-          sRow('<b>Net receivable</b>',
+          sRow('<b>Estimated parcel balance</b>',
                P.dueOrders, P.due, EV.dueOrders, EV.due,
                'close open', ' data-due="1"') +
         '</table>' +
@@ -1006,9 +1006,9 @@
         '<table class="stmt">' +
           '<tr><th>&nbsp;</th><th>Parcels</th><th>' + period + ' (Rs)</th>' +
             '<th>Parcels</th><th>All time (Rs)</th></tr>' +
-          sRow('In a CPR, not paid yet',
-               P.pendingOrders, P.pending, EV.pendingOrders, EV.pending,
-               'open', ' data-pending="1"') +
+          sRow('Unpaid CPR net (by CPR issue date)',
+               C.dueCprs, C.due, CE.dueCprs, CE.due,
+               'open', ' data-gotab="cprs"') +
           sRow('<b>In no CPR at all</b>',
                P.noCprOrders, P.noCpr, EV.noCprOrders, EV.noCpr,
                'open', ' data-nocpr="1"') +
@@ -1081,7 +1081,7 @@
 
     F.months +=
       '<div class="sched">' +
-      '<h3>Month by month' +
+      '<h3>Monthly parcel estimates' +
         '<span class="aside">by the month the parcel was delivered</span></h3>' +
       '<table class="stmt">' +
       '<tr><th class="l">Month</th><th>Delivered</th><th>COD collected</th>' +
@@ -1119,7 +1119,7 @@
 
     F.ageing +=
       '<div class="sched">' +
-      '<h3>How long the money has been outstanding' +
+      '<h3>Age of unreceived parcels (estimated amounts)' +
         '<span class="aside">all time, from the day each parcel was delivered</span></h3>' +
       '<div class="age">' + (ageHtml ||
         '<div class="a1" style="cursor:default;color:var(--muted)">' +
@@ -1433,7 +1433,7 @@
 
       if (rec && rec.receipts) {
         F.cprs += '<div class="sched">' +
-          '<h3>CPRs against QuickBooks' +
+          '<h3>Gross COD against QuickBooks' +
           '<a href="/receipts' + (account ? '?account=' + account : '') +
           '">Open the receipt book</a></h3>' +
           '<table class="stmt">' +
@@ -1561,7 +1561,7 @@
       .map(function(c){
         return '<tr class="open" data-city="' + esc(c.city) + '">' +
                '<td class="lbl">' + esc(c.city) + '</td>' +
-               '<td class="n">' + n0(c.count) + '</td>' +
+               '<td class="n">' + n0(c.delivered) + '</td>' +
                '<td class="v">' + full(c.amount) + '</td>' +
                '<td class="v"><span class="neg">(' + full(c.fee + c.tax) + ')</span></td>' +
                '<td class="v">' + full((c.amount || 0) - (c.fee || 0) - (c.tax || 0)) +
@@ -2067,7 +2067,10 @@
       .then(function(r){ return r.json(); })
       .then(function(d){
         if(d.error){ $('dBody').innerHTML = '<div class="msg">'+esc(d.error)+'</div>'; return; }
-        $('dNote').textContent = n0(d.parcels) + ' parcels \u00b7 ' + full(d.amount);
+        $('dNote').textContent = n0(d.parcels) + ' parcels \u00b7 ' + full(d.amount) +
+          (d.capped ? ' \u00b7 showing the first 2,000' : '');
+        shown.rows = d.orders || [];
+        $('dCsv').disabled = !shown.rows.length;
         $('dBody').innerHTML = orderTable(d.orders || []);
       })
       .catch(function(e){ $('dBody').innerHTML = '<div class="msg">'+esc(e.message)+'</div>'; });

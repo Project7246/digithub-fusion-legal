@@ -141,7 +141,7 @@ export async function dashboard(realmId, opts) {
             COALESCE(SUM(o.tax)  FILTER (WHERE o.status_group = 'delivered'),0) AS tax
        FROM courier_orders o
       WHERE ${booked} AND o.city IS NOT NULL AND o.city <> ''
-      GROUP BY o.city ORDER BY n DESC LIMIT 200`, args);
+      GROUP BY o.city ORDER BY n DESC, o.city`, args);
 
   /* ---------- one row per account ---------- */
 
@@ -994,8 +994,9 @@ export async function pickupOrders(realmId, opts) {
   args.push(opts.day);
 
   const r = await pool.query(
-    `SELECT o.tracking, o.order_ref, o.amount, o.status, o.status_group,
-            o.city, o.booked_on, o.delivered_on, a.label
+    `SELECT o.tracking, o.order_ref, o.amount, o.fee, o.tax, o.status, o.status_group,
+            o.city, o.booked_on, o.picked_on, o.delivered_on, a.label,
+            COUNT(*) OVER () AS total_count, SUM(o.amount) OVER () AS total_amount
        FROM courier_orders o
        JOIN courier_accounts a ON a.id = o.account_id
       WHERE ${base.where.join(' AND ')} AND o.picked_on = $${args.length}
@@ -1007,17 +1008,21 @@ export async function pickupOrders(realmId, opts) {
     tracking: x.tracking,
     orderRef: x.order_ref,
     amount: r2(x.amount),
+    fee: r2(x.fee),
+    tax: r2(x.tax),
     status: x.status,
     statusGroup: x.status_group,
     city: x.city,
     bookedOn: day(x.booked_on),
+    pickedOn: day(x.picked_on),
     deliveredOn: day(x.delivered_on)
   }));
 
   return {
     day: opts.day,
-    parcels: rows.length,
-    amount: r2(rows.reduce((s, x) => s + x.amount, 0)),
+    parcels: Number(r.rows[0]?.total_count || 0),
+    amount: r2(r.rows[0]?.total_amount),
+    capped: Number(r.rows[0]?.total_count || 0) > rows.length,
     orders: rows
   };
 }

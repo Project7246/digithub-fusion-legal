@@ -1,3 +1,24 @@
+## PostEx HT reconciliation and receipt ranges - 3 Nov 2026
+
+PostEx Receipts cards and the portal list use the same date-filtered CPR response,
+including CPRs not yet linked to stored parcels. Do not rebuild these cards from
+settled parcel rows. Discard stale range/account responses. Today, 7 days, 30 days,
+3 months and Date range controls share the existing reporting flow. CPR date upper
+bounds are next-day exclusive. Synthetic coverage includes 26 receipts and empty ranges.
+
+The Finance unpaid CPR headline and pending CPR row use courier cover net amounts;
+parcel-based statement/month/ageing values are explicitly estimates, not actual bank
+payouts. No-CPR parcel amounts remain separate. Gross QuickBooks COD is labelled gross.
+PostEx background reconciliation reaches the oldest unfinished booking within the
+existing 120-day catch-up bound, on the existing compute-metered schedule. API failure
+must propagate instead of looking like a successful empty sync. Authoritative PostEx
+booking dates can correct webhook placeholder dates. No production data rewrite,
+scheduler frequency, environment or database schema change is part of this fix.
+
+Cities are no longer truncated to 200. Finance city count follows delivered value.
+Pickup detail carries charges, tax and pickup date, preserves full heading totals
+when its 2,000-row preview is capped, and enables CSV for the displayed rows.
+
 # Digithub Fusion - project notes for Claude
 
 ## Banking cards, Sheet cutoff and internal messages - 2 Nov 2026
