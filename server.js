@@ -9934,6 +9934,20 @@ app.get('/api/courier/reach', async (req, res) => {
     res.setHeader('Cache-Control', 'no-store');
     const out = await reachCourier(a);
     out.relay = relayState();
+
+    // Trax's portal is a second route with its own failure - the API answers
+    // over the relay while the portal's sign-in cannot, because a sign-in
+    // needs the cookie back and the API does not. Asking for the login page
+    // needs no password, so the answer belongs here beside the other steps.
+    if (a.key === 'trax') {
+      try {
+        const { probeLogin } = await import('./traxportal.js');
+        out.portal = await probeLogin();
+      } catch (e) {
+        out.portal = { ok: false, say: 'The portal check could not run: ' + e.message };
+      }
+    }
+
     res.json(out);
   } catch (e) {
     res.status(500).json({ error: e.message });

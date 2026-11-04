@@ -239,6 +239,46 @@ function complaintFrom(html) {
   return bits.join('; ');
 }
 
+// Half of a sign-in, and the half that needs no password: ask the portal for
+// its login page and say what came back with it. A session cookie and a token
+// are both needed before an email and a password are worth sending, and when
+// either is missing the fault is the route, not the credentials - so this can
+// be run and read by anybody without a password being anywhere near it.
+export async function probeLogin() {
+  const jar = new Map();
+  const page = await raw('/cod/login', { jar });
+  const token = tokenFrom(page.text);
+  const names = [...jar.keys()];
+
+  let say;
+  if (!page.status) say = 'The portal could not be reached at all: ' + page.text;
+  else if (!token && !names.length)
+    say = 'The portal answered ' + page.status + ' with neither a sign-in form ' +
+          'nor a cookie - nothing of a sign-in can work from here.';
+  else if (!names.length)
+    say = 'The sign-in form came back but no cookie came with it. Laravel ties ' +
+          'the form to a session cookie, so the sign-in would be refused ' +
+          'whatever the password. The relay is dropping Set-Cookie - ' +
+          'courier-relay.php on the website is not the current one.';
+  else if (!token)
+    say = 'A cookie came back but no _token field, so the page is not the ' +
+          'sign-in form we expect.';
+  else
+    say = 'The sign-in form and its session cookie both came back, so the ' +
+          'route is sound: anything refused from here is about the email and ' +
+          'password themselves.';
+
+  return {
+    ok: !!token && names.length > 0,
+    status: page.status,
+    bytes: (page.text || '').length,
+    token: !!token,
+    cookies: names.length,
+    cookieNames: names,
+    say
+  };
+}
+
 export async function signIn(email, password) {
   const jar = new Map();
 
