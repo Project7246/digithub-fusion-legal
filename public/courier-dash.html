@@ -997,10 +997,17 @@
         '<div class="k1 c-chg open" data-charges="1" data-dates="delivered">' +
           '<div class="lb">Charges &amp; tax &middot; this period</div>' +
           '<div class="vl">' + full(P.charges || 0) + '</div>' +
-          '<div class="fn">Courier charges ' + full(P.fee || 0) +
+          '<div class="fn">This period &mdash; charges ' + full(P.fee || 0) +
             ' &middot; tax ' + full(P.tax || 0) + '</div>' +
-          '<div class="fn">all time: charges ' + full(EV.fee || 0) +
+          '<div class="fn">All time &mdash; charges ' + full(EV.fee || 0) +
             ' &middot; tax ' + full(EV.tax || 0) + '</div>' +
+          // The same two halves as the Net receivable card above, so the one
+          // question the total cannot answer is answered here: of the money
+          // still to come, how much is the courier keeping, and on which half.
+          '<div class="fn">Still to receive &mdash; unpaid CPR: charges ' +
+            full(EV.pendingFee || 0) + ', tax ' + full(EV.pendingTax || 0) +
+            ' &middot; no CPR: charges ' + full(EV.noCprFee || 0) +
+            ', tax ' + full(EV.noCprTax || 0) + '</div>' +
         '</div>' +
         '<div class="k1 c-cpr open" data-due="0">' +
           '<div class="lb">Received on CPRs &middot; this period</div>' +

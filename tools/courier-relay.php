@@ -81,6 +81,10 @@ $pass = [];
 foreach (getallheaders() as $name => $value) {
     $low = strtolower($name);
     if ($low === 'x-relay-key' || $low === 'host' || $low === 'content-length') continue;
+    // curl asks for its own compression and undoes it - see CURLOPT_ENCODING
+    // below. Forwarding Fusion's own Accept-Encoding is what made the courier
+    // answer gzip that nothing afterwards decompressed.
+    if ($low === 'accept-encoding') continue;
     if (strpos($low, 'cf-') === 0 || strpos($low, 'x-forwarded') === 0) continue;
     $pass[] = $name . ': ' . $value;
 }
@@ -106,6 +110,12 @@ curl_setopt_array($ch, [
     CURLOPT_HTTPHEADER     => $pass,
     CURLOPT_TIMEOUT        => 25,
     CURLOPT_CONNECTTIMEOUT => 12,
+    // Only Content-Type is handed back below, never Content-Encoding - so a
+    // compressed body would reach Fusion as bytes with nothing saying they are
+    // compressed, and be read as mojibake. An empty string here makes curl
+    // advertise what it can take and **decompress the answer itself**, so what
+    // is echoed at the end is always plain.
+    CURLOPT_ENCODING       => '',
     CURLOPT_HEADERFUNCTION => function ($ch, $line) use (&$backCookies, &$backLocation) {
         $at = strpos($line, ':');
         if ($at !== false) {

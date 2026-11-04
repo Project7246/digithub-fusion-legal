@@ -39,7 +39,7 @@
 // sign-in, so it talks to the relay itself rather than through `call()`,
 // which reads a body and throws the headers away.
 
-import { relayed, relayHeaders, plainly } from './wire.js';
+import { relayed, relayHeaders, plainly, readBody, NO_ZIP } from './wire.js';
 import { num, day, byWords, cityName } from './statuses.js';
 
 // Which bucket one of their words belongs in is **Trax's dialect, not this
@@ -78,7 +78,10 @@ async function raw(path, { method, jar, form, query, ajax } = {}) {
   let to = url.toString();
   const headers = {
     'Accept': ajax ? 'application/json, text/javascript, */*; q=0.01' : 'text/html,*/*',
-    'User-Agent': 'Mozilla/5.0 (compatible; Fusion/1.0)'
+    'User-Agent': 'Mozilla/5.0 (compatible; Fusion/1.0)',
+    // the relay passes Content-Type back and not Content-Encoding, so ask the
+    // portal for plain text rather than guessing afterwards - see wire.js
+    ...NO_ZIP
   };
   if (ajax) headers['X-Requested-With'] = 'XMLHttpRequest';
 
@@ -114,7 +117,7 @@ async function raw(path, { method, jar, form, query, ajax } = {}) {
     });
 
     absorb(jar, r);
-    text = await r.text();
+    text = await readBody(r);
   } catch (e) {
     // Only the call itself failing lands here. What the portal or the relay
     // *said* is read below, where it can be said back in their own words.

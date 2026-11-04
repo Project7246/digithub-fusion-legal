@@ -450,6 +450,15 @@ async function parcelMoney(realmId, opts, dates) {
             ${pair('pending', PENDING_SQL)},
             ${pair('nocpr',   NOCPR_SQL)},
 
+            -- What the courier keeps out of each half of what is still to
+            -- come. A total charge figure answers "what did carrying cost";
+            -- these answer "what is being kept out of the money I have not
+            -- had yet", which is the half of it that can still be argued.
+            COALESCE(SUM(o.fee) FILTER (WHERE ${PENDING_SQL}),0) AS pending_fee,
+            COALESCE(SUM(o.tax) FILTER (WHERE ${PENDING_SQL}),0) AS pending_tax,
+            COALESCE(SUM(o.fee) FILTER (WHERE ${NOCPR_SQL}),0)   AS nocpr_fee,
+            COALESCE(SUM(o.tax) FILTER (WHERE ${NOCPR_SQL}),0)   AS nocpr_tax,
+
             COUNT(DISTINCT o.cpr_number) FILTER (WHERE ${HAS_CPR}) AS cprs_n,
             MIN(o.delivered_on) FILTER (WHERE NOT ${GOT_SQL}) AS oldest_due,
 
@@ -484,6 +493,11 @@ async function parcelMoney(realmId, opts, dates) {
     pending: r2(x.pending_v),
     noCprOrders: Number(x.nocpr_n || 0),
     noCpr: r2(x.nocpr_v),
+
+    pendingFee: r2(x.pending_fee),
+    pendingTax: r2(x.pending_tax),
+    noCprFee: r2(x.nocpr_fee),
+    noCprTax: r2(x.nocpr_tax),
 
     due: r2(receivable - got),
     dueOrders: Number(x.pending_n || 0) + Number(x.nocpr_n || 0),

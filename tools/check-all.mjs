@@ -27,6 +27,7 @@ const checks = [
   ['PostEx audit', 'tools/postex-audit-check.mjs'],
   ['HR formulas', 'tools/hr-check.mjs'],
   ['compute meter', 'tools/compute-check.mjs'],
+  ['relay body', 'tools/relay-body-check.mjs'],
 ];
 
 const run = (file) => new Promise((done) => {

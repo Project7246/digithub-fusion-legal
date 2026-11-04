@@ -1,3 +1,5 @@
+import { gunzipSync, inflateSync } from 'node:zlib';
+
 // Talking to a courier whose guide we only half have.
 //
 // PostEx was written against its own documentation and still needed two
@@ -141,6 +143,33 @@ export function relayHeaders() {
   return RELAY_KEY ? { 'X-Relay-Key': RELAY_KEY } : {};
 }
 
+// The relay hands a body back exactly as the courier sent it, but it only
+// passes `Content-Type` on - **not `Content-Encoding`**. So a portal that
+// answers gzip (every one of them does, because the relay forwards our own
+// `Accept-Encoding` upstream) comes back as compressed bytes with nothing
+// saying so, fetch has no reason to decompress them, and `r.text()` hands back
+// mojibake. On sonic.pk that showed as "The Trax portal did not hand over a
+// sign-in form": the HTML was there, gzipped, and `_token` could not be found
+// in it.
+//
+// Two answers, and both are wanted. `Accept-Encoding: identity` on the way out
+// asks for plain text in the first place - the relay forwards every header we
+// send, so it reaches the courier. And this reads the magic number on the way
+// back, for anything that compresses regardless.
+export const NO_ZIP = { 'Accept-Encoding': 'identity' };
+
+export async function readBody(r) {
+  const buf = Buffer.from(await r.arrayBuffer());
+  if (buf.length > 2 && buf[0] === 0x1f && buf[1] === 0x8b) {
+    try { return gunzipSync(buf).toString('utf8'); } catch (e) { /* not gzip after all */ }
+  }
+  // zlib-wrapped deflate: 0x78 then one of the usual second bytes
+  if (buf.length > 2 && buf[0] === 0x78 && [0x01, 0x5e, 0x9c, 0xda].includes(buf[1])) {
+    try { return inflateSync(buf).toString('utf8'); } catch (e) { /* not deflate */ }
+  }
+  return buf.toString('utf8');
+}
+
 export async function call({ url, method, headers, body }) {
   const through = relayed(url);
   if (through) {
@@ -155,13 +184,13 @@ export async function call({ url, method, headers, body }) {
   try {
     const r = await fetch(url, {
       method: method || 'GET',
-      headers: Object.assign({ 'Accept': 'application/json' }, headers || {}),
+      headers: Object.assign({ 'Accept': 'application/json' }, NO_ZIP, headers || {}),
       body: body === undefined || body === null ? undefined :
             (typeof body === 'string' ? body : JSON.stringify(body)),
       signal: ctl.signal
     });
 
-    const text = await r.text();
+    const text = await readBody(r);
     let json = null;
     try { json = JSON.parse(text); } catch (e) { json = null; }
 
