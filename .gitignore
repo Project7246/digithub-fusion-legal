@@ -20,3 +20,6 @@ hr-files/
 *.xlsx
 *.xls
 *.csv
+
+# the folder lock - one agent at a time, per machine, never committed
+.agent-lock
