@@ -399,9 +399,9 @@
 
     setRange(89);
 
-    document.querySelectorAll('.bar button[data-days]').forEach(function(b){
+    document.querySelectorAll('.cbar button[data-days]').forEach(function(b){
       b.addEventListener('click', function(){
-        document.querySelectorAll('.bar button[data-days]').forEach(function(x){
+        document.querySelectorAll('.cbar button[data-days]').forEach(function(x){
           x.classList.remove('on');
         });
         b.classList.add('on');
@@ -557,7 +557,7 @@
             full(collected) + '</div><div class="n">taken from customers at the door</div></div>' +
           '<div class="card"><div class="k">Courier kept</div><div class="v">' +
             full(kept) + '</div><div class="n">charges and tax on these parcels</div></div>' +
-          '<div class="card"><div class="k">Paid to us</div><div class="v">' +
+          '<div class="card"><div class="k">Net CPR amount</div><div class="v">' +
             full(net) + '</div><div class="n">net of what they kept</div></div>' +
           '<div class="card"><div class="k">Not in QuickBooks</div><div class="v">' +
             full(waitingAmount) + '</div><div class="n">' + n0(waiting.length) + ' of ' +

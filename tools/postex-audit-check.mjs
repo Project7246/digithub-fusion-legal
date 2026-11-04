@@ -37,6 +37,8 @@ try {
   };
   assert.equal((await listPortalCprs('fixture-company', {account:5, from:'2026-05-03', to:'2026-11-02'})).length, 26);
   const html = readFileSync(new URL('../public/receipts.html', import.meta.url), 'utf8');
+  assert.match(html, /querySelectorAll\('\.cbar button\[data-days\]'/);
+  assert.doesNotMatch(html, /querySelectorAll\('\.bar button\[data-days\]'/);
   const source = html.slice(html.indexOf('  function renderOurs(list){'), html.indexOf('  function loadAccounts()'));
   const nodes = Object.fromEntries(['cards','ours'].map(k => [k, {innerHTML:'', querySelectorAll:()=>[]} ]));
   const ctx = { $:k=>nodes[k], scopeAccount:{label:'Fixture'}, courier:'postex', location:{search:''},
