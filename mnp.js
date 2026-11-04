@@ -62,6 +62,11 @@ const GROUPS = {
   // Outside the places they serve - it will come back, so it is on its way
   // back rather than lost.
   'nsa-non service area':         'returning',
+  // The buyer has moved. The parcel is at the branch and nobody can act on it
+  // until somebody says where it should go, which is what `review` is for -
+  // the same place "Shipper Advise Requested" sits for Trax. Read off a live
+  // M&P account on 4 Nov 2026, where it was the one status left in `other`.
+  'cs-consignee shifted':         'review',
   'booked':                   'booked',
   'manifested':               'booked',
   'picked up':                'transit',

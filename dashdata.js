@@ -407,9 +407,28 @@ const CPR_CLOSED = `EXISTS (SELECT 1 FROM courier_cprs c
 
 const HAS_CPR = `(o.cpr_number IS NOT NULL AND o.cpr_number <> '')`;
 
+// A cover we hold for this parcel's payment that says it has **not** been
+// paid out yet. M&P generate a payment, give it an id, and settle it later -
+// and their tracking call hands that id over the moment it exists, so
+// `mnp.js` writes `settled` and `cpr_number` together. The parcel then read as
+// money already received while the payment sat PENDING: 116 parcels on
+// payment 20261547934 were counted in "Received on CPRs" on 4 Nov 2026 while
+// the courier still had the 279,461 it covers.
+//
+// Only a cover we actually hold can say that, so where there is no cover row
+// the courier's own flag stands exactly as before - this takes nothing away
+// from a parcel whose payment was never pulled.
+const CPR_OPEN = `EXISTS (SELECT 1 FROM courier_cprs c
+                            WHERE c.realm_id = o.realm_id
+                              AND c.account_id = o.account_id
+                              AND c.cpr_number = o.cpr_number
+                              AND UPPER(COALESCE(c.status, '')) <> 'CLOSED')`;
+
 // Received: a closed CPR, or the courier's own settled flag - which is how
-// Trax and M&P pay, neither of them issuing a CPR at all.
-const GOT_SQL     = `(o.settled IS TRUE OR (${HAS_CPR} AND ${CPR_CLOSED}))`;
+// Trax and M&P pay, neither of them issuing a CPR at all. A settled flag sitting
+// on a payment we know is still open is not a payment: it is a promise of one.
+const GOT_SQL     = `((o.settled IS TRUE AND NOT ${CPR_OPEN})
+                      OR (${HAS_CPR} AND ${CPR_CLOSED}))`;
 const PENDING_SQL = `(NOT ${GOT_SQL} AND ${HAS_CPR})`;
 const NOCPR_SQL   = `(NOT ${GOT_SQL} AND NOT ${HAS_CPR})`;
 const PAID_SQL    = GOT_SQL;      // the name moneyWhere() knows it by

@@ -28,6 +28,7 @@ const checks = [
   ['HR formulas', 'tools/hr-check.mjs'],
   ['compute meter', 'tools/compute-check.mjs'],
   ['relay body', 'tools/relay-body-check.mjs'],
+  ['M&P settled', 'tools/mnp-settled-check.mjs'],
 ];
 
 const run = (file) => new Promise((done) => {
