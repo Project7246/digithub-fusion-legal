@@ -221,6 +221,24 @@ function sentToLogin(answer) {
   return answer.status === 401 || answer.status === 419;
 }
 
+// Laravel answers a refused sign-in by sending you back to the form with the
+// reason in the session, and the reason is printed on the page it sends you
+// to - not in the redirect. Where it answers 200 it is on the page already.
+function complaintFrom(html) {
+  const s = String(html || '');
+  const bits = [];
+  const grab = (re) => {
+    let m;
+    const r = new RegExp(re, 'gi');
+    while ((m = r.exec(s)) && bits.length < 3) {
+      const t = String(m[1] || '').replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
+      if (t && t.length < 200 && !bits.includes(t)) bits.push(t);
+    }
+  };
+  grab('<(?:div|span|p|li)[^>]*class=["\'][^"\']*(?:invalid-feedback|alert-danger|error)[^"\']*["\'][^>]*>([\\s\\S]{1,300}?)</(?:div|span|p|li)>');
+  return bits.join('; ');
+}
+
 export async function signIn(email, password) {
   const jar = new Map();
 
@@ -229,6 +247,18 @@ export async function signIn(email, password) {
   if (!token) {
     throw new Error('The Trax portal did not hand over a sign-in form. ' +
       'Either sonic.pk is down or the sign-in page has moved.');
+  }
+
+  // Laravel ties the token on that page to the session cookie that came with
+  // it. No cookie, no session, and the POST is refused for a reason that has
+  // nothing to do with the password - which is what this used to report. The
+  // relay is the only thing between us and the portal, so if the cookies did
+  // not arrive it is the relay that dropped them.
+  if (jar.size === 0) {
+    throw new Error('The Trax portal sent its sign-in form but no session ' +
+      'cookie came back with it, so the form cannot be submitted. The relay ' +
+      'is not passing Set-Cookie through - tools/courier-relay.php on the ' +
+      'website needs to be the current one.');
   }
 
   const posted = await raw('/cod/login', {
@@ -246,7 +276,27 @@ export async function signIn(email, password) {
     if (posted.status === 429) {
       throw new Error('Trax has blocked sign-ins for a few minutes - too many tries');
     }
-    throw new Error('Trax did not accept that email and password');
+    // 419 is Laravel's own: the token did not match the session. That is a
+    // cookie that did not survive the journey, never a wrong password, and
+    // saying "wrong password" sends somebody to change a password that was
+    // right all along.
+    if (posted.status === 419) {
+      throw new Error('The Trax portal refused the form as out of date ' +
+        '(419): the sign-in page and the form we sent it did not share a ' +
+        'session. The relay is not carrying the portal\'s cookies.');
+    }
+    const why = complaintFrom(posted.text);
+    if (why) throw new Error('Trax refused the sign-in: ' + why);
+
+    // Anything else is said with what actually came back, so the next person
+    // is not guessing at a password that may be perfectly correct.
+    if (posted.status !== 302 && posted.status !== 303) {
+      throw new Error('Trax answered the sign-in with ' + posted.status +
+        ' instead of the redirect a sign-in gives. Nothing says the email or ' +
+        'password is wrong - that is the portal or the route misbehaving.');
+    }
+    throw new Error('Trax did not accept that email and password - it sent ' +
+      'the sign-in straight back to the login page.');
   }
 
   const shippers = await readShippers(jar);

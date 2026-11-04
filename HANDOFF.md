@@ -7,42 +7,38 @@ Keep it under 30 lines. Read it in the pre-flight; see AGENTS.md section A.
 
 ## Finished and pushed
 
-- `/receipts` works again, in two places. The date buttons asked for
-  `.bar button[data-days]` while the markup says `.cbar`, so Today / 7 / 30 / 90
-  did nothing; and the detail dialog's order search and status dropdown were
-  inside a `<div class="bar">`, which `app.css` keeps for a 7px progress bar with
-  `overflow:hidden` - both controls were clipped to seven pixels and unusable.
-  The "Paid to us" card reads **Net CPR amount**.
-  `tools/postex-audit-check.mjs` now refuses any `class="bar"` in that page.
-- `CLAUDE.md` split into a short core plus `docs/` per module - word for word,
-  nothing dropped, verified line by line. It was 3,443 lines (~50,000 tokens)
-  loaded in full at the start of every session by both agents; it is now 267.
-  The index is in CLAUDE.md.
-- `AGENTS.md` rewritten as the one protocol for both agents: pre-flight,
-  `.agent-lock`, the shared files, migration-number reservation, the checks
-  table, the push, this handover, spending the allowance, and working from more
-  than one computer.
-- `npm run check:all` (14 checks, one command) and `npm run check:banking` added.
-  `.agent-lock` added to `.gitignore`.
+- **compute.js**: the month's meter read **-498,120 hours**, so `holding` was
+  never true and the stop-at guard and the sweep's pacing were both off since
+  1 Nov. A spell is a duration now (`spellOf`), never negative, and a stored
+  negative is read as nought. `npm run check:compute`.
+- **The relay hands bodies back gzipped** and passes on `Content-Type` but not
+  `Content-Encoding`, so every relayed body was read as mojibake - which is
+  what "The Trax portal did not hand over a sign-in form" really was, and it
+  broke Trax's API calls too. `Accept-Encoding: identity` goes out and
+  `readBody()` gunzips on the way back. Verified live: Trax now answers with
+  3,877 cities. `npm run check:relay`.
+- **Net receivable** is one figure with its two halves named under it (unpaid
+  CPR net + delivered-no-CPR estimate); the charges card shows charges and tax
+  for each of those halves. The statement's closing line now equals the two
+  rows above it.
+- `/courier-dash` no longer rebuilds itself every 8 seconds while a catch-up
+  runs; `/receipts` date controls match `/courier-dash`.
+
+## Verified against the PostEx portal (merchant 45250, PostEx - HT)
+
+- orders **12,189 = 12,189**; CPRs **7 = 7**; six closed **17,031,377.05** and
+  one approved **4,828,910.42**, both to the paisa. PostEx HT reconciles.
 
 ## Unfinished, and what is left
 
-- Nothing is in flight. The working tree is clean.
-- Still open from the notes: DigitalOcean **Edge caching** and **Email
-  obfuscation** should be turned Off (the owner's own console) - a cached page is
-  how a deployed fix can still look missing in a browser.
+- **tools/courier-relay.php must be re-uploaded to Hostinger** for its half of
+  the gzip fix. Fusion's half is live and works without it.
+- **PostEx - AH (10) and PostEx - UR (11) have no webhook** - 0 hits ever, so
+  their statuses only move when the sweep runs. To be set in the PostEx portal.
+- **Trax portal sign-in is still not saved** (`portal_ready: false` on 8 and 9);
+  the owner must press Sign in - a password is theirs to enter, not Claude's.
+- Trax and M&P portals not yet reconciled against the app. That is next.
 
-## Files left dirty on purpose
+## Files left dirty on purpose / migration reserved
 
-- None.
-
-## Migration number reserved
-
-- None. `migrations/` holds 001 to 005; the next free number is **006**. Claim it
-  here, in the same change, before you create the file.
-
-## For the owner to check
-
-- `/receipts`, after a hard refresh: the Today / 7 / 30 / 90 day buttons, the
-  **Net CPR amount** card, and inside a receipt's detail the order search box and
-  the status dropdown.
+- None. Next free migration number is **006**.
