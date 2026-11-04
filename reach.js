@@ -176,11 +176,30 @@ function verdictOf(o) {
   try { via = new URL(o.relayTo).hostname; } catch (e) {}
 
   if (o.relay.ok) {
+    // An answer is not the same thing as the right answer. A 404 here is the
+    // **website's** 404, not the courier's: it means nothing is sitting at the
+    // relay's address any more, and calling that "this server reaches sonic.pk"
+    // sends somebody off to look at the courier instead of at the one file that
+    // has gone missing. A 5xx from the relay's own host is the same kind of lie.
+    const s = Number(o.relay.status) || 0;
+    if (s >= 400) {
+      return {
+        where: 'relay',
+        via: 'relay',
+        say: 'The relay at ' + via + ' answered ' + s + ' - that is ' + via +
+             ' talking, not ' + o.host + '. Nothing was forwarded. ' +
+             (s === 404
+               ? 'There is no relay file at that address: it has been moved, ' +
+                 'renamed or deleted, and COURIER_RELAY points at nothing.'
+               : 'The relay file is there but refused this call, so look at the ' +
+                 'relay rather than at the courier.')
+      };
+    }
     return {
       where: 'ok',
       via: 'relay',
       say: 'Through the relay at ' + via + ' this server reaches ' + o.host +
-           ' - it answered ' + o.relay.status + ' in ' + o.relay.ms + ' ms. That ' +
+           ' - it answered ' + s + ' in ' + o.relay.ms + ' ms. That ' +
            'is the route Fusion takes for ' + o.host + ', so the direct one being ' +
            (direct.where === 'ok' ? 'open' : 'blocked') + ' changes nothing.'
     };
