@@ -54,6 +54,9 @@
   .cbar button:hover{border-color:var(--qbo)}
   .cbar button.on{background:var(--qbo);border-color:var(--qbo);color:#fff;font-weight:600}
   .cbar .right{margin-left:auto;display:flex;gap:6px;align-items:center}
+  /* the two date boxes, behind the Date range button - as on /courier-dash */
+  .cbar #picker{display:flex;gap:6px;align-items:center}
+  .cbar #picker.hide{display:none}
 
   /* One tab per courier company. A receipt belongs to one courier and to one
      account; showing PostEx's and M&P's in the same list was the whole
@@ -248,11 +251,12 @@
           <button data-days="0">Today</button>
           <button data-days="6">7 days</button>
           <button data-days="29">30 days</button>
-          <button data-days="89" class="on">3 months</button>
+          <button data-days="89">3 months</button>
           <button id="dateRange">Date range</button>
-          <input type="date" id="from">
-          <input type="date" id="to">
-          <button class="on" id="go">Show</button>
+          <span id="picker" class="hide">
+            <input type="date" id="from">
+            <input type="date" id="to">
+          </span>
           <div class="right">
             <input type="text" id="q" placeholder="CPR number">
             <button id="recheck" title="Look in QuickBooks for receipts already received">Check QuickBooks</button>
@@ -399,19 +403,52 @@
 
     setRange(89);
 
+    // Which pill is lit is worked out from the dates themselves, the way
+    // /courier-dash does it - not left on whichever one the markup happened to
+    // carry. The markup lit "3 months" for ever, so after picking a date range
+    // the bar still claimed three months, and pressing a pill you were already
+    // on looked like a dead button.
+    function markPills(){
+      var on = null;
+      document.querySelectorAll('.cbar button[data-days]').forEach(function(x){
+        var f = new Date(), t = new Date();
+        f.setDate(f.getDate() - Number(x.getAttribute('data-days')));
+        var hit = (fromEl.value === iso(f) && toEl.value === iso(t));
+        x.classList.toggle('on', hit);
+        if(hit) on = x;
+      });
+      $('dateRange').classList.toggle('on', !on);
+      if(!on) $('picker').classList.remove('hide');
+    }
+    markPills();
+
     document.querySelectorAll('.cbar button[data-days]').forEach(function(b){
       b.addEventListener('click', function(){
-        document.querySelectorAll('.cbar button[data-days]').forEach(function(x){
-          x.classList.remove('on');
-        });
-        b.classList.add('on');
         setRange(Number(b.getAttribute('data-days')));
-        loadOurs(); load();
+        $('picker').classList.add('hide');
+        markPills();
+        checked = false; loadOurs(); load();
       });
     });
 
-    $('dateRange').addEventListener('click', function(){ fromEl.focus(); if(fromEl.showPicker) fromEl.showPicker(); });
-    $('go').addEventListener('click', function(){ checked = false; loadOurs(); load(); });
+    // The two date boxes sit behind the button, and changing either one reads
+    // on the spot. There is no Show: a button that only repeats what the boxes
+    // already say is a button to forget to press - the same reason
+    // /courier-dash has none.
+    $('dateRange').addEventListener('click', function(){
+      $('picker').classList.toggle('hide');
+      if(!$('picker').classList.contains('hide')){
+        fromEl.focus();
+        if(fromEl.showPicker) fromEl.showPicker();
+      }
+    });
+    [fromEl, toEl].forEach(function(el){
+      el.addEventListener('change', function(){
+        if(!fromEl.value || !toEl.value) return;
+        markPills();
+        checked = false; loadOurs(); load();
+      });
+    });
     $('q').addEventListener('input', draw);
     $('acct').addEventListener('change', function(){
       account = accounts.filter(function(a){ return String(a.id) === $('acct').value; })[0] || null;

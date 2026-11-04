@@ -435,6 +435,9 @@
   var account = qs.get('account');
   var courier = qs.get('courier');
   var keeperTimer = null;
+  // true while a catch-up is running, so the one quiet refresh happens when it
+  // ends rather than every few seconds while it goes on
+  var keeperRan = false;
 
   // The tab bar lives in the page, not in the drawn output, so it stays put
   // while the numbers underneath it reload. The choice is remembered.
@@ -640,14 +643,24 @@
         var el = $('fresh');
         if(d.running){
           el.innerHTML = 'Catching up with the courier\u2026';
+          keeperRan = true;
+          // Only the one-line status is watched while it runs. It used to call
+          // load() here as well, every eight seconds, and load() blanks the
+          // page down to "Reading\u2026" - so the whole screen was thrown away and
+          // rebuilt every few seconds for as long as the sweep lasted, with
+          // any open tab, drawer and scroll position going with it. The catch
+          // up is background work: it may say so, and nothing more.
           if(keeperTimer) clearTimeout(keeperTimer);
-          keeperTimer = setTimeout(function(){ watchKeeper(); load(); }, 8000);
+          keeperTimer = setTimeout(watchKeeper, 8000);
           return;
         }
         if(d.finishedAt){
           el.innerHTML = '<b>Up to date</b> \u00b7 last checked ' +
             new Date(d.finishedAt).toLocaleTimeString();
         }
+        // It has just finished, so the figures on screen are one sweep old:
+        // read them again **once**, quietly, without blanking the page.
+        if(keeperRan){ keeperRan = false; load(true); }
         // Nothing is running, so there is nothing to watch closely. A minute
         // apart was close enough to Neon's five-minute sleep that one open
         // dashboard kept the database awake all day; five minutes lets it
@@ -662,10 +675,14 @@
 
   var live = null;
 
-  function load(){
+  // `quiet` is a background read: it leaves whatever is on screen alone until
+  // the new figures are in hand, and if it fails it says nothing and keeps the
+  // last good screen. A read nobody asked for must not blank the page, and must
+  // not report its own failure over figures that are still perfectly readable.
+  function load(quiet){
     localStorage.setItem('cdFrom', fromEl.value);
     localStorage.setItem('cdTo', toEl.value);
-    $('out').innerHTML = '<div class="loading">Reading\u2026</div>';
+    if(!quiet) $('out').innerHTML = '<div class="loading">Reading\u2026</div>';
 
     Promise.all([
       fetch('/api/courier/dash?'+params(), { cache:'no-store' }).then(function(r){ return r.json(); }),
@@ -678,12 +695,15 @@
     ])
     .then(function(all){
       var d = all[0];
-      if(d.error){ $('out').innerHTML = '<div class="msg">'+esc(d.error)+'</div>'; return; }
+      if(d.error){
+        if(!quiet) $('out').innerHTML = '<div class="msg">'+esc(d.error)+'</div>';
+        return;
+      }
       live = d;
       draw(d, all[1].cprs || [], all[2].days || []);
     })
     .catch(function(e){
-      $('out').innerHTML = '<div class="msg">'+esc(e.message)+'</div>';
+      if(!quiet) $('out').innerHTML = '<div class="msg">'+esc(e.message)+'</div>';
     });
   }
 
@@ -1686,8 +1706,13 @@
               '</div>';
     });
 
+    // This is MAX(seen_at) - the last time Fusion wrote any parcel in this
+    // view - and `seen_at` is set to NOW() on every read from the courier. It
+    // is not the newest order's own date, which is what it used to claim: a
+    // sweep at 10:54 made it read "Newest order in the store: 10:54", so a
+    // quiet morning looked like a shop that had just taken an order.
     if(t.lastSeen){
-      html += '<div class="note">Newest order in the store: ' +
+      html += '<div class="note">These parcels were last read from the courier: ' +
               esc(new Date(t.lastSeen).toLocaleString()) + '</div>';
     }
 
