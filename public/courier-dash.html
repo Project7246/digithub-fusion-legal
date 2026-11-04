@@ -908,6 +908,16 @@
     }
     function pcs(n){ return (n === null || n === undefined) ? '' : n0(n); }
 
+    // Net receivable, in one place so the card and the table cannot disagree:
+    // what the courier owes on receipts they have issued and not paid, plus
+    // what they have delivered and issued no receipt for at all. `c` is the
+    // CPR side of the period (cprRange / cprEver), `p` the parcel side
+    // (range / ever). Rounded to the paisa, because a column of figures that
+    // does not add up is a column nobody trusts.
+    function netRec(c, p){
+      return Math.round((((c && c.due) || 0) + ((p && p.noCpr) || 0)) * 100) / 100;
+    }
+
     // one line: its parcels, this period, and all time
     // One count per column, because the two columns count different parcels.
     //
@@ -943,10 +953,31 @@
         // the courier still owes does not become nought because the dates on
         // screen say today. It said 0.00 over a table whose own closing line
         // said 8,136.00, which is one screen giving two answers.
+        // One Net receivable, and its two halves named underneath it, because
+        // they are two different kinds of figure and both have to be visible:
+        //
+        //   unpaid CPR net        the courier's OWN net on a receipt they have
+        //                         issued but not paid - charges, GST and
+        //                         withholding already taken off by them
+        //   delivered, no CPR     a parcel they have delivered and said nothing
+        //                         about yet. Fusion's estimate, COD less the
+        //                         charges and tax on the parcel
+        //
+        // Added, they are what the courier is holding of ours. The card used to
+        // show the first one alone under the label "Unpaid CPR net" while its
+        // own footnote counted the parcels of both, so the amount and the count
+        // underneath it were answers to two different questions.
+        //
+        // And it reads correctly as the CPRs get paid: that half goes to nought
+        // and what is left standing is the delivered parcels nobody has issued
+        // a receipt for.
         '<div class="k1 c-net open" data-due="1" data-alltime="1">' +
-          '<div class="lb">Unpaid CPR net &middot; all time</div>' +
-          '<div class="vl">' + full(CE.due || 0) + '</div>' +
-          '<div class="fn">' + n0(EV.dueOrders || 0) + ' parcels not received</div>' +
+          '<div class="lb">Net receivable &middot; all time</div>' +
+          '<div class="vl">' + full(netRec(CE, EV)) + '</div>' +
+          '<div class="fn">Unpaid CPR ' + full(CE.due || 0) +
+            ' &middot; delivered, no CPR ' + full(EV.noCpr || 0) + '</div>' +
+          '<div class="fn">' + n0(EV.dueOrders || 0) + ' parcels not received' +
+            (EV.noCpr ? ' &middot; the no-CPR half is an estimate' : '') + '</div>' +
         '</div>' +
         // **Delivery dates, not booking dates.** The figure beside it is cut
         // on the day the courier handed the parcel over - that is what the
@@ -959,10 +990,17 @@
         '</div>' +
         // Charges and tax are earned on the parcels that were **delivered** in
         // this period, which is what the figure beside them is made of.
+        // The same shape as the card above: one figure, and its two halves
+        // named underneath. "ye lazmi h tax ka b pta chlna chahiy" - the tax
+        // is a figure of its own and has to be readable as one, not hidden
+        // inside a sum beside a plus sign.
         '<div class="k1 c-chg open" data-charges="1" data-dates="delivered">' +
           '<div class="lb">Charges &amp; tax &middot; this period</div>' +
           '<div class="vl">' + full(P.charges || 0) + '</div>' +
-          '<div class="fn">' + full(P.fee || 0) + ' + tax ' + full(P.tax || 0) + '</div>' +
+          '<div class="fn">Courier charges ' + full(P.fee || 0) +
+            ' &middot; tax ' + full(P.tax || 0) + '</div>' +
+          '<div class="fn">all time: charges ' + full(EV.fee || 0) +
+            ' &middot; tax ' + full(EV.tax || 0) + '</div>' +
         '</div>' +
         '<div class="k1 c-cpr open" data-due="0">' +
           '<div class="lb">Received on CPRs &middot; this period</div>' +
@@ -1032,8 +1070,12 @@
           sRow('<b>In no CPR at all</b>',
                P.noCprOrders, P.noCpr, EV.noCprOrders, EV.noCpr,
                'open', ' data-nocpr="1"') +
+          // The closing line is the two lines above it added up, and it was
+          // not: it carried the parcel-based estimate of both halves, so a
+          // table of three figures did not add up and the card over it said a
+          // fourth thing. Same arithmetic as the card now - netRec().
           sRow('<b>Net receivable</b>',
-               P.dueOrders, P.due, EV.dueOrders, EV.due,
+               P.dueOrders, netRec(C, P), EV.dueOrders, netRec(CE, EV),
                'close open', ' data-due="1"') +
         '</table>' +
         (P.lateOrders
