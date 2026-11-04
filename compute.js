@@ -65,10 +65,38 @@ const state = {
 
 /* ---------- the meter ---------- */
 
+// How long a spell lasted: the work, plus the idle minutes Neon stays up for
+// afterwards, because that time is already bought.
+//
+// `lastAt` is always written straight after `wokeAt`, so it can only be the
+// smaller of the two if something has reset one without the other - and then
+// this is an epoch subtracted from nothing. It was: the meter read
+// **minus 498,120 hours** for November, which is -(the epoch in seconds), and
+// a used figure that is hugely negative can never reach the 95% line. So the
+// stop-at guard and the sweep's pacing were both switched off all month
+// without anything saying so, which is the most expensive shape a bug in this
+// file can take. A spell is a duration: it is never negative, and it is never
+// longer than the month it is being counted against.
+const MONTH_SECONDS = 31 * 24 * 3600;
+
+// The arithmetic on its own, so it can be checked without a database:
+// tools/compute-check.mjs calls this directly.
+export function spellOf(wokeAt, lastAt) {
+  if (!wokeAt || !lastAt || lastAt < wokeAt) {
+    // nothing usable to measure from - charge the idle tail and no more
+    return Math.round(IDLE / 1000);
+  }
+  const s = Math.round((lastAt - wokeAt + IDLE) / 1000);
+  return Math.min(Math.max(s, 0), MONTH_SECONDS);
+}
+
+function spellSeconds() {
+  return spellOf(state.wokeAt, state.lastAt);
+}
+
 function closeSpell() {
   if (!state.wokeAt) return;
-  // the spell is the work plus the idle minutes Neon stays up for afterwards
-  state.seconds += Math.round((state.lastAt - state.wokeAt + IDLE) / 1000);
+  state.seconds = Math.max(0, state.seconds + spellSeconds());
   state.wokeAt = 0;
   state.dirty = true;
 }
@@ -86,6 +114,9 @@ function note() {
     state.seconds = 0;
     state.bgSeconds = 0;
     state.spells = 0;
+    // Both ends of the spell, or the next closeSpell() measures this month's
+    // last query against last month's first one.
+    state.wokeAt = 0;
     state.lastAt = 0;
   }
 
@@ -104,7 +135,7 @@ function note() {
 // its idle tail included, because that time is already bought.
 function liveSeconds() {
   if (!state.wokeAt) return 0;
-  return Math.round((state.lastAt - state.wokeAt + IDLE) / 1000);
+  return spellSeconds();
 }
 
 export function usedHours() {
@@ -137,9 +168,12 @@ export async function initCompute() {
     'SELECT seconds, bg_seconds, spells FROM compute_meter WHERE month = $1',
     [state.month]);
   if (r.rows[0]) {
-    state.seconds   = Number(r.rows[0].seconds) || 0;
-    state.bgSeconds = Number(r.rows[0].bg_seconds) || 0;
-    state.spells    = Number(r.rows[0].spells) || 0;
+    // A negative figure is a month that was measured wrong, not a month that
+    // used less than nothing - and believing it would hold the guard open for
+    // the rest of the month. Read it as nought and start counting again.
+    state.seconds   = Math.max(0, Number(r.rows[0].seconds) || 0);
+    state.bgSeconds = Math.max(0, Number(r.rows[0].bg_seconds) || 0);
+    state.spells    = Math.max(0, Number(r.rows[0].spells) || 0);
   }
   state.loaded = true;
 

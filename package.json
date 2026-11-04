@@ -10,7 +10,8 @@
     "check:hr-files": "node tools/hr-files-check.mjs",
     "postinstall": "node buildstamp.js",
     "check:all": "node tools/check-all.mjs",
-    "check:banking": "node tools/banking-check.mjs && node tools/banking-report-check.mjs && node tools/banking-setup-check.mjs && node tools/banking-history-check.mjs && node tools/banking-sheets-check.mjs && node tools/banking-archive-check.mjs && node tools/banking-schedule-check.mjs && node tools/banking-ui-check.mjs"
+    "check:banking": "node tools/banking-check.mjs && node tools/banking-report-check.mjs && node tools/banking-setup-check.mjs && node tools/banking-history-check.mjs && node tools/banking-sheets-check.mjs && node tools/banking-archive-check.mjs && node tools/banking-schedule-check.mjs && node tools/banking-ui-check.mjs",
+    "check:compute": "node tools/compute-check.mjs"
   },
   "dependencies": {
     "cookie-parser": "^1.4.6",

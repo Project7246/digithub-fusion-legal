@@ -26,6 +26,7 @@ const checks = [
   ['M&P store', 'tools/mnp-store-check.mjs'],
   ['PostEx audit', 'tools/postex-audit-check.mjs'],
   ['HR formulas', 'tools/hr-check.mjs'],
+  ['compute meter', 'tools/compute-check.mjs'],
 ];
 
 const run = (file) => new Promise((done) => {
