@@ -39,6 +39,9 @@ try {
   const html = readFileSync(new URL('../public/receipts.html', import.meta.url), 'utf8');
   assert.match(html, /querySelectorAll\('\.cbar button\[data-days\]'/);
   assert.doesNotMatch(html, /querySelectorAll\('\.bar button\[data-days\]'/);
+  // app.css keeps .bar for a 7px progress bar with overflow:hidden, so a control
+  // row written as .bar is clipped to seven pixels and cannot be used at all.
+  assert.doesNotMatch(html, /class="bar"/);
   const source = html.slice(html.indexOf('  function renderOurs(list){'), html.indexOf('  function loadAccounts()'));
   const nodes = Object.fromEntries(['cards','ours'].map(k => [k, {innerHTML:'', querySelectorAll:()=>[]} ]));
   const ctx = { $:k=>nodes[k], scopeAccount:{label:'Fixture'}, courier:'postex', location:{search:''},
