@@ -52,15 +52,19 @@ changes - it is the first thing a new agent reads.
 
 ## 3. The move: domain, region and database
 
-For the server/domain/database migration, give the agent **both** blocks:
-section 1 or 2 above **first**, and then the migration prompt in
-`docs/migration-2026-11.md` section 0.
+**`PROMPT.md` at the repository root is the whole thing in one block.** Open
+it, select all, paste. It already carries the standing rules, the files to
+read with their exact paths, what changed on 5 Nov 2026 so the agent does
+not undo it, and the migration task itself.
 
-The order matters. The standing rules say how to work in this repository at
-all - the lock, the checks, not pasting old files over new ones, Roman Urdu.
-The migration prompt only says what to move and what breaks. An agent given
-the second without the first will do the migration and quietly undo a week
-of code on the way past.
+That is deliberate: handing an agent two or three blocks and hoping it joins
+them is how a rule gets dropped. One file, one paste.
+
+The order inside it matters. The standing rules say how to work in this
+repository at all - the lock, the checks, not pasting old files over new
+ones, Roman Urdu. The migration part only says what to move and what breaks.
+An agent given the second without the first will do the migration and
+quietly undo a week of code on the way past.
 
 ---
 
