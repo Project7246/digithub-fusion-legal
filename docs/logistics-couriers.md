@@ -1196,3 +1196,16 @@ networks - and `codeOf()` in wire.js read it as the error code. So a call
 that had merely run out of time reported a number that told nobody the
 password was fine. It reads `AbortError` and `TimeoutError` by name first,
 and every courier says "no answer at all" instead.
+
+### A timestamptz is not a day
+
+`absorbPaymentParcels` read the cover's `created_on` and took the first ten
+characters of it. `created_on` is a `timestamptz`, so the driver hands back a
+Date and `String(d).slice(0,10)` is **"Thu Nov 05"** - which Postgres then
+refuses as a date. The counts and the invoice split had already been written
+by then, so the receipt looked half-right and the parcels never linked. The
+query asks for `to_char(created_on AT TIME ZONE 'Asia/Karachi','YYYY-MM-DD')`
+now, which is what the rest of the M&P path already does.
+
+`day()` in statuses.js exists for exactly this reason on the courier side;
+this was the same mistake on our own side of the wire.

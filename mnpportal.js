@@ -136,7 +136,10 @@ export function mapPaymentDetail(response, account) {
   // How many parcels the payment holds, and what happened to each - their
   // own answer, which is what makes a count on a receipt checkable. Their
   // words, not our buckets: DELIVERED and RETURNED are what they write.
-  const counts = { total: data.consignments.length };
+  // Delivered and returned start at nought rather than being absent, because
+  // the list has been read: "no parcel came back" is a fact worth printing,
+  // and a receipt that simply leaves the line out cannot say it.
+  const counts = { total: data.consignments.length, DELIVERED: 0, RETURNED: 0 };
   data.consignments.forEach(o => {
     const k = String(o.cnStatus || 'UNKNOWN').trim().toUpperCase();
     counts[k] = (counts[k] || 0) + 1;

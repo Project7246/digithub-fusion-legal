@@ -73,7 +73,13 @@ export async function absorbPaymentParcels(realmId, acc, opts = {}) {
   if (!accountNo) return { covers: 0, linked: 0, note: 'this account is not validated yet' };
 
   const covers = await pool.query(
-    `SELECT cpr_number, created_on, (raw->'counts'->>'total')::int AS known
+    `SELECT cpr_number,
+            -- as a day, by hand. created_on is a timestamptz, so the driver
+            -- hands back a Date and String(d).slice(0,10) is "Thu Nov 05" -
+            -- which Postgres then refuses as a date, and the whole link
+            -- failed after the counts had already been written.
+            to_char(created_on AT TIME ZONE 'Asia/Karachi', 'YYYY-MM-DD') AS created_day,
+            (raw->'counts'->>'total')::int AS known
        FROM courier_cprs
       WHERE realm_id = $1 AND account_id = $2 AND courier = 'mnp'
       ORDER BY created_on DESC NULLS LAST
@@ -131,7 +137,7 @@ export async function absorbPaymentParcels(realmId, acc, opts = {}) {
   let linked = 0;
   for (const [cpr, item] of lists) {
     linked += await linkCprParcels(realmId, acc.id, cpr, item.trackings,
-      item.cover.created_on ? String(item.cover.created_on).slice(0, 10) : null);
+      item.cover.created_day || null);
   }
 
   let cleared = 0;
