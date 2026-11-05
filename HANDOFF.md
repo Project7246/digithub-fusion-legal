@@ -1,7 +1,7 @@
 # Handover - current folder state
 Last agent: Claude (Sonnet 5) - 6 Nov 2026. Task: migration Step A (add e.availity.pk).
 
-## In progress - Step A of docs/migration-2026-11.md
+## Step A of docs/migration-2026-11.md - DONE and verified, 6 Nov 2026
 - Owner authorized Claude to click Hostinger + DigitalOcean directly for this one
   step only ("sb tm khud kro allowed hy aj ky liye", 6 Nov 2026). Recorded as a
   dated exception in CLAUDE.md next to the rule it sets aside. Does not cover
@@ -12,14 +12,17 @@ Last agent: Claude (Sonnet 5) - 6 Nov 2026. Task: migration Step A (add e.availi
   management option "You manage your domain" (kept Hostinger nameservers - did NOT
   select "We manage your domain", which would have moved DNS off Hostinger).
   `ca.availity.pk` left as PRIMARY, untouched.
-- Waiting: DigitalOcean shows `e.availity.pk` status **Pending** (certificate not
-  issued yet). `https://e.availity.pk` returns no response (curl 000) until that
-  finishes; DNS itself already resolves. `ca.availity.pk` confirmed unaffected
-  (`/api/version` unchanged) throughout.
-- Next: once Pending -> Active, verify `https://e.availity.pk` opens the app and
-  `ca.availity.pk` still works, then stop - Step A ends there. Step B (BASE_URL,
-  QuickBooks/Shopify redirect URIs, signs everyone out) needs the owner's go-ahead
-  per PROMPT.md, separately, not folded into this.
+- Certificate finished provisioning. Both domains now Active in DigitalOcean
+  Networking: starter domain, `ca.availity.pk` (PRIMARY), `e.availity.pk`.
+  `https://e.availity.pk/api/version` and `https://ca.availity.pk/api/version`
+  both return the same version (`1793914031013`) - same live app, nothing
+  user-facing changed.
+- Step A is complete. **Not started**: Step B (BASE_URL to e.availity.pk,
+  QuickBooks + Shopify redirect URIs added first, signs everyone out), Step C
+  (region to Singapore), Step D (database to Singapore). Each needs the owner's
+  go-ahead separately per PROMPT.md - none folded into this session's override.
+- The 6 Nov "allowed hy aj ky liye" override in CLAUDE.md covered Step A's two
+  clicks only; it does not carry forward to Steps B-D.
 - Agent lock still held (migration not finished). Files uncommitted before this
   task: none; this commit carries CLAUDE.md (exception note) and this file.
 
