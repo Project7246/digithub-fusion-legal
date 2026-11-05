@@ -741,8 +741,15 @@ export async function recentCprs(realmId, opts) {
   const where = base.where.concat([`o.cpr_number IS NOT NULL`, `o.cpr_number <> ''`]);
   const args = base.args.slice();
 
-  if (opts.from) { args.push(opts.from); where.push(`o.settled_on >= $${args.length}`); }
-  if (opts.to)   { args.push(opts.to);   where.push(`o.settled_on <= $${args.length}`); }
+  // **The receipt's date is the receipt's own**, not the earliest date one of
+  // its parcels happened to settle on. Trax's payment 1837736 is 2 November on
+  // their portal and its parcels' own dates reach back to 12 October, so this
+  // list put it among the October receipts - "site pr 4 nov ka cpr, us k bd 22
+  // oct ka". Where no cover is held the parcels are still the only answer.
+  const DATED = `COALESCE(MAX(c.approved_on), MAX(c.created_on), MIN(o.settled_on))`;
+  const having = [];
+  if (opts.from) { args.push(opts.from); having.push(`${DATED} >= $${args.length}`); }
+  if (opts.to)   { args.push(opts.to);   having.push(`${DATED} <= $${args.length}`); }
 
   // Built from the parcels themselves, which is what makes this work for every
   // courier: PostEx hands over a receipt from its portal, M&P hand back a
@@ -752,7 +759,7 @@ export async function recentCprs(realmId, opts) {
   // QuickBooks, and its absence is not a problem: the parcels are the receipt.
   const r = await pool.query(
     `SELECT o.cpr_number, o.account_id, a.label, a.courier,
-            MIN(o.settled_on) AS settled_on,
+            ${DATED} AS settled_on,
             COUNT(*) AS orders,
             COALESCE(SUM(o.amount),0) AS amount,
             COALESCE(SUM(o.fee + o.tax),0) AS charges,
@@ -778,7 +785,18 @@ export async function recentCprs(realmId, opts) {
             MAX(c.wh_amount) AS cover_wh,
             MAX(c.raw->>'source') AS payment_source,
             MAX(CASE WHEN c.raw->>'source' = 'mnp-portal-payment-v1'
-              THEN (c.raw->'paymentSummary'->>'bankFee')::numeric END) AS bank_fee
+              THEN (c.raw->'paymentSummary'->>'bankFee')::numeric END) AS bank_fee,
+            -- Trax print five deductions on their payment screen and the five
+            -- together are exactly what is missing between what was collected
+            -- and what reached the bank, so each is kept and named.
+            MAX(CASE WHEN c.raw->>'source' = 'trax-portal-payment-v1'
+              THEN (c.raw->>'gst')::numeric END) AS trax_gst,
+            MAX(CASE WHEN c.raw->>'source' = 'trax-portal-payment-v1'
+              THEN (c.raw->>'wht')::numeric END) AS trax_wht,
+            MAX(CASE WHEN c.raw->>'source' = 'trax-portal-payment-v1'
+              THEN (c.raw->>'codSst')::numeric END) AS trax_cod_sst,
+            MAX(CASE WHEN c.raw->>'source' = 'trax-portal-payment-v1'
+              THEN (c.raw->>'ibft')::numeric END) AS trax_ibft
        FROM courier_orders o
        JOIN courier_accounts a ON a.id = o.account_id
        LEFT JOIN courier_cprs c
@@ -787,16 +805,33 @@ export async function recentCprs(realmId, opts) {
              AND c.cpr_number = o.cpr_number
       WHERE ${where.join(' AND ')}
       GROUP BY o.cpr_number, o.account_id, a.label, a.courier
-      ORDER BY MIN(o.settled_on) DESC NULLS LAST
+      ${having.length ? 'HAVING ' + having.join(' AND ') : ''}
+      ORDER BY ${DATED} DESC NULLS LAST
       LIMIT ${Number(opts.limit) || 200}`, args);
 
   return r.rows.map(x => {
     const consolidated = x.courier === 'mnp' && x.payment_source === 'mnp-portal-payment-v1';
-    const amount = consolidated ? r2(x.gross_amount) : r2(x.amount);
-    const fee = consolidated ? r2(x.charge_amount) : r2(x.fee);
-    const tax = consolidated ? r2(x.cover_wh) : r2(x.tax);
-    const bankFee = consolidated ? r2(x.bank_fee) : null;
-    const charges = consolidated ? r2(fee + tax + bankFee) : r2(x.charges);
+    // The courier's own receipt, read off their payments screen. Adding the
+    // parcels up instead gave 30,645,750 collected against a set of receipts
+    // whose own pages say 30,344,297 - our arithmetic answering a question
+    // the courier had already answered on paper.
+    const traxCover = x.courier === 'trax' && x.payment_source === 'trax-portal-payment-v1';
+
+    const amount = consolidated || traxCover ? r2(x.gross_amount) : r2(x.amount);
+    const fee = consolidated || traxCover ? r2(x.charge_amount) : r2(x.fee);
+    const tax = consolidated ? r2(x.cover_wh)
+              : traxCover    ? r2(x.trax_gst)
+                             : r2(x.tax);
+    const bankFee = consolidated ? r2(x.bank_fee)
+                  : traxCover    ? r2(x.trax_ibft)
+                                 : null;
+    // Their withholding and COD SST are deductions too, so they belong in
+    // what the courier kept - otherwise collected less charges would not come
+    // back to the net they actually paid.
+    const withheld = traxCover ? r2(Number(x.trax_wht || 0) + Number(x.trax_cod_sst || 0)) : 0;
+    const charges = consolidated ? r2(fee + tax + bankFee)
+                  : traxCover    ? r2(fee + tax + bankFee + withheld)
+                                 : r2(x.charges);
     return {
       cpr: x.cpr_number,
       accountId: x.account_id,
@@ -806,7 +841,7 @@ export async function recentCprs(realmId, opts) {
       orders: Number(x.orders),
       amount,
       charges,
-      fee, tax, bankFee, parcelFee: r2(x.fee),
+      fee, tax, bankFee, withheld, parcelFee: r2(x.fee),
       // What they actually paid against this receipt. A courier that deducts
       // pays the COD less its charges; M&P pay the whole COD and bill their
       // charges on an invoice of their own, so taking them off here would

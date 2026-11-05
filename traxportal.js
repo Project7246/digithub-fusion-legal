@@ -636,6 +636,10 @@ export function mapPayment(r) {
     paidToName:  String(r.shipper || '').trim(),
     instrument:  String(r.reference_number || '').trim() || null,
     raw: {
+      // Named, so the receipt list can tell a cover we hold from the courier
+      // itself apart from one worked out by adding its parcels up - the same
+      // mark M&P's consolidated payments carry.
+      source: 'trax-portal-payment-v1',
       gst: money(r.total_gst),
       wht: money(r.total_wht),
       codSst: money(r.total_cod_sst),
