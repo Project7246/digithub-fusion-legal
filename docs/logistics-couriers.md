@@ -977,3 +977,12 @@ was mostly those.
 theirs and no webhook of theirs ever carried, and it runs only straight after
 the payment screen has answered: a screen that could not be read is silence,
 and silence is not evidence.
+
+### Their own five do not always come to their own payable
+
+Checked across the nine payments on 5 Nov 2026: 1838602 is 0.43 out, which
+is rounding to the rupee, but **1839584 is 8.93 short and 1837736 is 9.46
+over**. Both figures are Trax's, printed on the same row. So the receipt
+names the sum and the difference rather than choosing between them - what
+arrived is what they paid, and a gap of a rupee or more is said out loud
+instead of being absorbed into a line nobody can check.

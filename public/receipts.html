@@ -1172,10 +1172,13 @@
         // over is said rather than quietly absorbed - a receipt that does
         // not add up is the first thing worth knowing about it.
         (Math.abs(over) >= 1
-          ? '<div class="note" style="margin-top:8px">' + full(Math.abs(over)) +
-            ' of this payment is not accounted for by the five deductions ' +
-            esc(cname(c.courier)) + ' print. The figure paid is theirs; the ' +
-            'difference is worth asking them about.</div>'
+          ? '<div class="note" style="margin-top:8px">Collected less those ' +
+            'five comes to ' + full(collected - off) + ', and ' +
+            esc(cname(c.courier)) + ' paid ' + full(c.net) + ' — ' +
+            full(Math.abs(over)) + (over > 0 ? ' less' : ' more') +
+            ' than their own five deductions leave. Both figures are theirs, ' +
+            'off their payment screen; the difference is worth asking them ' +
+            'about. What arrived is what they paid.</div>'
           : '<div class="note" style="margin-top:8px">Collected less those ' +
             'five is exactly what they paid, so this receipt ties to their ' +
             'own payment screen.</div>');
