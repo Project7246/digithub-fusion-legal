@@ -1,5 +1,27 @@
 # Handover - current folder state
-Last agent: Codex - 6 Nov 2026. Task: preserve latest migration preparation.
+Last agent: Claude (Sonnet 5) - 6 Nov 2026. Task: migration Step A (add e.availity.pk).
+
+## In progress - Step A of docs/migration-2026-11.md
+- Owner authorized Claude to click Hostinger + DigitalOcean directly for this one
+  step only ("sb tm khud kro allowed hy aj ky liye", 6 Nov 2026). Recorded as a
+  dated exception in CLAUDE.md next to the rule it sets aside. Does not cover
+  Steps B-D (BASE_URL, region, DATABASE_URL) - those still wait for the owner.
+- Done: Hostinger `availity.pk` DNS - added `CNAME e -> hammerhead-app-z86ki.ondigitalocean.app`,
+  TTL 14400. Verified in the records list afterwards; no other record touched.
+- Done: DigitalOcean `hammerhead-app` -> Networking -> Add domain -> `e.availity.pk`,
+  management option "You manage your domain" (kept Hostinger nameservers - did NOT
+  select "We manage your domain", which would have moved DNS off Hostinger).
+  `ca.availity.pk` left as PRIMARY, untouched.
+- Waiting: DigitalOcean shows `e.availity.pk` status **Pending** (certificate not
+  issued yet). `https://e.availity.pk` returns no response (curl 000) until that
+  finishes; DNS itself already resolves. `ca.availity.pk` confirmed unaffected
+  (`/api/version` unchanged) throughout.
+- Next: once Pending -> Active, verify `https://e.availity.pk` opens the app and
+  `ca.availity.pk` still works, then stop - Step A ends there. Step B (BASE_URL,
+  QuickBooks/Shopify redirect URIs, signs everyone out) needs the owner's go-ahead
+  per PROMPT.md, separately, not folded into this.
+- Agent lock still held (migration not finished). Files uncommitted before this
+  task: none; this commit carries CLAUDE.md (exception note) and this file.
 
 ## Complete and verified
 - Read AGENTS.md, START-HERE.md, PROMPT.md, CLAUDE.md and docs/migration-2026-11.md.

@@ -250,6 +250,12 @@ the app the background stays plain, because that is where the books are worked o
 - Claude still cannot **change** any of those settings - env vars, DNS, regions, redirect
   URIs are the owner's to press Save on. Read them, say exactly what to change, verify
   afterwards.
+  - **Exception, 6 Nov 2026, one day only**: owner said "sb tm khud kro allowed hy aj ky
+    liye" and authorized Claude to click these directly for Step A of the migration
+    (`docs/migration-2026-11.md`) - adding the `e` CNAME in Hostinger and adding
+    `e.availity.pk` as a domain in DigitalOcean. Scoped to that day and that step only;
+    the rule above stands again after it. Does not cover `BASE_URL`, region or
+    `DATABASE_URL` changes (Steps B-D), which still wait for the owner.
 - First `git push` from this folder opens a browser login: user must sign in as **Project7246**.
 - When DigitalOcean env vars change, user must Save and redeploy.
 - If Google or QuickBooks login is added: add `https://ca.availity.pk/...` as a redirect
