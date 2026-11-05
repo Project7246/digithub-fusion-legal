@@ -72,6 +72,22 @@ Last agent: Claude (Sonnet 5) - 6 Nov 2026. Task: migration Step A (add e.availi
   app (untouched, not part of this request) and is also what the Intuit and
   Shopify redirect URI lists still carry a now-unused entry for alongside
   the removed `ca.availity.pk` ones - harmless, not cleaned up, not asked for.
+## ca.availity.pk cleanup in Intuit and Shopify, 6 Nov 2026
+- Owner asked for `ca.availity.pk` removed everywhere it's no longer needed,
+  including hPanel (already done above) - extended as a dated exception in
+  CLAUDE.md.
+- **Intuit**: removed the `https://ca.availity.pk/auth/callback` Production
+  Redirect URI, Saved. Three remain: OAuth2Playground, the DigitalOcean
+  starter-domain one (untouched, not asked about), and `e.availity.pk`.
+  Verified by re-reading the list.
+- **Shopify**: released version `fusion-4`, updating both `application_url`
+  (was still `https://ca.availity.pk/`, now `https://e.availity.pk/`) and
+  `redirect_urls` (now only the `e.availity.pk` one) in the same version,
+  since `application_url` was also a stale reference to the now-dead domain.
+  Verified by reading the released version's detail page back.
+- Starter domain's own Intuit redirect URI entry was left as is - it was not
+  part of this request.
+
 - Still not done, still waiting on the owner: Steps C (region to Singapore)
   and D (database to Singapore) - owner confirmed "Singapore" when asked
   (said "Bangkok" once, clarified). Neither started.

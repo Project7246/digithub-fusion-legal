@@ -273,8 +273,14 @@ the app the background stays plain, because that is where the books are worked o
     removes the Hostinger `ca` CNAME and the `ca.availity.pk` domain in
     DigitalOcean, **after** `BASE_URL` is switched and `e.availity.pk` is
     confirmed working - not before, so the app is never left pointing at a
-    domain that no longer serves it. Still does not cover region or
-    `DATABASE_URL` changes (Steps C-D), which still wait for the owner.
+    domain that no longer serves it.
+  - **Extended once more, same day**: owner said "intuite or dev mein bhe sai
+    kro her jaga sy ca.availity khtm krna hy" - the unused `ca.availity.pk`
+    redirect-URI entries left in Intuit (Production Redirect URIs) and Shopify
+    (Dev Dashboard, Fusion app version) when they were added as prep now come
+    out too, since `ca.availity.pk` itself is gone and they serve no purpose.
+    Still does not cover region or `DATABASE_URL` changes (Steps C-D), which
+    still wait for the owner.
 - First `git push` from this folder opens a browser login: user must sign in as **Project7246**.
 - When DigitalOcean env vars change, user must Save and redeploy.
 - If Google or a new login is added: add `https://e.availity.pk/...` as a redirect
