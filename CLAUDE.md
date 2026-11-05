@@ -179,12 +179,14 @@ get a first deploy working. They can be deleted or rewritten freely.
 | Git on this machine | Installed by `winget install --id Git.Git -e` at `C:\Program Files\Git\cmd\git.exe`. A session opened before that install has the old PATH, so `git` is not a word it knows - call the full path until Claude Code is reopened. The GitHub credential is already in Credential Manager here: `git fetch` works without a browser |
 | Server | DigitalOcean App Platform, app `hammerhead-app`, component `digithub-fusion-legal`, Basic 512 MB, $5/month, region Bangalore (BLR1), Auto-deploy on push is ON |
 | Database | **Neon** (not DigitalOcean). Project **DigitHub Fusion**, `billowing-poetry-08559264`, branch `production` (`br-wispy-sound-b4yb0j31`), **region AWS US East 2 (Ohio)** - read off the Neon console on 5 Nov 2026, where `autumn-tooth-08816249` was written here before and is not the live project. There is a **second, empty** project of the same name, last active a month ago. Connected only through the env var `DATABASE_URL` set in DigitalOcean (component Settings > Environment Variables). Locally it would go in an untracked `.env` |
-| Domain | `https://ca.availity.pk`. DNS is on Hostinger: `CNAME ca -> hammerhead-app-z86ki.ondigitalocean.app`. Other records on `availity.pk` (main site, email MX/TXT) must not be touched |
+| Domain | `https://e.availity.pk` (PRIMARY on the app) - switched from `ca.availity.pk` on 6 Nov 2026 (migration Step B). DNS is on Hostinger: `CNAME e -> hammerhead-app-z86ki.ondigitalocean.app`. `ca.availity.pk` was removed outright, not kept or redirected - its `CNAME ca` record and its DigitalOcean domain entry are both gone. Other records on `availity.pk` (main site, email MX/TXT) must not be touched |
 | Starter URL | `https://hammerhead-app-z86ki.ondigitalocean.app` |
 
 Deploy: push to `main` -> DigitalOcean builds and deploys by itself (no Render here).
-`ca.availity.pk` is live over HTTPS and serves the same build, so it is the address to
-use; `BASE_URL` points at it and the QuickBooks sign-in only works there.
+`e.availity.pk` is live over HTTPS and serves the same build, so it is the address to
+use; `BASE_URL` points at it and the QuickBooks sign-in only works there (verified by
+owner sign-in and QuickBooks showing Connected, 6 Nov 2026). `ca.availity.pk` no longer
+resolves to the app - do not reference it as a working address in new work.
 
 Env vars in DigitalOcean are not saved until **Save** is pressed - values typed and left
 are silently lost, and the app then runs on its fallbacks (`BASE_URL` becomes
@@ -254,11 +256,28 @@ the app the background stays plain, because that is where the books are worked o
     liye" and authorized Claude to click these directly for Step A of the migration
     (`docs/migration-2026-11.md`) - adding the `e` CNAME in Hostinger and adding
     `e.availity.pk` as a domain in DigitalOcean. Scoped to that day and that step only;
-    the rule above stands again after it. Does not cover `BASE_URL`, region or
-    `DATABASE_URL` changes (Steps B-D), which still wait for the owner.
+    the rule above stands again after it.
+  - **Extended, same day**: owner said "dono login kr diy hy ... tm krdo" and
+    authorized Claude to also add the two redirect URIs for Step B prep - Intuit
+    developer console (`https://e.availity.pk/auth/callback`, old one kept) and
+    the Shopify app under the **Pureclans** store (`https://e.availity.pk/auth/shopify/callback`,
+    old one kept).
+  - **Extended again, same day**: owner said "sb khud kro mjhy kuch ni ata" and
+    authorized Claude to also make Step B's actual cutover - `BASE_URL` to
+    `https://e.availity.pk` in DigitalOcean, which signs everyone out (owner
+    said that is fine).
+  - **Extended further, same day**: owner said "khatam kro ca waly ko taky ek he
+    bar sab e.availity per chala jay" - this goes past the runbook, which says to
+    keep `ca.availity.pk` on the app for a while. Owner chose outright removal
+    over a redirect rule, explicitly, after being told the difference. Claude
+    removes the Hostinger `ca` CNAME and the `ca.availity.pk` domain in
+    DigitalOcean, **after** `BASE_URL` is switched and `e.availity.pk` is
+    confirmed working - not before, so the app is never left pointing at a
+    domain that no longer serves it. Still does not cover region or
+    `DATABASE_URL` changes (Steps C-D), which still wait for the owner.
 - First `git push` from this folder opens a browser login: user must sign in as **Project7246**.
 - When DigitalOcean env vars change, user must Save and redeploy.
-- If Google or QuickBooks login is added: add `https://ca.availity.pk/...` as a redirect
+- If Google or a new login is added: add `https://e.availity.pk/...` as a redirect
   URL in their developer consoles.
 
 ## Open items

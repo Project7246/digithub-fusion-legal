@@ -43,11 +43,38 @@ Last agent: Claude (Sonnet 5) - 6 Nov 2026. Task: migration Step A (add e.availi
   `https://ca.availity.pk/auth/shopify/callback` and
   `https://e.availity.pk/auth/shopify/callback`. Verified by reading the
   released version's detail page back.
-- Still not done, still waiting on the owner: Step B's actual cutover
-  (`BASE_URL` env var in DigitalOcean, and Shopify's `application_url` if that
-  needs updating too - the runbook doesn't say it does, only the redirect
-  URLs), which signs everyone out. Steps C (region) and D (database) also
-  untouched.
+## Step B done and verified, 6 Nov 2026 - BASE_URL switched, ca.availity.pk removed
+- Owner authorized the cutover ("sb khud kro mjhy kuch ni ata") and then asked
+  to also remove `ca.availity.pk` outright in the same session, not keep it
+  with a redirect ("khatam kro ca waly ko taky ek he bar sab e.availity per
+  chala jay") - both recorded as dated exceptions in CLAUDE.md.
+- DigitalOcean: `BASE_URL` set to `https://e.availity.pk`, Saved, redeployed
+  (build `1793918352359`, went live). Verified against `/api/setup-check`:
+  `baseUrl` and `redirectUri` both show `e.availity.pk`, all five `needed`
+  values `true`. Owner signed in on `e.availity.pk` and confirmed QuickBooks
+  shows **Connected** - the OAuth round-trip through the new redirect URI
+  works end to end.
+- `e.availity.pk` set as PRIMARY domain on the app (was `ca.availity.pk`).
+- `ca.availity.pk` then removed entirely, in this order: DigitalOcean domain
+  removed first ("Domain has been successfully removed"), then the Hostinger
+  `ca` CNAME record deleted ("DNS Record deleted successfully") - domain
+  removed before DNS record, so the app was never left pointing at a
+  not-yet-deregistered custom domain. Verified after: `e.availity.pk/api/version`
+  responds normally; `ca.availity.pk` no longer connects (curl 000) even
+  though DNS may still resolve from cache for a while (TTL was 14400).
+- One near-miss while doing this: the DigitalOcean "..." menu's item
+  positions shifted between opening it and clicking, and a "Remove Domain"
+  dialog opened for `e.availity.pk` (the wrong one) on the first attempt.
+  Caught before confirming - clicked Cancel, nothing was deleted, reopened
+  the menu and re-verified the item position before clicking again. Worth
+  the same care next time this menu is used.
+- Starter domain `hammerhead-app-z86ki.ondigitalocean.app` is still on the
+  app (untouched, not part of this request) and is also what the Intuit and
+  Shopify redirect URI lists still carry a now-unused entry for alongside
+  the removed `ca.availity.pk` ones - harmless, not cleaned up, not asked for.
+- Still not done, still waiting on the owner: Steps C (region to Singapore)
+  and D (database to Singapore) - owner confirmed "Singapore" when asked
+  (said "Bangkok" once, clarified). Neither started.
 - Agent lock still held (migration not finished). Files uncommitted before this
   task: none; this commit carries CLAUDE.md (exception note) and this file.
 

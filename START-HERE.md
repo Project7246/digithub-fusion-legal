@@ -25,7 +25,7 @@ asking for anything. The words are the owner's; only the notes marked
 
 > Fusion, at C:\Users\Project Availity\Desktop\digithub-fusion
 > (GitHub Project7246/digithub-fusion-legal, branch main, deployed on DigitalOcean
-> app hammerhead-app / component digithub-fusion-legal, live at https://ca.availity.pk).
+> app hammerhead-app / component digithub-fusion-legal, live at https://e.availity.pk).
 >
 > Claude and you share this folder and this repository. Before you touch anything:
 >
@@ -43,10 +43,13 @@ asking for anything. The words are the owner's; only the notes marked
 > unfamiliar code is never a reason to remove it. Only my requested scope - ask
 > instead of guessing. Report in Roman Urdu as AGENTS.md section G says.
 
-*(added 5 Nov 2026)* The live address in that block becomes
-**`https://e.availity.pk`** once the move in `docs/migration-2026-11.md` is
-done. Until then `ca.availity.pk` is correct. Update this file when it
-changes - it is the first thing a new agent reads.
+*(updated 6 Nov 2026)* The address switched to `https://e.availity.pk` on 6 Nov
+2026 (migration Step B, `docs/migration-2026-11.md`) - `BASE_URL`, the
+redirect URIs and the DigitalOcean domain all moved, and `ca.availity.pk` was
+removed outright (not kept, not redirected). The block above is already
+current. Only the **region** (still Bangalore/BLR1) and the **database**
+(still Neon Ohio) remain - Steps C and D of that same file, not started.
+Update this file again when those move too.
 
 ---
 
