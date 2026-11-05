@@ -5,40 +5,38 @@ Keep it under 30 lines. Read it in the pre-flight; see AGENTS.md section A.
 
 **Last agent**: Claude (Opus 5) - 5 Nov 2026
 
-## A Trax receipt now holds what Trax say it holds
+## One receipt system per courier, not one per account
 
-- **Their per-parcel call does not name the payment they pay against.** Its
-  `id` was written on as a CPR number, so payment 1839584 carried **1,709
-  parcels against the 924 on their own screen** - parcels still in transit
-  among them. `fetchPayment` no longer returns a receipt number; a courier
-  with a payment screen is never asked parcel by parcel; `savePayments`
-  keeps the number it has when handed an empty one; `clearCprStrays` lets a
-  parcel go of a payment it was never in; **`adjusted` was the third kind
-  and was not being read**. Every payment is now within a few parcels of
-  Trax's own count (920 of 924, 2,363 of 2,370 - the rest are parcels this
-  app holds no row for).
-- **The screen**: status as a column and in the receipt (Paid / Processed),
-  "What is in this receipt" in the courier's own kinds, Money with **all
-  five deductions named** - the withholding and COD SST were not on the page
-  at all, 79,646 of it on one receipt - and "By status" underneath.
-- **Each courier's receipt is read in that courier's own columns.** Trax's
-  money block is their six and only their six - total amount, charges, GST,
-  WHT, COD SST, payable. **No IBFT line**: their row carries the field but
-  their screen prints no such column, so it is named in the difference note
-  instead, and the receipts list draws no Bank fee cell for a Trax row. The
-  list's Tax column is every tax cut, not just the GST.
-- **Every courier now has the second table PostEx has** - its own payment
-  book, month by month, with the courier's own status word. Built only from
-  covers the courier's payment screen wrote.
-- `npm run check:trax` is new and synthetic. `check:all` = 18 ok.
+- **`/api/courier/receipts` asked the courier nothing.** It is the route the
+  page reads for every courier but PostEx, and the chase lived on screens a
+  Trax or M&P tab never calls - so Trax - AA Traders only came right because
+  its payment screen was read by hand, and **ElRB was never asked at all**.
+  That route now starts the chase, and `chaseCpr` takes a courier as well as
+  an account, so one tab asks every account of that courier.
+- **A read that failed is on the screen now.** `receiptSources()` keeps, per
+  account, when its receipt screen was last read and the reason if it could
+  not be - the page names the account and the courier's own words for why.
+  Silently dropping it is what let one account be right and the next invented.
+- **M&P bill, they do not deduct**, and the receipt says so: their own six
+  columns (RR amount, invoice amount, MON_FIX, tax amount, IBFT, net
+  payable), the invoice in the parts they bill it in (shipment, fuel, GST,
+  extra, OSA/NSA + its own GST), and the withholding split into income tax
+  and sales tax. **MON_FIX was never read**; the OSA/NSA line was on no
+  screen at all.
+- **A payment's parcels come from the payment**: `absorbPaymentParcels`
+  (mnplive.js) reads their detail report - 298 consignments, 273 delivered,
+  25 returned on the one checked - and clears strays. A payment of 235,668
+  had shown four parcels.
+- `saveCprs` merges `raw` instead of writing it whole; `mergeCprRaw` adds to
+  a cover without disturbing M&P's audited write path.
+- New: `npm run check:mnp-receipts`. `npm run check:all` = 19 ok.
 
 ## What the owner must check
 
-- **Trax - ElRB (account 9) still shows 22 receipts with no payment behind
-  them** (1 to 1,858 parcels, no status, no date). Those are the invented
-  numbers. They clear themselves the moment that account's payment screen
-  answers - and it is not answering, so **its sonic.pk sign-in is the thing
-  to check**: re-save it on the Couriers page, which checks it before saving.
+- **Trax - ElRB**: open `/receipts?courier=trax`. Either its receipts become
+  Trax's own figures, or the page now names the reason - most likely its
+  sonic.pk sign-in. Re-save it on the Couriers page, which checks it.
+- **M&P - GlowCart**: parcel counts per payment should become M&P's own
+  (298, not 4). Rose Belle is the other account and was not looked at.
 - 9 Trax CPRs are still not in QuickBooks (21,603,433) - the books, not a bug.
-- PostEx **AH (10) and UR (11) have no webhook**. M&P GlowCart unreconciled.
-- Next free migration number is **006**. Working tree clean.
+- PostEx AH (10) and UR (11) have no webhook. Next migration number is **006**.

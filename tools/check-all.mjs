@@ -30,6 +30,7 @@ const checks = [
   ['relay body', 'tools/relay-body-check.mjs'],
   ['M&P settled', 'tools/mnp-settled-check.mjs'],
   ['Trax receipts', 'tools/trax-receipts-check.mjs'],
+  ['M&P receipts', 'tools/mnp-receipts-check.mjs'],
 ];
 
 const run = (file) => new Promise((done) => {

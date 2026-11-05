@@ -78,11 +78,17 @@ export function mapPaymentReport(response, account) {
     const invoiced = currency(row.InvoiceAmount, 'InvoiceAmount');
     const withholding = currency(row.TaxAmount, 'TaxAmount');
     const bankFee = currency(row.IBFTFee, 'IBFTFee');
+    // MON_FIX is a column of theirs that nothing here read. It is nought on
+    // every payment seen so far, which is exactly why it had to be read: a
+    // deduction that is nought today and 2,000 next month would otherwise
+    // come out as a receipt that no longer ties to their own net, with
+    // nothing on the screen to say which figure moved.
+    const monthly = currency(row.MON_FIX == null ? 0 : row.MON_FIX, 'MON_FIX');
     const beforeBankFee = currency(row.NetPayable, 'NetPayable');
     if (money(bankFee) < 0n) throw new Error('M&P returned an invalid IBFT fee');
     const mode = String(row.InstrumentMode || '').trim();
     const instrument = String(row.InstrumentNumber || '').trim();
-    const mapped = { paymentId, paidOn, amount, invoiced, withholding, bankFee,
+    const mapped = { paymentId, paidOn, amount, invoiced, withholding, bankFee, monthly,
       netPayable: addMoney([beforeBankFee, '-' + bankFee]), beforeBankFee,
       status: instrument && /^IBFT$/i.test(mode) ? 'CLOSED' : 'PENDING',
       mode, instrument, account: String(account), consolidated: true,
@@ -118,15 +124,47 @@ export function mapPaymentDetail(response, account) {
     if (!Number.isFinite(Number(value))) throw new Error('M&P invoice detail has an invalid amount');
     return Number(value).toFixed(2);
   };
+  // **M&P do not deduct the way Trax do, and the receipt has to say so.**
+  // Trax keep a charge and then withhold twice; M&P bill an invoice made of
+  // a shipment charge, a fuel charge, GST on those, any extra charges and
+  // an OSA/NSA line, and withhold income tax and sales tax beside it. Those
+  // are their own words off their own screen, and each is carried here so
+  // the receipt can print them rather than roll them into one "charges".
+  const osa = data.osansa || {};
+  const n2 = v => Math.round(Number(v || 0) * 100) / 100;
+
+  // How many parcels the payment holds, and what happened to each - their
+  // own answer, which is what makes a count on a receipt checkable. Their
+  // words, not our buckets: DELIVERED and RETURNED are what they write.
+  const counts = { total: data.consignments.length };
+  data.consignments.forEach(o => {
+    const k = String(o.cnStatus || 'UNKNOWN').trim().toUpperCase();
+    counts[k] = (counts[k] || 0) + 1;
+  });
+
+  const sum = f => n2(data.consignments.reduce((a, o) => a + Number(o[f] || 0), 0));
+
   return { summary: {
     gross: currency(head.totalCODAmount, 'totalCODAmount'),
     charges: currency(head.invoiceAmount, 'invoiceAmount'),
     // GST is part of the recovered invoice total, not an extra deduction.
     invoiceGst: rounded(invoice.gst), shipping: rounded(invoice.shipmentCharge),
     fuel: rounded(invoice.fuel_Charge), extraCharges: rounded(invoice.extraCharges),
+    creditNote: rounded(invoice.creditNote),
+    // Out-of-service / non-service-area delivery, which they bill with a GST
+    // of its own. 240 and 38 on the payment this was read from, and neither
+    // of them anywhere on the screen until now.
+    osaNsa: rounded(osa.osansa_Amount), osaNsaGst: rounded(osa.osansa_gst),
+    rts: rounded((data.rts || {}).rtsAmount),
+    debitNote: rounded((data.debitNote || {}).debitNoteCharges),
+    claimCreditNote: rounded(head.claimCreditNoteAmount),
     withholding: currency(head.whTax, 'whTax'),
+    // the two halves of the withholding, which their consignment lines split
+    // and their payment row does not
+    incomeTax: sum('incomeTaxAmount'), salesTax: sum('salesTaxAmount'),
+    taxable: sum('taxAbleAmount'),
     net: currency(head.netPayable, 'netPayable')
-  }, orders: data.consignments.map(o => ({
+  }, counts, orders: data.consignments.map(o => ({
     tracking: String(o.consignmentNumber || ''), orderRef: o.orderRefNo || '',
     bookedOn: o.bookingDate || '', deliveredOn: o.rrDate || '', city: o.destination || '',
     status: o.cnStatus || '', amount: o.codAmount, fee: o.shippingCharges,

@@ -1077,3 +1077,101 @@ them. Trax take a GST on their charges and then withhold twice more, and a
 column showing only the GST made the row itself not add up: collected less
 charges less GST came to 1,855,300 against the 1,775,545 they paid. The
 hover gives the split, the receipt names them line by line.
+
+## One receipt system per courier, not one per account - 5 Nov 2026
+
+Said by the owner after the Trax work, and it is the rule that the rest of
+this section follows: **"jo ap ak structure bna rhy ho wo trax k sary
+accounts k liy ak jsa hona chahiy"** - PostEx was built once and every PostEx
+account came out right; a courier's second account must not need its own fix.
+
+Trax - AA Traders came out exact and Trax - ElRB did not, and the reason was
+not Trax at all.
+
+### /receipts asked the courier nothing
+
+`/api/courier/receipts` is the route the page reads for every courier **but**
+PostEx, and it started no reading of any kind. The chase lived on
+`/api/courier/cprs` and on the courier dashboard - screens a Trax or M&P tab
+never calls. So those tabs listed whatever had happened to be written down by
+some other path, and AA Traders only came right because its payment screen
+was read by hand. ElRB was never asked at all.
+
+- `/api/courier/receipts` now starts the chase for what it is about to show.
+- **`chaseCpr` takes a courier as well as an account.** It took an account id
+  alone, so a courier tab could not have asked for all of them even if it had
+  tried. One account or every account of one courier, the same work either
+  way.
+
+### A read that failed belongs on the screen
+
+Every one of these reads is caught and dropped where it is started, because a
+page must not wait on a courier. Dropping it **silently** is what let one
+account be the courier's own figures and the next be numbers nobody had
+checked, with nothing on the screen saying which was which.
+
+`receiptSources()` keeps, per account and in memory, when its receipt screen
+was last read, how many payments came back, and the reason if none did. The
+receipts page prints it: an account whose screen could not be read is named
+with the courier's own words for why, and an account nothing has asked yet
+says so too.
+
+## M&P bill, they do not deduct - and the receipt says so
+
+Trax keep a charge and withhold twice. **M&P invoice.** Their Payment
+Instrument Report has its own columns - `RRAmount`, `InvoiceAmount`,
+`MON_FIX`, `TaxAmount`, `IBFTFee`, `NetPayable` - and behind the invoice is
+`paymentinstrumentdetailreport`, which gives what the invoice was made of and
+every consignment in the payment.
+
+Read off GlowCart's live account (sub-account of 34G162) on 5 Nov 2026,
+payment 20261533146:
+
+| | |
+|---|---|
+| RR amount | 536,898 |
+| Invoice amount | 28,123 - shipment 20,769, fuel 3,115.35, GST 3,840.70, extra 120, OSA/NSA 240 + its GST 38 |
+| Tax amount withheld | 20,641 - income tax 10,320.73 **and** sales tax 10,320.73 |
+| IBFT fee | 100 |
+| Net payable | 488,133, and 488,033 reaches the bank |
+| Consignments | **298 - 273 DELIVERED, 25 RETURNED** |
+
+Three things were missing and all three are now read:
+
+- **`MON_FIX` was never read.** It is nought on every payment seen, which is
+  precisely why leaving it out was a trap: the day it is not, the receipt
+  stops tying to their own net with nothing on the screen to say which figure
+  moved.
+- **The invoice was one word.** Shipment charge, fuel charge, GST, extra
+  charges and the OSA/NSA line with a GST of its own are each named now -
+  that is how M&P's charges differ from Trax's, and a receipt that calls them
+  all "charges" cannot show it.
+- **The withholding was one figure.** Their payment row adds income tax and
+  sales tax together; their consignment lines split them, and the receipt
+  prints both.
+
+### And a payment's parcels come from the payment
+
+`absorbPaymentParcels` (mnplive.js) is M&P's half of what Trax's
+`absorbPortalPayments` does: one call per payment, the consignment list is
+the payment's parcels, parcels it does not name let the number go, and the
+counts and the invoice split are merged onto the cover. The per-parcel
+tracking call still runs afterwards - unlike Trax's, **their** PaymentID is
+genuinely theirs - but it can only ever speak for parcels this app already
+holds, which is how a payment of 235,668 showed **four parcels**.
+
+**No orphan clearing for M&P.** Trax's payment screen hands over every
+payment the account has ever had, so a number with no cover is provably
+invented. M&P's payments are asked for a span of days, so a payment older
+than anything fetched has no cover and is still perfectly real.
+
+### saveCprs merges `raw` now
+
+A cover is written from the payment list; what a second call of theirs says
+about the same payment - the counts, the invoice split - is merged onto the
+same row by `mergeCprRaw`. Writing the whole of `raw` on the next sync threw
+that away, which is the same fault as a nought erasing a charge. M&P's covers
+go through an audited path that compares named fields, so merging is also the
+only way to add to one without disturbing that audit.
+
+`npm run check:mnp-receipts` is the arithmetic, on synthetic rows.

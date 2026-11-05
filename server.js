@@ -148,7 +148,8 @@ import {
 // the live dashboard. It used to be written out in all three.
 import { ADAPTERS, adapterFor, courierKinds, groupFor, readFor } from './adapters.js';
 import {
-  liveStats, liveOrders, trackOne, peekRaw, chaseCpr, forget as forgetLive
+  liveStats, liveOrders, trackOne, peekRaw, chaseCpr, receiptSources,
+  forget as forgetLive
 } from './courierlive.js';
 import {
   loadCharges, listAllAccounts, findJournal, postJournal
@@ -9538,7 +9539,26 @@ app.get('/api/courier/receipts', async (req, res) => {
 
   try {
     res.setHeader('Cache-Control', 'no-store');
-    res.json({ cprs: await recentCprs(realmId, { from, to, account, courier, limit }) });
+
+    // **Ask the courier, the same way for every account it has.**
+    //
+    // This is the route the receipts page reads for every courier but
+    // PostEx, and it asked nobody anything: the chase was started only by
+    // the PostEx half of the page and by the courier dashboard. So a Trax or
+    // M&P tab showed whatever had happened to be written down by some other
+    // path - which is how one account of a courier could be exactly right
+    // while the next was full of numbers nobody had checked. It runs in the
+    // background; what it learns is on the screen the next time.
+    chaseCpr(realmId, { account, courier }).catch(() => {});
+
+    const cprs = await recentCprs(realmId, { from, to, account, courier, limit });
+
+    // and what the courier's own receipt screen last said, per account, so a
+    // read that failed is on the page instead of being invisible
+    res.json({
+      cprs,
+      sources: receiptSources([...new Set(cprs.map(c => c.accountId))])
+    });
   } catch (e) {
     res.status(500).json({ error: e.message });
   }

@@ -683,6 +683,15 @@ export const adapter = {
     none: true
   },
   lists: true,
+  // **Which parcels a payment paid for is read from the payment itself.**
+  // Their `paymentinstrumentdetailreport` names every consignment in one,
+  // with its own status, its invoice line and its two withheld taxes - the
+  // whole payment in one call. The per-parcel tracking call below still
+  // carries a PaymentID and is still read, but it can only ever speak for
+  // parcels this app already holds, which is how a payment of 235,668 came
+  // to show four parcels on the receipts screen. mnplive.js
+  // `absorbPaymentParcels` is the reader; courierlive checks this flag.
+  paymentParcels: true,
   groupOf,
   testToken,
   fetchOrders,

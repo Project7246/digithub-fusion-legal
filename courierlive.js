@@ -11,6 +11,7 @@ import { adapterFor } from './adapters.js';
 import { decrypt } from './secrets.js';
 import { fillFromCprs } from './cprlive.js';
 import { absorbPortalPayments } from './traxlive.js';
+import { absorbPaymentParcels } from './mnplive.js';
 
 // account id + span -> { at, orders }
 const recent = new Map();
@@ -89,15 +90,44 @@ async function askAboutMoney(acc) {
     // Without a sign-in there is nothing to read - and still nothing to
     // guess at, so the per-parcel loop below is not a fallback for it.
     if (a.portal && typeof a.portal.payments === 'function') {
-      if (!acc.portal_email || !acc.portal_secret) return fromCprs;
+      if (!acc.portal_email || !acc.portal_secret) {
+        noteRead(acc, null, new Error('This account has no ' + acc.courier +
+          ' portal sign-in saved, so its payment screen cannot be read. ' +
+          'Add it on the Couriers page.'));
+        return fromCprs;
+      }
       try {
         const got = await absorbPortalPayments(acc.realm_id, acc, {
           secret: decrypt(acc.portal_secret)
         });
+        noteRead(acc, got, null);
         return (got.linked || 0) + (got.cleared || 0);
       } catch (e) {
-        // the portal being down is not a reason to start guessing instead
+        // the portal being down is not a reason to start guessing instead -
+        // but it is a reason to say so on the screen
+        noteRead(acc, null, e);
         return fromCprs;
+      }
+    }
+
+    // **M&P's payment names its own parcels too, so it is read first.**
+    //
+    // Their detail report hands back every consignment in a payment with its
+    // own status, its invoice line and its two withheld taxes - one call for
+    // the whole payment. The per-parcel loop below still runs afterwards,
+    // because unlike Trax their tracking call carries a PaymentID that is
+    // genuinely theirs; it is simply the slower half, and it can only ever
+    // speak for parcels this app already holds. That is how a payment of
+    // 235,668 came to show four parcels on the receipts screen.
+    let fromPayments = 0;
+    if (a.paymentParcels) {
+      try {
+        const got = await absorbPaymentParcels(acc.realm_id, acc);
+        noteRead(acc, got, null);
+        fromPayments = (got.linked || 0) + (got.cleared || 0);
+      } catch (e) {
+        noteRead(acc, null, e);  // their report being down is said, not hidden
+        fromPayments = 0;
       }
     }
 
@@ -117,7 +147,7 @@ async function askAboutMoney(acc) {
     const SECONDS = Math.max(10, Number(process.env.CPR_CHASE_SECONDS) || 240);
     const until = Date.now() + SECONDS * 1000;
 
-    let done = fromCprs;
+    let done = fromCprs + fromPayments;
     for (;;) {
       const list = await needCpr(acc.realm_id, acc.id, STEP);
       if (!list.length) break;
@@ -437,10 +467,61 @@ export async function peekRaw(realmId, opts) {
 }
 
 // how far along the receipt-gathering is, and a nudge to do some more
-export async function chaseCpr(realmId, accountId) {
-  const accounts = await accountsFor(realmId, { account: accountId });
+//
+// **One account or a whole courier, and the same work either way.** It used
+// to take an account id alone, and the only screen that called it was the
+// PostEx half of /receipts - so a Trax or M&P tab never asked the courier
+// anything at all. Their receipts were whatever had happened to be written
+// down by some other path, which is how one account of a courier could be
+// exactly right while the next was full of numbers nobody had checked.
+export async function chaseCpr(realmId, opts) {
+  const want = (opts && typeof opts === 'object') ? opts : { account: opts };
+  const accounts = await accountsFor(realmId, {
+    account: want.account || null,
+    courier: want.courier || null
+  });
+
   for (const acc of accounts) {
     askAboutMoney(acc).catch(() => {});
   }
   return { started: accounts.length };
+}
+
+/* ============ what the courier's own receipt screen last said ============
+
+   Per account, in memory: when it was last read, how many payments came
+   back, and - the point of it - **what went wrong if nothing did**. A read
+   that fails is caught and dropped everywhere it is started, because a page
+   must not wait on a courier; but dropping it silently is what let one
+   account's receipts be the courier's own while another's were invented and
+   nothing on the screen said which was which.                             */
+
+const lastRead = new Map();
+
+export function receiptSource(accountId) {
+  return lastRead.get(Number(accountId)) || null;
+}
+
+export function receiptSources(ids) {
+  const out = {};
+  (ids || []).forEach(id => {
+    const got = lastRead.get(Number(id));
+    if (got) out[String(id)] = got;
+  });
+  return out;
+}
+
+function noteRead(acc, got, error) {
+  lastRead.set(Number(acc.id), {
+    accountId: Number(acc.id),
+    courier: acc.courier,
+    at: new Date().toISOString(),
+    ok: !error,
+    covers: got ? (got.covers || 0) : 0,
+    read: got ? (got.read || 0) : 0,
+    linked: got ? (got.linked || 0) : 0,
+    cleared: got ? (got.cleared || 0) : 0,
+    orphans: got ? (got.orphans || 0) : 0,
+    error: error ? String(error.message || error).slice(0, 300) : null
+  });
 }

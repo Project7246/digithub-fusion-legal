@@ -212,7 +212,13 @@ export async function saveCprs(realmId, accountId, courier, rows, queryable = po
          net_amount  = EXCLUDED.net_amount,
          created_on  = EXCLUDED.created_on,
          approved_on = EXCLUDED.approved_on,
-         raw         = EXCLUDED.raw,
+         -- **Merged, not replaced.** A cover is written from the courier's
+         -- payment list, and what a second call of theirs says about the
+         -- same payment - how many parcels are in it, how the invoice was
+         -- made up - is merged onto the same row by mergeCprRaw(). Writing
+         -- the whole of raw here threw that away on the next sync, which is
+         -- the same fault as a nought erasing a charge.
+         raw         = COALESCE(courier_cprs.raw, '{}'::jsonb) || EXCLUDED.raw,
          -- a courier that said nothing about where it paid does not erase
          -- where it said it paid last time
          paid_to_name    = COALESCE(EXCLUDED.paid_to_name, courier_cprs.paid_to_name),
@@ -1133,6 +1139,26 @@ export async function clearCprStrays(realmId, accountId, cprNumber, trackings) {
         AND o.cpr_number = $3
         AND NOT (o.tracking = ANY($4::text[]))`,
     [realmId, Number(accountId), String(cprNumber), list]
+  );
+  return r.rowCount || 0;
+}
+
+// Add to what a cover already says, without rewriting it.
+//
+// A cover is written from one call - the courier's payment list - and what a
+// second call of theirs says about the same payment belongs on the same row:
+// how many parcels are in it, how the invoice was made up, which taxes were
+// withheld. `saveCprs` writes `raw` whole, and M&P's covers are written
+// through an audited path that compares named fields, so merging is both the
+// only safe way to add to one and the only way that leaves that audit alone.
+export async function mergeCprRaw(realmId, accountId, cprNumber, patch) {
+  if (!cprNumber || !patch || !Object.keys(patch).length) return 0;
+
+  const r = await pool.query(
+    `UPDATE courier_cprs
+        SET raw = COALESCE(raw, '{}'::jsonb) || $4::jsonb
+      WHERE realm_id = $1 AND account_id = $2 AND cpr_number = $3`,
+    [realmId, Number(accountId), String(cprNumber), JSON.stringify(patch)]
   );
   return r.rowCount || 0;
 }

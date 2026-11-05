@@ -805,14 +805,30 @@ export async function recentCprs(realmId, opts) {
             -- kind. "1,709 parcels" against their own 924 is the kind of
             -- thing a receipt should say out loud, not hide behind a count
             -- of whatever happens to carry its number here.
-            MAX(CASE WHEN c.raw->>'source' = 'trax-portal-payment-v1'
-              THEN (c.raw->>'shipments')::int END) AS cover_orders,
-            MAX(CASE WHEN c.raw->>'source' = 'trax-portal-payment-v1'
-              THEN (c.raw->>'delivered')::int END) AS cover_delivered,
-            MAX(CASE WHEN c.raw->>'source' = 'trax-portal-payment-v1'
-              THEN (c.raw->>'returned')::int END) AS cover_returned,
-            MAX(CASE WHEN c.raw->>'source' = 'trax-portal-payment-v1'
-              THEN (c.raw->>'adjusted')::int END) AS cover_adjusted
+            -- **The same two questions of every courier, wherever each one
+            -- happens to write its answer.** Trax's payment screen names
+            -- its kinds on the row itself; M&P's detail report counts the
+            -- consignments and their own status words. One receipt screen
+            -- reads both rather than one courier having a screen the others
+            -- do not.
+            MAX(COALESCE((c.raw->>'shipments')::int,
+                         (c.raw->'counts'->>'total')::int)) AS cover_orders,
+            MAX(COALESCE((c.raw->>'delivered')::int,
+                         (c.raw->'counts'->>'DELIVERED')::int)) AS cover_delivered,
+            MAX(COALESCE((c.raw->>'returned')::int,
+                         (c.raw->'counts'->>'RETURNED')::int)) AS cover_returned,
+            MAX((c.raw->>'adjusted')::int) AS cover_adjusted,
+            -- M&P bill rather than deduct, and their invoice is made of
+            -- named parts. Each is carried so the receipt can print them.
+            MAX((c.raw->'invoiceSummary'->>'shipping')::numeric)      AS mnp_shipping,
+            MAX((c.raw->'invoiceSummary'->>'fuel')::numeric)          AS mnp_fuel,
+            MAX((c.raw->'invoiceSummary'->>'invoiceGst')::numeric)    AS mnp_gst,
+            MAX((c.raw->'invoiceSummary'->>'extraCharges')::numeric)  AS mnp_extra,
+            MAX((c.raw->'invoiceSummary'->>'osaNsa')::numeric)        AS mnp_osa,
+            MAX((c.raw->'invoiceSummary'->>'osaNsaGst')::numeric)     AS mnp_osa_gst,
+            MAX((c.raw->'invoiceSummary'->>'incomeTax')::numeric)     AS mnp_income_tax,
+            MAX((c.raw->'invoiceSummary'->>'salesTax')::numeric)      AS mnp_sales_tax,
+            MAX((c.raw->'paymentSummary'->>'monthly')::numeric)       AS mnp_monthly
        FROM courier_orders o
        JOIN courier_accounts a ON a.id = o.account_id
        LEFT JOIN courier_cprs c
@@ -857,7 +873,7 @@ export async function recentCprs(realmId, opts) {
       // What the courier says is in it, and what we hold under its number.
       // They agree when the receipt has been read properly and the pair is
       // what says so - one figure alone cannot.
-      orders: traxCover && x.cover_orders != null
+      orders: x.cover_orders != null
         ? Number(x.cover_orders) : Number(x.orders),
       ourOrders: Number(x.orders),
       coverOrders: x.cover_orders == null ? null : Number(x.cover_orders),
@@ -871,6 +887,19 @@ export async function recentCprs(realmId, opts) {
       // deducted and of which kind" is the question a receipt is opened for
       wht: traxCover ? r2(x.trax_wht) : null,
       sst: traxCover ? r2(x.trax_cod_sst) : null,
+      // M&P withhold the same two and call them income tax and sales tax,
+      // and they bill rather than deduct - so what they kept is an invoice
+      // with named parts rather than a charge. Null where the courier does
+      // not publish the figure, never nought: nought is a claim.
+      incomeTax: x.mnp_income_tax == null ? null : r2(x.mnp_income_tax),
+      salesTax: x.mnp_sales_tax == null ? null : r2(x.mnp_sales_tax),
+      shipping: x.mnp_shipping == null ? null : r2(x.mnp_shipping),
+      fuel: x.mnp_fuel == null ? null : r2(x.mnp_fuel),
+      invoiceGst: x.mnp_gst == null ? null : r2(x.mnp_gst),
+      extraCharges: x.mnp_extra == null ? null : r2(x.mnp_extra),
+      osaNsa: x.mnp_osa == null ? null : r2(x.mnp_osa),
+      osaNsaGst: x.mnp_osa_gst == null ? null : r2(x.mnp_osa_gst),
+      monthly: x.mnp_monthly == null ? null : r2(x.mnp_monthly),
       // What they actually paid against this receipt. A courier that deducts
       // pays the COD less its charges; M&P pay the whole COD and bill their
       // charges on an invoice of their own, so taking them off here would

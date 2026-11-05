@@ -550,6 +550,7 @@
         var list = d.cprs || [];
         if(d.error){ $('ours').innerHTML = ''; return; }
 
+        sources = d.sources || {};
         renderOurs(list);
       })
       .catch(function(){ $('ours').innerHTML = ''; $('cards').innerHTML = ''; });
@@ -651,7 +652,7 @@
               : '<span class="pill wait">not received</span>') + '</td></tr>';
         }).join('');
 
-        $('ours').innerHTML =
+        $('ours').innerHTML = sourceNote(list) +
           '<div class="box" style="margin-bottom:14px"><h3>' +
             (mine ? esc(mine) + ' receipts' : 'Receipts, every courier') +
             '<span class="aside">' + n0(list.length) + ' receipt' +
@@ -689,6 +690,108 @@
             openReceipt(list[Number(tr.getAttribute('data-i'))]);
           });
         });
+  }
+
+  // What each account's own receipt screen last said - read, or why not.
+  var sources = {};
+
+  // **A read that failed belongs on the page.** Every one of these is caught
+  // and dropped where it is started, because a page must not wait on a
+  // courier; dropping it silently is what let one account of a courier be
+  // exactly right while the next was full of numbers nobody had checked, and
+  // nothing on the screen said which was which.
+  function sourceNote(list){
+    var ids = {};
+    (list || []).forEach(function(c){
+      if(c && c.accountId != null && c.account) ids[String(c.accountId)] = c.account;
+    });
+
+    var bad = [];
+    var silent = [];
+    Object.keys(ids).forEach(function(id){
+      var s = sources[id];
+      if(!s) silent.push(ids[id]);
+      else if(!s.ok) bad.push({ label: ids[id], s: s });
+    });
+
+    if(!bad.length && !silent.length) return '';
+
+    return '<div class="warn" style="margin-bottom:14px">' +
+      bad.map(function(b){
+        return '<div><b>' + esc(b.label) + '</b> — its own receipt screen ' +
+               'could not be read, so what is listed for it is whatever was ' +
+               'already written down: ' + esc(b.s.error || 'no reason given') +
+               '</div>';
+      }).join('') +
+      (silent.length
+        ? '<div><b>' + esc(silent.join(', ')) + '</b> — not asked yet in ' +
+          'this visit. The reading runs in the background; open this page ' +
+          'again in a moment.</div>'
+        : '') +
+      '</div>';
+  }
+
+  // What the invoice on this payment was actually made of, and which taxes
+  // were withheld beside it.
+  //
+  // This is where one courier differs from another and the receipt has to
+  // show it rather than flatten it. Trax keep a charge and withhold twice.
+  // **M&P bill**: a shipment charge, a fuel charge, GST on those, extra
+  // charges, an OSA/NSA delivery with a GST of its own - and then withhold
+  // income tax and sales tax, which their payment row adds into one figure
+  // and their consignment lines split. All of that used to be the single
+  // word "charges" on this screen.
+  function billedBox(c){
+    var parts = [
+      ['Shipment charge', c.shipping],
+      ['Fuel charge', c.fuel],
+      ['GST on those charges', c.invoiceGst],
+      ['Extra charges', c.extraCharges],
+      ['OSA / NSA delivery', c.osaNsa],
+      ['GST on OSA / NSA', c.osaNsaGst]
+    ].filter(function(p){ return p[1] != null; });
+
+    var taxes = [
+      ['Income tax withheld', c.incomeTax],
+      ['Sales tax withheld', c.salesTax]
+    ].filter(function(p){ return p[1] != null; });
+
+    if(!parts.length && !taxes.length) return '';
+
+    var billedTotal = parts.reduce(function(a,p){ return a + p[1]; }, 0);
+    var taxTotal = taxes.reduce(function(a,p){ return a + p[1]; }, 0);
+
+    var rows = function(list, total, label){
+      if(!list.length) return '';
+      return list.map(function(p){
+        return '<div><span>' + esc(p[0]) + '</span><span class="num">' +
+               full(p[1]) + '</span></div>';
+      }).join('') +
+      '<div style="font-weight:600"><span>' + esc(label) + '</span>' +
+      '<span class="num">' + full(Math.round(total * 100) / 100) + '</span></div>';
+    };
+
+    return '<div class="sum" style="margin-bottom:14px">' +
+      (parts.length
+        ? '<div class="box" style="margin:0"><h3>What ' + esc(cname(c.courier)) +
+          ' billed on this payment</h3><div class="tot">' +
+          rows(parts, billedTotal, 'Invoiced in all') + '</div>' +
+          (c.charge != null && Math.abs(billedTotal - c.charge) >= 1
+            ? '<div class="note" style="margin-top:8px">Their payment report ' +
+              'puts the invoice at ' + full(c.charge) + ' and these parts ' +
+              'come to ' + full(Math.round(billedTotal * 100) / 100) +
+              '. Both are theirs, read from two of their own screens.</div>'
+            : '') +
+          '</div>'
+        : '') +
+      (taxes.length
+        ? '<div class="box" style="margin:0"><h3>Tax withheld</h3><div class="tot">' +
+          rows(taxes, taxTotal, 'Withheld in all') + '</div>' +
+          '<div class="note" style="margin-top:8px">' + esc(cname(c.courier)) +
+          ' withhold these two and print them as one figure on the payment. ' +
+          'The split is off their own consignment lines.</div></div>'
+        : '') +
+      '</div>';
   }
 
   // The courier's own payment book, month by month.
@@ -1314,6 +1417,36 @@
           : '<div class="note" style="margin-top:8px">Total amount less those ' +
             'four is exactly their total payable, so this receipt ties to ' +
             'their own payment screen.</div>');
+    } else if(c.incomeTax != null || c.shipping != null){
+      // **M&P do not deduct the way Trax do - they bill.** Their payment
+      // screen has its own six columns (RR amount, invoice amount, MON_FIX,
+      // tax amount, IBFT fee, net payable), and behind the invoice is an
+      // invoice made of named parts: a shipment charge, a fuel charge, GST
+      // on those, extra charges and an OSA/NSA line with a GST of its own.
+      // All of that was one word, "charges", and none of it was on the page.
+      var mCollected = c.gross != null ? c.gross : c.amount;
+      var mInvoice = c.charge == null ? 0 : c.charge;
+      var mOff = mInvoice + (c.tax || 0) + (c.monthly || 0);
+      var mOver = Math.round((mCollected - mOff - (c.bankFee || 0) - (c.net || 0)) * 100) / 100;
+
+      money =
+        line('RR amount (COD collected)', mCollected) +
+        line('Invoice amount', -mInvoice) +
+        ((c.monthly || 0) ? line('Monthly fixed charge', -(c.monthly || 0)) : '') +
+        line('Tax amount (withheld)', -(c.tax || 0)) +
+        line('Net payable', Math.round((mCollected - mOff) * 100) / 100) +
+        line('IBFT fee', -(c.bankFee || 0)) +
+        line('Paid to us', c.net, 'big') +
+        (Math.abs(mOver) >= 1
+          ? '<div class="note" style="margin-top:8px">' +
+            full(Math.abs(mOver)) + ' of this payment is ' +
+            (mOver > 0 ? 'not accounted for by' : 'more than') +
+            ' the columns M&amp;P print on it. Both figures are theirs; what ' +
+            'arrived is the paid figure.</div>'
+          : '<div class="note" style="margin-top:8px">Collected less their ' +
+            'invoice, their withheld tax and the IBFT fee is exactly what ' +
+            'they paid, so this receipt ties to their own payment report.</div>');
+
     } else {
 
     // What the courier said about this payment, in its own order. The second
@@ -1394,8 +1527,9 @@
       '</span></div></div></div>';
 
     var inside = insideBox(c, orders);
+    var billed = billedBox(c);
 
-    return head +
+    return head + billed +
       (inside ? '<div class="sum" style="margin-bottom:14px">' + inside +
         '<div class="box" style="margin:0"><h3>Money</h3><div class="tot">' +
         money + '</div></div></div>' +

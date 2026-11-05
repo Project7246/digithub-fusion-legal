@@ -14,7 +14,8 @@
     "check:compute": "node tools/compute-check.mjs",
     "check:relay": "node tools/relay-body-check.mjs",
     "check:mnp": "node tools/mnp-settled-check.mjs",
-    "check:trax": "node tools/trax-receipts-check.mjs"
+    "check:trax": "node tools/trax-receipts-check.mjs",
+    "check:mnp-receipts": "node tools/mnp-receipts-check.mjs"
   },
   "dependencies": {
     "cookie-parser": "^1.4.6",

@@ -5,7 +5,10 @@
 // Corrections are saved atomically with a company-scoped audit record.
 
 import { adapterFor } from './adapters.js';
-import { saveMnpCprs, credsOf, getAccount } from './couriers.js';
+import {
+  saveMnpCprs, credsOf, getAccount, linkCprParcels, clearCprStrays,
+  cprParcelCounts, mergeCprRaw
+} from './couriers.js';
 import { paymentDetail } from './mnpportal.js';
 import { pool } from './db.js';
 
@@ -28,11 +31,121 @@ export async function absorbPayouts(realmId, acc, from, to) {
     mode: p.mode || null,
     raw: { source: 'mnp-portal-payment-v1', account: p.account,
       paymentSummary: { withholding: p.withholding, bankFee: p.bankFee,
-        beforeBankFee: p.beforeBankFee } }
+        beforeBankFee: p.beforeBankFee, monthly: p.monthly } }
   }));
   if (!rows.length) return { payments: 0 };
   await saveMnpCprs(realmId, acc.id, rows);
   return { payments: rows.length };
+}
+
+/* ============ what is actually inside one of their payments ============
+
+   `absorbPayouts` above writes the cover: one row per payment, with what
+   they collected, what they invoiced, what they withheld and what reached
+   the bank. It says nothing about which parcels the payment paid for, and
+   until 5 Nov 2026 nothing did: that came from the per-parcel tracking call,
+   which only ever covers parcels this app already holds and only the
+   delivered ones - so a payment of 235,668 showed **four parcels** on the
+   receipts screen.
+
+   Their `paymentinstrumentdetailreport` is the whole of it in one call: 298
+   consignments on the payment this was read from, each with its COD, its
+   invoice line, its income tax and its sales tax, and its own status in
+   their word - 273 DELIVERED, 25 RETURNED. That is the same shape as Trax's
+   payment screen and it is read the same way: the list is the truth, parcels
+   it does not name let the number go, and the counts and the invoice split
+   are kept on the cover so the receipt can print the courier's own figures
+   instead of adding ours up.                                              */
+
+// How much of one visit this may spend. Their detail call is one call per
+// payment - cheaper than Trax's three - but an account with a year of
+// payments is still not something to read on every page load.
+const PER_RUN = Math.max(1, Number(process.env.MNP_PAYMENTS_PER_RUN) || 6);
+const AGAIN = Math.max(5, Number(process.env.MNP_PAYMENT_REREAD_MINUTES) || 360) * 60000;
+const readAt = new Map();
+
+export async function absorbPaymentParcels(realmId, acc, opts = {}) {
+  const account = await getAccount(realmId, acc.id);
+  if (!account || account.courier !== 'mnp') return { covers: 0, linked: 0 };
+
+  const credentials = credsOf(account);
+  const accountNo = credentials.account || credentials.accountNo;
+  if (!accountNo) return { covers: 0, linked: 0, note: 'this account is not validated yet' };
+
+  const covers = await pool.query(
+    `SELECT cpr_number, created_on, (raw->'counts'->>'total')::int AS known
+       FROM courier_cprs
+      WHERE realm_id = $1 AND account_id = $2 AND courier = 'mnp'
+      ORDER BY created_on DESC NULLS LAST
+      LIMIT 200`,
+    [realmId, Number(acc.id)]
+  );
+  if (!covers.rows.length) return { covers: 0, linked: 0 };
+
+  const held = await cprParcelCounts(realmId, acc.id,
+    covers.rows.map(r => r.cpr_number));
+
+  const say = typeof opts.say === 'function' ? opts.say : () => {};
+  const lists = new Map();
+  let read = 0;
+
+  for (const c of covers.rows) {
+    if (opts.stop && opts.stop()) break;
+
+    const cpr = String(c.cpr_number);
+    const want = Number(c.known || 0);
+    const have = held.get(cpr) || 0;
+    const key = acc.id + '|' + cpr;
+
+    if (!opts.force) {
+      if (want && have === want) continue;               // already whole
+      if (Date.now() - (readAt.get(key) || 0) < AGAIN) continue;
+      if (read >= PER_RUN) break;
+    }
+
+    let detail;
+    try {
+      detail = await paymentDetail(accountNo, cpr);
+    } catch (e) {
+      say('Payment ' + cpr + ': ' + e.message);
+      continue;
+    }
+
+    const trackings = (detail.orders || [])
+      .map(o => String(o.tracking || '').trim()).filter(Boolean);
+    if (!trackings.length) continue;
+
+    lists.set(cpr, { trackings, cover: c });
+    readAt.set(key, Date.now());
+    read += 1;
+
+    // The courier's own counts and its own invoice split, kept on the cover.
+    // Merged rather than written over it: the payment list owns the money
+    // columns on that row and this call must not be able to disturb them.
+    await mergeCprRaw(realmId, acc.id, cpr, {
+      counts: detail.counts || {},
+      invoiceSummary: detail.summary || {}
+    });
+  }
+
+  let linked = 0;
+  for (const [cpr, item] of lists) {
+    linked += await linkCprParcels(realmId, acc.id, cpr, item.trackings,
+      item.cover.created_on ? String(item.cover.created_on).slice(0, 10) : null);
+  }
+
+  let cleared = 0;
+  for (const [cpr, item] of lists) {
+    cleared += await clearCprStrays(realmId, acc.id, cpr, item.trackings);
+  }
+
+  // **No orphan clearing here, unlike Trax.** Trax's payment screen hands
+  // over every payment the account has ever had, so a number with no cover
+  // is provably invented. M&P's payments are asked for a span of days at a
+  // time (`absorbPayouts`), so a payment older than anything this app has
+  // fetched has no cover and is still perfectly real - clearing on that
+  // would throw away a receipt number the courier itself gave us.
+  return { covers: covers.rows.length, read, linked, cleared };
 }
 
 export async function mnpReceiptDetail(realmId, accountId, paymentId) {
