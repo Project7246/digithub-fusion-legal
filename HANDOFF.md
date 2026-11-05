@@ -23,6 +23,31 @@ Last agent: Claude (Sonnet 5) - 6 Nov 2026. Task: migration Step A (add e.availi
   go-ahead separately per PROMPT.md - none folded into this session's override.
 - The 6 Nov "allowed hy aj ky liye" override in CLAUDE.md covered Step A's two
   clicks only; it does not carry forward to Steps B-D.
+
+## Step B prep done, 6 Nov 2026 - redirect URIs only, BASE_URL not touched
+- Owner extended the override ("dono login kr diy hy ... tm krdo") to add the
+  two redirect URIs Step B needs, ahead of time, per the runbook's own
+  instruction to add them *before* BASE_URL changes.
+- **Intuit/QuickBooks** (`developer.intuit.com`, app "Fusion", workspace
+  DigitHub, AppID starts `392c7def...`): added
+  `https://e.availity.pk/auth/callback` to the **Production** Redirect URIs.
+  The old `https://ca.availity.pk/auth/callback` and the two original entries
+  (OAuth2Playground, the DigitalOcean starter domain) are untouched - 4 URIs
+  total now. Saved and verified by re-reading the list.
+- **Shopify** (store `pureclans`, custom app "Fusion", Partners org "Availity
+  Consultancy", org id 154801226, app id 437145206785): the app is CLI/Dev-Dashboard
+  managed (no config file in this repo) - redirect URLs are set by creating a
+  new app version in the Dev Dashboard, not a simple settings form. Created and
+  released version `fusion-3`: `application_url` left as `https://ca.availity.pk/`
+  (unchanged - that is Step B's actual cutover), `redirect_urls` now holds both
+  `https://ca.availity.pk/auth/shopify/callback` and
+  `https://e.availity.pk/auth/shopify/callback`. Verified by reading the
+  released version's detail page back.
+- Still not done, still waiting on the owner: Step B's actual cutover
+  (`BASE_URL` env var in DigitalOcean, and Shopify's `application_url` if that
+  needs updating too - the runbook doesn't say it does, only the redirect
+  URLs), which signs everyone out. Steps C (region) and D (database) also
+  untouched.
 - Agent lock still held (migration not finished). Files uncommitted before this
   task: none; this commit carries CLAUDE.md (exception note) and this file.
 
