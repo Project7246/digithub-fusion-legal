@@ -1063,3 +1063,17 @@ each month's payments, parcels, COD and net, and each payment's own status -
 and APPROVED, coloured alike and spelled as the courier spells them. It is
 built from the covers their payment screen wrote and from nothing else, so a
 receipt number this app invented cannot appear in the courier's own book.
+
+### No bank-fee column for a courier that does not publish one
+
+M&P print an IBFT fee on their payment report, so it is a column of theirs
+and it stays in the receipts list. **Trax do not** - six columns, no bank fee
+among them - so the list no longer draws one for a Trax row, and the 100 on
+their row is named in that receipt's own difference line where it can be
+checked.
+
+And the list's **Tax** column is every tax the courier cut, not the first of
+them. Trax take a GST on their charges and then withhold twice more, and a
+column showing only the GST made the row itself not add up: collected less
+charges less GST came to 1,855,300 against the 1,775,545 they paid. The
+hover gives the split, the receipt names them line by line.

@@ -607,7 +607,14 @@
           '</div>';
 
 
-        var showBankFee = list.some(function(c){ return c.bankFee != null; });
+        // M&P print an IBFT fee on their payment report, so it is a column
+        // of theirs and belongs in this list. **Trax do not** - their screen
+        // has six columns and no bank fee among them, and a column drawn for
+        // a courier that does not publish one is a deduction this app made
+        // up. Trax's receipt names their own in its difference line instead.
+        var showBankFee = list.some(function(c){
+          return c.bankFee != null && c.courier !== 'trax';
+        });
         var rows = list.map(function(c, i){
           return '<tr class="click rrow" data-i="' + i + '">' +
             '<td class="mono">' + esc(c.cpr) + '</td>' +
@@ -623,8 +630,21 @@
             '<td class="r">' + n0(c.orders) + '</td>' +
             '<td class="r">' + full(c.amount) + '</td>' +
             '<td class="r">' + full(c.fee == null ? c.charges : c.fee) + '</td>' +
-            '<td class="r">' + full(c.tax || 0) + '</td>' +
-            (showBankFee ? '<td class="r">' + (c.bankFee == null ? '—' : full(c.bankFee)) + '</td>' : '') +
+            // **Every tax the courier cut, not one of them.** Trax deduct a
+            // GST on their charges and then withhold twice more - WHT and
+            // COD SST - and a column showing only the first made the row
+            // itself not add up: collected less charges less GST came to
+            // 1,855,300 against the 1,775,545 they paid. The hover says
+            // which is which; the receipt names them line by line.
+            '<td class="r"' +
+              ((c.wht || c.sst)
+                ? ' title="GST ' + full(c.tax || 0) + ' · WHT ' + full(c.wht || 0) +
+                  ' · COD SST ' + full(c.sst || 0) + '"'
+                : '') + '>' +
+              full((c.tax || 0) + (c.wht || 0) + (c.sst || 0)) + '</td>' +
+            (showBankFee ? '<td class="r">' +
+              ((c.bankFee == null || c.courier === 'trax') ? '—' : full(c.bankFee)) +
+              '</td>' : '') +
             '<td class="r"><b>' + full(c.net) + '</b></td>' +
             '<td>' + (c.inBooks
               ? '<span class="pill ok">in QuickBooks</span>'
@@ -1226,9 +1246,13 @@
         ' say in all</td><td class="r">' + n0(c.coverOrders) +
         '</td><td class="r">' + full(c.gross == null ? c.amount : c.gross) +
       '</td></tr>' +
+      // No COD against this row on purpose. Adding our parcels' amounts up
+      // would count the returned ones' COD as well, which was never
+      // collected from anybody - the only COD on a payment is the one the
+      // courier collected, and that is the line above.
       (held == null ? '' :
         '<tr><td>Carrying this number here</td><td class="r">' + n0(held) +
-        '</td><td class="r">' + full(ourCod) + '</td></tr>') +
+        '</td><td class="r">—</td></tr>') +
       '</table>' +
       (held != null && held !== c.coverOrders
         ? '<div class="note" style="margin-top:8px">' + esc(cname(c.courier)) +
