@@ -141,6 +141,7 @@ async function once(path, { method, jar, form, query, ajax } = {}) {
   // the sign-in pages get the longer budget; everything else is a list
   const budget = /\/cod\/login/i.test(path) ? SIGNIN_TIMEOUT : TIMEOUT;
   const bell = setTimeout(() => ctl.abort(), budget);
+  const started = Date.now();
 
   let r, text;
   try {
@@ -160,7 +161,17 @@ async function once(path, { method, jar, form, query, ajax } = {}) {
   } catch (e) {
     // Only the call itself failing lands here. What the portal or the relay
     // *said* is read below, where it can be said back in their own words.
+    //
+    // **Which call, and how long it waited.** "could not be reached" on its
+    // own cost a morning of inference: the sign-in makes three calls with
+    // two different budgets, and from outside there was no way to tell
+    // which of them had stopped, nor whether it was our abort or the
+    // relay's. A failure that names itself is the difference between
+    // reading a screen and guessing at arithmetic.
     throw new Error('The Trax portal could not be reached: ' + plainly(e) +
+      ' [' + (method || 'GET') + ' ' + path + ', gave up after ' +
+      Math.round((Date.now() - started) / 100) / 10 + 's of ' +
+      Math.round(budget / 1000) + 's]' +
       (through ? ' (through the relay)' : ''));
   } finally {
     clearTimeout(bell);
