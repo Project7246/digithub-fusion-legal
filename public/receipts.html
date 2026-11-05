@@ -706,15 +706,17 @@
       if(c && c.accountId != null && c.account) ids[String(c.accountId)] = c.account;
     });
 
+    // **Only a failure is worth a warning.** An account the background read
+    // has not reached yet is the ordinary first second of every visit, and
+    // saying so on every page load is crying wolf - the figures shown are
+    // the courier's own either way, and the read lands a moment later.
     var bad = [];
-    var silent = [];
     Object.keys(ids).forEach(function(id){
       var s = sources[id];
-      if(!s) silent.push(ids[id]);
-      else if(!s.ok) bad.push({ label: ids[id], s: s });
+      if(s && !s.ok) bad.push({ label: ids[id], s: s });
     });
 
-    if(!bad.length && !silent.length) return '';
+    if(!bad.length) return '';
 
     return '<div class="warn" style="margin-bottom:14px">' +
       bad.map(function(b){
@@ -723,11 +725,6 @@
                'already written down: ' + esc(b.s.error || 'no reason given') +
                '</div>';
       }).join('') +
-      (silent.length
-        ? '<div><b>' + esc(silent.join(', ')) + '</b> — not asked yet in ' +
-          'this visit. The reading runs in the background; open this page ' +
-          'again in a moment.</div>'
-        : '') +
       '</div>';
   }
 

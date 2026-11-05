@@ -5,33 +5,32 @@ Keep it under 30 lines. Read it in the pre-flight; see AGENTS.md section A.
 
 **Last agent**: Claude (Opus 5) - 5 Nov 2026
 
-## One receipt system per courier, and all three accounts read
+## A receipt exists whether or not its parcels are here
 
-- **`/api/courier/receipts` asked the courier nothing** - the route the page
-  reads for every courier but PostEx. It starts the chase now, `chaseCpr`
-  takes a courier as well as an account, the accounts run in a queue, and a
-  read that failed is named on the page (`receiptSources`).
-- **Trax - ElRB was never the sign-in.** Made to name itself, the error said
-  `GET /cod/finance/payments/list, gave up after 22s of 22s`. It asked for
-  **200 payments in one page** and was timed as a parcel page. Now 50 a page
-  (`TRAX_PAYMENTS_PAGE`) and `/cod/finance/` gets the sign-in's budget.
-  **Verified: ok, 44 covers, 990 parcels linked, 28 of 28 receipts now have
-  the courier's own cover. The 22 invented receipts are gone.**
-- **M&P bill, they do not deduct**: their six columns (MON_FIX included,
-  never read before), the invoice in its own parts - shipment, fuel, GST,
-  extra, OSA/NSA + its GST - and the withholding split into income and sales
-  tax. 29 covers, 1,317 parcels linked, and 475,676 - 16,215 - 18,458 - 100
-  = **440,903**, their own net.
-- A receipt lists every word the courier used, not two: M&P say DELIVERED
-  241 / UNDELIVERED 77 / UNKNOWN 37.
-- New: `npm run check:mnp-receipts`. `npm run check:all` = 19 ok.
+- **`recentCprs` and `listCprs` were built `FROM courier_orders`**, grouping
+  parcels by the receipt number on them - so a payment whose consignments
+  this app holds no row for was not an empty receipt, it was no receipt at
+  all. Four of M&P GlowCart's 29 payments were invisible on `/receipts`
+  while sitting in `courier_cprs` and on M&P's portal. `recentCprs` now
+  joins covers and parcels **as equals**, the way `bankingReceipts` always
+  has. **Verified: 29 of 29, and 31 Oct ties to M&P's own row** - 136
+  parcels, COD 319,649, charges 0, tax 12,321, IBFT 100, net 307,228.
+- **`absorbPayouts` reads back what it wrote** (`wrote`/`held`/`lost`), and
+  `/api/courier/sync` passes it through. `payments: 2` used to count the
+  rows handed to the writer, not the rows the table held afterwards - and
+  believing it cost three wrong diagnoses.
+- Earlier the same day: `/api/courier/receipts` asked the courier nothing
+  (now it does, per courier, in a queue, and a failed read is named on the
+  page); Trax ElRB's timeout was the **payment list** asking for 200 rows
+  on a parcel-page budget, not the sign-in; M&P's receipt is now in M&P's
+  own columns, Trax's in Trax's.
 
 ## What is still open
 
-- **Trax - ElRB's parcels were never backfilled.** Its payments name
-  thousands of consignments this app has no row for - 2,618 on one, of which
-  3 are here. The receipts are right (every figure is Trax's own) and the
-  screen prints both counts, but a backfill of that account is what closes
-  the gap. Same for the older M&P payments.
+- **Parcels, not receipts.** Trax - ElRB and M&P's older payments name
+  thousands of consignments this app has no row for (ElRB: 2,618 on one
+  payment, 3 here; M&P 31 Oct: 136 named, 0 here). Every figure on the
+  receipt is the courier's own and both counts are printed, but a backfill
+  of those accounts is what closes it.
 - 9 Trax CPRs not in QuickBooks (21,603,433). PostEx AH (10), UR (11) have
-  no webhook. M&P - Rose Belle was not looked at. Migration 006 is free.
+  no webhook. M&P - Rose Belle untouched. Migration 006 is free.
