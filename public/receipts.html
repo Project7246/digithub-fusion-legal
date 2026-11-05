@@ -388,8 +388,12 @@
 
   function statusPill(s){
     var k = String(s||'').toUpperCase();
-    var cls = k === 'CLOSED' ? 'ok' : (k === 'APPROVED' ? 'done' :
-              (k === 'PENDING' || k === 'OPEN' ? 'wait' : 'grey'));
+    // PostEx say CLOSED and APPROVED; Trax say Paid and Processed. The same
+    // two states, in two couriers' words - and a word nobody here knows is
+    // shown plainly rather than coloured as if it were understood.
+    var cls = (k === 'CLOSED' || k === 'PAID') ? 'ok'
+            : (k === 'APPROVED' || k === 'PROCESSED') ? 'done'
+            : (k === 'PENDING' || k === 'OPEN') ? 'wait' : 'grey';
     return '<span class="pill '+cls+'">'+esc(s||'—')+'</span>';
   }
 
@@ -568,6 +572,7 @@
 
         if(!list.length){
           $('cards').innerHTML = '';
+          drawBook([]);                    // or it sits on "Reading…" for ever
           $('ours').innerHTML = '<div class="box" style="margin-bottom:14px">' +
             '<h3>Receipts' + (mine ? '<span class="aside">' + esc(mine) + '</span>' : '') +
             '</h3><p style="font-size:12.5px;color:var(--muted);margin:0">' +
@@ -647,6 +652,13 @@
           'from. Net is what was collected less what the courier kept. PostEx ' +
           'receipts can also be opened and received below.</div></div>';
 
+        // And underneath, the courier's own book - the same second table
+        // PostEx has had all along, month by month. "upar payment detail
+        // jitna months select krn us ka data ata h or nichy month wise kia
+        // paid h kia proceed": the cards above answer the span of dates, and
+        // this says what each month held and where each payment has got to.
+        drawBook(list);
+
         // A receipt opens in the side window, the way it always has. It was
         // briefly made to unfold underneath its own row instead, which put the
         // whole of a receipt into a strip the width of a table cell and left
@@ -657,6 +669,86 @@
             openReceipt(list[Number(tr.getAttribute('data-i'))]);
           });
         });
+  }
+
+  // The courier's own payment book, month by month.
+  //
+  // PostEx's has been on this page since it was written, under its portal
+  // sign-in; the other couriers had nothing of the kind, so there was no
+  // screen that said what October held and which of its payments the courier
+  // has actually settled. This is that table for them, built from the covers
+  // their own payment screen wrote - and only from those, so a number this
+  // app invented cannot appear in the courier's own book.
+  function drawBook(list){
+    var out = $('out');
+    if(!out) return;
+    if(courier === 'postex' || (scopeAccount && scopeAccount.courier === 'postex')) return;
+
+    var own = (list || []).filter(function(c){ return c.coverOrders != null; });
+    if(!own.length){ out.innerHTML = ''; return; }
+
+    var who = cname(own[0].courier);
+    var cod = own.reduce(function(a,c){ return a + (c.amount || 0); }, 0);
+    var owed = own.filter(function(c){ return !c.inBooks; })
+                  .reduce(function(a,c){ return a + (c.net || 0); }, 0);
+
+    var byMonth = {};
+    own.forEach(function(c){
+      var k = (c.settledOn || '0000-00').slice(0,7);
+      if(!byMonth[k]) byMonth[k] = [];
+      byMonth[k].push(c);
+    });
+
+    var rows = '';
+    Object.keys(byMonth).sort().reverse().forEach(function(k){
+      var group = byMonth[k];
+      var cd = group.reduce(function(a,c){ return a + (c.amount || 0); }, 0);
+      var nt = group.reduce(function(a,c){ return a + (c.net || 0); }, 0);
+      var label = k === '0000-00' ? 'No date'
+                : MONTHS[Number(k.slice(5,7))] + ' ' + k.slice(0,4);
+
+      rows += '<tr style="background:#F3F7FB;font-weight:600">' +
+              '<td colspan="2">' + esc(label) + '</td>' +
+              '<td class="r">' + n0(group.length) + '</td>' +
+              '<td class="r">' + n0(group.reduce(function(a,c){ return a + (c.orders||0); }, 0)) + '</td>' +
+              '<td class="r">' + full(cd) + '</td>' +
+              '<td class="r">' + full(nt) + '</td><td></td></tr>';
+
+      group.forEach(function(c, i){
+        rows += '<tr class="click brow" data-cpr="' + esc(c.cpr) + '">' +
+                '<td class="mono">' + esc(c.cpr) + '</td>' +
+                '<td class="mono">' + esc(c.settledOn || '') + '</td>' +
+                '<td class="r">' + statusPill(c.status) + '</td>' +
+                '<td class="r">' + n0(c.orders) + '</td>' +
+                '<td class="r">' + full(c.amount) + '</td>' +
+                '<td class="r">' + full(c.net) + '</td>' +
+                '<td>' + (c.inBooks
+                  ? '<span class="pill ok">received</span>'
+                  : '<span class="pill wait">not done</span>') + '</td></tr>';
+      });
+    });
+
+    out.innerHTML = '<div class="box"><h3>' + esc(who) + '’s own payment book' +
+      '<span class="aside">' + n0(own.length) + ' from their payment screen · ' +
+      full(cod) + ' collected · ' + full(owed) +
+      ' not in QuickBooks · click one to open it</span></h3>' +
+      '<div class="scroll"><table class="t">' +
+      '<tr><th>Payment</th><th>Paid on</th><th class="r">Status</th>' +
+      '<th class="r">Parcels</th><th class="r">COD collected</th>' +
+      '<th class="r">Paid to us</th><th>QuickBooks</th></tr>' + rows +
+      '</table></div>' +
+      '<div class="note">Every figure here is ' + esc(who) + '’s own, off ' +
+      'their payment screen - the status in their word, the parcels they name ' +
+      'on each payment, what they collected and what they paid. A courier ' +
+      'deducts what it deducts: each one’s receipt is read in that ' +
+      'courier’s own columns, not in another’s.</div></div>';
+
+    out.querySelectorAll('tr.brow').forEach(function(tr){
+      tr.addEventListener('click', function(){
+        var want = tr.getAttribute('data-cpr');
+        openReceipt(own.filter(function(c){ return c.cpr === want; })[0]);
+      });
+    });
   }
 
   function loadAccounts(){
@@ -1162,32 +1254,42 @@
     // of withholding that made up the difference was nowhere on the page.
     if(c.wht != null || c.sst != null){
       var collected = c.gross != null ? c.gross : c.amount;
-      var off = (c.fee || 0) + (c.tax || 0) + (c.wht || 0) + (c.sst || 0) + (c.bankFee || 0);
+      // **Their own six columns, in their own order and nothing else.**
+      // Total Amount, Total Charges, Total GST, Total WHT, Total COD SST,
+      // Total Payable - that is the whole of what Trax print on a payment,
+      // and a receipt of theirs says what they say. Their row also carries
+      // an `ibft_charges` that the screen does not draw as a column; it is
+      // not invented as a line here, it is named in the difference below
+      // where it can be checked rather than assumed.
+      var off = (c.fee || 0) + (c.tax || 0) + (c.wht || 0) + (c.sst || 0);
       var over = Math.round((collected - off - (c.net || 0)) * 100) / 100;
 
       money =
-        line('COD collected', collected) +
-        line(cname(c.courier) + ' charges', -(c.fee || 0)) +
-        line('GST on those charges', -(c.tax || 0)) +
-        line('Withholding tax', -(c.wht || 0)) +
-        line('COD sales tax (SST)', -(c.sst || 0)) +
-        line('IBFT / bank fee', -(c.bankFee || 0)) +
+        line('Total amount (COD collected)', collected) +
+        line('Total charges', -(c.fee || 0)) +
+        line('Total GST', -(c.tax || 0)) +
+        line('Total WHT', -(c.wht || 0)) +
+        line('Total COD SST', -(c.sst || 0)) +
         line('Deducted in all', -Math.round(off * 100) / 100) +
-        line('Paid to us', c.net, 'big') +
+        line('Total payable', c.net, 'big') +
         // The five come back to their own net to the rupee. Anything left
         // over is said rather than quietly absorbed - a receipt that does
         // not add up is the first thing worth knowing about it.
         (Math.abs(over) >= 1
-          ? '<div class="note" style="margin-top:8px">Collected less those ' +
-            'five comes to ' + full(collected - off) + ', and ' +
-            esc(cname(c.courier)) + ' paid ' + full(c.net) + ' — ' +
-            full(Math.abs(over)) + (over > 0 ? ' less' : ' more') +
-            ' than their own five deductions leave. Both figures are theirs, ' +
-            'off their payment screen; the difference is worth asking them ' +
-            'about. What arrived is what they paid.</div>'
-          : '<div class="note" style="margin-top:8px">Collected less those ' +
-            'five is exactly what they paid, so this receipt ties to their ' +
-            'own payment screen.</div>');
+          ? '<div class="note" style="margin-top:8px">Total amount less those ' +
+            'four comes to ' + full(collected - off) + ' and ' +
+            esc(cname(c.courier)) + '’s own total payable is ' +
+            full(c.net) + ' — ' + full(Math.abs(over)) +
+            (over > 0 ? ' less' : ' more') + ' than their four columns leave.' +
+            ((c.bankFee || 0)
+              ? ' Their row carries an IBFT charge of ' + full(c.bankFee) +
+                ' that the screen does not print as a column, which accounts ' +
+                'for ' + full(c.bankFee) + ' of it.'
+              : '') +
+            ' Both figures are theirs; what arrived is the total payable.</div>'
+          : '<div class="note" style="margin-top:8px">Total amount less those ' +
+            'four is exactly their total payable, so this receipt ties to ' +
+            'their own payment screen.</div>');
     } else {
 
     // What the courier said about this payment, in its own order. The second

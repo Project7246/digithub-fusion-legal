@@ -1021,3 +1021,45 @@ it was not. The kinds and the counts in that table are the courier's own
 throughout. Which bucket each parcel is in is the **By status** table
 underneath, where that question belongs. The only pair shown side by side is
 the count - theirs, and how many of them this app holds a row for.
+
+### A receipt is read in its own courier's columns - 5 Nov 2026
+
+Said plainly by the owner, and it is the rule: **each courier deducts what it
+deducts, and its receipt shows those and no others.** PostEx's is right and
+is not to be touched - it is the example, not the template to flatten the
+others into.
+
+Trax print six columns on a payment and the receipt now carries exactly
+those, in their order:
+
+| | |
+|---|---|
+| Total amount | the COD collected |
+| Total charges | what Trax kept for carrying |
+| Total GST | on those charges |
+| Total WHT | withheld |
+| Total COD SST | withheld |
+| Total payable | what reached the bank |
+
+**The IBFT charge is not one of their columns.** Their row carries an
+`ibft_charges` field that the screen does not draw, and it is worth 100 on
+every payment seen. It is no longer shown as a line of its own - inventing a
+deduction the courier does not print is the same fault as leaving one out.
+It is named in the difference note instead, where it explains most of the
+gap between their four deductions and their own payable and can be checked
+rather than assumed.
+
+### Every courier has its own payment book now
+
+`/receipts` had two tables for PostEx - the receipts in the dates chosen,
+and underneath **PostEx's own receipt book**, month by month, with the
+courier's own status on each. The other couriers had only the first, so
+nothing on the screen said what October held or which of its payments the
+courier had actually settled.
+
+`drawBook()` is that second table for them: month by month, newest first,
+each month's payments, parcels, COD and net, and each payment's own status -
+**Paid** and **Processed** for Trax, the same two states PostEx call CLOSED
+and APPROVED, coloured alike and spelled as the courier spells them. It is
+built from the covers their payment screen wrote and from nothing else, so a
+receipt number this app invented cannot appear in the courier's own book.
