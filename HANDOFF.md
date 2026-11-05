@@ -5,33 +5,31 @@ Keep it under 30 lines. Read it in the pre-flight; see AGENTS.md section A.
 
 **Last agent**: Claude (Opus 5) - 5 Nov 2026
 
-## Trax receipts now read like PostEx's, and the figures are the courier's own
+## A Trax receipt now holds what Trax say it holds
 
-- **Their per-parcel call does not name the payment they pay against.**
-  `/shipment/payments`'s `id` was being written on as a CPR number, so
-  payment 1839584 carried **1,709 parcels against the 924 on their own
-  screen** - parcels still in transit among them. `trax.js fetchPayment` no
-  longer returns a receipt number; a courier with a payment screen is never
-  asked parcel by parcel (`askAboutMoney`), and `savePayments` keeps the
-  number it already has when handed an empty one.
-- **`clearCprStrays`** is the half that was missing: of the parcels carrying
-  a receipt number, the ones the courier did not name let it go. Only ever
-  given a complete list - all three kinds. **`adjusted` was not being read.**
-- **The screen**: status (Paid/Processed) as a column and in the receipt;
-  "What is in this receipt" - delivered/returned/adjusted, theirs beside
-  ours, with COD; Money with **all five deductions named** (the withholding
-  and COD SST were not on the page at all, 79,646 of it on one receipt);
-  "By status" for any courier.
-- `npm run check:trax`, new, synthetic. `npm run check:all` = 18 ok.
+- **Their per-parcel call does not name the payment they pay against.** Its
+  `id` was written on as a CPR number, so payment 1839584 carried **1,709
+  parcels against the 924 on their own screen** - parcels still in transit
+  among them. `fetchPayment` no longer returns a receipt number; a courier
+  with a payment screen is never asked parcel by parcel; `savePayments`
+  keeps the number it has when handed an empty one; `clearCprStrays` lets a
+  parcel go of a payment it was never in; **`adjusted` was the third kind
+  and was not being read**. Every payment is now within a few parcels of
+  Trax's own count (920 of 924, 2,363 of 2,370 - the rest are parcels this
+  app holds no row for).
+- **The screen**: status as a column and in the receipt (Paid / Processed),
+  "What is in this receipt" in the courier's own kinds, Money with **all
+  five deductions named** - the withholding and COD SST were not on the page
+  at all, 79,646 of it on one receipt - and "By status" underneath.
+- `npm run check:trax` is new and synthetic. `check:all` = 18 ok.
 
-## What the owner must look at
+## What the owner must check
 
-- `/receipts?courier=trax` repairs itself on the first visits: each payment
-  out of step is re-read (6 per visit, 6-hour hold), parcels it was never in
-  are let go. **The counts should come to the courier's own.**
-- **Trax - ElRB's payments have still never been read** - it now will on a
-  visit, as it has a portal sign-in; if its receipts stay empty, run the
-  backfill with `withCpr: true`.
+- **Trax - ElRB (account 9) still shows 22 receipts with no payment behind
+  them** (1 to 1,858 parcels, no status, no date). Those are the invented
+  numbers. They clear themselves the moment that account's payment screen
+  answers - and it is not answering, so **its sonic.pk sign-in is the thing
+  to check**: re-save it on the Couriers page, which checks it before saving.
 - 9 Trax CPRs are still not in QuickBooks (21,603,433) - the books, not a bug.
-- PostEx **AH (10) and UR (11) have no webhook**. M&P GlowCart is unreconciled.
+- PostEx **AH (10) and UR (11) have no webhook**. M&P GlowCart unreconciled.
 - Next free migration number is **006**. Working tree clean.
