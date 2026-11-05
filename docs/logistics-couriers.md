@@ -1175,3 +1175,24 @@ go through an audited path that compares named fields, so merging is also the
 only way to add to one without disturbing that audit.
 
 `npm run check:mnp-receipts` is the arithmetic, on synthetic rows.
+
+### Two accounts of one courier do not sign in at the same second
+
+With `/receipts` asking properly, Trax - ElRB answered at last - and what it
+answered was **"The Trax portal could not be reached: 20 (through the
+relay)"**. Not a password: a timeout, while Trax - AA Traders on the same
+courier tab answered instantly from a session it already held. Both were
+started together, so one portal, one relay and one sign-in were being asked
+for twice in the same second.
+
+`chaseCpr` runs its accounts **in a queue** now - still not awaited, because
+a page must not wait on a courier, but one after another. That is what "one
+system for every account" has to mean in practice: the same work for each,
+not all of it at once.
+
+**And "20" is a timeout, not a code.** An aborted fetch throws a DOMException
+whose `code` is 20 - `ABORT_ERR`, a DOM constant with nothing to do with
+networks - and `codeOf()` in wire.js read it as the error code. So a call
+that had merely run out of time reported a number that told nobody the
+password was fine. It reads `AbortError` and `TimeoutError` by name first,
+and every courier says "no answer at all" instead.

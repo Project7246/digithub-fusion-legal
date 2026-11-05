@@ -39,6 +39,13 @@ export function qs(base, path, params) {
 export function codeOf(e) {
   let c = e;
   for (let i = 0; i < 5 && c; i++) {
+    // **A timeout says so before it says a number.** An aborted fetch throws
+    // a DOMException whose `code` is 20 - ABORT_ERR, a constant from the DOM
+    // and nothing to do with networks - so this read it as the error code
+    // and a Trax account that had simply timed out reported "The Trax portal
+    // could not be reached: 20 (through the relay)". Which told nobody that
+    // the password was fine and the call had merely run out of time.
+    if (c.name === 'AbortError' || c.name === 'TimeoutError') return 'ETIMEDOUT';
     if (c.code) return String(c.code);
     // a host with both an IPv6 and an IPv4 address fails twice, and Node hands
     // back an AggregateError whose own code is empty - the codes are inside it

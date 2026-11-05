@@ -481,9 +481,23 @@ export async function chaseCpr(realmId, opts) {
     courier: want.courier || null
   });
 
-  for (const acc of accounts) {
-    askAboutMoney(acc).catch(() => {});
-  }
+  // **One account at a time, not all of them at once.**
+  //
+  // These were started together, and on a courier tab that means every
+  // account of one courier signing in to one portal through one relay in
+  // the same second. Trax - AA Traders had a live session and answered;
+  // Trax - ElRB came back "The Trax portal could not be reached: 20
+  // (through the relay)" - a timeout, not a password - and its receipts
+  // stayed as they were while the other account's were exact. Which is the
+  // whole of "one system for every account": the same work, in a queue.
+  //
+  // Still not awaited: the page must not wait on a courier.
+  (async () => {
+    for (const acc of accounts) {
+      try { await askAboutMoney(acc); } catch (e) { /* noted, not waited on */ }
+    }
+  })().catch(() => {});
+
   return { started: accounts.length };
 }
 
