@@ -26,6 +26,7 @@ everything lives, the brand, and the open items.
 | Sign-in, rights, users, companies, the portal, the bin, the demo | `docs/accounts-companies.md` |
 | Anything that wakes the database on a timer, or any new poller | `docs/compute-budget.md` |
 | Writing or fixing a page under `public/` | `docs/pages-and-screens.md` |
+| Moving the server, the domain or the database | `docs/migration-2026-11.md` |
 
 `docs/collaboration-rules-2026-10-31.md` keeps the owner's collaboration rules as
 they were first recorded on 31 Oct 2026. AGENTS.md is the live version of them.
