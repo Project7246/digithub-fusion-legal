@@ -3,46 +3,42 @@
 The last agent to finish rewrites this file, in the same commit as its work.
 Keep it under 30 lines. Read it in the pre-flight; see AGENTS.md section A.
 
-**Last agent**: Claude (Opus 5) - 4 Nov 2026
+**Last agent**: Claude (Opus 5) - 5 Nov 2026
 
-## Finished, pushed and verified against the couriers themselves
+## Trax - AA Traders now reconciles with the portal
 
-- **compute.js** read **-498,120 hours**, so the stop-at guard and the sweep's
-  pacing were off since 1 Nov. A spell is a duration now. `check:compute`.
-- **The relay returns gzip** with no `Content-Encoding`, so every relayed body
-  was read as mojibake - "the Trax portal did not hand over a sign-in form",
-  and Trax's API calls too. `Accept-Encoding: identity` out, `readBody()` back.
-  `check:relay`.
-- **Trax portal now signs in from the server.** Both accounts backfilled from
-  the portal: **AA Traders 4,247 -> 13,989** (portal says 13,989) and
-  **ElRB 9 -> 31,287**.
-- **A generated M&P payment is not money received.** `mnp.js` set `settled`
-  from the mere presence of a PaymentID, so 116 parcels on PENDING payment
-  20261547934 were counted as received. `GOT_SQL` now lets a cover we hold
-  overrule the flag; where no cover is held the flag stands as before.
-  Verified live: got 5,965,044.75 -> 5,691,675.75, pending 0 -> 273,369 on
-  116 parcels. `check:mnp`.
-- **Net receivable** is one figure with its two halves under it; the charges
-  card shows charges and tax for each half. PostEx HT reconciles to the portal
-  exactly: orders 12,189 = 12,189, CPRs 7 = 7, 17,031,377.05 closed and
-  4,828,910.42 approved.
-- `CS-Consignee Shifted` mapped to `review` and rebucketed. `/courier-dash` no
-  longer rebuilds itself every 8s; `/receipts` date controls match it.
+- **Trax had no receipts at all.** absorbPayment() only opens a payment the
+  webhook names, so an account whose webhooks were never switched on had none.
+  traxportal.js now reads `/cod/finance/payments/list` (the Finance > Payments
+  screen) and `/..._shipments` for the parcels under each. **9 payments kept,
+  9,180 parcels put under one.** App total **21,603,433 = portal 21,603,433**,
+  and all nine match one by one, statuses included.
+- **One definition of a paid receipt, not two.** cprMoney() kept its own
+  `= 'CLOSED'` while the parcel side read CPR_CLOSED, so the same nine
+  receipts were "received" on one screen and "still owed" on the other. Both
+  read PAID_WORDS now (closed, paid, cleared, confirmed, transferred,
+  processed) - Trax say **Paid**, PostEx say CLOSED.
+- **A missing pickup date is not a parcel nobody collected.** Trax return
+  `rider_picked_status_date` null on every row, delivered ones included (500
+  of 500 checked live), and that read as "3,831 not picked up yet". It now
+  says "collected, no pickup date given" and only booking-stage parcels count
+  as uncollected.
+- `sessionFor` takes three arguments; calling it with one made the payment
+  read sign in afresh and fail as "Trax did not accept that email and
+  password" on a visit that had just signed in. The backfill hands its own
+  session over.
 
-## Known and NOT bugs - do not "fix" these
+## Checked tab by tab on that account - all correct
 
-- **M&P tax is 0 honestly.** Their QSR report carries no money column at all,
-  tracking carries only CODAmount and AmountPaid, and Payment_Report only
-  RRAmount/InvoiceAmount/NetPayable. No GST anywhere. Confirmed by peek.
-- **M&P - Rose Belle (6) is empty on purpose** - the owner says the account is
-  blank. QSR and Payment both answer "no record". Leave it.
-- **M&P `other` holds blank statuses** - M&P send an empty RRStatus until a
-  parcel finishes. `movingTrackings()` already asks about blanks first, 60 a
-  sweep, so they clear by themselves.
+Parcels: summary, days, status, cities, handed. Finance: statement, months,
+ageing, CPRs, pending, cities. Net receivable 0.00 with 9 of 9 CPRs paid,
+ageing says nothing outstanding, and the three agree.
 
-## Unfinished
+## Still open
 
-- PostEx **AH (10) and UR (11) have no webhook** (0 hits) - to be set in the
-  PostEx portal. HT and RB fire normally.
-- GlowCart's **total** (4,440) is not yet reconciled against the M&P portal.
+- **9 Trax CPRs are not in QuickBooks yet** (21,603,433) - the books, not a bug.
+- PostEx **AH (10) and UR (11) have no webhook** (0 hits); to be set in their
+  portal. **Trax - ElRB (9)** has parcels but its payments are not read yet -
+  run the same backfill with `withCpr: true`.
+- M&P GlowCart's total is not reconciled against the M&P portal.
 - Next free migration number is **006**. Working tree clean.
