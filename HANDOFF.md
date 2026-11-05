@@ -21,6 +21,15 @@ Keep it under 30 lines. Read it in the pre-flight; see AGENTS.md section A.
   "What is in this receipt" in the courier's own kinds, Money with **all
   five deductions named** - the withholding and COD SST were not on the page
   at all, 79,646 of it on one receipt - and "By status" underneath.
+- **Each courier's receipt is read in that courier's own columns.** Trax's
+  money block is their six and only their six - total amount, charges, GST,
+  WHT, COD SST, payable. **No IBFT line**: their row carries the field but
+  their screen prints no such column, so it is named in the difference note
+  instead, and the receipts list draws no Bank fee cell for a Trax row. The
+  list's Tax column is every tax cut, not just the GST.
+- **Every courier now has the second table PostEx has** - its own payment
+  book, month by month, with the courier's own status word. Built only from
+  covers the courier's payment screen wrote.
 - `npm run check:trax` is new and synthetic. `check:all` = 18 ok.
 
 ## What the owner must check
