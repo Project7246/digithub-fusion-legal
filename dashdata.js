@@ -749,7 +749,11 @@ export async function recentCprs(realmId, opts) {
   const DATED = `COALESCE(MAX(c.approved_on), MAX(c.created_on), MIN(o.settled_on))`;
   const having = [];
   if (opts.from) { args.push(opts.from); having.push(`${DATED} >= $${args.length}`); }
-  if (opts.to)   { args.push(opts.to);   having.push(`${DATED} <= $${args.length}`); }
+  // Next-day exclusive, because the cover carries a time of day: Trax stamp
+  // theirs at 05:15 and `<= '2026-11-05'` means 05:15 is after midnight on the
+  // last day asked for, so the newest receipt of all fell out of its own
+  // range. The same rule the CPR ranges already follow elsewhere.
+  if (opts.to)   { args.push(opts.to);   having.push(`${DATED} < ($${args.length}::date + 1)`); }
 
   // Built from the parcels themselves, which is what makes this work for every
   // courier: PostEx hands over a receipt from its portal, M&P hand back a
