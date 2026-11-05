@@ -1318,7 +1318,12 @@
           // 9,801 booked against 9,315 picked up on one account - and saying
           // the first is the second hides every parcel still sitting here.
           '<div class="fn">booked with the courier' +
-            (t.unpicked ? ' · ' + n0(t.unpicked) + ' not picked up yet' : '') +
+            (t.unpicked ? ' &middot; ' + n0(t.unpicked) + ' not picked up yet' : '') +
+            // Said out loud rather than folded into the line above it: these
+            // were collected and the courier simply never stamped a date, and
+            // calling them "not picked up" is a different and untrue thing.
+            (t.pickedUndated ? ' &middot; ' + n0(t.pickedUndated) +
+              ' collected, no pickup date given' : '') +
           '</div>' +
         '</div>' +
         '<div class="k1 c-ok open" data-group="delivered">' +

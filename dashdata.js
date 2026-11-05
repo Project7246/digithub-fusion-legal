@@ -78,11 +78,27 @@ export async function dashboard(realmId, opts) {
             COALESCE(SUM(o.amount),0) AS amount,
             COALESCE(SUM(o.fee),0) AS fee,
             COALESCE(SUM(o.tax),0) AS tax,
-            -- whether a parcel was collected is a date the courier stamps,
-            -- not something to be guessed from its status
+            -- When a parcel was collected is a date the courier stamps and is
+            -- never guessed at. **Whether** it was collected is a different
+            -- question, and a parcel that has been delivered plainly was.
+            --
+            -- Trax's summary report leaves rider_picked_status_date empty on
+            -- every row, delivered ones included - checked against the live
+            -- portal on 5 Nov 2026, 500 of 500 null. Counting an empty column
+            -- as "not picked up yet" put 3,831 of 4,247 parcels under a
+            -- heading that means the courier never came, on an account whose
+            -- parcels were delivered and paid for.
+            --
+            -- So not-picked-up is only a parcel still sitting at the booking
+            -- stage. One that has moved past it with no date is counted apart,
+            -- as what it is: collected, date not given.
             COUNT(*) FILTER (WHERE o.picked_on IS NOT NULL) AS picked,
-            COALESCE(SUM(o.amount) FILTER (WHERE o.picked_on IS NULL),0) AS unpicked_amount,
-            COUNT(*) FILTER (WHERE o.picked_on IS NULL) AS unpicked,
+            COALESCE(SUM(o.amount) FILTER (WHERE o.picked_on IS NULL
+              AND COALESCE(o.status_group, '') IN ('', 'unbooked', 'booked')),0) AS unpicked_amount,
+            COUNT(*) FILTER (WHERE o.picked_on IS NULL
+              AND COALESCE(o.status_group, '') IN ('', 'unbooked', 'booked')) AS unpicked,
+            COUNT(*) FILTER (WHERE o.picked_on IS NULL
+              AND COALESCE(o.status_group, '') NOT IN ('', 'unbooked', 'booked')) AS picked_undated,
             COALESCE(SUM(o.amount) FILTER (WHERE o.status_group = 'delivered'),0) AS delivered_amount,
             COALESCE(SUM(o.amount) FILTER (WHERE o.status_group NOT IN
               ('delivered','returned','cancelled','expired','lost','damaged')),0) AS pending_amount,
@@ -257,6 +273,7 @@ export async function dashboard(realmId, opts) {
       picked: Number(t.picked || 0),
       unpicked: Number(t.unpicked || 0),
       unpickedAmount: r2(t.unpicked_amount),
+      pickedUndated: Number(t.picked_undated || 0),
       amount: r2(t.amount),
       fee: r2(t.fee),
       tax: r2(t.tax),
@@ -1331,10 +1348,15 @@ export async function logisticsSummary(realmId, opts) {
   const [parcels, money, byCourier, accounts] = await Promise.all([
     pool.query(
       `SELECT COUNT(*) FILTER (WHERE ${MOVING}) AS moving,
-              -- whether a parcel was collected is a date the courier stamps,
-              -- never something to be guessed from its status
-              COUNT(*) FILTER (WHERE ${MOVING} AND o.picked_on IS NULL) AS unpicked,
+              -- Waiting on the courier to come at all, which is a parcel
+              -- still at the booking stage with no pickup date. A parcel in
+              -- transit was plainly collected even where the courier leaves
+              -- that column empty, as Trax do on every row - see the note in
+              -- the totals query above.
               COUNT(*) FILTER (WHERE ${MOVING} AND o.picked_on IS NULL
+                               AND COALESCE(o.status_group, '') IN ('', 'unbooked', 'booked')) AS unpicked,
+              COUNT(*) FILTER (WHERE ${MOVING} AND o.picked_on IS NULL
+                               AND COALESCE(o.status_group, '') IN ('', 'unbooked', 'booked')
                                AND o.booked_on < CURRENT_DATE - 2) AS unpicked_old,
               COUNT(*) FILTER (WHERE o.status_group = 'delivered'
                                AND o.delivered_on >= CURRENT_DATE - 7) AS delivered7,
