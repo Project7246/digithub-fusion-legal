@@ -8,7 +8,9 @@ import {
   needCpr, savePayments, credsOf
 } from './couriers.js';
 import { adapterFor } from './adapters.js';
+import { decrypt } from './secrets.js';
 import { fillFromCprs } from './cprlive.js';
+import { absorbPortalPayments } from './traxlive.js';
 
 // account id + span -> { at, orders }
 const recent = new Map();
@@ -72,6 +74,31 @@ async function askAboutMoney(acc) {
       fromCprs = await fillFromCprs(acc.realm_id, acc);
     } catch (e) {
       fromCprs = 0;
+    }
+
+    // **A courier with a payment screen is never asked parcel by parcel.**
+    //
+    // Trax have one (Finance > Payments) and it names every shipment in every
+    // payment. Asking their per-parcel call instead put 1,709 parcels under a
+    // payment of 924 - it answers with an id of its own that is not the
+    // payment the merchant is paid against (trax.js `fetchPayment`). The list
+    // is also a handful of calls rather than one per delivered parcel.
+    //
+    // Reading it is cheap on a second visit: a payment whose parcels are all
+    // here already is skipped, so an account in step costs one call.
+    // Without a sign-in there is nothing to read - and still nothing to
+    // guess at, so the per-parcel loop below is not a fallback for it.
+    if (a.portal && typeof a.portal.payments === 'function') {
+      if (!acc.portal_email || !acc.portal_secret) return fromCprs;
+      try {
+        const got = await absorbPortalPayments(acc.realm_id, acc, {
+          secret: decrypt(acc.portal_secret)
+        });
+        return (got.linked || 0) + (got.cleared || 0);
+      } catch (e) {
+        // the portal being down is not a reason to start guessing instead
+        return fromCprs;
+      }
     }
 
     // Keep going until there is nothing left to ask about.

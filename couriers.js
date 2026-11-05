@@ -781,7 +781,12 @@ export async function savePayments(realmId, accountId, rows) {
     `UPDATE courier_orders o
         SET settled    = v.settled,
             settled_on = v.settled_on,
-            cpr_number = v.cpr_number,
+            -- A courier that did not name a payment does not erase the one we
+            -- already hold. Trax's per-parcel call answers with an id of its
+            -- own and often with none at all, and an answer with none used to
+            -- blank the number their payment screen had put there - which is
+            -- the same mistake as writing a nought over a charge.
+            cpr_number = COALESCE(NULLIF(v.cpr_number, ''), o.cpr_number),
             fee        = COALESCE(v.fee, o.fee),
             tax        = COALESCE(v.tax, o.tax)
        FROM (SELECT * FROM unnest(
@@ -1093,4 +1098,58 @@ export async function linkCprParcels(realmId, accountId, cprNumber, trackings, s
     [realmId, Number(accountId), String(cprNumber), list, settledOn || null]
   );
   return r.rowCount || 0;
+}
+
+// The other half of linkCprParcels, and the half that was missing.
+//
+// linkCprParcels only ever adds. That is right for a courier that tells us
+// about one parcel at a time, and wrong for one that hands over the whole
+// list: once a parcel has been stamped with a payment number by anything
+// else, only the payment's own list can take it off again. Trax's payment
+// 1839584 carried 1,709 parcels here against the 924 its own Finance screen
+// prints, and every one of the extras was a parcel their per-parcel call had
+// named with a payment id of its own - none of them in the payment at all.
+//
+// So: of the parcels carrying this receipt number, the ones the courier did
+// not name let it go. **Only ever call this with a complete list** - every
+// kind of shipment the payment holds, read in the same visit.
+//
+// The settlement goes with the number, because the same answer wrote both: a
+// parcel we are no longer willing to say was paid by this receipt is not a
+// parcel we can go on calling paid. Its real receipt, when the courier names
+// one, brings its own date back.
+export async function clearCprStrays(realmId, accountId, cprNumber, trackings) {
+  const list = [...new Set((trackings || []).map(t => String(t || '').trim()).filter(Boolean))];
+  // An empty list is "we did not read it", never "this payment is empty".
+  // Without this guard the NOT ... ANY below would empty the whole receipt.
+  if (!list.length || !cprNumber) return 0;
+
+  const r = await pool.query(
+    `UPDATE courier_orders o
+        SET cpr_number = NULL,
+            settled    = FALSE,
+            settled_on = NULL
+      WHERE o.realm_id = $1 AND o.account_id = $2
+        AND o.cpr_number = $3
+        AND NOT (o.tracking = ANY($4::text[]))`,
+    [realmId, Number(accountId), String(cprNumber), list]
+  );
+  return r.rowCount || 0;
+}
+
+// How many parcels each of these receipts holds here. The payment screen says
+// how many it should hold, so this is what lets a second visit read one list
+// instead of two calls for every payment on the account.
+export async function cprParcelCounts(realmId, accountId, cprNumbers) {
+  const want = [...new Set((cprNumbers || []).map(c => String(c || '').trim()).filter(Boolean))];
+  if (!want.length) return new Map();
+
+  const r = await pool.query(
+    `SELECT cpr_number, COUNT(*)::int AS n
+       FROM courier_orders
+      WHERE realm_id = $1 AND account_id = $2 AND cpr_number = ANY($3::text[])
+      GROUP BY cpr_number`,
+    [realmId, Number(accountId), want]
+  );
+  return new Map(r.rows.map(x => [String(x.cpr_number), Number(x.n)]));
 }

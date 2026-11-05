@@ -884,3 +884,83 @@ named by the courier and 14,568 tidied. The ageing bands tie to `oldestDue` on
 every account, the not-collected figure matches the portal (226 unbooked), and
 M&P's 24 October payments are the 23-24 distinct `PaymentID`s behind their
 3,016 report rows.
+
+## A Trax receipt is the courier's own payment - 5 Nov 2026
+
+The receipt section for Trax was told to read like PostEx's: the parcels in
+it, how many were delivered and how many came back, every tax that was cut
+and what kind, the COD, and what is left for us. It did not, and the figures
+on it were wrong rather than merely thin. Three faults, checked against their
+own Finance > Payments screen while signed in.
+
+### Their per-parcel call does not name the payment they pay against
+
+`/shipment/payments` carries a payment status, the charges and the GST, and an
+`id`. That id was taken for Trax's answer to a CPR number and written onto the
+parcel as one. It is not.
+
+Payment **1839584** holds **924** shipments on their own screen - 802
+delivered, 116 returned, 6 adjusted. **1,709 parcels carried its number here**,
+and not one of the 785 extras appears in any of that payment's three lists.
+Parcels still in transit, and parcels at *Shipper Advise Requested*, were
+sitting inside a receipt with their COD counted as collected.
+
+The older payments were right to the parcel - 74, 1,165 and 1,644, each
+exactly their own figure - because those were linked from the payment screen
+first, and `needCpr` only ever asks about a parcel that has **no** number yet.
+The newer a payment, the more of the guess had reached it.
+
+So:
+
+- **`trax.js fetchPayment` no longer returns a receipt number at all.** It
+  says whether the money moved and what it was worth, and their own id is
+  kept under `traxPaymentId`, where nothing can mistake it for a receipt.
+- **A courier with a payment screen is never asked parcel by parcel.**
+  `askAboutMoney` (courierlive.js) now reads `absorbPortalPayments` for any
+  adapter whose `portal` has a `payments` call, and does not fall through to
+  the per-parcel loop - not even when the account has no sign-in, because
+  there is nothing to guess at either way.
+- **`savePayments` keeps a receipt number it is handed an empty one for.**
+  `cpr_number = COALESCE(NULLIF(v.cpr_number,''), o.cpr_number)` - the same
+  rule as "a nought is not said" for the charges, applied to the number.
+
+### Only the payment's own list may take a parcel out of it
+
+`linkCprParcels` only ever added, so nothing could undo a wrong stamp.
+`clearCprStrays` is the other half: of the parcels carrying a receipt number,
+the ones the courier did not name let it go, and the settlement goes with the
+number because the same answer wrote both. **It is only ever given a complete
+list** - all three kinds, read in one visit - and an empty list clears
+nothing, because an empty list is "not read", never "this payment is empty".
+
+`absorbPortalPayments` reads every kind first and writes afterwards, so a
+parcel that belongs to payment A is linked to A before B is allowed to let go
+of its strays.
+
+**Adjusted was the third kind and was not being read.** Their
+`total_shipments` is delivered + returned + adjusted; two of the three left
+the rest of the payment free to be stamped by something else.
+
+### It pays for itself to run on every visit
+
+A payment whose parcels are all here already matches the courier's own count
+and is not opened again, so an account in step costs **one** call. One that
+can never match - an account whose parcels were never all imported - is held
+off by `TRAX_PAYMENT_REREAD_MINUTES` (6 hours) and `TRAX_PAYMENTS_PER_RUN`
+(6), so a visit cannot turn into thirty calls through the relay. A backfill
+passes `force` and opens all of them.
+
+### The screen: what PostEx's receipt has, Trax's now has
+
+| | |
+|---|---|
+| **This receipt** | the courier's own status word - **Paid**, **Processed**, APPROVED, CLOSED - the date, and whether QuickBooks has it. It is a column in the receipts list too: which of them the courier has actually settled was the one thing the list did not say |
+| **What is in this receipt** | delivered / returned / adjusted, **what the courier says beside what we hold**, and the COD on each. Two counts on purpose: a receipt that says 924 while 1,709 parcels carry its number is wrong, and only printing both can say so |
+| **Money** | all five deductions named - charges, GST, withholding tax, COD SST, IBFT - then what they paid. The old screen showed two of the five, so it came to 1,855,200 against the 1,775,545 on their own receipt, and the **79,646 of withholding that made up the difference was nowhere on the page**. It now says in a line whether collected less the five is exactly what they paid |
+| **By status** | every status in the receipt, with parcels, COD, charges and tax - built from the parcels, so it works for any courier |
+
+`npm run check:trax` (`tools/trax-receipts-check.mjs`) is the arithmetic, on
+synthetic rows: three kinds adding to their own total, counts read out of the
+button their screen draws them in, money read through its thousands marks,
+the five deductions tying to the figure paid, their rounding to the rupee
+tolerated and a real gap reported rather than absorbed.

@@ -13,7 +13,8 @@
     "check:banking": "node tools/banking-check.mjs && node tools/banking-report-check.mjs && node tools/banking-setup-check.mjs && node tools/banking-history-check.mjs && node tools/banking-sheets-check.mjs && node tools/banking-archive-check.mjs && node tools/banking-schedule-check.mjs && node tools/banking-ui-check.mjs",
     "check:compute": "node tools/compute-check.mjs",
     "check:relay": "node tools/relay-body-check.mjs",
-    "check:mnp": "node tools/mnp-settled-check.mjs"
+    "check:mnp": "node tools/mnp-settled-check.mjs",
+    "check:trax": "node tools/trax-receipts-check.mjs"
   },
   "dependencies": {
     "cookie-parser": "^1.4.6",

@@ -21,7 +21,8 @@
 
 import { adapterFor } from './adapters.js';
 import {
-  saveOrders, savePayments, saveCprs, haveTrackings, linkCprParcels
+  saveOrders, savePayments, saveCprs, haveTrackings, linkCprParcels,
+  clearCprStrays, cprParcelCounts
 } from './couriers.js';
 
 // Parcels looked up three at a time, and never more than this many from one
@@ -112,6 +113,20 @@ export async function absorbPayment(realmId, acc, paymentId, opts) {
    down as the receipt it is, and put its number on the parcels it paid for.
    Nothing here asks the courier about a parcel one at a time.                */
 
+// account|payment -> when its shipment lists were last read.
+//
+// A payment is skipped when what we hold matches the courier's own count, and
+// that is the usual case - but an account whose parcels were never all
+// imported never matches, and without this it would read three lists for
+// every payment on every visit to /receipts, for ever. A restart reads them
+// again, which is the right price for a memory that costs nothing.
+const readAt = new Map();
+const AGAIN = Math.max(5, Number(process.env.TRAX_PAYMENT_REREAD_MINUTES) || 360) * 60000;
+
+// and never more than this many in one run, so one visit cannot turn into
+// thirty calls through the relay
+const PER_RUN = Math.max(1, Number(process.env.TRAX_PAYMENTS_PER_RUN) || 6);
+
 export async function absorbPortalPayments(realmId, acc, opts = {}) {
   const a = adapterFor(acc.courier);
   const portal = a && a.portal;
@@ -126,40 +141,85 @@ export async function absorbPortalPayments(realmId, acc, opts = {}) {
   const session = opts.session ||
     await portal.sessionFor(acc.id, acc.portal_email, opts.secret);
   const covers = await portal.payments(session, {});
-  if (!covers.length) return { covers: 0, linked: 0 };
+  if (!covers.length) return { covers: 0, linked: 0, cleared: 0, read: 0 };
 
   await saveCprs(realmId, acc.id, acc.courier, covers);
 
-  // Which parcels each payment paid for. One call per payment per kind, and
-  // there are a handful of payments on an account - not a call per parcel.
-  let linked = 0;
   const say = typeof opts.say === 'function' ? opts.say : () => {};
+
+  // **Every kind of shipment the payment holds.** Their screen prints
+  // `total_shipments` and then a button per kind, and the three buttons add
+  // up to it: delivered + returned + adjusted. Reading two of the three left
+  // the third out of the receipt, and left it free to be stamped with some
+  // other payment's number by the per-parcel call.
+  const KINDS = ['delivered', 'returned', 'adjusted'];
+
+  // What is already under each of these numbers here. A payment whose parcels
+  // are all in agrees with the courier's own count, and is not read again -
+  // which is what makes this safe to run on every visit to /receipts rather
+  // than only on a backfill. `force` reads them all whatever we hold.
+  const held = await cprParcelCounts(realmId, acc.id, covers.map(c => c.cprNumber));
+
+  // Read first, write second. A parcel stamped with payment B that really
+  // belongs to payment A must be linked to A before B is allowed to let go
+  // of its strays, or the run itself would lose it until the next one.
+  const lists = new Map();
+  let read = 0;
 
   for (const c of covers) {
     if (opts.stop && opts.stop()) break;
 
-    // Delivered parcels are the ones the money is for. Returned ones are on
-    // the same payment and collected nothing, so they carry the number but
-    // never a settled flag - the money rules read the cover, not the flag.
-    for (const kind of ['delivered', 'returned']) {
-      let list;
+    const want = Number((c.raw && c.raw.shipments) || 0);
+    const have = held.get(String(c.cprNumber)) || 0;
+    const key = acc.id + '|' + c.cprNumber;
+
+    if (!opts.force) {
+      if (want && have === want) continue;                // already whole
+      const last = readAt.get(key) || 0;
+      if (Date.now() - last < AGAIN) continue;            // asked recently
+      if (read >= PER_RUN) break;                         // enough for one visit
+    }
+
+    const all = [];
+    let asked = 0;
+
+    for (const kind of KINDS) {
       try {
-        list = await portal.paymentShipments(session, c.remoteId || c.cprNumber, kind);
+        const list = await portal.paymentShipments(session, c.remoteId || c.cprNumber, kind);
+        asked += 1;
+        list.forEach(t => all.push(t));
       } catch (e) {
         say('Payment ' + c.cprNumber + ' (' + kind + '): ' + e.message);
-        continue;
       }
-      if (!list.length) continue;
-
-      // `settled` is left alone on purpose. Whether this payment has actually
-      // been paid is the cover's own status, and dashdata reads that - writing
-      // a flag here would be the same mistake M&P's mapper made, where a
-      // payment that merely existed counted as money received. linkCprParcels
-      // writes the link and touches nothing else.
-      linked += await linkCprParcels(realmId, acc.id, c.cprNumber, list,
-        c.createdOn ? String(c.createdOn).slice(0, 10) : null);
     }
+
+    // A payment whose kinds would not all answer is not a payment we know the
+    // whole of, so it is linked but never cleared - half a list is the one
+    // thing clearCprStrays must not be given.
+    if (!all.length) continue;
+    lists.set(c.cprNumber, { trackings: all, whole: asked === KINDS.length, cover: c });
+    if (asked === KINDS.length) readAt.set(key, Date.now());
+    read += 1;
   }
 
-  return { covers: covers.length, linked };
+  // ---- link ----
+  //
+  // `settled` is left alone on purpose. Whether this payment has actually
+  // been paid is the cover's own status, and dashdata reads that - writing a
+  // flag here would be the same mistake M&P's mapper made, where a payment
+  // that merely existed counted as money received.
+  let linked = 0;
+  for (const [cpr, item] of lists) {
+    linked += await linkCprParcels(realmId, acc.id, cpr, item.trackings,
+      item.cover.createdOn ? String(item.cover.createdOn).slice(0, 10) : null);
+  }
+
+  // ---- and let the strangers go ----
+  let cleared = 0;
+  for (const [cpr, item] of lists) {
+    if (!item.whole) continue;
+    cleared += await clearCprStrays(realmId, acc.id, cpr, item.trackings);
+  }
+
+  return { covers: covers.length, read, linked, cleared };
 }

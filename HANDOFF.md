@@ -5,40 +5,33 @@ Keep it under 30 lines. Read it in the pre-flight; see AGENTS.md section A.
 
 **Last agent**: Claude (Opus 5) - 5 Nov 2026
 
-## Trax - AA Traders now reconciles with the portal
+## Trax receipts now read like PostEx's, and the figures are the courier's own
 
-- **Trax had no receipts at all.** absorbPayment() only opens a payment the
-  webhook names, so an account whose webhooks were never switched on had none.
-  traxportal.js now reads `/cod/finance/payments/list` (the Finance > Payments
-  screen) and `/..._shipments` for the parcels under each. **9 payments kept,
-  9,180 parcels put under one.** App total **21,603,433 = portal 21,603,433**,
-  and all nine match one by one, statuses included.
-- **One definition of a paid receipt, not two.** cprMoney() kept its own
-  `= 'CLOSED'` while the parcel side read CPR_CLOSED, so the same nine
-  receipts were "received" on one screen and "still owed" on the other. Both
-  read PAID_WORDS now (closed, paid, cleared, confirmed, transferred,
-  processed) - Trax say **Paid**, PostEx say CLOSED.
-- **A missing pickup date is not a parcel nobody collected.** Trax return
-  `rider_picked_status_date` null on every row, delivered ones included (500
-  of 500 checked live), and that read as "3,831 not picked up yet". It now
-  says "collected, no pickup date given" and only booking-stage parcels count
-  as uncollected.
-- `sessionFor` takes three arguments; calling it with one made the payment
-  read sign in afresh and fail as "Trax did not accept that email and
-  password" on a visit that had just signed in. The backfill hands its own
-  session over.
+- **Their per-parcel call does not name the payment they pay against.**
+  `/shipment/payments`'s `id` was being written on as a CPR number, so
+  payment 1839584 carried **1,709 parcels against the 924 on their own
+  screen** - parcels still in transit among them. `trax.js fetchPayment` no
+  longer returns a receipt number; a courier with a payment screen is never
+  asked parcel by parcel (`askAboutMoney`), and `savePayments` keeps the
+  number it already has when handed an empty one.
+- **`clearCprStrays`** is the half that was missing: of the parcels carrying
+  a receipt number, the ones the courier did not name let it go. Only ever
+  given a complete list - all three kinds. **`adjusted` was not being read.**
+- **The screen**: status (Paid/Processed) as a column and in the receipt;
+  "What is in this receipt" - delivered/returned/adjusted, theirs beside
+  ours, with COD; Money with **all five deductions named** (the withholding
+  and COD SST were not on the page at all, 79,646 of it on one receipt);
+  "By status" for any courier.
+- `npm run check:trax`, new, synthetic. `npm run check:all` = 18 ok.
 
-## Checked tab by tab on that account - all correct
+## What the owner must look at
 
-Parcels: summary, days, status, cities, handed. Finance: statement, months,
-ageing, CPRs, pending, cities. Net receivable 0.00 with 9 of 9 CPRs paid,
-ageing says nothing outstanding, and the three agree.
-
-## Still open
-
-- **9 Trax CPRs are not in QuickBooks yet** (21,603,433) - the books, not a bug.
-- PostEx **AH (10) and UR (11) have no webhook** (0 hits); to be set in their
-  portal. **Trax - ElRB (9)** has parcels but its payments are not read yet -
-  run the same backfill with `withCpr: true`.
-- M&P GlowCart's total is not reconciled against the M&P portal.
+- `/receipts?courier=trax` repairs itself on the first visits: each payment
+  out of step is re-read (6 per visit, 6-hour hold), parcels it was never in
+  are let go. **The counts should come to the courier's own.**
+- **Trax - ElRB's payments have still never been read** - it now will on a
+  visit, as it has a portal sign-in; if its receipts stay empty, run the
+  backfill with `withCpr: true`.
+- 9 Trax CPRs are still not in QuickBooks (21,603,433) - the books, not a bug.
+- PostEx **AH (10) and UR (11) have no webhook**. M&P GlowCart is unreconciled.
 - Next free migration number is **006**. Working tree clean.

@@ -619,6 +619,42 @@ function payQuery(start, length) {
 // Number() of that is NaN - which would be written down as nought.
 const money = (v) => num(String(v == null ? '' : v).replace(/,/g, ''));
 
+// A count that may arrive as a number, as "1,709", or as the button their
+// screen draws it in - `<button ...>74</button>`. Everything but the digits
+// goes, and a count that is not there stays nought rather than becoming NaN.
+const count = (v) => {
+  const digits = String(v == null ? '' : v).replace(/<[^>]*>/g, ' ').replace(/[^0-9]/g, '');
+  return digits ? Number(digits) : 0;
+};
+
+const pick = (a, b) => (a === undefined || a === null || a === '' ? b : a);
+
+// What one of their payments comes to, added up the way their own screen
+// does: five deductions off what was collected, and `total_payable` is what
+// is left. It is here rather than worked out wherever it is wanted, because
+// a receipt that does not tie to the courier's own figure is the first thing
+// worth knowing about it - and that can only be said by one sum.
+export function paymentTotals(p) {
+  const r = (p && p.raw) || {};
+  const r2 = v => Math.round(Number(v || 0) * 100) / 100;
+
+  const collected = r2(p && p.grossAmount);
+  const charges   = r2(p && p.chargeAmount);
+  const gst       = r2(r.gst);
+  const wht       = r2(r.wht);
+  const sst       = r2(r.codSst);
+  const ibft      = r2(r.ibft);
+  const deducted  = r2(charges + gst + wht + sst + ibft);
+  const net       = r2(p && p.netAmount);
+
+  return {
+    collected, charges, gst, wht, sst, ibft, deducted, net,
+    // what their own payable leaves unexplained. Theirs is printed to the
+    // rupee, so anything under one rupee is their rounding and not a gap.
+    over: r2(collected - deducted - net)
+  };
+}
+
 // Their status word, kept as they write it. Which of their words means the
 // money has actually arrived is decided where every courier's is - not here.
 export function mapPayment(r) {
@@ -644,9 +680,18 @@ export function mapPayment(r) {
       wht: money(r.total_wht),
       codSst: money(r.total_cod_sst),
       ibft: money(r.ibft_charges),
-      shipments: Number(r.total_shipments) || 0,
-      delivered: Number(r.delivered_shipments_count) || 0,
-      returned: Number(r.returned_shipments_count) || 0,
+      // Their screen draws each of these as a button with the count inside
+      // it, so `delivered_shipments` is a lump of HTML and the figure is on
+      // the `_count` beside it. The four add up to `total_shipments`:
+      // delivered + returned + adjusted, with arrival counted another way.
+      // The `_count` beside each button is not one of the columns their
+      // screen asks for, so it is read where it is and the button itself is
+      // the fallback - a count that moved is a count read wrong, not a nought.
+      shipments: count(r.total_shipments),
+      delivered: count(pick(r.delivered_shipments_count, r.delivered_shipments)),
+      returned: count(pick(r.returned_shipments_count, r.returned_shipments)),
+      adjusted: count(pick(r.adjusted_shipments_count, r.adjusted_shipments)),
+      arrival: count(pick(r.arrival_shipments_count, r.arrival_shipments)),
       companyBank: String(r.company_bank || '').trim()
     }
   };

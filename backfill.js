@@ -301,11 +301,16 @@ async function run(realmId, job, carrying) {
     try {
       const got = await absorbPortalPayments(realmId, acc, {
         session,
+        // A backfill is the deliberate "read it all again", so every payment
+        // is opened whatever we already hold under its number.
+        force: true,
         stop: () => job.cancel,
         say: line => say(job, line)
       });
       say(job, got.covers
-        ? got.covers + ' payments kept, ' + got.linked + ' parcels put under one'
+        ? got.covers + ' payments kept, ' + got.linked + ' parcels put under one' +
+          (got.cleared ? ', ' + got.cleared + ' taken off a payment they were ' +
+            'never in' : '')
         : 'The courier lists no payments on this account yet');
     } catch (e) {
       say(job, 'Could not read the payment list - ' + e.message);

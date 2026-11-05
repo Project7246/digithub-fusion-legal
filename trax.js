@@ -258,9 +258,22 @@ export async function fetchCharges(token, tracking) {
   };
 }
 
-// Settlement. `/shipment/payments` carries the payment status and every
-// payment made against the parcel; the payment's own id is the nearest thing
-// Trax has to PostEx's CPR number, so that is where it is kept.
+// Settlement, parcel by parcel. `/shipment/payments` carries the payment
+// status and the money, and it is read for both.
+//
+// **What it does not carry is a receipt number.** It was taken here that its
+// `id` was Trax's answer to PostEx's CPR number. It is not: checked against
+// their own Finance > Payments screen on 5 Nov 2026, payment 1839584 holds
+// 924 shipments there and 1,709 had been filed under it here, and not one of
+// the 785 extras appears in any of that payment's own lists - delivered,
+// returned or adjusted. The id on this call is an id of Trax's own and it
+// does not name the payment the merchant is paid against.
+//
+// Which payment paid for a Trax parcel comes from the payment screen's own
+// lists and from nowhere else (traxportal.js `paymentShipments`, traxlive.js
+// `absorbPortalPayments`). This call says whether the money has moved and
+// what it was worth, and leaves the receipt number alone - savePayments()
+// keeps whatever is already there when it is handed an empty one.
 export async function fetchPayment(token, tracking) {
   const cn = String(tracking || '').trim();
   const j = await ask(token, '/shipment/payments', { tracking_number: cn });
@@ -274,7 +287,10 @@ export async function fetchPayment(token, tracking) {
     orderRef:   '',
     settled:    /processed|paid|cleared|transferred/i.test(said) || paid.length > 0,
     settledOn:  day(first.datetime),
-    cprNumber:  first.id === undefined || first.id === null ? '' : String(first.id),
+    // deliberately empty - see above. Their own id is kept where it can be
+    // read without being mistaken for a receipt.
+    cprNumber:  '',
+    traxPaymentId: first.id === undefined || first.id === null ? '' : String(first.id),
     upfrontOn:  null,
     reserveOn:  null,
     status:     said,

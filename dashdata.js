@@ -800,7 +800,19 @@ export async function recentCprs(realmId, opts) {
             MAX(CASE WHEN c.raw->>'source' = 'trax-portal-payment-v1'
               THEN (c.raw->>'codSst')::numeric END) AS trax_cod_sst,
             MAX(CASE WHEN c.raw->>'source' = 'trax-portal-payment-v1'
-              THEN (c.raw->>'ibft')::numeric END) AS trax_ibft
+              THEN (c.raw->>'ibft')::numeric END) AS trax_ibft,
+            -- and how many parcels the courier itself says are in it, by
+            -- kind. "1,709 parcels" against their own 924 is the kind of
+            -- thing a receipt should say out loud, not hide behind a count
+            -- of whatever happens to carry its number here.
+            MAX(CASE WHEN c.raw->>'source' = 'trax-portal-payment-v1'
+              THEN (c.raw->>'shipments')::int END) AS cover_orders,
+            MAX(CASE WHEN c.raw->>'source' = 'trax-portal-payment-v1'
+              THEN (c.raw->>'delivered')::int END) AS cover_delivered,
+            MAX(CASE WHEN c.raw->>'source' = 'trax-portal-payment-v1'
+              THEN (c.raw->>'returned')::int END) AS cover_returned,
+            MAX(CASE WHEN c.raw->>'source' = 'trax-portal-payment-v1'
+              THEN (c.raw->>'adjusted')::int END) AS cover_adjusted
        FROM courier_orders o
        JOIN courier_accounts a ON a.id = o.account_id
        LEFT JOIN courier_cprs c
@@ -842,10 +854,23 @@ export async function recentCprs(realmId, opts) {
       account: x.label,
       courier: x.courier,
       settledOn: day(x.settled_on),
-      orders: Number(x.orders),
+      // What the courier says is in it, and what we hold under its number.
+      // They agree when the receipt has been read properly and the pair is
+      // what says so - one figure alone cannot.
+      orders: traxCover && x.cover_orders != null
+        ? Number(x.cover_orders) : Number(x.orders),
+      ourOrders: Number(x.orders),
+      coverOrders: x.cover_orders == null ? null : Number(x.cover_orders),
+      delivered: x.cover_delivered == null ? null : Number(x.cover_delivered),
+      returned: x.cover_returned == null ? null : Number(x.cover_returned),
+      adjusted: x.cover_adjusted == null ? null : Number(x.cover_adjusted),
       amount,
       charges,
       fee, tax, bankFee, withheld, parcelFee: r2(x.fee),
+      // the two halves of what was withheld, named apart - "how much tax was
+      // deducted and of which kind" is the question a receipt is opened for
+      wht: traxCover ? r2(x.trax_wht) : null,
+      sst: traxCover ? r2(x.trax_cod_sst) : null,
       // What they actually paid against this receipt. A courier that deducts
       // pays the COD less its charges; M&P pay the whole COD and bill their
       // charges on an invoice of their own, so taking them off here would

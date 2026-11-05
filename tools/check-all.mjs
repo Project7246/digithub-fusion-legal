@@ -29,6 +29,7 @@ const checks = [
   ['compute meter', 'tools/compute-check.mjs'],
   ['relay body', 'tools/relay-body-check.mjs'],
   ['M&P settled', 'tools/mnp-settled-check.mjs'],
+  ['Trax receipts', 'tools/trax-receipts-check.mjs'],
 ];
 
 const run = (file) => new Promise((done) => {
