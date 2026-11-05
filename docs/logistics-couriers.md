@@ -1252,3 +1252,27 @@ So the queue takes a breath between accounts (`COURIER_ACCOUNT_GAP_SECONDS`,
 8). That is the whole of what this app can do about it from here; if ElRB
 still times out after a quiet gap, the next thing to look at is the relay
 itself, not the password.
+
+### A sign-in is not a list call, and that was the whole of ElRB
+
+Run on its own, with nothing else touching the relay, Trax - ElRB still
+failed - **in 44 seconds, which is two twenty-two second aborts**. So it was
+never the burst, and the queue and the gap did not touch it. At the same
+minute `/api/courier/reach` fetched sonic.pk's login page through that same
+relay in **9.9 seconds**, token and cookies and all.
+
+The difference is which call each makes. AA Traders holds a cached session
+and **never signs in**; ElRB has none, so every visit starts with the login
+page and then the POST that answers it - and that POST takes longer than a
+list call. Twenty-two seconds was not enough for it, so the one account that
+had to sign in timed out every time, and its receipts stayed as whatever had
+been written down months before. One account of a courier was the courier's
+own figures and the other was not, and this was the whole reason.
+
+- `TRAX_PORTAL_SIGNIN_SECONDS` (35) is the budget for `/cod/login` alone;
+  every other call keeps `TRAX_PORTAL_TIMEOUT_SECONDS` (22).
+- **`tools/courier-relay.php` must be the current one on the website.** Its
+  own `CURLOPT_TIMEOUT` was 25 and is now 40; until that file is uploaded,
+  the relay is the shorter of the two and it is the relay that cuts the
+  sign-in. The connect timeout is unchanged at 12, so a host that is simply
+  not there still fails fast.

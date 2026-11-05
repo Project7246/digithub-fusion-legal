@@ -108,7 +108,18 @@ curl_setopt_array($ch, [
     CURLOPT_FOLLOWLOCATION => false,
     CURLOPT_CUSTOMREQUEST  => $method,
     CURLOPT_HTTPHEADER     => $pass,
-    CURLOPT_TIMEOUT        => 25,
+    // **A sign-in is slower than a list, and 25 seconds was not enough for
+    // one.** sonic.pk hands over its login page in about ten seconds through
+    // here; the POST that answers it takes longer, and a Trax account with
+    // no cached session timed out on every single visit while the account
+    // beside it - which had a session already - was exact. The receipts of
+    // one account of a courier were the courier's own and the other's were
+    // whatever had been written down months ago, and this was why.
+    //
+    // 40 seconds is the ceiling a slow sign-in needs, not a licence for
+    // anything to hang: the connect timeout is unchanged, so a host that is
+    // simply not there still fails in twelve.
+    CURLOPT_TIMEOUT        => 40,
     CURLOPT_CONNECTTIMEOUT => 12,
     // Only Content-Type is handed back below, never Content-Encoding - so a
     // compressed body would reach Fusion as bytes with nothing saying they are

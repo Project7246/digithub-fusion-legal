@@ -55,6 +55,21 @@ const BASE = (process.env.TRAX_PORTAL_BASE || 'https://sonic.pk').replace(/\/+$/
 // The relay's own curl gives up at 25 seconds, so nothing here may be allowed
 // to ask for more than fits inside that. 500 parcels come back in about three.
 const TIMEOUT = Math.max(5, Number(process.env.TRAX_PORTAL_TIMEOUT_SECONDS) || 22) * 1000;
+
+// **A sign-in is not a list call and must not be timed like one.**
+//
+// The login page comes back through the relay in about ten seconds; the POST
+// that answers it takes longer, and twenty-two was not enough for it. An
+// account with a cached session never makes that call and was exact; the one
+// without it timed out on every visit, and its receipts stayed as they were.
+// That is what made one account of a courier right and the next wrong, and
+// no amount of queueing or retrying could have fixed it.
+//
+// The relay's own curl must allow at least as much - tools/courier-relay.php,
+// `CURLOPT_TIMEOUT`. Until that file is the current one on the website, the
+// relay is the shorter of the two and it is the relay that cuts the call.
+const SIGNIN_TIMEOUT =
+  Math.max(5, Number(process.env.TRAX_PORTAL_SIGNIN_SECONDS) || 35) * 1000;
 export const PAGE = Math.min(1000, Math.max(50, Number(process.env.TRAX_PORTAL_PAGE) || 500));
 
 // Laravel's session lasts two hours by default. Signing in again costs two
@@ -123,7 +138,9 @@ async function once(path, { method, jar, form, query, ajax } = {}) {
   }
 
   const ctl = new AbortController();
-  const bell = setTimeout(() => ctl.abort(), TIMEOUT);
+  // the sign-in pages get the longer budget; everything else is a list
+  const budget = /\/cod\/login/i.test(path) ? SIGNIN_TIMEOUT : TIMEOUT;
+  const bell = setTimeout(() => ctl.abort(), budget);
 
   let r, text;
   try {
