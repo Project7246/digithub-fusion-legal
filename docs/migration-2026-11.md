@@ -14,7 +14,15 @@ something was not checked, it says so.
 
 ## 0. The prompt to hand to ChatGPT
 
-Copy this whole block:
+**Give it the standing rules first.** `START-HERE.md` at the repository root
+holds the owner's session-start prompt - AGENTS.md is binding, `git pull`
+first, never paste an older copy of a file over the current code, only the
+requested scope, Roman Urdu. Paste that, **then** the block below.
+
+An agent given only the migration prompt will do the migration and undo a
+week of code on the way past, because nothing told it not to.
+
+Then copy this whole block:
 
 > I am moving a Node/Express app called Fusion. It is on DigitalOcean App
 > Platform, deploys automatically from GitHub, and uses a Neon Postgres

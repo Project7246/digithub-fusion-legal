@@ -5,6 +5,11 @@
 for Codex - the pre-flight, the lock, the shared files, the checks, the push and
 the handover. This file is what the app is and what the owner has decided.
 
+**`START-HERE.md`** holds the prompt the owner pastes to start a session - the
+one that makes an agent read AGENTS.md at all. It lived only in the chat window
+until 5 Nov 2026, which is how it came to be left out of a handover. If the way
+a session is *started* changes, change that file.
+
 ## Where the notes live, and read only the one you need
 
 This file used to hold every decision ever made - 3,443 lines, about 50,000
