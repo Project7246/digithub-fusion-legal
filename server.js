@@ -10225,12 +10225,20 @@ app.post('/api/courier/sync', async (req, res) => {
     // The courier's own payments, where it will list them. M&P are the one
     // courier with no webhook at all, so this is the only way their money -
     // and the bank it went into - ever arrives.
-    let payments = 0;
+    let payments = 0, paymentsWrote = [], paymentsLost = [], paymentsError = null;
     if (typeof a.fetchPayouts === 'function') {
       try {
         const got = await absorbPayouts(realmId, acc, from, to);
         payments = got.payments || 0;
-      } catch (e) { /* the parcels are in; the payments are asked again next time */ }
+        // what the courier named, and what the table holds afterwards. They
+        // are two different claims and only the second one is a receipt.
+        paymentsWrote = got.wrote || [];
+        paymentsLost = got.lost || [];
+      } catch (e) {
+        // the parcels are in; the payments are asked again next time - but a
+        // sweep that could not read them should not report silence as success
+        paymentsError = e.message;
+      }
     }
 
     await markSync(realmId, acc.id, null);
@@ -10253,6 +10261,9 @@ app.post('/api/courier/sync', async (req, res) => {
       saved,
       settled,
       payments,
+      paymentsWrote,
+      paymentsLost,
+      paymentsError,
       how,
       note: how === 'moving'
         ? (a.name + ' does not hand over a day\u2019s orders - its API answers ' +

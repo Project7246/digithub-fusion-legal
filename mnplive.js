@@ -33,9 +33,27 @@ export async function absorbPayouts(realmId, acc, from, to) {
       paymentSummary: { withholding: p.withholding, bankFee: p.bankFee,
         beforeBankFee: p.beforeBankFee, monthly: p.monthly } }
   }));
-  if (!rows.length) return { payments: 0 };
+  if (!rows.length) return { payments: 0, wrote: [], held: [] };
   await saveMnpCprs(realmId, acc.id, rows);
-  return { payments: rows.length };
+
+  // **What actually landed, read back.** "payments: 2" is a count of what was
+  // handed to the writer, not of what the table holds afterwards, and the two
+  // are not the same claim - a payment of M&P's was missing from /receipts
+  // while this said it had been written. A number that says what it means
+  // costs one more query and ends the guessing.
+  const back = await pool.query(
+    `SELECT cpr_number FROM courier_cprs
+      WHERE realm_id = $1 AND account_id = $2 AND cpr_number = ANY($3::text[])`,
+    [realmId, Number(acc.id), rows.map(r => String(r.cprNumber))]
+  );
+  const held = new Set(back.rows.map(r => String(r.cpr_number)));
+
+  return {
+    payments: rows.length,
+    wrote: rows.map(r => String(r.cprNumber)),
+    held: [...held],
+    lost: rows.map(r => String(r.cprNumber)).filter(id => !held.has(id))
+  };
 }
 
 /* ============ what is actually inside one of their payments ============
