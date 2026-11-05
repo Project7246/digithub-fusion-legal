@@ -1276,3 +1276,10 @@ own figures and the other was not, and this was the whole reason.
   the relay is the shorter of the two and it is the relay that cuts the
   sign-in. The connect timeout is unchanged at 12, so a host that is simply
   not there still fails fast.
+
+**Measured, after the app's side was raised to 35 seconds**: ElRB's sign-in,
+run alone, failed in **50 seconds - two attempts of twenty-five**. Not the
+app's thirty-five, and not a connection never made. Twenty-five is
+`CURLOPT_TIMEOUT` in `tools/courier-relay.php`, so the relay is the one
+cutting the sign-in, and nothing in this repository can finish this until
+**that file is uploaded to the website in its current form**.
