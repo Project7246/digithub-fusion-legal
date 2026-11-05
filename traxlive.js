@@ -21,7 +21,7 @@
 
 import { adapterFor } from './adapters.js';
 import {
-  saveOrders, savePayments, saveCprs, haveTrackings
+  saveOrders, savePayments, saveCprs, haveTrackings, linkCprParcels
 } from './couriers.js';
 
 // Parcels looked up three at a time, and never more than this many from one
@@ -97,4 +97,64 @@ export async function absorbPayment(realmId, acc, paymentId, opts) {
   } finally {
     busy.delete(lock);
   }
+}
+
+/* ==================== the portal's own payment list ====================
+
+   `absorbPayment` above is the webhook's path: Trax tell us a payment id and
+   `/invoice` opens it. That only ever covers a payment that arrived **after**
+   the webhook was switched on, and for an account whose webhooks were never
+   set up it covers nothing at all - which is how an account can hold thirteen
+   thousand parcels and not one receipt.
+
+   The portal has the whole list and always did (traxportal.js `payments`), so
+   this is the same job done from the other side: read every payment, write it
+   down as the receipt it is, and put its number on the parcels it paid for.
+   Nothing here asks the courier about a parcel one at a time.                */
+
+export async function absorbPortalPayments(realmId, acc, opts = {}) {
+  const a = adapterFor(acc.courier);
+  const portal = a && a.portal;
+  if (!portal || !portal.payments) {
+    return { covers: 0, linked: 0, note: 'this courier has no payment screen here' };
+  }
+
+  const session = await portal.sessionFor(acc);
+  const covers = await portal.payments(session, {});
+  if (!covers.length) return { covers: 0, linked: 0 };
+
+  await saveCprs(realmId, acc.id, acc.courier, covers);
+
+  // Which parcels each payment paid for. One call per payment per kind, and
+  // there are a handful of payments on an account - not a call per parcel.
+  let linked = 0;
+  const say = typeof opts.say === 'function' ? opts.say : () => {};
+
+  for (const c of covers) {
+    if (opts.stop && opts.stop()) break;
+
+    // Delivered parcels are the ones the money is for. Returned ones are on
+    // the same payment and collected nothing, so they carry the number but
+    // never a settled flag - the money rules read the cover, not the flag.
+    for (const kind of ['delivered', 'returned']) {
+      let list;
+      try {
+        list = await portal.paymentShipments(session, c.remoteId || c.cprNumber, kind);
+      } catch (e) {
+        say('Payment ' + c.cprNumber + ' (' + kind + '): ' + e.message);
+        continue;
+      }
+      if (!list.length) continue;
+
+      // `settled` is left alone on purpose. Whether this payment has actually
+      // been paid is the cover's own status, and dashdata reads that - writing
+      // a flag here would be the same mistake M&P's mapper made, where a
+      // payment that merely existed counted as money received. linkCprParcels
+      // writes the link and touches nothing else.
+      linked += await linkCprParcels(realmId, acc.id, c.cprNumber, list,
+        c.createdOn ? String(c.createdOn).slice(0, 10) : null);
+    }
+  }
+
+  return { covers: covers.length, linked };
 }

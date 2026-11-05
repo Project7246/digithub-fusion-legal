@@ -550,6 +550,142 @@ export function paidOnly(parcels) {
     .map(p => ({ tracking: p.tracking, settled: true, settledOn: null }));
 }
 
+/* ==================== the payments screen, which is the CPR list =========
+
+   Trax pay against a **payment**, and the portal's Finance > Payments screen
+   is the receipt for it: what was collected, what they kept, the GST, the
+   withholding, the IBFT fee and what actually reached the bank. Nothing read
+   it until 5 Nov 2026, so an account could hold thirteen thousand parcels and
+   not one receipt - which is what "trax k cprs mn bohot msla h" was.
+
+   Read off the live portal while signed in. One row, for payment 1827506:
+
+     total_amount   166,169.00     collected at the door
+     total_charges  134,763.22     what Trax kept for carrying
+     total_gst       21,562.41
+     total_wht        3,323.38     withheld
+     total_cod_sst    3,323.38
+     ibft_charges           100    the bank's own fee
+     total_payable        3,097    what reached the bank
+
+   and 166,169.00 less all five of those is 3,096.61, which is the 3,097 they
+   print. So the breakdown ties and `total_payable` is the figure to keep: it
+   already has every deduction off it, the IBFT fee included.                */
+
+// Laravel wants its token on a POST, and the one minted at sign-in is not the
+// one the session carries afterwards. The payments page prints the current
+// one, so it is read from there once and kept for the session.
+async function csrfOf(session) {
+  if (session.csrf) return session.csrf;
+  const page = await raw('/cod/finance/payments', { jar: session.jar });
+  if (sentToLogin(page)) throw new Error('The Trax portal sign-in has expired');
+  session.csrf = tokenFrom(page.text);
+  if (!session.csrf) {
+    throw new Error('The Trax payments screen did not carry a form token, so ' +
+      'its lists cannot be asked for. The screen has moved or we are not signed in.');
+  }
+  return session.csrf;
+}
+
+// Their DataTables feed will not answer unless every column it draws is named
+// in the request, so they are listed here exactly as the screen draws them.
+const PAY_COLUMNS = [
+  'serial_number', 'id_padded', 'shipper', 'city', 'phone_numbers', 'address',
+  'total_shipments', 'delivered_shipments', 'returned_shipments',
+  'adjusted_shipments', 'arrival_shipments', 'count_fintech_shipments',
+  'total_amount', 'total_charges', 'total_gst', 'total_wht', 'total_cod_sst',
+  'total_payable', 'bank', 'return_shipments_average_aging',
+  'reference_number', 'done_at', 'company_bank', 'status', 'action'
+];
+
+function payQuery(start, length) {
+  const q = {
+    draw: 1, start, length,
+    'search[value]': '', 'search[regex]': 'false',
+    'order[0][column]': 1, 'order[0][dir]': 'desc'
+  };
+  PAY_COLUMNS.forEach((c, i) => {
+    q['columns[' + i + '][data]'] = c;
+    q['columns[' + i + '][name]'] = c;
+    q['columns[' + i + '][searchable]'] = 'true';
+    q['columns[' + i + '][orderable]'] = 'true';
+    q['columns[' + i + '][search][value]'] = '';
+    q['columns[' + i + '][search][regex]'] = 'false';
+  });
+  return q;
+}
+
+// "166,169.00" is a number with its thousands marks still on it, and a plain
+// Number() of that is NaN - which would be written down as nought.
+const money = (v) => num(String(v == null ? '' : v).replace(/,/g, ''));
+
+// Their status word, kept as they write it. Which of their words means the
+// money has actually arrived is decided where every courier's is - not here.
+export function mapPayment(r) {
+  const id = String(r.id_padded || r.id || '').trim();
+  return {
+    cprNumber:   id,
+    remoteId:    String(r.id || ''),
+    status:      String(r.status || '').trim(),
+    netAmount:   money(r.total_payable),
+    grossAmount: money(r.total_amount),
+    chargeAmount: money(r.total_charges),
+    createdOn:   r.done_at || null,
+    approvedOn:  r.done_at || null,
+    paidToBank:  String(r.bank || '').trim(),
+    paidToName:  String(r.shipper || '').trim(),
+    instrument:  String(r.reference_number || '').trim() || null,
+    raw: {
+      gst: money(r.total_gst),
+      wht: money(r.total_wht),
+      codSst: money(r.total_cod_sst),
+      ibft: money(r.ibft_charges),
+      shipments: Number(r.total_shipments) || 0,
+      delivered: Number(r.delivered_shipments_count) || 0,
+      returned: Number(r.returned_shipments_count) || 0,
+      companyBank: String(r.company_bank || '').trim()
+    }
+  };
+}
+
+// Every payment on the account, newest first. There are a handful of these,
+// not thousands, so one page of 200 covers it and the loop is only a guard.
+export async function payments(session, { length = 200 } = {}) {
+  const out = [];
+  let start = 0;
+
+  for (let guard = 0; guard < 20; guard++) {
+    const j = await asked(session, '/cod/finance/payments/list',
+                          payQuery(start, length));
+    const rows = Array.isArray(j.data) ? j.data : [];
+    rows.forEach(r => { const p = mapPayment(r); if (p.cprNumber) out.push(p); });
+
+    const total = Number(j.recordsFiltered || j.recordsTotal || 0);
+    start += rows.length;
+    if (!rows.length || start >= total) break;
+  }
+
+  return out;
+}
+
+// The tracking numbers inside one payment. Their screen has a button per kind
+// and each one answers a plain array of tracking numbers - 74 of them for
+// payment 1827506, which is the 74 its row claims.
+export async function paymentShipments(session, id, kind = 'delivered') {
+  const token = await csrfOf(session);
+  const answer = await raw('/cod/finance/payments/' + kind + '_shipments', {
+    jar: session.jar,
+    method: 'POST',
+    ajax: true,
+    form: { _token: token, payment_id: id, id }
+  });
+
+  if (sentToLogin(answer)) throw new Error('The Trax portal sign-in has expired');
+  const j = answer.json;
+  const list = Array.isArray(j) ? j : (j && typeof j === 'object' ? Object.values(j) : []);
+  return list.map(x => String(x == null ? '' : x).trim()).filter(Boolean);
+}
+
 /* ==================== what the adapter hands over ==================== */
 
 export const portal = {
@@ -567,5 +703,7 @@ export const portal = {
   forget,
   shipments,
   shipmentPage,
-  paidOnly
+  paidOnly,
+  payments,
+  paymentShipments
 };

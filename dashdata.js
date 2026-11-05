@@ -399,11 +399,22 @@ export async function dashboard(realmId, opts) {
 //   pending    a CPR exists for it and has not been paid
 //   noCpr      no CPR at all. Delivered, and nothing said about the money.
 
+// Each courier has its own word for a receipt whose money has arrived, and
+// only PostEx says CLOSED. Trax's payments screen says **Paid**, so with
+// CLOSED alone every Trax receipt read as unpaid for ever. These are the words
+// the owner settled on for Banking on 31 Oct 2026 - "confirmed, transferred,
+// processed and the existing closed/paid/cleared statuses mean received" - and
+// money must not mean two different things on two screens.
+//
+// Anything else is deliberately NOT guessed at: an unknown word leaves the
+// receipt outstanding and visible, which is the safe direction to be wrong in.
+const PAID_WORDS = `('CLOSED', 'PAID', 'CLEARED', 'CONFIRMED', 'TRANSFERRED', 'PROCESSED')`;
+
 const CPR_CLOSED = `EXISTS (SELECT 1 FROM courier_cprs c
                              WHERE c.realm_id = o.realm_id
                                AND c.account_id = o.account_id
                                AND c.cpr_number = o.cpr_number
-                               AND UPPER(COALESCE(c.status, '')) = 'CLOSED')`;
+                               AND UPPER(TRIM(COALESCE(c.status, ''))) IN ${PAID_WORDS})`;
 
 const HAS_CPR = `(o.cpr_number IS NOT NULL AND o.cpr_number <> '')`;
 
@@ -422,7 +433,7 @@ const CPR_OPEN = `EXISTS (SELECT 1 FROM courier_cprs c
                             WHERE c.realm_id = o.realm_id
                               AND c.account_id = o.account_id
                               AND c.cpr_number = o.cpr_number
-                              AND UPPER(COALESCE(c.status, '')) <> 'CLOSED')`;
+                              AND UPPER(TRIM(COALESCE(c.status, ''))) NOT IN ${PAID_WORDS})`;
 
 // Received: a closed CPR, or the courier's own settled flag - which is how
 // Trax and M&P pay, neither of them issuing a CPR at all. A settled flag sitting

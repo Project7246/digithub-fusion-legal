@@ -13,7 +13,20 @@ assert.match(open, /FROM courier_cprs c/);
 assert.match(open, /c\.realm_id = o\.realm_id/, 'the cover must be this company\'s');
 assert.match(open, /c\.account_id = o\.account_id/, 'and this account\'s');
 assert.match(open, /c\.cpr_number = o\.cpr_number/);
-assert.match(open, /<>\s*'CLOSED'/, 'open means any status that is not CLOSED');
+assert.match(open, /NOT IN \$\{PAID_WORDS\}/,
+  'open means any status that is not one of the paid words');
+
+// The paid words are the ones the owner settled on for Banking, and each
+// courier has its own: PostEx says CLOSED, Trax's payments screen says Paid.
+// With CLOSED alone every Trax receipt would read as unpaid for ever.
+const words = src.slice(src.indexOf('const PAID_WORDS'), src.indexOf('const CPR_CLOSED'));
+for (const w of ['CLOSED', 'PAID', 'CLEARED', 'CONFIRMED', 'TRANSFERRED', 'PROCESSED']) {
+  assert.ok(words.includes("'" + w + "'"), w + ' must count as money received');
+}
+// and nothing that means the opposite crept in
+for (const w of ['PENDING', 'OPEN', 'GENERATED', 'APPROVED']) {
+  assert.ok(!words.includes("'" + w + "'"), w + ' must NOT count as money received');
+}
 
 const got = src.slice(src.indexOf('const GOT_SQL'), src.indexOf('const PENDING_SQL'));
 assert.match(got, /o\.settled IS TRUE AND NOT/,

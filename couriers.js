@@ -1070,3 +1070,27 @@ export async function codedTrackings(realmId, accountId, limit) {
   );
   return r.rows.map(x => x.tracking);
 }
+
+// Put a receipt's number on the parcels it paid for, and nothing else.
+//
+// `savePayments` above writes `settled` as well, and writes it as given - so
+// using it to link a payment whose money has not arrived would set `settled`
+// FALSE on parcels that were already settled, and a later answer that says
+// less must never erase what an earlier one said. Whether the money has come
+// is the cover's own status and is read from there, so this writes the link
+// and leaves every other column exactly as it was.
+export async function linkCprParcels(realmId, accountId, cprNumber, trackings, settledOn) {
+  const list = [...new Set((trackings || []).map(t => String(t || '').trim()).filter(Boolean))];
+  if (!list.length || !cprNumber) return 0;
+
+  const r = await pool.query(
+    `UPDATE courier_orders o
+        SET cpr_number = $3,
+            settled_on = COALESCE(o.settled_on, $5::date)
+      WHERE o.realm_id = $1 AND o.account_id = $2
+        AND o.tracking = ANY($4::text[])
+        AND (o.cpr_number IS DISTINCT FROM $3 OR o.settled_on IS NULL)`,
+    [realmId, Number(accountId), String(cprNumber), list, settledOn || null]
+  );
+  return r.rowCount || 0;
+}

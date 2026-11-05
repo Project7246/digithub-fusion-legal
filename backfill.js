@@ -6,6 +6,7 @@ import {
   getAccount, saveOrders, needCpr, savePayments, markPaid, credsOf
 } from './couriers.js';
 import { adapterFor } from './adapters.js';
+import { absorbPortalPayments } from './traxlive.js';
 import { decrypt } from './secrets.js';
 import { realmOf } from './desk.js';
 
@@ -289,10 +290,28 @@ async function run(realmId, job, carrying) {
 
   /* ---------- then what each one was paid under ---------- */
 
-  if (job.withCpr && viaPortal) {
-    say(job, 'The payment status came with each parcel, so nothing is asked ' +
-             'about one at a time. Which payment paid for it arrives from the ' +
-             "courier's payment webhook, a whole batch at a time.");
+  // The portal keeps the payments as well as the parcels, and reading them is
+  // a handful of calls rather than one per parcel. Until 5 Nov 2026 this said
+  // the payment webhook would bring them - true for an account whose webhooks
+  // were switched on, and nothing at all for one whose were not, which is how
+  // an account could hold thirteen thousand parcels and not one receipt.
+  if (job.withCpr && viaPortal && a.portal && a.portal.payments) {
+    job.phase = 'receipts';
+    say(job, "Now reading the courier's own payment list");
+    try {
+      const got = await absorbPortalPayments(realmId, acc, {
+        stop: () => job.cancel,
+        say: line => say(job, line)
+      });
+      say(job, got.covers
+        ? got.covers + ' payments kept, ' + got.linked + ' parcels put under one'
+        : 'The courier lists no payments on this account yet');
+    } catch (e) {
+      say(job, 'Could not read the payment list - ' + e.message);
+    }
+  } else if (job.withCpr && viaPortal) {
+    say(job, 'This courier has no payment screen here, so which payment paid ' +
+             "for a parcel arrives from the courier's webhook.");
   }
 
   // Asked parcel by parcel, which is the only way PostEx's API will answer it.
