@@ -141,7 +141,16 @@ export async function absorbPortalPayments(realmId, acc, opts = {}) {
   const session = opts.session ||
     await portal.sessionFor(acc.id, acc.portal_email, opts.secret);
   const covers = await portal.payments(session, {});
-  if (!covers.length) return { covers: 0, linked: 0, cleared: 0, read: 0 };
+
+  // **An answer of "no payments" is still an answer.** `asked()` throws when
+  // the sign-in has gone or the feed is not a list, so an empty list here is
+  // the screen itself saying the account has none - and an account with no
+  // payments certainly has no parcels inside one. Returning early left Trax -
+  // ElRB showing twenty-two receipts that no payment of theirs ever issued.
+  if (!covers.length) {
+    return { covers: 0, linked: 0, cleared: 0, read: 0,
+             orphans: await clearCprWithoutCover(realmId, acc.id) };
+  }
 
   await saveCprs(realmId, acc.id, acc.courier, covers);
 

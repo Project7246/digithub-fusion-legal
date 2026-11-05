@@ -986,3 +986,27 @@ over**. Both figures are Trax's, printed on the same row. So the receipt
 names the sum and the difference rather than choosing between them - what
 arrived is what they paid, and a gap of a rupee or more is said out loud
 instead of being absorbed into a line nobody can check.
+
+### "No payments" is an answer; a sign-in that failed is not
+
+`asked()` throws when the sign-in has gone or the feed is not a list, so an
+empty payment list is the screen itself saying the account has none - and an
+account with no payments has no parcels inside one. Returning early on it
+left **Trax - ElRB showing twenty-two receipts no payment of theirs ever
+issued**, of 1 to 1,858 parcels each. The orphans are cleared on an empty
+answer too.
+
+And where the screen has not answered yet, a Trax receipt with no cover says
+so on its own face rather than showing a figure nobody can find at the
+courier: the number came from their per-parcel call, the money on it is ours
+added up from the parcels, and it comes off the next time that screen
+answers.
+
+### What is still not whole
+
+Each payment now sits within a few parcels of Trax's own count - 920 of 924,
+2,363 of 2,370 - instead of hundreds over. The shortfall is parcels Trax
+name on the payment that this app holds no row for at all, never imported.
+The webhook path looks those up (`STRANGER_CAP`); the portal path does not,
+and both counts are printed side by side so the gap is visible rather than
+guessed at.

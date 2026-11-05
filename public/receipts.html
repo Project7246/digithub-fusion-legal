@@ -1230,6 +1230,18 @@
         esc(cname(c.courier)) + '’s own, read off their payment screen — ' +
         'the counts, the charges and each tax they deducted. Receiving it into ' +
         'QuickBooks is PostEx only for now.</div>'
+      : c.courier === 'trax'
+      // A Trax receipt with no cover behind it is not one of their payments.
+      // Their per-parcel call answers with an id of its own, and until
+      // 5 Nov 2026 that id was written on the parcel as a receipt number -
+      // which drew receipts here that their payment screen has never heard
+      // of. Saying so beats showing a figure nobody can find at the courier.
+      ? '<div class="note" style="margin-top:12px">This number is not on ' +
+        'Trax’s payment screen. It came from their per-parcel call, ' +
+        'which answers with an id of its own that does not name the payment ' +
+        'they pay against — so the figures here are ours, added up from ' +
+        'the parcels, not theirs. It comes off the parcels the next time ' +
+        'that screen answers for this account.</div>'
       : '<div class="note" style="margin-top:12px">' + esc(cname(c.courier)) +
         ' has no portal of ours to sign in to, so this is what they said on the ' +
         'payment itself. Receiving it into QuickBooks is PostEx only for now.</div>';
