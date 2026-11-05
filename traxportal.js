@@ -67,7 +67,29 @@ const SESSION_MS = Math.max(5, Number(process.env.TRAX_PORTAL_MINUTES) || 75) * 
 // Everything about this is ordinary except that the answer's headers are kept:
 // the portal signs us in by setting a cookie, and a reader that only returns
 // the body cannot see it.
-async function raw(path, { method, jar, form, query, ajax } = {}) {
+// **A timeout gets one more go.**
+//
+// Every call here crosses the relay to a host that answers from inside
+// Pakistan, and that journey occasionally simply does not finish in the
+// twenty-two seconds this allows. One account of a courier came back
+// "ETIMEDOUT - no answer at all" on every visit while the other, on the same
+// portal through the same relay, answered instantly from a session it
+// already held - so the account with nothing cached was the one that paid
+// for the slow first call, every time, and its receipts never moved.
+//
+// Only a timeout is retried, and only once. Anything the portal actually
+// said - a refused sign-in, a 419, a relay that will not forward - is an
+// answer, and answers are not worth asking twice.
+async function raw(path, opts = {}) {
+  try {
+    return await once(path, opts);
+  } catch (e) {
+    if (!/ETIMEDOUT|could not be reached/i.test(String(e.message || ''))) throw e;
+    return once(path, opts);
+  }
+}
+
+async function once(path, { method, jar, form, query, ajax } = {}) {
   const url = new URL(BASE + path);
   Object.keys(query || {}).forEach(k => {
     const v = query[k];

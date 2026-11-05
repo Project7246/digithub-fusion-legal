@@ -1209,3 +1209,15 @@ now, which is what the rest of the M&P path already does.
 
 `day()` in statuses.js exists for exactly this reason on the courier side;
 this was the same mistake on our own side of the wire.
+
+### A timeout through the relay gets one more go
+
+With the queue in place, Trax - ElRB still came back **"ETIMEDOUT - no
+answer at all ... (through the relay)"** while Trax - AA Traders answered
+instantly from a session it already held. The difference is the sign-in: the
+account with nothing cached pays for the slow first call across the relay,
+every visit, and twenty-two seconds is not always enough for it.
+
+`raw()` in traxportal.js retries **once**, and only on a timeout. Anything
+the portal actually said - a refused sign-in, a 419, a relay that will not
+forward to sonic.pk - is an answer, and answers are not worth asking twice.
