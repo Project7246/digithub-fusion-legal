@@ -1310,3 +1310,24 @@ diagnosis.** Three calls with two budgets behind one sentence meant the sign
 gap, the retry and the relay's own timeout were all changed before anything
 asked the error which call it was. The first move should have been to make
 the failure say its own name.
+
+### Verified: ElRB reads, and the invented receipts are gone
+
+With the page size at 50 and `/cod/finance/` on the longer budget, Trax -
+ElRB came back **`ok: true`, 44 covers, 990 parcels linked**, and every one
+of the 28 receipts in range now has the courier's own cover behind it. The
+22 numbers that no payment of Trax's ever issued are gone.
+
+What they were replaced by, and the measure of the difference:
+
+| Payment | was shown | Trax's own |
+|---|---|---|
+| 1838192 | 5 parcels, net 13,028.52 | 5 parcels (3 delivered, 2 returned), COD 10,034, net 9,446 |
+| 1835900 | 1 parcel, net 623 | 4 parcels (3 delivered, 1 returned), COD 13,506, net 12,866 |
+
+**What is still short is the parcels, not the receipts.** ElRB's older
+payments name thousands of consignments that this app holds no row for -
+2,618 on one, of which 3 are here - because that account's history was never
+backfilled. The receipt is right either way, because every figure on it is
+the courier's own; the pair of counts says plainly how much of it this app
+can show underneath. A backfill of that account is what closes it.
