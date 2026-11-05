@@ -45,4 +45,13 @@ const pending = src.slice(src.indexOf('const PENDING_SQL'), src.indexOf('const P
 assert.match(pending, /PENDING_SQL\s*=\s*`\(NOT \$\{GOT_SQL\} AND \$\{HAS_CPR\}\)`/);
 assert.match(pending, /NOCPR_SQL\s*=\s*`\(NOT \$\{GOT_SQL\} AND NOT \$\{HAS_CPR\}\)`/);
 
+// The CPR side must ask the same question in the same words. It had its own
+// `= 'CLOSED'`, so a Trax receipt marked Paid counted as received on the
+// parcel side and as still owed on this one, at the same moment.
+const closed = src.slice(src.indexOf('const CLOSED ='), src.indexOf('async function cprMoney'));
+assert.match(closed, /IN \$\{PAID_WORDS\}/,
+  'the cover side must use the same paid words, not a list of its own');
+assert.ok(!/=\s*'CLOSED'/.test(closed),
+  'the cover side must not test for CLOSED on its own');
+
 console.log('M&P settled-against-open-cover checks passed (synthetic data only).');

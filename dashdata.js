@@ -618,7 +618,14 @@ function cprScope(realmId, opts) {
   return { where, args };
 }
 
-const CLOSED = `UPPER(COALESCE(c.status, '')) = 'CLOSED'`;
+// The same words as CPR_CLOSED above, and deliberately the same list rather
+// than a second one written out here. This said `= 'CLOSED'` on its own, so
+// the parcel side counted a Trax receipt as received while this side counted
+// the very same receipt as still owed - nine payments worth 21,603,433 showing
+// as outstanding on an account where every one of them says Paid or Processed.
+// Two paths asking one question in two different wordings is how one of them
+// is wrong for weeks and nobody can see why.
+const CLOSED = `UPPER(TRIM(COALESCE(c.status, ''))) IN ${PAID_WORDS}`;
 
 async function cprMoney(realmId, opts, dates) {
   const base = cprScope(realmId, opts);
