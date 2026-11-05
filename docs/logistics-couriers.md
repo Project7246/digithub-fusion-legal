@@ -1221,3 +1221,16 @@ every visit, and twenty-two seconds is not always enough for it.
 `raw()` in traxportal.js retries **once**, and only on a timeout. Anything
 the portal actually said - a refused sign-in, a 419, a relay that will not
 forward to sonic.pk - is an answer, and answers are not worth asking twice.
+
+### "Delivered and returned" is PostEx's shape, not every courier's
+
+Trax split a payment three ways - delivered, returned, adjusted - and the
+receipt was built around that pair plus one. M&P do not: a payment of **355
+consignments came back 239 DELIVERED and no returns at all**, so 116 of it
+sat in words of theirs that two columns cannot show.
+
+The cover now carries the whole of `counts` - every word the courier used on
+that payment and how many of each - and "What is in this receipt" lists them
+all, in the courier's own wording. Where a courier sends only the two, the
+two are the table. The COD goes against the delivered line and nowhere else,
+because what they collected is what they paid on.

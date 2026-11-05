@@ -1323,14 +1323,32 @@
     // the column said the receipt was wrong when it was not. Which bucket
     // each parcel is in is the "By status" table underneath, where it
     // belongs; this table is what the payment itself says.
-    var kinds = [
-      // What they collected is what they paid on, so the COD on the payment
-      // is the delivered parcels' - and a parcel that came back collected
-      // nothing, which is why it is on the payment at all.
-      ['Delivered', c.delivered, c.gross == null ? c.amount : c.gross],
-      ['Returned',  c.returned,  0],
-      ['Adjusted',  c.adjusted,  null]
-    ].filter(function(k){ return k[1] != null; });
+    // **Every word the courier used, not two of them.** Trax split a payment
+    // three ways and M&P do not: a payment of 355 consignments came back 239
+    // DELIVERED and no returns, so 116 of it was in words of theirs that a
+    // Delivered/Returned pair cannot show. Where the courier sent its own
+    // list of words, that list is the table; where it sent only the two,
+    // the two are the table.
+    var kinds;
+    if(c.coverKinds && c.coverKinds.length){
+      var pretty = function(w){
+        var s = String(w || '').toLowerCase().replace(/_/g, ' ');
+        return s.charAt(0).toUpperCase() + s.slice(1);
+      };
+      kinds = c.coverKinds.map(function(k){
+        // What they collected is what they paid on, so the COD on the
+        // payment belongs against the delivered line and nowhere else.
+        var cod = /^deliver/i.test(k.kind) ? (c.gross == null ? c.amount : c.gross)
+                : /^return/i.test(k.kind) ? 0 : null;
+        return [pretty(k.kind), k.orders, cod];
+      });
+    } else {
+      kinds = [
+        ['Delivered', c.delivered, c.gross == null ? c.amount : c.gross],
+        ['Returned',  c.returned,  0],
+        ['Adjusted',  c.adjusted,  null]
+      ].filter(function(k){ return k[1] != null; });
+    }
 
     var held = orders ? orders.length : null;
     var ourCod = orders

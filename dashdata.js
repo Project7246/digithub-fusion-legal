@@ -736,6 +736,23 @@ export async function moneyOwed(realmId, opts, dates) {
 /* ==================== the receipts ==================== */
 
 // this month's, for the small box on the dashboard
+// The courier's own words for what is in a payment, and how many of each.
+// `total` is the count, not a kind, so it is left out of the list.
+function kindsOf(text) {
+  if (!text) return null;
+  let o;
+  try { o = JSON.parse(text); } catch (e) { return null; }
+  if (!o || typeof o !== 'object') return null;
+
+  const out = Object.keys(o)
+    .filter(k => k !== 'total')
+    .map(k => ({ kind: k, orders: Number(o[k]) || 0 }))
+    .filter(k => k.orders > 0)
+    .sort((a, b) => b.orders - a.orders);
+
+  return out.length ? out : null;
+}
+
 export async function recentCprs(realmId, opts) {
   const base = scope(realmId, opts);
   const where = base.where.concat([`o.cpr_number IS NOT NULL`, `o.cpr_number <> ''`]);
@@ -818,6 +835,12 @@ export async function recentCprs(realmId, opts) {
             MAX(COALESCE((c.raw->>'returned')::int,
                          (c.raw->'counts'->>'RETURNED')::int)) AS cover_returned,
             MAX((c.raw->>'adjusted')::int) AS cover_adjusted,
+            -- and the whole of what the courier called them. M&P's payment
+            -- of 355 consignments is 239 DELIVERED and no returns, so the
+            -- other 116 are in words of theirs that two columns cannot
+            -- show - "delivered and returned" is PostEx's and Trax's shape,
+            -- not every courier's.
+            MAX(c.raw->>'counts') AS cover_counts,
             -- M&P bill rather than deduct, and their invoice is made of
             -- named parts. Each is carried so the receipt can print them.
             MAX((c.raw->'invoiceSummary'->>'shipping')::numeric)      AS mnp_shipping,
@@ -880,6 +903,8 @@ export async function recentCprs(realmId, opts) {
       delivered: x.cover_delivered == null ? null : Number(x.cover_delivered),
       returned: x.cover_returned == null ? null : Number(x.cover_returned),
       adjusted: x.cover_adjusted == null ? null : Number(x.cover_adjusted),
+      // every word the courier used on this payment, with how many of each
+      coverKinds: kindsOf(x.cover_counts),
       amount,
       charges,
       fee, tax, bankFee, withheld, parcelFee: r2(x.fee),
