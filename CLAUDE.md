@@ -172,7 +172,7 @@ get a first deploy working. They can be deleted or rewritten freely.
 | Git push login | Windows Credential Manager holds the old app's `availityltd` token for `github.com`, which this repo is denied (403). Fixed by `credential.https://github.com.useHttpPath=true` in this repo's **local** config, so the credential is looked up per repo path and the old app keeps its own. Do not set this globally |
 | Git on this machine | Installed by `winget install --id Git.Git -e` at `C:\Program Files\Git\cmd\git.exe`. A session opened before that install has the old PATH, so `git` is not a word it knows - call the full path until Claude Code is reopened. The GitHub credential is already in Credential Manager here: `git fetch` works without a browser |
 | Server | DigitalOcean App Platform, app `hammerhead-app`, component `digithub-fusion-legal`, Basic 512 MB, $5/month, region Bangalore (BLR1), Auto-deploy on push is ON |
-| Database | **Neon** (not DigitalOcean). Project `autumn-tooth-08816249`, branch `production`. Connected only through the env var `DATABASE_URL` set in DigitalOcean (component Settings > Environment Variables). Locally it would go in an untracked `.env` |
+| Database | **Neon** (not DigitalOcean). Project **DigitHub Fusion**, `billowing-poetry-08559264`, branch `production` (`br-wispy-sound-b4yb0j31`), **region AWS US East 2 (Ohio)** - read off the Neon console on 5 Nov 2026, where `autumn-tooth-08816249` was written here before and is not the live project. There is a **second, empty** project of the same name, last active a month ago. Connected only through the env var `DATABASE_URL` set in DigitalOcean (component Settings > Environment Variables). Locally it would go in an untracked `.env` |
 | Domain | `https://ca.availity.pk`. DNS is on Hostinger: `CNAME ca -> hammerhead-app-z86ki.ondigitalocean.app`. Other records on `availity.pk` (main site, email MX/TXT) must not be touched |
 | Starter URL | `https://hammerhead-app-z86ki.ondigitalocean.app` |
 
@@ -210,9 +210,14 @@ Operations and HR, and all four run back into the Fusion lockup. **Only** there 
 the app the background stays plain, because that is where the books are worked on.
 
 ## Rules about space (Neon free plan)
-- Neon free plan is about **1 GB storage per project** (user thought 5 GB - verify on the
-  Neon dashboard). Compute is limited to ~100 CU-hours/month and the database auto-suspends
+- Neon free plan, read off the billing page on 5 Nov 2026: **1 GB storage, 100 compute
+  hours and 10 branches per project**, autoscaling to 2 CU. The database auto-suspends
   after 5 minutes idle (first request after that is slow).
+- **The database is in Ohio and the app is in Bangalore.** Every query crosses half the
+  planet - about a fifth of a second there and back - and Neon bills for the time its
+  compute is awake, not for the queries run. On 1-5 Nov the account used **26.7 of the
+  100 hours**, which is ahead of the month. Putting the two in one region is the single
+  biggest thing that would bring that down; see the Open items.
 - Store as little as possible: **never store the uploaded files themselves** (PDF/Excel) in
   the database - only small rows (name, date, status, result).
 - Put a retention limit on logs, caches and job history (delete old rows).
@@ -230,9 +235,15 @@ the app the background stays plain, because that is where the books are worked o
   building a new one.
 
 ## Things the user cannot see / what to ask them
-- Claude cannot open DigitalOcean, Neon, Hostinger or GitHub websites. For anything done in
-  a browser (env vars, DNS, logs) ask the user for a screenshot, or for the Runtime Logs
-  text. Screenshots saved as PDF in `C:\Users\ASUS-1\Downloads\FireShot\` can be read.
+- **Claude can open these in the owner's Chrome** - "chrome mein sab login hota hai",
+  said on 5 Nov 2026 - and is expected to, rather than guess or ask for a screenshot:
+  the Neon console, the DigitalOcean console, the courier portals. The project id and
+  region above were wrong in this file for a month because nobody had looked. Look
+  first, then answer. Screenshots saved as PDF in `C:\Users\ASUS-1\Downloads\FireShot\`
+  can still be read when the owner sends one.
+- Claude still cannot **change** any of those settings - env vars, DNS, regions, redirect
+  URIs are the owner's to press Save on. Read them, say exactly what to change, verify
+  afterwards.
 - First `git push` from this folder opens a browser login: user must sign in as **Project7246**.
 - When DigitalOcean env vars change, user must Save and redeploy.
 - If Google or QuickBooks login is added: add `https://ca.availity.pk/...` as a redirect
@@ -252,7 +263,14 @@ the app the background stays plain, because that is where the books are worked o
   on the next boot and the first import is the first time the queries have run.
 - Decide DigitalOcean settings: turn **Edge caching** and **Email obfuscation** Off (app shows
   live data).
-- Check the Neon dashboard for the real storage limit.
+- **The app and the database are on opposite sides of the world** - app in Bangalore,
+  Neon in Ohio. Storage is fine (139.84 MB of 1 GB); **compute is not** (26.7 of 100
+  hours in the first five days of November). Moving the two together is the decision
+  to take: Neon cannot move a project between regions, so it means a new project in
+  the app's region and a dump/restore of 140 MB. Nothing in the code changes - only
+  `DATABASE_URL`.
+- **A second, empty Neon project** of the same name exists, last active a month ago.
+  Nothing points at it. The owner can delete it.
 - Trax: book shipments through Sonic's `/shipment/book` and print air waybills
   (`/shipment/air_waybill`), now the rest of its API is in.
 - M&P: their `Reports/Payment_Report` is read (`fetchPayouts()`) but nothing is
