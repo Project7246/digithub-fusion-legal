@@ -119,7 +119,12 @@ export async function absorbPortalPayments(realmId, acc, opts = {}) {
     return { covers: 0, linked: 0, note: 'this courier has no payment screen here' };
   }
 
-  const session = await portal.sessionFor(acc);
+  // The caller is already signed in - the backfill signs in once for the
+  // parcels and the payments are the same visit. Signing in a second time
+  // while the first session is live is what Trax refuse, and the refusal
+  // reads as a wrong password, which it is not.
+  const session = opts.session ||
+    await portal.sessionFor(acc.id, acc.portal_email, opts.secret);
   const covers = await portal.payments(session, {});
   if (!covers.length) return { covers: 0, linked: 0 };
 

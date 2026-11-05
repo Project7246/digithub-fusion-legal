@@ -300,6 +300,7 @@ async function run(realmId, job, carrying) {
     say(job, "Now reading the courier's own payment list");
     try {
       const got = await absorbPortalPayments(realmId, acc, {
+        session,
         stop: () => job.cancel,
         say: line => say(job, line)
       });
