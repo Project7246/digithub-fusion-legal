@@ -754,113 +754,134 @@ function kindsOf(text) {
 }
 
 export async function recentCprs(realmId, opts) {
-  const base = scope(realmId, opts);
-  const where = base.where.concat([`o.cpr_number IS NOT NULL`, `o.cpr_number <> ''`]);
-  const args = base.args.slice();
+  // **A receipt the courier issued exists whether or not its parcels are
+  // here.** This was built from `courier_orders` alone - group the parcels by
+  // the receipt number written on them - so a payment whose consignments this
+  // app holds no row for was not a receipt at all: it was nothing. Four of
+  // M&P's GlowCart payments were invisible on this screen while sitting in
+  // `courier_cprs` and on M&P's own portal, and "31 oct ka cpr to site pr
+  // show hi ni ho rha" was exactly that. Banking had it right all along
+  // (`bankingReceipts`); this screen did not.
+  //
+  // So: the covers and the parcels are joined as equals. Either side alone
+  // makes a receipt - the courier's own cover with no parcels linked yet, or
+  // a receipt number on parcels that no cover has arrived for - and where
+  // both exist they are one row.
+  const args = [realmId];
+  const pWhere = [`o.realm_id = $1`, `o.cpr_number IS NOT NULL`, `o.cpr_number <> ''`];
+  const cWhere = [`c0.realm_id = $1`, `c0.cpr_number <> ''`];
+
+  if (opts.account) {
+    args.push(Number(opts.account));
+    pWhere.push(`o.account_id = $${args.length}`);
+    cWhere.push(`c0.account_id = $${args.length}`);
+  }
+  if (opts.courier) {
+    args.push(String(opts.courier));
+    pWhere.push(`o.courier = $${args.length}`);
+    cWhere.push(`c0.courier = $${args.length}`);
+  }
 
   // **The receipt's date is the receipt's own**, not the earliest date one of
   // its parcels happened to settle on. Trax's payment 1837736 is 2 November on
   // their portal and its parcels' own dates reach back to 12 October, so this
   // list put it among the October receipts - "site pr 4 nov ka cpr, us k bd 22
   // oct ka". Where no cover is held the parcels are still the only answer.
-  const DATED = `COALESCE(MAX(c.approved_on), MAX(c.created_on), MIN(o.settled_on))`;
-  const having = [];
-  if (opts.from) { args.push(opts.from); having.push(`${DATED} >= $${args.length}`); }
+  const DATED = `COALESCE(c.approved_on, c.created_on, p.paid_on)`;
+  const when = [];
+  if (opts.from) { args.push(opts.from); when.push(`${DATED} >= $${args.length}`); }
   // Next-day exclusive, because the cover carries a time of day: Trax stamp
   // theirs at 05:15 and `<= '2026-11-05'` means 05:15 is after midnight on the
   // last day asked for, so the newest receipt of all fell out of its own
   // range. The same rule the CPR ranges already follow elsewhere.
-  if (opts.to)   { args.push(opts.to);   having.push(`${DATED} < ($${args.length}::date + 1)`); }
+  if (opts.to)   { args.push(opts.to);   when.push(`${DATED} < ($${args.length}::date + 1)`); }
 
-  // Built from the parcels themselves, which is what makes this work for every
-  // courier: PostEx hands over a receipt from its portal, M&P hand back a
-  // PaymentID on each consignment, Trax a payment id on a webhook - and all
-  // three end up as a receipt number on the order. The receipt row in
-  // courier_cprs is joined where there is one, for what was done with it in
-  // QuickBooks, and its absence is not a problem: the parcels are the receipt.
   const r = await pool.query(
-    `SELECT o.cpr_number, o.account_id, a.label, a.courier,
+    `WITH parcels AS (
+       SELECT o.account_id, o.cpr_number,
+              MIN(o.settled_on) AS paid_on,
+              COUNT(*) AS orders,
+              COALESCE(SUM(o.amount),0) AS amount,
+              COALESCE(SUM(o.fee + o.tax),0) AS charges,
+              -- kept apart as well as together: "what tax was deducted on
+              -- this receipt" is the question asked of a CPR, and a single
+              -- charges figure cannot answer it
+              COALESCE(SUM(o.fee),0) AS fee,
+              COALESCE(SUM(o.tax),0) AS tax
+         FROM courier_orders o
+        WHERE ${pWhere.join(' AND ')}
+        GROUP BY o.account_id, o.cpr_number
+     ),
+     covers AS (
+       SELECT c0.* FROM courier_cprs c0 WHERE ${cWhere.join(' AND ')}
+     )
+     SELECT COALESCE(c.cpr_number, p.cpr_number) AS cpr_number,
+            COALESCE(c.account_id, p.account_id) AS account_id,
+            a.label, a.courier,
             ${DATED} AS settled_on,
-            COUNT(*) AS orders,
-            COALESCE(SUM(o.amount),0) AS amount,
-            COALESCE(SUM(o.fee + o.tax),0) AS charges,
-            -- kept apart as well as together: "what tax was deducted on this
-            -- receipt" is the question asked of a CPR, and a single
-            -- charges figure cannot answer it
-            COALESCE(SUM(o.fee),0) AS fee,
-            COALESCE(SUM(o.tax),0) AS tax,
-            MAX(c.received_on)   AS received_on,
-            MAX(c.qb_payment_id) AS qb_payment_id,
-            MAX(c.status)        AS status,
-            MAX(c.net_amount)    AS net_amount,
-            MAX(c.remote_id)     AS remote_id,
+            COALESCE(p.orders, 0)  AS orders,
+            COALESCE(p.amount, 0)  AS amount,
+            COALESCE(p.charges, 0) AS charges,
+            COALESCE(p.fee, 0)     AS fee,
+            COALESCE(p.tax, 0)     AS tax,
+            c.received_on, c.qb_payment_id, c.status, c.net_amount, c.remote_id,
             -- what the courier said about the payment itself: the gross it
             -- collected, what it kept, and where it sent the rest
-            MAX(c.gross_amount)  AS gross_amount,
-            MAX(c.charge_amount) AS charge_amount,
-            MAX(c.instrument)    AS instrument,
-            MAX(c.pay_mode)      AS pay_mode,
-            MAX(c.paid_to_bank)  AS paid_to_bank,
-            MAX(c.paid_to_account) AS paid_to_account,
-            MAX(c.paid_to_name)  AS paid_to_name,
-            MAX(c.wh_amount) AS cover_wh,
-            MAX(c.raw->>'source') AS payment_source,
-            MAX(CASE WHEN c.raw->>'source' = 'mnp-portal-payment-v1'
-              THEN (c.raw->'paymentSummary'->>'bankFee')::numeric END) AS bank_fee,
+            c.gross_amount, c.charge_amount, c.instrument, c.pay_mode,
+            c.paid_to_bank, c.paid_to_account, c.paid_to_name,
+            c.wh_amount AS cover_wh,
+            c.raw->>'source' AS payment_source,
+            CASE WHEN c.raw->>'source' = 'mnp-portal-payment-v1'
+              THEN (c.raw->'paymentSummary'->>'bankFee')::numeric END AS bank_fee,
             -- Trax print five deductions on their payment screen and the five
             -- together are exactly what is missing between what was collected
             -- and what reached the bank, so each is kept and named.
-            MAX(CASE WHEN c.raw->>'source' = 'trax-portal-payment-v1'
-              THEN (c.raw->>'gst')::numeric END) AS trax_gst,
-            MAX(CASE WHEN c.raw->>'source' = 'trax-portal-payment-v1'
-              THEN (c.raw->>'wht')::numeric END) AS trax_wht,
-            MAX(CASE WHEN c.raw->>'source' = 'trax-portal-payment-v1'
-              THEN (c.raw->>'codSst')::numeric END) AS trax_cod_sst,
-            MAX(CASE WHEN c.raw->>'source' = 'trax-portal-payment-v1'
-              THEN (c.raw->>'ibft')::numeric END) AS trax_ibft,
+            CASE WHEN c.raw->>'source' = 'trax-portal-payment-v1'
+              THEN (c.raw->>'gst')::numeric END AS trax_gst,
+            CASE WHEN c.raw->>'source' = 'trax-portal-payment-v1'
+              THEN (c.raw->>'wht')::numeric END AS trax_wht,
+            CASE WHEN c.raw->>'source' = 'trax-portal-payment-v1'
+              THEN (c.raw->>'codSst')::numeric END AS trax_cod_sst,
+            CASE WHEN c.raw->>'source' = 'trax-portal-payment-v1'
+              THEN (c.raw->>'ibft')::numeric END AS trax_ibft,
             -- and how many parcels the courier itself says are in it, by
             -- kind. "1,709 parcels" against their own 924 is the kind of
             -- thing a receipt should say out loud, not hide behind a count
             -- of whatever happens to carry its number here.
+            --
             -- **The same two questions of every courier, wherever each one
             -- happens to write its answer.** Trax's payment screen names
             -- its kinds on the row itself; M&P's detail report counts the
-            -- consignments and their own status words. One receipt screen
-            -- reads both rather than one courier having a screen the others
-            -- do not.
-            MAX(COALESCE((c.raw->>'shipments')::int,
-                         (c.raw->'counts'->>'total')::int)) AS cover_orders,
-            MAX(COALESCE((c.raw->>'delivered')::int,
-                         (c.raw->'counts'->>'DELIVERED')::int)) AS cover_delivered,
-            MAX(COALESCE((c.raw->>'returned')::int,
-                         (c.raw->'counts'->>'RETURNED')::int)) AS cover_returned,
-            MAX((c.raw->>'adjusted')::int) AS cover_adjusted,
-            -- and the whole of what the courier called them. M&P's payment
-            -- of 355 consignments is 239 DELIVERED and no returns, so the
-            -- other 116 are in words of theirs that two columns cannot
-            -- show - "delivered and returned" is PostEx's and Trax's shape,
-            -- not every courier's.
-            MAX(c.raw->>'counts') AS cover_counts,
+            -- consignments and their own status words.
+            COALESCE((c.raw->>'shipments')::int,
+                     (c.raw->'counts'->>'total')::int) AS cover_orders,
+            COALESCE((c.raw->>'delivered')::int,
+                     (c.raw->'counts'->>'DELIVERED')::int) AS cover_delivered,
+            COALESCE((c.raw->>'returned')::int,
+                     (c.raw->'counts'->>'RETURNED')::int) AS cover_returned,
+            (c.raw->>'adjusted')::int AS cover_adjusted,
+            -- the whole of what the courier called them: M&P's payment of
+            -- 355 is 239 DELIVERED and no returns, so the other 116 are in
+            -- words of theirs that two columns cannot show.
+            c.raw->>'counts' AS cover_counts,
             -- M&P bill rather than deduct, and their invoice is made of
             -- named parts. Each is carried so the receipt can print them.
-            MAX((c.raw->'invoiceSummary'->>'shipping')::numeric)      AS mnp_shipping,
-            MAX((c.raw->'invoiceSummary'->>'fuel')::numeric)          AS mnp_fuel,
-            MAX((c.raw->'invoiceSummary'->>'invoiceGst')::numeric)    AS mnp_gst,
-            MAX((c.raw->'invoiceSummary'->>'extraCharges')::numeric)  AS mnp_extra,
-            MAX((c.raw->'invoiceSummary'->>'osaNsa')::numeric)        AS mnp_osa,
-            MAX((c.raw->'invoiceSummary'->>'osaNsaGst')::numeric)     AS mnp_osa_gst,
-            MAX((c.raw->'invoiceSummary'->>'incomeTax')::numeric)     AS mnp_income_tax,
-            MAX((c.raw->'invoiceSummary'->>'salesTax')::numeric)      AS mnp_sales_tax,
-            MAX((c.raw->'paymentSummary'->>'monthly')::numeric)       AS mnp_monthly
-       FROM courier_orders o
-       JOIN courier_accounts a ON a.id = o.account_id
-       LEFT JOIN courier_cprs c
-              ON c.realm_id = o.realm_id
-             AND c.account_id = o.account_id
-             AND c.cpr_number = o.cpr_number
-      WHERE ${where.join(' AND ')}
-      GROUP BY o.cpr_number, o.account_id, a.label, a.courier
-      ${having.length ? 'HAVING ' + having.join(' AND ') : ''}
+            (c.raw->'invoiceSummary'->>'shipping')::numeric     AS mnp_shipping,
+            (c.raw->'invoiceSummary'->>'fuel')::numeric         AS mnp_fuel,
+            (c.raw->'invoiceSummary'->>'invoiceGst')::numeric   AS mnp_gst,
+            (c.raw->'invoiceSummary'->>'extraCharges')::numeric AS mnp_extra,
+            (c.raw->'invoiceSummary'->>'osaNsa')::numeric       AS mnp_osa,
+            (c.raw->'invoiceSummary'->>'osaNsaGst')::numeric    AS mnp_osa_gst,
+            (c.raw->'invoiceSummary'->>'incomeTax')::numeric    AS mnp_income_tax,
+            (c.raw->'invoiceSummary'->>'salesTax')::numeric     AS mnp_sales_tax,
+            (c.raw->'paymentSummary'->>'monthly')::numeric      AS mnp_monthly
+       FROM covers c
+       FULL JOIN parcels p
+              ON p.account_id = c.account_id
+             AND p.cpr_number = c.cpr_number
+       JOIN courier_accounts a ON a.id = COALESCE(c.account_id, p.account_id)
+      WHERE COALESCE(c.cpr_number, p.cpr_number) <> ''
+        ${when.length ? 'AND ' + when.join(' AND ') : ''}
       ORDER BY ${DATED} DESC NULLS LAST
       LIMIT ${Number(opts.limit) || 200}`, args);
 

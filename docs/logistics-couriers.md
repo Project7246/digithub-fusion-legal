@@ -1331,3 +1331,41 @@ payments name thousands of consignments that this app holds no row for -
 backfilled. The receipt is right either way, because every figure on it is
 the courier's own; the pair of counts says plainly how much of it this app
 can show underneath. A backfill of that account is what closes it.
+
+## A receipt the courier issued exists whether or not its parcels are here
+
+The complaint was "**31 oct ka cpr site pr show hi ni ho rha likn portal pr
+show ho rha h**", and it was right. M&P's GlowCart has **29 payments on
+their portal and four of them were nowhere on `/receipts`** - 10, 17, 24 and
+31 October.
+
+What they have in common is that **their `InvoiceAmount` is 0**, and that
+turned out to be a red herring twice over: the portal returns them in any
+window, the mapper maps them, the writer writes them. A read-back added to
+`absorbPayouts` proved it - handed 2, held 2, **lost none**.
+
+**The cover was there the whole time. The screen could not see it.**
+`recentCprs` - and `listCprs` behind `/api/courier/cprs` - were built
+`FROM courier_orders`, grouping parcels by the receipt number written on
+them. A payment whose consignments this app holds no row for was therefore
+not an empty receipt: it was not a receipt at all. Banking had this right
+from the start (`bankingReceipts` FULL JOINs the two); the logistics screen
+did not.
+
+`recentCprs` now joins the covers and the parcels **as equals**: either side
+alone makes a receipt - the courier's own cover with nothing linked yet, or
+a receipt number on parcels whose cover has not arrived - and where both
+exist they are one row. Every figure still comes from the same place it did:
+the courier's own cover where there is one, the parcels where there is not.
+
+### What this cost, and the rule it leaves behind
+
+Three wrong turns before the right one: the mapper was suspected, then the
+report's date window, then the writer. Each was a guess that fitted the four
+rows. **The count that was believed was `payments: 2` - which counted the
+rows handed to the writer, not the rows the table held afterwards.** Those
+are two different claims and only the second is a receipt.
+
+So: a number reported by a sync says what the database holds when the sync
+is over, or it says nothing worth printing. `absorbPayouts` returns
+`wrote` / `held` / `lost`, and `/api/courier/sync` passes them through.
