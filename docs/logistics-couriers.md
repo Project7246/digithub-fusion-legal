@@ -1283,3 +1283,30 @@ app's thirty-five, and not a connection never made. Twenty-five is
 `CURLOPT_TIMEOUT` in `tools/courier-relay.php`, so the relay is the one
 cutting the sign-in, and nothing in this repository can finish this until
 **that file is uploaded to the website in its current form**.
+
+### And it was never the sign-in
+
+The error was made to name itself, and it said:
+
+```
+GET /cod/finance/payments/list, gave up after 22s of 22s
+```
+
+**ElRB signs in perfectly well.** What timed out was the first thing it did
+afterwards: ask for the payments. Two things were wrong with that call and
+both are fixed:
+
+- It asked for **200 payments in one page**, on the reasoning that there are
+  only a handful on an account. True of an account whose payments have been
+  read before; not of a busy one asking for all of them at once. Their
+  screen builds the whole page before it answers. `TRAX_PAYMENTS_PAGE` is
+  **50** now, and `payments()` already pages.
+- It was timed as a parcel page. The Finance screens are **reports**, so
+  `/cod/finance/` gets the same longer budget as `/cod/login`.
+
+The lesson, and it cost a morning: **"could not be reached" is not a
+diagnosis.** Three calls with two budgets behind one sentence meant the sign
+-in was blamed, then the relay, then a burst of traffic - and the queue, the
+gap, the retry and the relay's own timeout were all changed before anything
+asked the error which call it was. The first move should have been to make
+the failure say its own name.

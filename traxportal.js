@@ -56,7 +56,8 @@ const BASE = (process.env.TRAX_PORTAL_BASE || 'https://sonic.pk').replace(/\/+$/
 // to ask for more than fits inside that. 500 parcels come back in about three.
 const TIMEOUT = Math.max(5, Number(process.env.TRAX_PORTAL_TIMEOUT_SECONDS) || 22) * 1000;
 
-// **A sign-in is not a list call and must not be timed like one.**
+// **A sign-in and a report are not a parcel page, and must not be timed
+// like one.**
 //
 // The login page comes back through the relay in about ten seconds; the POST
 // that answers it takes longer, and twenty-two was not enough for it. An
@@ -70,6 +71,15 @@ const TIMEOUT = Math.max(5, Number(process.env.TRAX_PORTAL_TIMEOUT_SECONDS) || 2
 // relay is the shorter of the two and it is the relay that cuts the call.
 const SIGNIN_TIMEOUT =
   Math.max(5, Number(process.env.TRAX_PORTAL_SIGNIN_SECONDS) || 35) * 1000;
+
+// Which calls get it. The Finance screens are reports: Trax build the whole
+// payment list before they answer, and on a busy account that is longer than
+// a page of parcels takes. **This is what ElRB was failing on all along** -
+// the error said only "could not be reached" until it was made to name
+// itself, and then it said `GET /cod/finance/payments/list, gave up after
+// 22s of 22s`. The sign-in was never the problem on that account; the first
+// thing it did after signing in was ask for the payments and wait too long.
+const SLOW = /\/cod\/login|\/cod\/finance\//i;
 export const PAGE = Math.min(1000, Math.max(50, Number(process.env.TRAX_PORTAL_PAGE) || 500));
 
 // Laravel's session lasts two hours by default. Signing in again costs two
@@ -138,8 +148,8 @@ async function once(path, { method, jar, form, query, ajax } = {}) {
   }
 
   const ctl = new AbortController();
-  // the sign-in pages get the longer budget; everything else is a list
-  const budget = /\/cod\/login/i.test(path) ? SIGNIN_TIMEOUT : TIMEOUT;
+  // the sign-in and the Finance reports get the longer budget
+  const budget = SLOW.test(path) ? SIGNIN_TIMEOUT : TIMEOUT;
   const bell = setTimeout(() => ctl.abort(), budget);
   const started = Date.now();
 
@@ -749,7 +759,16 @@ export function mapPayment(r) {
 
 // Every payment on the account, newest first. There are a handful of these,
 // not thousands, so one page of 200 covers it and the loop is only a guard.
-export async function payments(session, { length = 200 } = {}) {
+// **Fifty at a time, not two hundred.** It asked for two hundred payments in
+// one page because there are only a handful on an account - which is true of
+// an account whose payments have been read before, and not of a busy one
+// asking for all of them at once. Their screen builds the whole page before
+// it answers, and on Trax - ElRB that was longer than the call was allowed
+// to wait, every visit. The loop below already pages, so this costs nothing
+// but an extra round trip on an account that really does have hundreds.
+const PAY_PAGE = Math.min(200, Math.max(10, Number(process.env.TRAX_PAYMENTS_PAGE) || 50));
+
+export async function payments(session, { length = PAY_PAGE } = {}) {
   const out = [];
   let start = 0;
 
