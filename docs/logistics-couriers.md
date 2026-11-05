@@ -1010,3 +1010,14 @@ name on the payment that this app holds no row for at all, never imported.
 The webhook path looks those up (`STRANGER_CAP`); the portal path does not,
 and both counts are printed side by side so the gap is visible rather than
 guessed at.
+
+### Their kinds are not our buckets
+
+"What is in this receipt" briefly set Trax's delivered / returned / adjusted
+against our own `status_group`, which is a different question: a parcel in
+the returned half of a payment may be at *Return in Transit* here, so **116
+of theirs read as 16 of ours** and the table said the receipt was wrong when
+it was not. The kinds and the counts in that table are the courier's own
+throughout. Which bucket each parcel is in is the **By status** table
+underneath, where that question belongs. The only pair shown side by side is
+the count - theirs, and how many of them this app holds a row for.

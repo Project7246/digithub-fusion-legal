@@ -1101,43 +1101,49 @@
   function insideBox(c, orders){
     if(c.coverOrders == null) return '';
 
-    var mine = {};
-    (orders || []).forEach(function(o){
-      var g = o.statusGroup || 'other';
-      if(!mine[g]) mine[g] = { n:0, cod:0 };
-      mine[g].n += 1;
-      mine[g].cod += (o.amount || 0);
-    });
-
+    // **The kinds are the courier's own, and so are the counts.** They were
+    // briefly set against our own status buckets, which is not the same
+    // question: a parcel Trax put in the "returned" half of a payment may be
+    // at "Return in Transit" here, so 116 of theirs read as 16 of ours and
+    // the column said the receipt was wrong when it was not. Which bucket
+    // each parcel is in is the "By status" table underneath, where it
+    // belongs; this table is what the payment itself says.
     var kinds = [
-      ['Delivered', c.delivered, mine.delivered],
-      ['Returned',  c.returned,  mine.returned],
+      // What they collected is what they paid on, so the COD on the payment
+      // is the delivered parcels' - and a parcel that came back collected
+      // nothing, which is why it is on the payment at all.
+      ['Delivered', c.delivered, c.gross == null ? c.amount : c.gross],
+      ['Returned',  c.returned,  0],
       ['Adjusted',  c.adjusted,  null]
     ].filter(function(k){ return k[1] != null; });
 
-    var held = (orders || []).length;
-    var agree = orders && held === c.coverOrders;
+    var held = orders ? orders.length : null;
+    var ourCod = orders
+      ? orders.reduce(function(a,o){ return a + (o.amount || 0); }, 0) : null;
 
     var rows = kinds.map(function(k){
       return '<tr><td>' + esc(k[0]) + '</td><td class="r">' + n0(k[1] || 0) +
-        '</td><td class="r">' + (k[2] ? n0(k[2].n) : (orders ? '0' : '—')) +
-        '</td><td class="r">' + (k[2] ? full(k[2].cod) : '—') + '</td></tr>';
+        '</td><td class="r">' + (k[2] == null ? '—' : full(k[2])) + '</td></tr>';
     }).join('');
 
-    return '<div class="box" style="margin:0"><h3>What is in this receipt</h3>' +
-      '<table class="t"><tr><th>Kind</th><th class="r">' + esc(cname(c.courier)) +
-      ' says</th><th class="r">We hold</th><th class="r">COD</th></tr>' + rows +
-      '<tr style="font-weight:600"><td>In all</td><td class="r">' +
-        n0(c.coverOrders) + '</td><td class="r">' +
-        (orders ? n0(held) : '—') + '</td><td class="r">' +
-        (orders ? full((orders || []).reduce(function(a,o){ return a + (o.amount||0); }, 0)) : '—') +
-      '</td></tr></table>' +
-      (orders && !agree
+    return '<div class="box" style="margin:0"><h3>What is in this receipt' +
+      '<span class="aside">' + esc(cname(c.courier)) + '’s own figures</span>' +
+      '</h3><table class="t"><tr><th>Kind</th><th class="r">Parcels</th>' +
+      '<th class="r">COD</th></tr>' + rows +
+      '<tr style="font-weight:600"><td>' + esc(cname(c.courier)) +
+        ' say in all</td><td class="r">' + n0(c.coverOrders) +
+        '</td><td class="r">' + full(c.gross == null ? c.amount : c.gross) +
+      '</td></tr>' +
+      (held == null ? '' :
+        '<tr><td>Carrying this number here</td><td class="r">' + n0(held) +
+        '</td><td class="r">' + full(ourCod) + '</td></tr>') +
+      '</table>' +
+      (held != null && held !== c.coverOrders
         ? '<div class="note" style="margin-top:8px">' + esc(cname(c.courier)) +
-          ' says this payment holds ' + n0(c.coverOrders) + ' parcels and ' +
-          n0(held) + ' carry its number here. The money above is the ' +
-          'courier’s own, so it is right either way; the parcels come ' +
-          'back into step on the next read of their payment screen.</div>'
+          ' name ' + n0(c.coverOrders) + ' parcels on this payment and ' +
+          n0(held) + ' of them are here — the rest are parcels this app ' +
+          'has no row for at all. Every figure in Money is the courier’s ' +
+          'own, so the receipt is right either way.</div>'
         : '') +
       '</div>';
   }
