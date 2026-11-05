@@ -1234,3 +1234,21 @@ that payment and how many of each - and "What is in this receipt" lists them
 all, in the courier's own wording. Where a courier sends only the two, the
 two are the table. The COD goes against the delivered line and nowhere else,
 because what they collected is what they paid on.
+
+### The route is sound; the burst is not
+
+`/api/courier/reach?courier=trax` asks sonic.pk for its sign-in page with no
+password at all, and it answers - **9,632 bytes, a token and two cookies**.
+So the route through the relay is sound, and ElRB's "ETIMEDOUT" is not the
+route being broken.
+
+What fails is **ElRB's sign-in immediately after AA Traders' eighteen calls
+through that same relay**, and it fails in twelve seconds - far short of the
+twenty-two this allows, which is a connection never made rather than a page
+never finished. A courier's portal, and the one relay in front of it, will
+only take so much at once.
+
+So the queue takes a breath between accounts (`COURIER_ACCOUNT_GAP_SECONDS`,
+8). That is the whole of what this app can do about it from here; if ElRB
+still times out after a quiet gap, the next thing to look at is the relay
+itself, not the password.

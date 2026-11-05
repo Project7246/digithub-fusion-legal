@@ -492,8 +492,22 @@ export async function chaseCpr(realmId, opts) {
   // whole of "one system for every account": the same work, in a queue.
   //
   // Still not awaited: the page must not wait on a courier.
+  // And a breath between two accounts of the same courier.
+  //
+  // `/api/courier/reach` asks sonic.pk for its sign-in page with no password
+  // at all, and it answers - 9,632 bytes, token and cookies - so the route
+  // is sound. What fails is **ElRB's sign-in immediately after AA Traders'
+  // eighteen calls through the same relay**: a timeout in twelve seconds,
+  // far short of the twenty-two this allows, which is a connection never
+  // made rather than a page never finished. A courier's portal, and the one
+  // relay in front of it, will only take so much at once.
+  const GAP = Math.max(0, Number(process.env.COURIER_ACCOUNT_GAP_SECONDS) || 8) * 1000;
+
   (async () => {
+    let first = true;
     for (const acc of accounts) {
+      if (!first && GAP) await new Promise(r => setTimeout(r, GAP));
+      first = false;
       try { await askAboutMoney(acc); } catch (e) { /* noted, not waited on */ }
     }
   })().catch(() => {});
