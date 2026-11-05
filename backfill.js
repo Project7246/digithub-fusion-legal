@@ -310,7 +310,9 @@ async function run(realmId, job, carrying) {
       say(job, got.covers
         ? got.covers + ' payments kept, ' + got.linked + ' parcels put under one' +
           (got.cleared ? ', ' + got.cleared + ' taken off a payment they were ' +
-            'never in' : '')
+            'never in' : '') +
+          (got.orphans ? ', ' + got.orphans + ' freed of a receipt number no ' +
+            'payment of theirs ever carried' : '')
         : 'The courier lists no payments on this account yet');
     } catch (e) {
       say(job, 'Could not read the payment list - ' + e.message);

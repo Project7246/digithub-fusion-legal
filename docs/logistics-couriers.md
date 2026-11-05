@@ -964,3 +964,16 @@ synthetic rows: three kinds adding to their own total, counts read out of the
 button their screen draws them in, money read through its thousands marks,
 the five deductions tying to the figure paid, their rounding to the rupee
 tolerated and a real gap reported rather than absorbed.
+
+### A receipt number nobody ever issued
+
+Every real receipt has a cover row: the payment screen writes one, and so
+does the payment webhook. What the per-parcel call wrote had none - it was an
+id of Trax's own stamped on a parcel, and it drew a receipt of one or five
+parcels with no status, no date and no money behind it. Trax - ElRB's list
+was mostly those.
+
+`clearCprWithoutCover` lets a parcel go of a number that no payment of
+theirs and no webhook of theirs ever carried, and it runs only straight after
+the payment screen has answered: a screen that could not be read is silence,
+and silence is not evidence.

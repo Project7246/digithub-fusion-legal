@@ -1137,6 +1137,35 @@ export async function clearCprStrays(realmId, accountId, cprNumber, trackings) {
   return r.rowCount || 0;
 }
 
+// A receipt number nobody ever issued.
+//
+// Every real receipt has a cover: the courier's payment screen writes one
+// (saveCprs), and so does the payment webhook. What the per-parcel call used
+// to write had none - it was an id of the courier's own, stamped on a parcel
+// and never belonging to a payment at all, and it showed on /receipts as a
+// receipt of five parcels with no status, no date and no money behind it.
+//
+// So, for a courier whose receipts come from a payment screen: a number with
+// no cover row is not a receipt, and the parcel is let go of it. Only call
+// this when that screen has just answered - its silence is not evidence.
+export async function clearCprWithoutCover(realmId, accountId) {
+  const r = await pool.query(
+    `UPDATE courier_orders o
+        SET cpr_number = NULL,
+            settled    = FALSE,
+            settled_on = NULL
+      WHERE o.realm_id = $1 AND o.account_id = $2
+        AND o.cpr_number IS NOT NULL AND o.cpr_number <> ''
+        AND NOT EXISTS (
+          SELECT 1 FROM courier_cprs c
+           WHERE c.realm_id = o.realm_id
+             AND c.account_id = o.account_id
+             AND c.cpr_number = o.cpr_number)`,
+    [realmId, Number(accountId)]
+  );
+  return r.rowCount || 0;
+}
+
 // How many parcels each of these receipts holds here. The payment screen says
 // how many it should hold, so this is what lets a second visit read one list
 // instead of two calls for every payment on the account.

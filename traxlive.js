@@ -22,7 +22,7 @@
 import { adapterFor } from './adapters.js';
 import {
   saveOrders, savePayments, saveCprs, haveTrackings, linkCprParcels,
-  clearCprStrays, cprParcelCounts
+  clearCprStrays, cprParcelCounts, clearCprWithoutCover
 } from './couriers.js';
 
 // Parcels looked up three at a time, and never more than this many from one
@@ -221,5 +221,11 @@ export async function absorbPortalPayments(realmId, acc, opts = {}) {
     cleared += await clearCprStrays(realmId, acc.id, cpr, item.trackings);
   }
 
-  return { covers: covers.length, read, linked, cleared };
+  // The payment screen has just answered, so a number on a parcel that no
+  // payment of theirs - and no webhook of theirs - ever issued is a number
+  // this app invented. Those showed as receipts of one or five parcels with
+  // no status and no date on them.
+  const orphans = await clearCprWithoutCover(realmId, acc.id);
+
+  return { covers: covers.length, read, linked, cleared, orphans };
 }
