@@ -1,11 +1,11 @@
 # Handover - current folder state
-Last agent: Codex - 7 Nov 2026. Task: supplied Daewoo invoice PDF + full range correction.
+Last agent: Codex - 7 Nov 2026. Task: updated Daewoo tax PDF verification.
 - Owner API/portal login PASS, customer CONFIRMED, CPR READ_OK; charges/cover arithmetic
   MATCH, COD DIFFERENT, taxes present, no duplicate parcels in sampled detail.
-- Supplied private PDF matched same invoice in earlier private summary XLSX: COD differs,
-  service charges match; visible RST alone does not balance it. No real figures/IDs logged.
-- PDF is browser-generated with clipped right columns; WHT/full payable cannot be verified.
-  Source remains in owner's Downloads; scratch images/text/libs cleaned, original unchanged.
+- Updated private PDF shows RST/WHT and payable; same invoice matched private XLSX.
+  COD differs, charges match; adding/subtracting both taxes does not explain difference.
+  COD minus charges and both taxes also differs from summary payable; basis unresolved.
+- Original unchanged in Downloads; scratch cleaned. No private figures/IDs logged.
 - reconcileInvoice returns reconciliationRequired for mismatch/missing/duplicate conditions;
   inputs untouched. Helper prints this plus FINANCIAL_POSTING=DISABLED. No posting route exists.
 - Removed automatic unverified print/export request/save from checker; do not repeat reruns.
@@ -25,4 +25,4 @@ Last agent: Codex - 7 Nov 2026. Task: supplied Daewoo invoice PDF + full range c
   Private backups LOCALAPPDATA/FusionMigration/20261106-055453; never upload contents.
 - Previous Banking/password/nav work retained; prior courier leftovers unchanged.
 - All 23 check:all checks PASS; diff check PASS. No deliberate dirty files.
-- Push triggers deployment; baseline 1794001122474. New live build not yet verified.
+- Updated PDF review is docs-only; no new code checks needed. Deployment check pending.

@@ -13,8 +13,9 @@ multiple customers require a private name/ID choice before CPRs can be queried.
 The chooser preserves the session and refuses ambiguous or unknown selections;
 the chosen-customer CPR read now passes. Owner also reproduces COD DIFFERENT,
 charges/cover arithmetic MATCH, taxes present and no duplicate parcels in sample.
-Owner-supplied PDF reproduces the same-invoice COD difference; its rightmost
-columns are clipped, so the cause remains unverified. Automatic export retries
+Updated owner-supplied PDF now shows both RST/WHT and payable columns. Same-invoice
+COD difference persists; adding/subtracting both taxes does not reconcile it with
+the private summary. Service charges match; cause remains unverified. Automatic export retries
 are removed; unknown formats are never accepted. Reconciliation stays required,
 and no Daewoo financial posting is enabled. Client/helper now preserve monthly
 and longer authorized ranges; the earlier arbitrary seven-day clamp was removed.

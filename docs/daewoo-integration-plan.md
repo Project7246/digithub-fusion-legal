@@ -10,13 +10,26 @@ in the merchant portal and there is no webhook. Credentials must stay private.
 
 ### Latest checkpoint - 7 Nov 2026
 
+Updated owner-supplied PDF supersedes the clipped copy: both RST and WHT columns
+and the printed reimbursement/service/payable header are now visible. Same invoice
+identity matched the earlier private summary XLSX. Exact Decimal comparisons still
+show COD different and service charges matching. Neither adding nor subtracting
+both visible tax totals explains the summary COD difference; subtracting service
+charges and both taxes from printed COD also does not match summary reimbursement.
+Summary cover arithmetic itself matches. This is evidence for an unresolved source
+basis difference, not permission to invent an adjustment or infer a universal tax
+rule. No new export or credential rerun is needed for this sample. No real figures,
+names or IDs are stored. No code, financial posting, adapter or live settings changed
+for this updated-PDF review.
+
+
 Owner supplied the invoice PDF directly after the helper returned NOT_PDF. Local
 PDF inspection and comparison with the earlier private summary XLSX identified
 the SAME invoice. Printed COD differs from the matching summary cover; service
 charges match. The visible RST alone does not explain the difference. This does
 not establish an upstream bug, a balancing adjustment, or a gross/net rule.
-The PDF was browser-generated and its right-hand columns are clipped; withholding
-and full payable totals cannot be verified from its visible pages. No private
+The first PDF was browser-generated with clipped right-hand columns; that limitation
+is superseded by the updated-PDF review above. No private
 figures, IDs or names are retained in these notes or synthetic fixtures.
 
 Automatic print/export fetching and saving was removed from the diagnostic:
