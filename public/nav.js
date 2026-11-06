@@ -350,6 +350,7 @@
       html += '<' + tag + (it.tree ? ' type="button" aria-expanded="false" aria-controls="ctree"' : ' href="' + it.href + '"') +
               (it.need ? ' data-line="' + it.need + '"' : '') +
               (classes ? ' class="' + classes.trim() + '"' : '') +
+              (on && !it.tree ? ' aria-current="page"' : '') +
               (on && it.admin ? ' data-admin="1"' : '') +
               (it.tree ? ' id="couriersLink"' : '') +
               (it.rtree ? ' id="receiptsLink"' : '') + '>' +
@@ -385,14 +386,24 @@
   var rail = document.querySelector('.rail');
   if(rail) rail.innerHTML = html;
 
-  // The same disclosure hierarchy is used by every module and company. Keep
-  // the current page visible even if its group was closed on another page.
+  // One open group keeps the shared rail compact. The current page takes
+  // priority over the last group browsed on an overview page.
+  var activeNavItem = rail && rail.querySelector('.nav-group .on');
   if(rail) rail.querySelectorAll('.nav-group').forEach(function(group){
-    var key = 'fusion:nav-group:' + HERE.key + ':' + group.getAttribute('data-nav-group');
-    try { group.open = !!group.querySelector('.on') || localStorage.getItem(key) !== '0'; }
-    catch(e) { group.open = true; }
+    var key = 'fusion:nav-open:' + HERE.key;
+    var name = group.getAttribute('data-nav-group');
+    var current = !!group.querySelector('.on');
+    group.classList.toggle('has-current', current);
+    try { group.open = current || (!activeNavItem && localStorage.getItem(key) === name); }
+    catch(e) { group.open = current; }
     group.addEventListener('toggle', function(){
-      try { localStorage.setItem(key, group.open ? '1' : '0'); } catch(e) {}
+      if(group.open) rail.querySelectorAll('.nav-group').forEach(function(other){
+        if(other !== group) other.open = false;
+      });
+      try {
+        if(group.open) localStorage.setItem(key, name);
+        else if(localStorage.getItem(key) === name) localStorage.setItem(key, '');
+      } catch(e) {}
     });
   });
 
@@ -1183,7 +1194,7 @@
               return accountId === String(a.id);
             });
 
-          out += '<details class="courier-group"' + (mine ? ' open' : '') + '>' +
+          out += '<details class="courier-group' + (mine ? ' has-current' : '') + '"' + (mine ? ' open' : '') + '>' +
                  '<summary class="grp"><span class="car nav-chevron" aria-hidden="true"></span>' +
                  '<span class="nav-label">' + esc(c.name) + '</span>' +
                  (c.ready ? '' : ' <span class="soon">soon</span>') + '</summary>';
@@ -1203,7 +1214,8 @@
           // more lines in this tree.
           c.accounts.forEach(function(a){
             out += '<a class="acc' + (accountId === String(a.id) ? ' on' : '') +
-                   '" href="/courier-dash?account=' + a.id + '">' +
+                   '"' + (accountId === String(a.id) ? ' aria-current="page"' : '') +
+                   ' href="/courier-dash?account=' + a.id + '">' +
                    esc(a.label) + '</a>';
           });
           out += '<a class="add" href="/couriers?add=' + esc(c.key) + '">+ add an account</a>';

@@ -29,6 +29,28 @@ against synthetic users/accounts for all seven sections, disclosure state,
 exact account selection, permission pruning and the super-admin shortcut.
 It is included in `check:all`. This DOM harness is not a browser layout check.
 
+### Compact layout and selected state - 6 Nov 2026
+
+Owner's follow-up: the shared sidebar and app cards must use less vertical
+space, and the selected heading must be obvious. Rail brand/nav/row padding,
+group gaps and nested indents are reduced globally. At most one top-level
+group opens at a time; overview pages start collapsed or recall the last
+browsed group, while a current work page opens its own ancestor. This replaces
+the previous per-group open-by-default behavior. Courier branches still keep
+one provider open. Active links use brand aqua with dark text; their parent
+headings use a teal tint and aqua text, including when collapsed. Active links
+also expose aria-current. Server rights and company filtering are unchanged.
+
+Home desk cards now place icon/title side by side, use smaller padding and
+gaps, and use four desktop columns, three below 1000px, two below 640px and
+one below 380px. Short desktop viewports have a denser card rule. The shared
+module tile shelf is also smaller. Content remains readable and scrollable
+on narrow/short windows or larger zoom; never hide overflow to fake a fit or
+truncate actual labels/descriptions. No global :root brand variables changed.
+
+Navigation fixtures also verify compact overview defaults, remembered groups,
+single-open behavior, active-ancestor priority and selected-link semantics.
+
 ## How a screen is written here
 
 Three rules, all given as corrections, all about the same thing: a screen is

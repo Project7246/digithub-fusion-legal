@@ -105,14 +105,26 @@ for (const section of ['finance','logistics','operations','banking','hr','csr','
   for (const group of ui.rail.querySelectorAll('.nav-group')) {
     assert.equal(group.firstChild.tagName, 'SUMMARY');
     assert.ok(group.querySelector('.nav-group-items > a, .nav-group-items > button'));
+    assert.equal(group.open, false, 'overview starts with compact closed groups');
+    group.open = true; group.events.toggle();
+    assert.equal(ui.storage.get('fusion:nav-open:' + section), group.getAttribute('data-nav-group'));
+    assert.equal(ui.rail.querySelectorAll('.nav-group').filter(item => item.open).length, 1,
+      'only one top-level group stays open');
     group.open = false; group.events.toggle();
-    assert.equal(ui.storage.get('fusion:nav-group:' + section + ':' + group.getAttribute('data-nav-group')), '0');
+    assert.equal(ui.storage.get('fusion:nav-open:' + section), '');
   }
 }
 
-const active = navigation('hr', '/payroll', '', { 'fusion:nav-group:hr:The month': '0' });
+const active = navigation('hr', '/payroll', '', { 'fusion:nav-open:hr': 'The people' });
 assert.equal(active.rail.querySelector('[data-nav-group="The month"]').open, true,
   'active page reopens its ancestor');
+assert.equal(active.rail.querySelector('[data-nav-group="The people"]').open, false,
+  'current page overrides a different previously opened group');
+assert.ok(active.rail.querySelector('[data-nav-group="The month"]').classList.contains('has-current'));
+assert.equal(active.rail.querySelector('a[href="/payroll"]').getAttribute('aria-current'), 'page');
+const remembered = navigation('finance', '/finance', '', { 'fusion:nav-open:finance': 'Payments' });
+assert.equal(remembered.rail.querySelector('[data-nav-group="Payments"]').open, true,
+  'overview remembers the last group browsed');
 
 const couriers = navigation('logistics', '/courier-dash', '?account=10');
 couriers.context.fetch = async () => ({ json: async () => ({ couriers: [
@@ -131,6 +143,8 @@ const branches = couriers.rail.querySelectorAll('.courier-group');
 assert.equal(branches.length, 2);
 assert.equal(branches[0].open, false, 'account 1 must not match account 10');
 assert.equal(branches[1].open, true);
+assert.ok(branches[1].classList.contains('has-current'), 'selected courier heading stays marked');
+assert.equal(couriers.rail.querySelector('a.acc.on').getAttribute('aria-current'), 'page');
 assert.match(couriers.document.getElementById('ctree').innerHTML, /Synthetic &lt;second&gt;/);
 assert.equal(couriers.rail.querySelectorAll('a.acc.on').length, 1);
 branches[0].open = true; branches[0].events.toggle();

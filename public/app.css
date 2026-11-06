@@ -35,7 +35,7 @@ a{color:inherit}
   display:flex;flex-direction:column;position:fixed;top:0;bottom:0;left:0;z-index:50}
 .main{flex:1;margin-left:var(--rail);min-width:0;display:flex;flex-direction:column}
 
-.rail .brand{display:flex;align-items:center;gap:11px;padding:20px 18px 18px;
+.rail .brand{display:flex;align-items:center;gap:10px;padding:12px 14px;
   text-decoration:none;color:#fff;border-bottom:1px solid rgba(255,255,255,.08)}
 .rail .brand img{width:38px;height:auto;aspect-ratio:400/280;display:block;flex:0 0 38px}
 .rail .brand b{font-size:14px;font-weight:600;letter-spacing:-.005em;display:block;line-height:1.25}
@@ -45,7 +45,7 @@ a{color:inherit}
 /* The way out of a section and the name of the one you are in. The rail holds
    one section's modules now, not the whole app, so there has to be a door back
    to the launcher where the other sections are. */
-.rail .allapps{display:flex;align-items:center;gap:9px;margin:0 10px;padding:9px 12px;
+.rail .allapps{display:flex;align-items:center;gap:9px;margin:0 8px;padding:7px 10px;
   border-radius:7px;font-size:12px;font-weight:500;color:rgba(255,255,255,.6);
   text-decoration:none;background:rgba(255,255,255,.05)}
 .rail .allapps:hover{background:rgba(255,255,255,.1);color:#fff}
@@ -53,52 +53,58 @@ a{color:inherit}
 .rail .allapps .secname{margin-left:auto;font-family:var(--head);font-weight:700;
   font-size:11.5px;color:var(--aqua);letter-spacing:.01em}
 
-.rail nav{flex:1;overflow-y:auto;padding:16px 10px}
-.rail nav a,.rail nav .nav-folder{display:flex;align-items:center;gap:10px;padding:9px 12px;border-radius:6px;
-  text-decoration:none;color:#BBBBBB;font:500 13px/1.4 var(--sans);margin-bottom:2px;
+.rail nav{flex:1;min-height:0;overflow-y:auto;padding:8px}
+.rail nav a,.rail nav .nav-folder{display:flex;align-items:center;gap:8px;padding:6px 10px;border-radius:6px;
+  text-decoration:none;color:#BBBBBB;font:500 12.5px/1.35 var(--sans);margin-bottom:1px;
   text-align:left;overflow-wrap:anywhere}
 .rail nav .nav-folder{width:100%;border:0;background:none;cursor:pointer;font-weight:600}
 .rail nav a:hover,.rail nav .nav-folder:hover{background:rgba(255,255,255,.06);color:#fff}
-.rail nav a.on,.rail nav .nav-folder.on{background:rgba(255,255,255,.13);color:#fff}
+.rail nav a.on{background:var(--aqua);color:var(--ink-3);font-weight:700;
+  box-shadow:inset 3px 0 0 var(--accent)}
+.rail nav .nav-folder.on{background:rgba(17,186,181,.18);color:var(--aqua);
+  box-shadow:inset 3px 0 0 var(--accent)}
+.rail nav a.on .rcnt{color:var(--ink-3)}
 .rail nav .ic{width:16px;height:16px;flex:0 0 16px;opacity:.8}
 .rail nav .on .ic{opacity:1}
 .rail .nav-label{min-width:0;flex:1;overflow-wrap:anywhere}
 .rail .nav-chevron{display:inline-block;width:7px;height:7px;flex:0 0 7px;
   border:solid currentColor;border-width:0 1.5px 1.5px 0;transform:rotate(-45deg);
   transition:transform .15s;opacity:.8;margin:0 3px}
-.rail .nav-group{margin:9px 0 4px}
-.rail .nav-group > .group{display:flex;align-items:center;gap:10px;list-style:none;
-  padding:9px 12px;color:#DCE8E9;cursor:pointer;user-select:none;border-radius:6px;
-  font:700 14px/1.4 var(--head);overflow-wrap:anywhere}
+.rail .nav-group{margin:4px 0 2px}
+.rail .nav-group > .group{display:flex;align-items:center;gap:8px;list-style:none;
+  padding:7px 10px;color:#DCE8E9;cursor:pointer;user-select:none;border-radius:6px;
+  font:700 13px/1.35 var(--head);overflow-wrap:anywhere}
 .rail summary::-webkit-details-marker{display:none}
 .rail .nav-group > .group:hover{background:rgba(255,255,255,.06);color:#fff}
 .rail .nav-group[open] > .group{color:#fff}
+.rail .nav-group.has-current > .group{color:var(--aqua);background:rgba(17,186,181,.1)}
 .rail .nav-group[open] > .group .nav-chevron,.rail .tcar.open,
 .rail .courier-group[open] > .grp .nav-chevron{transform:rotate(45deg)}
-.rail .nav-group-items{margin-left:12px;padding:2px 0 4px 7px;
+.rail .nav-group-items{margin-left:9px;padding:1px 0 2px 5px;
   border-left:1px solid rgba(255,255,255,.12)}
 .rail nav a:focus-visible,.rail nav button:focus-visible,.rail summary:focus-visible{
   outline:2px solid var(--aqua);outline-offset:2px}
 .rail .tcar{margin-left:auto}
-.rail .ctree{margin:2px 0 8px 8px;display:none}
+.rail .ctree{margin:1px 0 4px 4px;display:none}
 .rail .ctree.open{display:block}
-.rail .ctree a{padding:7px 10px 7px 16px;font-size:12px;font-weight:400;
+.rail .ctree a{padding:5px 8px 5px 12px;font-size:11.5px;font-weight:400;
   color:#ADBDC0;line-height:1.4}
-.rail .ctree a.on{font-weight:500;color:#fff;background:rgba(255,255,255,.09)}
+.rail .ctree a.on{font-weight:700;color:var(--ink-3);background:var(--aqua)}
 .rail .ctree .grp{display:flex;align-items:center;gap:9px;list-style:none;cursor:pointer;
-  padding:9px 10px;border-radius:6px;font:700 13px/1.4 var(--sans);
+  padding:6px 8px;border-radius:6px;font:700 12.5px/1.35 var(--sans);
   color:#DCE8E9;user-select:none}
 .rail .ctree .grp:hover{color:#fff;background:rgba(255,255,255,.06)}
 .rail .courier-group[open] > .grp{color:#fff;background:rgba(255,255,255,.05)}
+.rail .courier-group.has-current > .grp{color:var(--aqua);background:rgba(17,186,181,.13)}
 .rail .ctree .soon{font-size:10px;font-weight:400;color:#9DB0B5}
-.rail .ctree .kids{margin:2px 0 5px 16px;padding-left:7px;
+.rail .ctree .kids{margin:1px 0 3px 12px;padding-left:5px;
   border-left:1px solid rgba(255,255,255,.12)}
 .rail .ctree a.all{color:#ADBDC0}
-.rail .ctree a.all.on{color:#fff}
-.rail .ctree a.add{font-size:11.5px;color:#9DB0B5}
-.rail .ctree a.wide{margin-top:6px;border-top:1px solid rgba(255,255,255,.08);padding-top:10px}
+.rail .ctree a.all.on{color:var(--ink-3)}
+.rail .ctree a.add{font-size:11px;color:#9DB0B5}
+.rail .ctree a.wide{margin-top:3px;border-top:1px solid rgba(255,255,255,.08);padding-top:7px}
 
-.rail .foot{padding:14px;border-top:1px solid rgba(255,255,255,.08)}
+.rail .foot{padding:8px;border-top:1px solid rgba(255,255,255,.08)}
 .conn{display:flex;align-items:center;gap:8px;font-size:12px;color:#9DB0B5;
   border:1px solid #38474E;border-radius:6px;padding:8px 10px;cursor:pointer;
   user-select:none;position:relative}
