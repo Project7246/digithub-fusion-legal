@@ -7,6 +7,21 @@ in the merchant portal and there is no webhook. Credentials must stay private.
 
 ## Read-only verification results - 6 Nov 2026
 
+### Private API credential check for the owner
+
+API Management exposes three credentials and has no Test button (owner confirmed).
+tools/daewoo-connection-check.mjs runs the documented read-only locations request
+from the owner's PC. Run with node; it has no package dependencies or PowerShell
+execution-policy changes. It prompts for all three values with fully muted input
+and no input history. No values go into arguments, files, echoed URLs or errors.
+It uses a fixed HTTPS host, refuses redirects, times out after 25 seconds and
+prints only DAEWOO_API / HTTP_STATUS status lines. Never paste credentials in chat.
+
+Offline --self-test checks nine success/rejection/schema fixtures and that hidden
+input preserves punctuation without echo. PASS means this locations request was
+accepted from the PC; it does not verify app-server API auth, portal login or CPRs.
+Actual merchant credential check is still pending the owner's private input.
+
 ### Singapore container connectivity - subsequently verified
 
 Opened the existing DigitalOcean app's web-service console. UI confirmed Healthy
