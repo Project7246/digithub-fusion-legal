@@ -7,6 +7,28 @@ export class DaewooPortalError extends Error {
 }
 const fail=code=>{throw new DaewooPortalError(code);};
 
+// Select only from this authenticated session's returned customer list.
+// Do not expose names or IDs in diagnostics or silently choose the first row.
+export function chooseCustomer(customers,selection=''){
+  const normalize=value=>String(value??'').trim().replace(/\s+/g,' ').toLowerCase();
+  const unique=new Map();
+  for(const row of customers||[]){
+    const id=String(row?.customer_id??'').trim();
+    if(!id||id==='0'||id==='-1')continue; // aggregate/dropdown placeholders
+    if(!unique.has(id))unique.set(id,row);
+  }
+  const rows=[...unique.values()],query=normalize(selection);
+  if(!rows.length)return {status:'EMPTY'};
+  if(!query)return rows.length===1?{status:'SELECTED',customer:rows[0]}:{status:'REQUIRED'};
+  const idMatch=rows.filter(row=>String(row.customer_id).trim()===String(selection).trim());
+  if(idMatch.length===1)return {status:'SELECTED',customer:idMatch[0]};
+  const exact=rows.filter(row=>normalize(row.customer_name)===query);
+  if(exact.length===1)return {status:'SELECTED',customer:exact[0]};
+  if(exact.length>1)return {status:'AMBIGUOUS'};
+  const matches=query.length>=3?rows.filter(row=>normalize(row.customer_name).includes(query)):[];
+  return matches.length===1?{status:'SELECTED',customer:matches[0]}:{status:matches.length?'AMBIGUOUS':'NOT_FOUND'};
+}
+
 export function validateRange(from,to) {
   const valid=value=>typeof value==='string' && /^\d{4}-\d{2}-\d{2}$/.test(value) &&
     Number.isFinite(Date.parse(value)) && new Date(value).toISOString().slice(0,10)===value;

@@ -1,5 +1,5 @@
 # Handover - current folder state
-Last agent: Codex - 7 Nov 2026. Task: Daewoo private portal/session + invoice verifier.
+Last agent: Codex - 7 Nov 2026. Task: Daewoo private customer selection after successful portal login.
 - Owner reported DAEWOO_API=PASS from PC. Earlier rejection superseded; cause unknown.
   PC locations PASS is not SGP1 authenticated API, website login or CPR proof.
 - daewoo-portal.js: fixed-origin, private per-instance cookie session; observed read-only
@@ -8,20 +8,20 @@ Last agent: Codex - 7 Nov 2026. Task: Daewoo private portal/session + invoice ve
 - tools/daewoo-connection-check.mjs --portal --from YYYY-MM-DD --to YYYY-MM-DD:
   hidden normal WEBSITE login, session/customer validation, covers and one detail sample.
   Prints only fixed flags; no names, identifiers, money figures or credentials.
-- Next owner step: private portal diagnostic on the September report period (short window).
-  Portal-run result PENDING. Login credentials may differ from API Management.
-- tools/daewoo-portal-check.mjs written first with known synthetic money/session fixtures;
+- Owner result: DAEWOO_PORTAL=PASS, CUSTOMER_SCOPE=SELECTION_REQUIRED. Login/session verified
+  from PC; no reports read by that run. Next: rerun, choose company privately in same session.
+- Customer chooser: exact name/ID or unique fragment; no first-row guess, no printed names/IDs.
+  Ambiguous choices retry locally; aggregate 0/-1 excluded, duplicate IDs collapsed.
+- tools/daewoo-portal-check.mjs: synthetic session/money plus customer-selection fixtures;
   cookie/auth/wrapper/error/scope/date/paisa/missing/duplicate/mismatch checks pass.
-  Added to check:all: 23 checks PASS; final targeted scope tests rerun PASS.
+  Existing check:all 23 checks previously PASS; final targeted chooser/scope checks PASS.
   Existing API helper self-test (9 response + 11 reason + hidden input) PASS.
 - docs/daewoo-integration-plan.md and logistics notes updated with actual phase.
 - No adapter registered or account attached; no app routes/UI/schema/env/data writes.
   No migration reserved, unmetered timer, financial posting or production experiments.
 - Native verification: export XLSX valid; selected detail/footer sums match but COD differs
   from its cover, even tested tax subtraction. Preserve exception; no automatic posting.
-- Portal reports are browser-paged full-range responses; future sync must use bounded windows.
 - Same DO app Healthy/SGP1: container portal GET 200; API root 403, not a credential test.
-- Banking f42c0c1 previously passed 22 checks; personal passwords/recovery/nav retained.
 - Singapore e.availity.pk / same DO app; Neon wispy-dream-34764792/production/neondb.
 - Ohio billowing-poetry-08559264 read-only >=13 Nov; no deletion; reconcile before rollback.
   Private backups LOCALAPPDATA/FusionMigration/20261106-055453; never upload contents.

@@ -8,7 +8,10 @@ index in CLAUDE.md. Read this file before working on this module.
 7 Nov checkpoint: owner reports locations API PASS from their PC. Added the
 read-only daewoo-portal.js client plus --portal private diagnostic; synthetic
 session/scope/date/paisa tests pass (23 check:all checks). No adapter is registered
-or account attached yet. Actual website login/CPR diagnostic result is pending;
+or account attached yet. Owner's website login diagnostic now also reports PASS;
+multiple customers require a private name/ID choice before CPRs can be queried.
+The chooser preserves the session and refuses ambiguous or unknown selections;
+the chosen-customer CPR diagnostic result is pending;
 native inspection previously found a cover/detail reconciliation exception.
 
 Owner now wants Daewoo with the same shared courier UI. The earlier "not being

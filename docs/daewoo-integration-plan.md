@@ -10,6 +10,18 @@ in the merchant portal and there is no webhook. Credentials must stay private.
 
 ### Latest checkpoint - 7 Nov 2026
 
+Owner subsequently reported DAEWOO_PORTAL=PASS and CUSTOMER_SCOPE=SELECTION_REQUIRED.
+Fresh programmatic website login/session therefore worked from this PC; no invoice
+data was read by that run because the returned customer list was not singular.
+The diagnostic now keeps the session open and asks privately for a customer name
+or ID. It only selects from that session's returned customers: exact name/ID first,
+or a unique name fragment of at least three characters. Ambiguous input requests
+the full label, without printing names/IDs or making report requests. Duplicate
+IDs are collapsed; aggregate 0/-1 options are excluded. At most five local attempts
+are allowed; it never guesses the first customer. Selected report/detail scope
+checks remain unchanged. Synthetic exact/partial/ambiguous/foreign/empty/aggregate
+selection fixtures pass. Actual chosen-customer report result is still pending.
+
 Owner reran the private API checker and reported DAEWOO_API=PASS: documented
 getLocations accepted their request from this PC. Earlier REJECTED is superseded
 by this successful rerun; its original cause was not established. This still does

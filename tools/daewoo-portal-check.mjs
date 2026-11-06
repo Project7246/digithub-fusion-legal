@@ -1,6 +1,6 @@
 // Synthetic sessions and money only: no network or production account access.
 import assert from 'node:assert/strict';
-import { DaewooPortal, reconcileInvoice, validateRange } from '../daewoo-portal.js';
+import { DaewooPortal, reconcileInvoice, validateRange, chooseCustomer } from '../daewoo-portal.js';
 
 const cover={customer_id:7,TotalCODAmount:'10000.00',TotalServiceCharges:'500.00',TotalReimbursementAmount:'9500.00'};
 const detail=[{booking_id:'0001',invoice_no:'fixture-invoice',amount_cod:'6000.00',amount_wr:'300.00',RST_Amt:'20.00',RWHT_Amt:'30.00'},
@@ -15,6 +15,19 @@ assert.equal(reconcileInvoice({...cover,TotalCODAmount:'10.001'},detail).codMatc
 assert.equal(reconcileInvoice({TotalCODAmount:0,TotalServiceCharges:0,TotalReimbursementAmount:0},[]).codMatches,true);
 validateRange('2026-01-01','2026-01-03');
 for(const [from,to] of [['2026-02-30','2026-03-01'],['2026-01-02','2026-01-01'],['2026-01-01','2026-02-01']])assert.throws(()=>validateRange(from,to),/DATE_RANGE/);
+const choices=[{customer_id:7,customer_name:'Fixture Alpha COD'},
+  {customer_id:8,customer_name:'Fixture Alpha Cargo'},{customer_id:9,customer_name:'Fixture Beta'}];
+assert.equal(chooseCustomer(choices).status,'REQUIRED');
+assert.equal(chooseCustomer(choices,'  fixture alpha cod ').customer.customer_id,7);
+assert.equal(chooseCustomer(choices,'8').customer.customer_id,8);
+assert.equal(chooseCustomer(choices,'beta').customer.customer_id,9);
+assert.equal(chooseCustomer(choices,'alpha').status,'AMBIGUOUS');
+assert.equal(chooseCustomer(choices,'outside-fixture').status,'NOT_FOUND');
+assert.equal(chooseCustomer(choices,'al').status,'NOT_FOUND');
+assert.equal(chooseCustomer([]).status,'EMPTY');
+assert.equal(chooseCustomer([choices[0],{...choices[0],customer_id:'7'}]).customer.customer_id,7);
+assert.equal(chooseCustomer([{customer_id:0,customer_name:'ALL'},choices[0]]).customer.customer_id,7);
+assert.equal(chooseCustomer(choices,'0').status,'NOT_FOUND');
 
 function fixture(options={}) {
   const calls=[];
