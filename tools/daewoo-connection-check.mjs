@@ -2,6 +2,7 @@
 import assert from 'node:assert/strict';
 import { createInterface } from 'node:readline';
 import { Writable, PassThrough } from 'node:stream';
+import { DaewooPortal, DaewooPortalError, reconcileInvoice, validateRange } from '../daewoo-portal.js';
 
 function outcome(reply) {
   if (!reply || typeof reply !== 'object' || Array.isArray(reply) ||
@@ -70,7 +71,51 @@ if (process.argv.includes('--self-test')) {
   stdin.destroy();stdout.destroy();
   console.log('Daewoo checker: 9 response + 11 safe-reason + hidden-input checks PASS; no network used.');
 } else {
-  await main();
+  if(process.argv.includes('--portal'))await portalMain();
+  else await main();
+}
+
+async function portalMain(){
+  if(!process.stdin.isTTY){console.log('DAEWOO_PORTAL=INTERACTIVE_TERMINAL_REQUIRED');process.exitCode=1;return;}
+  const argument=name=>{const index=process.argv.indexOf(name);return index<0?undefined:process.argv[index+1];};
+  const from=argument('--from'),to=argument('--to');
+  try{validateRange(from,to);}catch{console.log('DAEWOO_PORTAL=DATE_RANGE_REQUIRED_MAX_7_DAYS');process.exitCode=1;return;}
+  let userName,password,client,customers,covers,detail;
+  try{
+    console.log('Read-only portal login and invoice check from this PC. No posting or saved credentials.');
+    console.log('Use the normal Daewoo WEBSITE login here, not API Management credentials.');
+    userName=await readHidden('1/2 Portal username');
+    password=await readHidden('2/2 Portal password');
+    client=new DaewooPortal();
+    console.log('Checking portal sign-in and session...');
+    await client.login(userName,password);
+    userName=password=undefined;
+    console.log('DAEWOO_PORTAL=PASS');
+    customers=await client.customers();
+    if(customers.length!==1){console.log('DAEWOO_CUSTOMER_SCOPE=SELECTION_REQUIRED');process.exitCode=1;return;}
+    console.log('DAEWOO_CUSTOMER_SCOPE=CONFIRMED');
+    console.log('Reading the selected short invoice range...');
+    covers=await client.covers(from,to,customers[0].customer_id);
+    console.log('DAEWOO_CPR='+(covers.length?'READ_OK':'EMPTY_RANGE'));
+    if(!covers.length)return;
+    console.log('Checking one invoice detail against its cover...');
+    // One cover only: verify a sample without requesting all historical parcel details.
+    detail=await client.detail(covers[0].invoice_no,covers[0].customer_id);
+    const match=reconcileInvoice(covers[0],detail);
+    const label=value=>value===null?'UNKNOWN':value?'MATCH':'DIFFERENT';
+    console.log('DAEWOO_CPR_COD='+label(match.codMatches));
+    console.log('DAEWOO_CPR_CHARGES='+label(match.chargesMatch));
+    console.log('DAEWOO_CPR_COVER_ARITHMETIC='+label(match.coverArithmeticMatches));
+    console.log('DAEWOO_TAX_FIELDS='+(match.taxFieldsPresent?'PRESENT':'MISSING'));
+    console.log('DAEWOO_DUPLICATE_PARCELS='+(match.duplicateParcel?'REVIEW':'NONE_IN_SAMPLE'));
+    console.log('Only fixed diagnostic results are shown. This does not authorize financial posting.');
+  }catch(error){
+    console.log('DAEWOO_PORTAL='+(error instanceof DaewooPortalError?error.code:error.message==='CANCELLED'?'CANCELLED':'REQUEST_FAILED'));
+    process.exitCode=1;
+  }finally{
+    client?.close();
+    userName=password=client=customers=covers=detail=undefined;
+  }
 }
 
 async function readHidden(label,{stdin=process.stdin,stdout=process.stdout}={}) {

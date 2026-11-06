@@ -1,11 +1,38 @@
 # Daewoo courier integration plan - 6 Nov 2026
 
-Status: analysis only. No Daewoo adapter, account, schema or live setting changed.
+Status: portal client and private diagnostics built, tested offline. No Daewoo
+adapter registered, account created, schema or live setting changed.
 Owner wants the same Fusion courier screens and behavior, with a Daewoo-specific
 implementation underneath. Owner confirms only the supplied API guide is offered
 in the merchant portal and there is no webhook. Credentials must stay private.
 
 ## Read-only verification results - 6 Nov 2026
+
+### Latest checkpoint - 7 Nov 2026
+
+Owner reran the private API checker and reported DAEWOO_API=PASS: documented
+getLocations accepted their request from this PC. Earlier REJECTED is superseded
+by this successful rerun; its original cause was not established. This still does
+not establish authenticated API behavior from Singapore or complete portal access.
+
+daewoo-portal.js now implements a private per-instance cookie session and only
+observed read-only portal methods. Login uses AuthenticateUser followed by the
+session check; customer and invoice identity are validated. No upstream errors,
+cookie values, names, IDs or financial figures are printed by the diagnostic.
+It refuses redirects and responses over 4 MB and limits report ranges to seven
+inclusive days. No session renewal loop, background timer or data writes exist.
+
+Run the existing checker with --portal --from YYYY-MM-DD --to YYYY-MM-DD for a
+private WEBSITE username/password prompt, session/customer validation, cover read
+and one invoice-detail comparison. Output contains only fixed status/match flags.
+It does not correct the discrepancy or treat cover arithmetic as bank receipt.
+No writes to Banking or QuickBooks are performed. Actual portal-run result pending.
+
+tools/daewoo-portal-check.mjs uses only synthetic HTTP/session and money fixtures:
+cookies, nested wrappers, session expiry, sanitized failures, scope mismatches,
+bounded dates, exact paisa arithmetic, missing values and reconciliation exceptions.
+Registered in check:all; 23 repository checks passed, with targeted checks rerun
+after the final invoice-scope validation. Existing private API-input tests pass.
 
 ### Private API credential check for the owner
 
@@ -171,7 +198,7 @@ pagination, and do not repeatedly load the entire historical parcel dataset.
 1. Add daewoo.js beside the existing courier adapters. Register it once in
    adapters.js. Set lists:false for the documented API, implement trackOne and
    refreshKnown, and expose only capabilities actually validated.
-2. Add daewooportal.js for the portal's own authenticated read-only report flow.
+2. Use daewoo-portal.js for the portal's own authenticated read-only report flow.
    Use it for date-range discovery, historical imports and financial reports.
    Existing Trax/PostEx integrations already separate API and merchant-portal login.
 3. Verify how the report forms submit before implementing the portal reader:

@@ -5,6 +5,12 @@ the module it touches. Nothing here was changed, reworded or dropped - see the
 index in CLAUDE.md. Read this file before working on this module.
 ## Daewoo planning requested - 6 Nov 2026
 
+7 Nov checkpoint: owner reports locations API PASS from their PC. Added the
+read-only daewoo-portal.js client plus --portal private diagnostic; synthetic
+session/scope/date/paisa tests pass (23 check:all checks). No adapter is registered
+or account attached yet. Actual website login/CPR diagnostic result is pending;
+native inspection previously found a cover/detail reconciliation exception.
+
 Owner now wants Daewoo with the same shared courier UI. The earlier "not being
 worked on" note below is historical. Planning only: supplied guide internally
 says v1.6 (2021), despite its v1.3 filename. API documents known-parcel tracking,

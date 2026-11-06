@@ -1,30 +1,29 @@
 # Handover - current folder state
-Last agent: Codex - 7 Nov 2026. Task: sanitized Daewoo rejection diagnosis.
-- tools/daewoo-connection-check.mjs: fixed HTTPS read-only getLocations, muted inputs,
-  no input history, redirects refused, 25s timeout, only sanitized status output.
-  No credential values in code/arguments/files/logs. Node-only, no dependencies/settings.
-- Run: node tools/daewoo-connection-check.mjs. Owner pastes three credentials privately.
-  Owner result REJECTED; reason unresolved. New DAEWOO_REASON categories require private rerun.
-- Offline --self-test: 9 response + 11 safe-reason + hidden-input/no-echo checks PASS.
-  Node syntax/whitespace PASS. Earlier PowerShell draft removed; no policy bypass/change.
-- docs/daewoo-integration-plan.md holds contracts/findings and helper instructions.
-- Native UI reads began timing out; owner is doing manual API Management inspection.
-- Previously: portal invoice export passed private XLSX integrity/header checks.
-- Services: Admin.asmx/GetFinancialReport, GetReport, GetDetailReport,
-  LoadDatewiseReport (custom mode 4). Wrappers vary; explicit session/error handling needed.
-- Auth: no-session report redirects Login.aspx and session check rejects; public login
-  contract AuthenticateUser(userName,password). Fresh server login/renewal NOT tested.
-- Financial report is browser-paged after full range response: use bounded windows.
-- Private paisa checks: cover internally matches; detail row count/COD/charges/taxes
-  match footer, but detail COD DOES NOT match cover, even tested tax subtraction.
-  Preserve exception; no automatic posting. Service/ledger output semantics unverified.
-- Existing app Healthy/SGP1. Container portal script GET 200; API root GET 403.
-  Portal reachable; API root response is NOT a credential test. No relay/env changes.
-- No Daewoo adapter/account/runtime/schema edits or booking/payment mutations; no migration.
-  API Management password must be used; portal-login password is not assumed identical.
-- Banking f42c0c1 previously passed 22 checks; password/recovery and navigation retained.
+Last agent: Codex - 7 Nov 2026. Task: Daewoo private portal/session + invoice verifier.
+- Owner reported DAEWOO_API=PASS from PC. Earlier rejection superseded; cause unknown.
+  PC locations PASS is not SGP1 authenticated API, website login or CPR proof.
+- daewoo-portal.js: fixed-origin, private per-instance cookie session; observed read-only
+  AuthenticateUser/session/customers/GetReport/GetDetailReport; sanitized errors only.
+  Redirects refused, 4 MB response cap, max seven-day range, customer/invoice identity checks.
+- tools/daewoo-connection-check.mjs --portal --from YYYY-MM-DD --to YYYY-MM-DD:
+  hidden normal WEBSITE login, session/customer validation, covers and one detail sample.
+  Prints only fixed flags; no names, identifiers, money figures or credentials.
+- Next owner step: private portal diagnostic on the September report period (short window).
+  Portal-run result PENDING. Login credentials may differ from API Management.
+- tools/daewoo-portal-check.mjs written first with known synthetic money/session fixtures;
+  cookie/auth/wrapper/error/scope/date/paisa/missing/duplicate/mismatch checks pass.
+  Added to check:all: 23 checks PASS; final targeted scope tests rerun PASS.
+  Existing API helper self-test (9 response + 11 reason + hidden input) PASS.
+- docs/daewoo-integration-plan.md and logistics notes updated with actual phase.
+- No adapter registered or account attached; no app routes/UI/schema/env/data writes.
+  No migration reserved, unmetered timer, financial posting or production experiments.
+- Native verification: export XLSX valid; selected detail/footer sums match but COD differs
+  from its cover, even tested tax subtraction. Preserve exception; no automatic posting.
+- Portal reports are browser-paged full-range responses; future sync must use bounded windows.
+- Same DO app Healthy/SGP1: container portal GET 200; API root 403, not a credential test.
+- Banking f42c0c1 previously passed 22 checks; personal passwords/recovery/nav retained.
 - Singapore e.availity.pk / same DO app; Neon wispy-dream-34764792/production/neondb.
 - Ohio billowing-poetry-08559264 read-only >=13 Nov; no deletion; reconcile before rollback.
   Private backups LOCALAPPDATA/FusionMigration/20261106-055453; never upload contents.
 - Leftovers: Trax ElRB/old M&P backfill, nine unposted CPRs, AH/UR hooks; Rose Belle unrelated.
-- Task files only, pushed; lock released after check. No deliberate dirty files.
+- Task files only, pushed; release lock after final checks. No deliberate dirty files.
