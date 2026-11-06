@@ -11,8 +11,10 @@ session/scope/date/paisa tests pass (23 check:all checks). No adapter is registe
 or account attached yet. Owner's website login diagnostic now also reports PASS;
 multiple customers require a private name/ID choice before CPRs can be queried.
 The chooser preserves the session and refuses ambiguous or unknown selections;
-the chosen-customer CPR diagnostic result is pending;
-native inspection previously found a cover/detail reconciliation exception.
+the chosen-customer CPR read now passes. Owner also reproduces COD DIFFERENT,
+charges/cover arithmetic MATCH, taxes present and no duplicate parcels in sample.
+Official same-invoice PDF export was added to the private checker to investigate
+the discrepancy without changing amounts. Source copies stay outside git.
 
 Owner now wants Daewoo with the same shared courier UI. The earlier "not being
 worked on" note below is historical. Planning only: supplied guide internally

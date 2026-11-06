@@ -1,5 +1,5 @@
 # Handover - current folder state
-Last agent: Codex - 7 Nov 2026. Task: Daewoo private customer selection after successful portal login.
+Last agent: Codex - 7 Nov 2026. Task: official invoice evidence for Daewoo COD mismatch.
 - Owner reported DAEWOO_API=PASS from PC. Earlier rejection superseded; cause unknown.
   PC locations PASS is not SGP1 authenticated API, website login or CPR proof.
 - daewoo-portal.js: fixed-origin, private per-instance cookie session; observed read-only
@@ -8,19 +8,19 @@ Last agent: Codex - 7 Nov 2026. Task: Daewoo private customer selection after su
 - tools/daewoo-connection-check.mjs --portal --from YYYY-MM-DD --to YYYY-MM-DD:
   hidden normal WEBSITE login, session/customer validation, covers and one detail sample.
   Prints only fixed flags; no names, identifiers, money figures or credentials.
-- Owner result: DAEWOO_PORTAL=PASS, CUSTOMER_SCOPE=SELECTION_REQUIRED. Login/session verified
-  from PC; no reports read by that run. Next: rerun, choose company privately in same session.
-- Customer chooser: exact name/ID or unique fragment; no first-row guess, no printed names/IDs.
-  Ambiguous choices retry locally; aggregate 0/-1 excluded, duplicate IDs collapsed.
-- tools/daewoo-portal-check.mjs: synthetic session/money plus customer-selection fixtures;
-  cookie/auth/wrapper/error/scope/date/paisa/missing/duplicate/mismatch checks pass.
-  Existing check:all 23 checks previously PASS; final targeted chooser/scope checks PASS.
-  Existing API helper self-test (9 response + 11 reason + hidden input) PASS.
-- docs/daewoo-integration-plan.md and logistics notes updated with actual phase.
+- Owner: portal PASS/customer CONFIRMED/CPR READ_OK; COD DIFFERENT, charges and cover math
+  MATCH; taxes present, no duplicate parcels in sample. Source discrepancy reproduced.
+- COD mismatch now triggers same-session official invoice PDF export (observed Print flow).
+  Binary/size/redirect limits retained. Only PDF magic saved; no cookies/credentials on disk.
+  Private random file in LOCALAPPDATA/FusionDaewooVerification, outside git; path guarded.
+- Synthetic cookie/auth/wrapper/scope/date/paisa/missing/duplicate/mismatch checks pass.
+  Existing check:all 23 checks PASS; binary/auth/export/path fixtures also PASS.
+- Next: owner reruns same short-range command; inspect private official PDF for adjustments.
+  Actual PDF result pending. Cause of COD difference not established; do not invent a correction.
 - No adapter registered or account attached; no app routes/UI/schema/env/data writes.
   No migration reserved, unmetered timer, financial posting or production experiments.
-- Native verification: export XLSX valid; selected detail/footer sums match but COD differs
-  from its cover, even tested tax subtraction. Preserve exception; no automatic posting.
+- Native detail/footer sums previously matched; cover COD differs even after tested taxes.
+  Preserve authoritative cover and detail separately; no automatic posting yet.
 - Same DO app Healthy/SGP1: container portal GET 200; API root 403, not a credential test.
 - Singapore e.availity.pk / same DO app; Neon wispy-dream-34764792/production/neondb.
 - Ohio billowing-poetry-08559264 read-only >=13 Nov; no deletion; reconcile before rollback.

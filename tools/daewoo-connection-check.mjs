@@ -2,6 +2,11 @@
 import assert from 'node:assert/strict';
 import { createInterface } from 'node:readline';
 import { Writable, PassThrough } from 'node:stream';
+import { mkdir, writeFile } from 'node:fs/promises';
+import { homedir } from 'node:os';
+import { resolve, relative, isAbsolute, join, sep } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { randomUUID } from 'node:crypto';
 import { DaewooPortal, DaewooPortalError, reconcileInvoice, validateRange, chooseCustomer } from '../daewoo-portal.js';
 
 function outcome(reply) {
@@ -27,6 +32,21 @@ function rejectionReason(reply) {
   if (/required|missing|parameter|validation|invalid request/.test(text)) return 'REQUEST_VALIDATION_REPORTED';
   if (/no (?:location|terminal|data|record)/.test(text)) return 'NO_DATA_REPORTED';
   return 'UNSPECIFIED';
+}
+
+function invoiceStorageRoot(base){
+  const project=resolve(fileURLToPath(new URL('..',import.meta.url)));
+  const root=resolve(base,'FusionDaewooVerification');
+  const fromProject=relative(project,root);
+  if(!fromProject||(!isAbsolute(fromProject)&&fromProject!=='..'&&!fromProject.startsWith('..'+sep)))throw new Error('PRIVATE_PATH_REQUIRED');
+  return root;
+}
+async function savePrivateInvoice(bytes){
+  const root=invoiceStorageRoot(process.env.LOCALAPPDATA||join(homedir(),'AppData','Local'));
+  await mkdir(root,{recursive:true,mode:0o700});
+  const path=join(root,'invoice-check-'+randomUUID()+'.pdf');
+  await writeFile(path,bytes,{flag:'wx',mode:0o600});
+  return path;
 }
 
 if (process.argv.includes('--self-test')) {
@@ -59,6 +79,7 @@ if (process.argv.includes('--self-test')) {
   }
   assert.equal(rejectionReason({Response:{secret:'fixture-private'}}),'UNSPECIFIED');
   assert.equal(rejectionReason({ResponseDetail:'Invalid key fixture-private'}),'API_KEY_REPORTED');
+  assert.throws(()=>invoiceStorageRoot(fileURLToPath(new URL('..',import.meta.url))),/PRIVATE_PATH_REQUIRED/);
   const stdin=new PassThrough(), stdout=new PassThrough();
   stdin.isTTY=true; stdin.setRawMode=()=>{};
   let visible=''; stdout.on('data',chunk=>{visible+=chunk;});
@@ -119,6 +140,19 @@ async function portalMain(){
     console.log('DAEWOO_CPR_COVER_ARITHMETIC='+label(match.coverArithmeticMatches));
     console.log('DAEWOO_TAX_FIELDS='+(match.taxFieldsPresent?'PRESENT':'MISSING'));
     console.log('DAEWOO_DUPLICATE_PARCELS='+(match.duplicateParcel?'REVIEW':'NONE_IN_SAMPLE'));
+    if(match.codMatches===false){
+      console.log('Reading the same invoice official print/export privately...');
+      try{
+        const bytes=await client.invoiceExport(covers[0].invoice_no,covers[0].customer_id);
+        if(bytes.subarray(0,5).toString('ascii')!=='%PDF-')console.log('DAEWOO_INVOICE_FILE=NOT_PDF');
+        else{
+          const path=await savePrivateInvoice(bytes);
+          console.log('DAEWOO_INVOICE_FILE=SAVED');
+          console.log('PRIVATE_INVOICE_PATH='+path);
+          console.log('Private source copy only; not uploaded, posted or added to the repository.');
+        }
+      }catch(error){console.log('DAEWOO_INVOICE_FILE='+(error instanceof DaewooPortalError?error.code:'EXPORT_FAILED'));}
+    }
     console.log('Only fixed diagnostic results are shown. This does not authorize financial posting.');
   }catch(error){
     console.log('DAEWOO_PORTAL='+(error instanceof DaewooPortalError?error.code:error.message==='CANCELLED'?'CANCELLED':'REQUEST_FAILED'));

@@ -39,6 +39,7 @@ function fixture(options={}) {
     if(options.large)return new Response(' '.repeat(4*1024*1024+1));
     if(path==='/Login.aspx')return new Response('<html>Login</html>',{headers:{'set-cookie':'ASP.NET_SessionId=fixture-session; Path=/; HttpOnly; Secure'}});
     assert.match(request.headers.Cookie||'',/ASP.NET_SessionId=fixture-session/);
+    if(path==='/CODInvoiceSummaryReportPrint.aspx')return new Response('%PDF-1.4\nfixture invoice',{headers:{'Content-Type':'application/pdf'}});
     const method=path.split('/').pop();
     let body={Success:true};
     if(options.expired && method==='CheckUserSessionUpdated')body={Success:false,SessionExpired:true};
@@ -56,6 +57,10 @@ assert.equal((await portal.customers())[0].customer_id,7);
 const covers=await portal.covers('2026-01-01','2026-01-03',7);
 assert.equal(covers.length,1);
 assert.equal((await portal.detail('fixture-invoice',7)).length,2);
+assert.ok((await portal.invoiceExport('fixture-invoice',7)).toString().startsWith('%PDF-'));
+const exportCall=calls.find(c=>new URL(c.url).pathname==='/CODInvoiceSummaryReportPrint.aspx');
+assert.equal(exportCall.request.method,'GET');
+assert.deepEqual(Object.fromEntries(new URL(exportCall.url).searchParams),{invoiceNo:'fixture-invoice',customer:'7',isExport:'1',isInvoiceExport:'1'});
 assert.ok(calls.every(c=>new URL(c.url).origin==='https://codportal.daewoo.net.pk'));
 assert.ok(calls.every(c=>c.request.redirect==='manual'));
 assert.deepEqual(JSON.parse(calls.find(c=>c.url.endsWith('/AuthenticateUser')).request.body),{userName:'fixture-user',password:'fixture-private-password'});
@@ -73,4 +78,5 @@ const string=fixture({stringWrapper:true});await string.portal.login('fixture','
 const wrongInvoice=fixture({foreignInvoice:true});await wrongInvoice.portal.login('fixture','fixture');
 await assert.rejects(wrongInvoice.portal.detail('fixture-invoice',7),e=>e.code==='INVOICE_SCOPE_MISMATCH');
 const unauth=fixture();await assert.rejects(unauth.portal.detail('x',7),e=>e.code==='LOGIN_REQUIRED');assert.equal(unauth.calls.length,0);
+await assert.rejects(unauth.portal.invoiceExport('x',7),e=>e.code==='LOGIN_REQUIRED');assert.equal(unauth.calls.length,0);
 console.log('Daewoo portal: private session/auth, wrappers/errors, scope, bounded dates, exact paisa/missing values and mismatch checks PASS; no network.');

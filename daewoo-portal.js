@@ -39,13 +39,13 @@ export function validateRange(from,to) {
 
 async function readBounded(response) {
   const chunks=[];let size=0;
-  if(!response.body)return '';
+  if(!response.body)return Buffer.alloc(0);
   for await(const chunk of response.body){
     size+=chunk.byteLength;
     if(size>LIMIT)fail('RESPONSE_TOO_LARGE');
     chunks.push(Buffer.from(chunk));
   }
-  return Buffer.concat(chunks).toString('utf8');
+  return Buffer.concat(chunks);
 }
 
 export class DaewooPortal {
@@ -57,7 +57,7 @@ export class DaewooPortal {
 
   async #request(path,body,json=true){
     try {
-      const headers={Accept:json?'application/json':'text/html'};
+      const headers={Accept:json==='bytes'?'application/pdf':json?'application/json':'text/html'};
       if(this.#cookies.size)headers.Cookie=[...this.#cookies].map(([k,v])=>k+'='+v).join('; ');
       if(body!==undefined)headers['Content-Type']='application/json; charset=utf-8';
       const response=await this.#fetcher(ORIGIN+path,{method:body===undefined?'GET':'POST',
@@ -72,8 +72,10 @@ export class DaewooPortal {
         if(/max-age=0(?:;|$)/i.test(cookie)||!value)this.#cookies.delete(name);
         else this.#cookies.set(name,value);
       }
-      const text=await readBounded(response);
+      const bytes=await readBounded(response);
+      if(json==='bytes')return bytes;
       if(!json)return;
+      const text=bytes.toString('utf8');
       let envelope;
       try{envelope=JSON.parse(text);}catch{fail('BAD_RESPONSE');}
       if(!envelope||!Object.hasOwn(envelope,'d'))fail('BAD_RESPONSE');
@@ -135,6 +137,13 @@ export class DaewooPortal {
     if(rows.some(row=>String(row.invoice_no)!==String(invoiceNo)))fail('INVOICE_SCOPE_MISMATCH');
     if(rows.some(row=>row.customer_id!=null&&String(row.customer_id)!==String(customerId)))fail('CUSTOMER_SCOPE_MISMATCH');
     return rows;
+  }
+  async invoiceExport(invoiceNo,customerId){
+    if(!this.#authenticated)fail('LOGIN_REQUIRED');
+    if(invoiceNo==null||String(invoiceNo).trim()===''||customerId==null||String(customerId).trim()==='')fail('INPUT_REQUIRED');
+    // Exact read-only print/export URL used by the portal's own Print button.
+    const query=new URLSearchParams({invoiceNo:String(invoiceNo),customer:String(customerId),isExport:'1',isInvoiceExport:'1'});
+    return this.#request('/CODInvoiceSummaryReportPrint.aspx?'+query,undefined,'bytes');
   }
 }
 

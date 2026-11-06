@@ -10,6 +10,27 @@ in the merchant portal and there is no webhook. Credentials must stay private.
 
 ### Latest checkpoint - 7 Nov 2026
 
+Latest owner diagnostic: portal PASS, customer CONFIRMED, CPR READ_OK, COD DIFFERENT,
+charges MATCH, cover arithmetic MATCH, taxes PRESENT and no duplicates in the sample.
+This independently reproduces the native inspection's COD reconciliation exception.
+No import or financial posting has happened; login/connectivity is not the blocker.
+
+Public function.js printInvoice() confirms the same-session read-only GET export:
+CODInvoiceSummaryReportPrint.aspx with invoiceNo, customer, isExport=1 and
+isInvoiceExport=1. Client now exposes that exact flow. On COD mismatch the private
+helper attempts this one selected invoice export, preserving binary data and
+existing timeout/size/redirect/scope boundaries. Only a PDF-magic response is saved.
+HTML/other formats produce NOT_PDF; failures are fixed codes, not private responses.
+
+PDF copies go outside the repository under LOCALAPPDATA/FusionDaewooVerification
+with random filenames and exclusive creation. No credentials/cookies are written.
+The export path guard refuses a location inside this repository. Original figures
+remain only in the owner's private source file, never in tracked tests/notes/logs.
+Synthetic tests verify authenticated GET, exact export query, binary preservation,
+unauthenticated refusal and private-path rejection. Actual PDF export/read pending.
+Printed document should be examined for adjustment/withholding definitions before
+attributing a cause or deciding which COD field represents gross/net/paid amounts.
+
 Owner subsequently reported DAEWOO_PORTAL=PASS and CUSTOMER_SCOPE=SELECTION_REQUIRED.
 Fresh programmatic website login/session therefore worked from this PC; no invoice
 data was read by that run because the returned customer list was not singular.
