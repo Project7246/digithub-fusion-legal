@@ -339,5 +339,40 @@ Update `CLAUDE.md` - it is the file that records where everything lives:
 - the Domain row: `e.availity.pk`, and the `CNAME e` record
 - the line that says the QuickBooks sign-in only works at `ca.availity.pk`
 
+### 6 Nov 2026 - final copy after the interrupted session
+
+The owner enabled DigitalOcean maintenance mode during guided recovery. That
+blocks user traffic; do not assume it stops the in-process keeper. Current
+exports showed 47 tables in each project, but `courier_orders` had 76,934 rows
+in Ohio versus 76,830 in Singapore, and `shopify_events` had 427 versus 428.
+The old copy must not be promoted unchanged.
+
+`tools/fusion-migration.ps1` is a manually launched migration helper, not app
+startup code. The previously downloaded PostgreSQL 18.6 tools now execute.
+The helper accepts the two connection strings with hidden prompts, checks
+their regions/version/table count, and asks for `MIGRATE` before changes.
+It backs up Singapore outside the repository, sets Ohio's database default
+to read-only, terminates existing database client sessions, and verifies the
+setting on a fresh connection. Current application code has no explicit
+read-write transaction override. Keep maintenance on and prevent other
+manual writers from overriding read-only during this operation.
+
+It makes a final Ohio dump, restores Singapore with `--clean` in a single
+transaction, then compares sorted full-row fingerprints, column definitions
+and sequence states. These checks must actually pass before cutover; script
+syntax and synthetic connection tests alone do not prove a successful copy.
+Private dumps contain real data: do not commit, upload or print their contents.
+Connection strings are not command arguments or tracked files; raw PostgreSQL
+errors are suppressed because they can contain row values.
+
+If the helper stops after freezing Ohio, leave maintenance enabled and report
+the failed phase. To abandon the cutover, use its `-UnfreezeOhio` mode and
+verify the application still points to Ohio before disabling maintenance.
+After a successful copy, switch only DigitalOcean `DATABASE_URL`; preserve
+`SESSION_SECRET` and relay settings, deploy, then perform the runbook checks.
+Leave Ohio read-only and retain it for rollback. Switching back after new
+Singapore writes requires reconciling those writes first, not blindly restoring
+an old connection string. No helper has yet been run against either database.
+
 And in `docs/compute-budget.md`, note what the compute hours did after the
 move - that is the number this whole exercise is for.
