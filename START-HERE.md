@@ -47,9 +47,12 @@ asking for anything. The words are the owner's; only the notes marked
 2026 (migration Step B, `docs/migration-2026-11.md`) - `BASE_URL`, the
 redirect URIs and the DigitalOcean domain all moved, and `ca.availity.pk` was
 removed outright (not kept, not redirected). The block above is already
-current. Only the **region** (still Bangalore/BLR1) and the **database**
-(still Neon Ohio) remain - Steps C and D of that same file, not started.
-Update this file again when those move too.
+current. Steps C/D also completed on 6 Nov 2026: the same app is in **Singapore
+(SGP1)** and `DATABASE_URL` points to **Fusion Singapore**, Neon project
+`wispy-dream-34764792` in **AWS ap-southeast-1**. Ohio remains read-only for
+rollback, retained at least through 13 Nov; reconcile new writes before any rollback.
+Read the runbook and latest HANDOFF for evidence, remaining verification limits
+and compute monitoring. Do not repeat the migration from its historical steps.
 
 ---
 

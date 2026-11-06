@@ -1,5 +1,10 @@
 # Moving Fusion: domain, region and database - November 2026
 
+**Current status, 6 Nov 2026:** address, app region and database cutover are
+complete. The sections describing 5 Nov configuration below are historical;
+do not repeat their setup steps. The final evidence and verification limits
+are recorded in section 8.
+
 This is the runbook for three changes the owner has decided on:
 
 1. the address becomes **`e.availity.pk`** instead of `ca.availity.pk`
@@ -372,7 +377,50 @@ After a successful copy, switch only DigitalOcean `DATABASE_URL`; preserve
 `SESSION_SECRET` and relay settings, deploy, then perform the runbook checks.
 Leave Ohio read-only and retain it for rollback. Switching back after new
 Singapore writes requires reconciling those writes first, not blindly restoring
-an old connection string. No helper has yet been run against either database.
+an old connection string. The final executed results are recorded below.
+
+## 8. Final execution and checks - 6 Nov 2026
+
+- Owner enabled maintenance and ran `tools/fusion-migration.ps1` in a separate
+  PowerShell with privately entered source/target strings and `MIGRATE` confirmation.
+  PostgreSQL 18.6 tools executed successfully, replacing the interrupted FDW copy
+  with a fresh native dump/restore. Ohio's database default became read-only and
+  existing client sessions were terminated before the final snapshot.
+- Owner supplied terminal output: **Rows MATCH (47 entries), Columns MATCH
+  (538 entries), Sequences MATCH (28 entries), VERIFIED**. These compare sorted
+  hashes of every public table's complete rows, column definitions and exposed
+  sequence metadata; the full native restore also carries schema objects.
+  This is stronger than the earlier count-only comparison, not an independent
+  mathematical proof against hash collisions or an audit of every database object.
+- Private pre-restore Singapore and final Ohio dumps are outside the repository:
+  `%LOCALAPPDATA%/FusionMigration/20261106-055453`. Never upload their contents.
+- Owner replaced only component `DATABASE_URL` with the Singapore string, left it
+  encrypted and preserved `SESSION_SECRET`/relay settings. Screenshot shows
+  **Deployed configuration changes** live at **11:14:57 PKT**; app is Healthy,
+  in **SGP1**, with `e.availity.pk` primary. Owner then disabled maintenance.
+- Direct HTTP verification: both e and the existing starter address return
+  **200**, version **1793942332224** (`at` 2026-11-06T06:15:24.252Z).
+  `/api/setup-check` has e as baseUrl/callback and all five required settings true.
+- Owner confirmed sign-in, companies and CPR data work, reported no error on
+  the requested courier check and then **Works on every account Test**, including
+  Trax and M&P. Test calls use the adapter and persist `markSync`, providing evidence
+  of both courier reachability and a working application database write after
+  Ohio's read-only freeze. Trax's test uses its cities API through the configured
+  route, not a new portal login.
+- Settings Database screenshot loads: **105.1 MB / about 1024 MB (10.3%)**.
+  Per-table counts on that screen are planner estimates, not migration checks.
+  Compute history was copied; approximately 35.4 hours shown there is an app-meter
+  baseline, not demonstrated Singapore savings. Monitoring note: `docs/compute-budget.md`.
+- Limits: native browser input was unreliable and the web Console added bracketed
+  paste escape characters. The non-secret runtime hostname command never completed;
+  runtime region is supported by the saved setting, live configuration deployment,
+  working reads and courier-test writes, rather than direct hostname output.
+  A fresh QuickBooks OAuth reconnect and a separate fresh courier-portal password
+  round-trip were not independently observed. Do not equate an old Connected or
+  signed-in label with either of those tests. Existing connections were preserved.
+- Keep Ohio **read-only through at least 13 Nov 2026**, longer if needed. No deletion
+  is scheduled or authorized by this retention note. Singapore now receives writes:
+  reconciling them is mandatory before any rollback. No app/runtime code changed.
 
 And in `docs/compute-budget.md`, note what the compute hours did after the
 move - that is the number this whole exercise is for.

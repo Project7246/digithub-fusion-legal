@@ -3,6 +3,25 @@
 Moved out of CLAUDE.md on 4 Nov 2026, word for word, so that a task reads only
 the module it touches. Nothing here was changed, reworded or dropped - see the
 index in CLAUDE.md. Read this file before working on this module.
+
+## 6 Nov 2026 - Singapore cutover baseline
+
+The DigitalOcean app moved to SGP1 and the database connection moved to Neon
+`Fusion Singapore` (`wispy-dream-34764792`, AWS ap-southeast-1). The owner enabled
+maintenance, ran the guarded final copy and saved the new connection; configuration
+deployment went live at 11:14:57 PKT. Ohio stays read-only for rollback.
+
+The post-cutover Settings screenshot showed 105.1 MB (10.3% of its configured
+1024 MB display limit) and approximately 35.4 of 100 estimated compute hours,
+176 wake-ups and 9.9 hours attributed to background sweeps. The shown 199.8
+hours/month is a projection, not observed future usage. `compute_meter` history
+was copied from Ohio, so these totals include pre-migration activity and are not
+Neon's Singapore-project billing counter. The snapshot does not establish savings.
+
+Compare elapsed-time usage deltas over the following days with Neon console
+metrics; keep manual migration/copy activity separate. No new polling or compute
+configuration change was added. Measure any reduction before reporting it.
+
 ### The month's compute hours, and who spends them
 
 Neon charges for the **time its compute is awake**, not for the queries run, and it

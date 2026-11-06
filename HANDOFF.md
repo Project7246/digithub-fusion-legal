@@ -1,29 +1,29 @@
 # Handover - current folder state
-Last agent: Codex - 6 Nov 2026. Task: guided final database migration; NOT complete.
-- Owner transferred Claude's unfinished task; only Codex should continue this folder.
-- A/B done: e.availity.pk primary and BASE_URL switched; ca domain/DNS/callback removed.
-- Intuit callback uses e; fresh OAuth round-trip still not proven. Shopify Pureclans fusion-4 uses e.
-- C: owner screenshot confirms app Healthy in SGP1, source main, recent commit 00cfc5e.
-- Ohio source: billowing-poetry-08559264 / production br-wispy-sound-b4yb0j31 / neondb.
-- Singapore target: wispy-dream-34764792 / production br-calm-bonus-ao4mnaaa / neondb, PG18.
-- Claude's historical FDW copy/counts/sequences are recorded in HANDOFF history at 08faca6.
-- Current owner CSV exports show 47 tables each; courier_orders Ohio 76934 vs target 76830,
-  shopify_events 427 vs 428; other 45 counts match. Content equality is NOT established.
-- Owner explicitly reports DigitalOcean maintenance mode enabled. Do not assume keeper stops.
-- PostgreSQL 18.6 pg_dump/pg_restore/psql found under TEMP/claude scratchpad; --version works.
-- Added tools/fusion-migration.ps1: owner runs manually; hidden connection prompts, region/version
-  guards, MIGRATE confirmation, private target backup, Ohio read-only default + terminate sessions,
-  final source dump, atomic target restore, full-row fingerprints/column/sequence comparisons.
-- Helper NOT executed on databases yet. Ohio freeze NOT performed by Codex; DATABASE_URL unchanged.
-- Checks: PowerShell parse, synthetic password URI decoding/direct-host conversion and wrong-region
-  refusal PASS; git diff whitespace PASS. No app code changed or application tests required.
-- Next: guide owner to run helper and enter source/target strings privately from Neon Connect.
-  Keep maintenance ON until verified copy, DATABASE_URL save/deploy and live checks complete.
-- Preserve SESSION_SECRET, PORTAL_KEY behavior, relay and all other settings. No credential in logs/git.
-- On helper failure leave maintenance on; report phase. -UnfreezeOhio restores source write default
-  only for rollback BEFORE resuming Ohio. After target writes, reconcile before switching back.
-- Retain Ohio >= one week. No deletion, rename, new app or numbered migration authorized/needed.
-- Browser host unavailable; native control last stopped on inability to verify current browser URL.
-  Work is guided through owner screenshots; do not repeat unsupported browser recovery loops.
-- Verify setup-check, companies/couriers/receipts, courier portal pull, Trax reach, Database size/OAuth.
-- Leftovers: Trax ElRB/old M&P backfill; nine Trax CPRs unposted; PostEx AH/UR hooks; Rose Belle.
+Last agent: Codex - 6 Nov 2026. Task: Singapore migration cutover complete, documentation finalization.
+- Live address e.availity.pk; ca DNS/domain/callback removed per owner. Naming cleanup deferred.
+- Same DigitalOcean app hammerhead-app / digithub-fusion-legal, main auto-deploy, SGP1 confirmed.
+- Live Neon Fusion Singapore: wispy-dream-34764792 / production br-calm-bonus-ao4mnaaa / neondb.
+- Ohio billowing-poetry-08559264 / production br-wispy-sound-b4yb0j31 retained READ-ONLY.
+- Owner ran tools/fusion-migration.ps1 with MIGRATE during maintenance: source freeze + session
+  termination, fresh native dump and atomic target restore, private backup of target first.
+- Owner terminal output: Rows MATCH 47, Columns MATCH 538, Sequences MATCH 28, VERIFIED.
+- Backups LOCALAPPDATA/FusionMigration/20261106-055453; never upload/commit real-data dumps.
+- Owner saved encrypted Singapore DATABASE_URL only; SESSION_SECRET/relay preserved.
+- Screenshot: configuration deployed live 11:14:57 PKT; maintenance OFF afterwards.
+- Direct HTTP200: e and starter /api/version 1793942332224; setup-check e URL/callback, needed all true.
+- Owner: sign-in/companies/CPR work; no error on requested courier check; all account Tests Works.
+  Tests persist markSync; Trax cities route and M&P tests pass. Database screen loads 105.1 MB/10.3%.
+- Limits: runtime hostname Console command never succeeded due bracketed paste; inference uses
+  saved config/deployment and working app writes while Ohio stays frozen. Fresh QB OAuth reconnect
+  and a separate fresh courier-portal password round-trip NOT independently observed.
+- App compute screenshot ~35.4/100 hours, 176 wake-ups, 9.9 sweep hours; copied history, NOT
+  Singapore-only billing or proof of savings. Compare future usage deltas; no new polling.
+- Updated CLAUDE.md, START-HERE.md, docs/migration-2026-11.md and docs/compute-budget.md.
+- Checks: earlier helper syntax + synthetic URI/region tests pass; final docs whitespace/line checks.
+- Post-push version verification still to be reported; do not infer deployment from git push alone.
+- Keep Ohio read-only at least through 13 Nov, longer if needed; no deletion authorized/scheduled.
+  After Singapore writes, reconcile before rollback; never blindly swap to the frozen old snapshot.
+- Browser host unavailable; native reads sometimes work, input unreliable. Guided owner screenshots.
+- Leftovers unchanged: Trax ElRB/older M&P backfill; nine Trax CPRs unposted;
+  PostEx AH/UR webhook gaps; M&P Rose Belle unrelated work. No numbered migration reserved.
+- No application/runtime code changed in finalization. No unrelated dirty files at takeover.
