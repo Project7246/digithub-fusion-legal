@@ -2,9 +2,7 @@
 Last agent: Codex - 6 Nov 2026. Task: Daewoo analysis and integration plan only.
 - Owner wants identical shared courier UI; API differs. Owner confirms merchant portal
   https://codportal.daewoo.net.pk/Index.aspx and no webhook/other published API.
-- Supplied PDF filename says v1.3, contents v1.6 updated 8 Sep 2021 (16 pages).
-  API has locations, booking, tracking, cancellation and tariff quote; no documented
-  date-range order discovery or settlement/CPR endpoint. No credential revealed/tested.
+- PDF filename v1.3, contents v1.6 (2021); API has tracking, no documented order-list/CPR.
 - Native Chrome read-only inspection confirmed DatewiseBookingReport.aspx with parcel,
   status/COD/charge columns and Excel export; CODInvoiceSummaryReport.aspx has invoice,
   COD/charges/reimbursed totals and Excel; CODReimburseDet.aspx has report filters.
@@ -16,11 +14,13 @@ Last agent: Codex - 6 Nov 2026. Task: Daewoo analysis and integration plan only.
 - Next: inspect private portal report/session flow and invoice detail; verify ownership,
   date/pagination/export semantics, actual charges/tax/settlements and SGP1 connectivity.
   Same UI feasible; fully automatic financial integration not yet proven. No adapter built.
-- Docs-only task: whitespace/plan coverage checked; app tests not rerun, no runtime edit.
-  No schema/environment/production data changes and no migration number reserved.
-- Previous f42c0c1 Banking reports/manage grants pushed; 22 synthetic checks passed.
-  Prior post-push live version was unchanged, so deployment/browser role QA remained pending.
-- Personal password/recovery, compact shared navigation and Settings entry retained.
+- Owner prioritizes Financial Summary CPR/delivery-charge sources over huge parcel report.
+  FinancialReport.aspx headers confirmed: separate payment/service invoice IDs, payment
+  status, COD, charges, payable and paid amounts; no private figures logged. Plan updated
+  for covers first, bounded resumable date windows and verified server pagination.
+- Docs-only: whitespace checked, app tests not rerun. No runtime/schema/env/data edit or migration.
+- Previous Banking f42c0c1: 22 checks passed; current live version 1793969262656 and setup true.
+  Authenticated role QA still unobserved; password/recovery and compact navigation retained.
 - Singapore: e.availity.pk, same DO app SGP1; Neon wispy-dream-34764792 / production
   br-calm-bonus-ao4mnaaa / neondb. SESSION_SECRET/relay unchanged.
 - Ohio billowing-poetry-08559264 READ-ONLY >=13 Nov; do not delete; reconcile before rollback.

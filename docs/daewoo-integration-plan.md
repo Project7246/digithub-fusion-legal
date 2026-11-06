@@ -45,11 +45,26 @@ contract was independently verified.
 | DatewiseBookingReport.aspx | Date-wise report, Load Report, Excel/Copy/PDF; Booking #, Barcode #, Web Track code, booking date, quantity, weight, COD, service charges, total amount, current status, source/destination, invoice | Discover consignments, backfill and compare totals |
 | CODInvoiceSummaryReport.aspx | Date/customer filters, Excel/Copy/PDF; invoice number/period/date, total COD, total service charges, total reimbursed amount, Action | Candidate invoice/settlement covers; meaning and detail still require verification |
 | CODReimburseDet.aspx | Customer COD Reimburse Detail Report; dates, terminals, status, customer, products, report type and Load Report | Candidate parcel-level reconciliation; actual output not loaded |
-| FinancialReport.aspx | Financial Summary menu link | Further source to inspect, not yet validated |
+| FinancialReport.aspx | Owner opened the Financial Summary/report; observed CN/barcode/ref/date/status, Payment Status, Service Invoice #, Payment Invoice #, COD, Service Charges, Amount to be paid, Amount Paid and Invoice #; Copy/Excel/PDF | Primary candidate for payment-vs-charge reconciliation; field semantics/totals still unverified |
 | QSRSummaryReport.aspx | QSR Summary menu link | Optional operational cross-check; not yet inspected |
 
 These are observed page URLs, not verified JSON API endpoints. Invoice existence
 or a column named reimbursed does not by itself prove bank receipt or settlement.
+
+Owner clarification: prioritize the Financial Summary CPR and delivery-charge
+sources they opened, rather than loading the very large individual-parcel report.
+Native UI inspection confirmed the FinancialReport.aspx columns above, without
+reloading the dataset or outputting private records. Keep payment-invoice and
+service-invoice references separate. Do not combine invoices merely because
+their numbers look alike, or subtract service charges again from an already-net
+payment. Payment status, payable amount and paid amount need separate mappings;
+the visible status date is not automatically a payment/bank-receipt date.
+
+Use invoice/CPR covers first and fetch parcel detail only for the selected document
+when needed. Date-window discovery should use small resumable ranges, explicit
+completeness checks and bounded page sizes. Visible Previous/Next controls can be
+client-side only: verify the actual report request before claiming server-side
+pagination, and do not repeatedly load the entire historical parcel dataset.
 
 ## Recommended architecture: portal reports plus tracking API
 
@@ -157,8 +172,10 @@ erase newer delivery/return information. Unknown statuses remain visibly unmappe
 4. Enable shared courier UI with capability-aware actions. Date pull appears only
    when portal listing works; otherwise provide explicit report import. Keep the
    same styling/navigation and existing access/money restrictions.
-5. Reconcile booking counts/status/COD/charges, then financial covers and parcel
-   linkage against the same report period. Synthetic money fixtures must pass
+5. Prioritize Financial Summary payment/CPR covers and delivery-charge invoices;
+   reconcile their separate references and amounts first, then validate booking
+   counts/status/COD and parcel linkage in bounded windows for the same period.
+   Synthetic money fixtures must pass
    first; any real-account comparison is read-only and private.
 6. Add tested settlement support only after its meaning/source is established.
    Match cover net, deductions, dates and linkage before Banking/Finance activation.
