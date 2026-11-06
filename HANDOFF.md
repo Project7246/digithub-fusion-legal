@@ -1,29 +1,28 @@
 # Handover - current folder state
-Last agent: Codex - 7 Nov 2026. Task: official invoice evidence for Daewoo COD mismatch.
-- Owner reported DAEWOO_API=PASS from PC. Earlier rejection superseded; cause unknown.
-  PC locations PASS is not SGP1 authenticated API, website login or CPR proof.
-- daewoo-portal.js: fixed-origin, private per-instance cookie session; observed read-only
-  AuthenticateUser/session/customers/GetReport/GetDetailReport; sanitized errors only.
-  Redirects refused, 4 MB response cap, max seven-day range, customer/invoice identity checks.
-- tools/daewoo-connection-check.mjs --portal --from YYYY-MM-DD --to YYYY-MM-DD:
-  hidden normal WEBSITE login, session/customer validation, covers and one detail sample.
-  Prints only fixed flags; no names, identifiers, money figures or credentials.
-- Owner: portal PASS/customer CONFIRMED/CPR READ_OK; COD DIFFERENT, charges and cover math
-  MATCH; taxes present, no duplicate parcels in sample. Source discrepancy reproduced.
-- COD mismatch now triggers same-session official invoice PDF export (observed Print flow).
-  Binary/size/redirect limits retained. Only PDF magic saved; no cookies/credentials on disk.
-  Private random file in LOCALAPPDATA/FusionDaewooVerification, outside git; path guarded.
-- Synthetic cookie/auth/wrapper/scope/date/paisa/missing/duplicate/mismatch checks pass.
-  Existing check:all 23 checks PASS; binary/auth/export/path fixtures also PASS.
-- Next: owner reruns same short-range command; inspect private official PDF for adjustments.
-  Actual PDF result pending. Cause of COD difference not established; do not invent a correction.
-- No adapter registered or account attached; no app routes/UI/schema/env/data writes.
-  No migration reserved, unmetered timer, financial posting or production experiments.
-- Native detail/footer sums previously matched; cover COD differs even after tested taxes.
-  Preserve authoritative cover and detail separately; no automatic posting yet.
-- Same DO app Healthy/SGP1: container portal GET 200; API root 403, not a credential test.
-- Singapore e.availity.pk / same DO app; Neon wispy-dream-34764792/production/neondb.
+Last agent: Codex - 7 Nov 2026. Task: supplied Daewoo invoice PDF + full range correction.
+- Owner API/portal login PASS, customer CONFIRMED, CPR READ_OK; charges/cover arithmetic
+  MATCH, COD DIFFERENT, taxes present, no duplicate parcels in sampled detail.
+- Supplied private PDF matched same invoice in earlier private summary XLSX: COD differs,
+  service charges match; visible RST alone does not balance it. No real figures/IDs logged.
+- PDF is browser-generated with clipped right columns; WHT/full payable cannot be verified.
+  Source remains in owner's Downloads; scratch images/text/libs cleaned, original unchanged.
+- reconcileInvoice returns reconciliationRequired for mismatch/missing/duplicate conditions;
+  inputs untouched. Helper prints this plus FINANCIAL_POSTING=DISABLED. No posting route exists.
+- Removed automatic unverified print/export request/save from checker; do not repeat reruns.
+  Owner got NOT_PDF; response MIME/schema remains unknown, no arbitrary format accepted.
+  Raw read-only invoiceExport transport remains for later validated support.
+- Removed arbitrary seven-day clamp from client/helper. Full ISO-date range is forwarded
+  directly to GetReport; no truncation/splitting/dedup. Auth/session/scope checks retained.
+- Tests: full monthly request includes month-end and matches all non-overlapping partitions;
+  existing session/scope/paisa/privacy/missing/duplicate checks and no-input-mutation checks.
+- Actual upstream monthly boundaries/format and COD basis remain unverified; no correction
+  invented. documents/plan notes in docs/daewoo-integration-plan.md and logistics module.
+- No adapter registered, account attached, DB/schema/env settings or production records changed.
+  No migration reserved, timers, booking/cancellation/payment changes or production experiments.
+- Same DO app Healthy/SGP1; container portal 200, API root 403 (not an auth endpoint check).
+- Singapore e.availity.pk, Neon wispy-dream-34764792/production/neondb; secrets unchanged.
 - Ohio billowing-poetry-08559264 read-only >=13 Nov; no deletion; reconcile before rollback.
   Private backups LOCALAPPDATA/FusionMigration/20261106-055453; never upload contents.
-- Leftovers: Trax ElRB/old M&P backfill, nine unposted CPRs, AH/UR hooks; Rose Belle unrelated.
-- Task files only, pushed; release lock after final checks. No deliberate dirty files.
+- Previous Banking/password/nav work retained; prior courier leftovers unchanged.
+- All 23 check:all checks PASS; diff check PASS. No deliberate dirty files.
+- Push triggers deployment; baseline 1794001122474. New live build not yet verified.

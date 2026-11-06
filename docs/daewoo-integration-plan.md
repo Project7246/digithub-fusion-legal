@@ -10,6 +10,35 @@ in the merchant portal and there is no webhook. Credentials must stay private.
 
 ### Latest checkpoint - 7 Nov 2026
 
+Owner supplied the invoice PDF directly after the helper returned NOT_PDF. Local
+PDF inspection and comparison with the earlier private summary XLSX identified
+the SAME invoice. Printed COD differs from the matching summary cover; service
+charges match. The visible RST alone does not explain the difference. This does
+not establish an upstream bug, a balancing adjustment, or a gross/net rule.
+The PDF was browser-generated and its right-hand columns are clipped; withholding
+and full payable totals cannot be verified from its visible pages. No private
+figures, IDs or names are retained in these notes or synthetic fixtures.
+
+Automatic print/export fetching and saving was removed from the diagnostic:
+the response format remains unverified, and repeated credential reruns add no
+evidence. Login/error/unknown bodies must not become arbitrary invoice files.
+The low-level read-only transport method is retained, without any claim that its
+bytes are a validated invoice. No unsupported format is accepted automatically.
+
+reconcileInvoice now explicitly returns reconciliationRequired for differences,
+missing figures/taxes or duplicate parcels, while leaving original inputs intact.
+The diagnostic reports that state and FINANCIAL_POSTING=DISABLED. Even a matched
+sample alone does not authorize posting. No Daewoo financial write route exists.
+
+Removed the unjustified seven-day access clamp from reusable client and helper.
+Only real ISO dates and from <= to are required. GetReport receives the caller's
+full authorized range directly; no truncation, splitting or deduplication is added.
+Monthly fixtures include first/last dates and week boundaries and compare a full
+month with all non-overlapping partitions. Auth/session/customer/invoice checks,
+response-size limits and fail-without-partial-results behavior remain unchanged.
+Batching is a future operational choice, never a restriction on entitled history.
+Actual live monthly server behavior has not been exercised by these fixtures.
+
 Latest owner diagnostic: portal PASS, customer CONFIRMED, CPR READ_OK, COD DIFFERENT,
 charges MATCH, cover arithmetic MATCH, taxes PRESENT and no duplicates in the sample.
 This independently reproduces the native inspection's COD reconciliation exception.
@@ -17,19 +46,12 @@ No import or financial posting has happened; login/connectivity is not the block
 
 Public function.js printInvoice() confirms the same-session read-only GET export:
 CODInvoiceSummaryReportPrint.aspx with invoiceNo, customer, isExport=1 and
-isInvoiceExport=1. Client now exposes that exact flow. On COD mismatch the private
-helper attempts this one selected invoice export, preserving binary data and
-existing timeout/size/redirect/scope boundaries. Only a PDF-magic response is saved.
-HTML/other formats produce NOT_PDF; failures are fixed codes, not private responses.
+isInvoiceExport=1. Client exposes that read-only transport. Its automatic diagnostic
+use was stopped after NOT_PDF; its response format is not assumed from the URL.
 
-PDF copies go outside the repository under LOCALAPPDATA/FusionDaewooVerification
-with random filenames and exclusive creation. No credentials/cookies are written.
-The export path guard refuses a location inside this repository. Original figures
-remain only in the owner's private source file, never in tracked tests/notes/logs.
-Synthetic tests verify authenticated GET, exact export query, binary preservation,
-unauthenticated refusal and private-path rejection. Actual PDF export/read pending.
-Printed document should be examined for adjustment/withholding definitions before
-attributing a cause or deciding which COD field represents gross/net/paid amounts.
+The earlier automatic PDF-copy logic was removed; no unknown response was saved.
+Synthetic transport tests still verify authenticated GET, exact query, preserved
+bytes and unauthenticated refusal. Owner-supplied PDF findings are recorded above.
 
 Owner subsequently reported DAEWOO_PORTAL=PASS and CUSTOMER_SCOPE=SELECTION_REQUIRED.
 Fresh programmatic website login/session therefore worked from this PC; no invoice
@@ -52,8 +74,8 @@ daewoo-portal.js now implements a private per-instance cookie session and only
 observed read-only portal methods. Login uses AuthenticateUser followed by the
 session check; customer and invoice identity are validated. No upstream errors,
 cookie values, names, IDs or financial figures are printed by the diagnostic.
-It refuses redirects and responses over 4 MB and limits report ranges to seven
-inclusive days. No session renewal loop, background timer or data writes exist.
+It refuses redirects and responses over 4 MB and preserves the full requested
+authorized date range. No session renewal loop, background timer or data writes exist.
 
 Run the existing checker with --portal --from YYYY-MM-DD --to YYYY-MM-DD for a
 private WEBSITE username/password prompt, session/customer validation, cover read

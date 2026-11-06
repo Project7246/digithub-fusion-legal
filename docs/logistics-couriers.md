@@ -13,8 +13,11 @@ multiple customers require a private name/ID choice before CPRs can be queried.
 The chooser preserves the session and refuses ambiguous or unknown selections;
 the chosen-customer CPR read now passes. Owner also reproduces COD DIFFERENT,
 charges/cover arithmetic MATCH, taxes present and no duplicate parcels in sample.
-Official same-invoice PDF export was added to the private checker to investigate
-the discrepancy without changing amounts. Source copies stay outside git.
+Owner-supplied PDF reproduces the same-invoice COD difference; its rightmost
+columns are clipped, so the cause remains unverified. Automatic export retries
+are removed; unknown formats are never accepted. Reconciliation stays required,
+and no Daewoo financial posting is enabled. Client/helper now preserve monthly
+and longer authorized ranges; the earlier arbitrary seven-day clamp was removed.
 
 Owner now wants Daewoo with the same shared courier UI. The earlier "not being
 worked on" note below is historical. Planning only: supplied guide internally

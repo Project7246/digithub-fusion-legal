@@ -5,7 +5,12 @@ import { DaewooPortal, reconcileInvoice, validateRange, chooseCustomer } from '.
 const cover={customer_id:7,TotalCODAmount:'10000.00',TotalServiceCharges:'500.00',TotalReimbursementAmount:'9500.00'};
 const detail=[{booking_id:'0001',invoice_no:'fixture-invoice',amount_cod:'6000.00',amount_wr:'300.00',RST_Amt:'20.00',RWHT_Amt:'30.00'},
   {booking_id:'0002',invoice_no:'fixture-invoice',amount_cod:'4000.00',amount_wr:'200.00',RST_Amt:'10.00',RWHT_Amt:'15.00'}];
-assert.deepEqual(reconcileInvoice(cover,detail),{codMatches:true,chargesMatch:true,coverArithmeticMatches:true,taxFieldsPresent:true,duplicateParcel:false});
+assert.deepEqual(reconcileInvoice(cover,detail),{codMatches:true,chargesMatch:true,coverArithmeticMatches:true,taxFieldsPresent:true,duplicateParcel:false,reconciliationRequired:false});
+const originalCover=structuredClone(cover),originalDetail=structuredClone(detail);
+reconcileInvoice(cover,detail);
+assert.deepEqual(cover,originalCover);assert.deepEqual(detail,originalDetail,'never adjust original totals to force a match');
+assert.equal(reconcileInvoice({...cover,TotalCODAmount:'9999.99'},detail).reconciliationRequired,true);
+assert.equal(reconcileInvoice({...cover,TotalCODAmount:null},detail).reconciliationRequired,true);
 assert.equal(reconcileInvoice({...cover,TotalCODAmount:'9999.99'},detail).codMatches,false);
 assert.equal(reconcileInvoice({...cover,TotalCODAmount:null},detail).codMatches,null);
 assert.equal(reconcileInvoice(cover,[{...detail[0],amount_cod:null}]).codMatches,null);
@@ -14,7 +19,9 @@ assert.equal(reconcileInvoice(cover,[{...detail[0],RST_Amt:null}]).taxFieldsPres
 assert.equal(reconcileInvoice({...cover,TotalCODAmount:'10.001'},detail).codMatches,null);
 assert.equal(reconcileInvoice({TotalCODAmount:0,TotalServiceCharges:0,TotalReimbursementAmount:0},[]).codMatches,true);
 validateRange('2026-01-01','2026-01-03');
-for(const [from,to] of [['2026-02-30','2026-03-01'],['2026-01-02','2026-01-01'],['2026-01-01','2026-02-01']])assert.throws(()=>validateRange(from,to),/DATE_RANGE/);
+validateRange('2026-01-01','2026-01-31');
+validateRange('2026-01-01','2026-02-01');
+for(const [from,to] of [['2026-02-30','2026-03-01'],['2026-01-02','2026-01-01']])assert.throws(()=>validateRange(from,to),/DATE_RANGE/);
 const choices=[{customer_id:7,customer_name:'Fixture Alpha COD'},
   {customer_id:8,customer_name:'Fixture Alpha Cargo'},{customer_id:9,customer_name:'Fixture Beta'}];
 assert.equal(chooseCustomer(choices).status,'REQUIRED');
@@ -45,7 +52,15 @@ function fixture(options={}) {
     if(options.expired && method==='CheckUserSessionUpdated')body={Success:false,SessionExpired:true};
     if(options.reject && method==='AuthenticateUser')body={Success:false,Response:'fixture private password'};
     if(method==='GetCustomersNew')body.Data=[{customer_id:7,customer_name:'Fixture'}];
-    if(method==='GetReport')body.Data=[{...cover,invoice_no:'fixture-invoice',customer_id:options.foreign?8:7}];
+    if(method==='GetReport'){
+      body.Data=[{...cover,invoice_no:'fixture-invoice',customer_id:options.foreign?8:7}];
+      if(options.monthly){
+        const range=JSON.parse(request.body);
+        body.Data=['2026-01-01','2026-01-07','2026-01-08','2026-01-31']
+          .filter(date=>date>=range.fromDate&&date<=range.toDate)
+          .map(date=>({...cover,invoice_no:'fixture-'+date,invoice_date:date}));
+      }
+    }
     if(method==='GetDetailReport')body.Data=options.foreignInvoice?detail.map(row=>({...row,invoice_no:'other-fixture'})):detail;
     return Response.json({d:options.stringWrapper?JSON.stringify(body):body});
   }});
@@ -79,4 +94,12 @@ const wrongInvoice=fixture({foreignInvoice:true});await wrongInvoice.portal.logi
 await assert.rejects(wrongInvoice.portal.detail('fixture-invoice',7),e=>e.code==='INVOICE_SCOPE_MISMATCH');
 const unauth=fixture();await assert.rejects(unauth.portal.detail('x',7),e=>e.code==='LOGIN_REQUIRED');assert.equal(unauth.calls.length,0);
 await assert.rejects(unauth.portal.invoiceExport('x',7),e=>e.code==='LOGIN_REQUIRED');assert.equal(unauth.calls.length,0);
-console.log('Daewoo portal: private session/auth, wrappers/errors, scope, bounded dates, exact paisa/missing values and mismatch checks PASS; no network.');
+const monthly=fixture({monthly:true});await monthly.portal.login('fixture','fixture');
+const fullMonth=await monthly.portal.covers('2026-01-01','2026-01-31',7);
+const fullRequest=JSON.parse(monthly.calls.find(c=>c.url.endsWith('/GetReport')).request.body);
+assert.deepEqual(fullRequest,{fromDate:'2026-01-01',toDate:'2026-01-31',customerId:'7'});
+assert.equal(fullMonth.length,4);assert.ok(fullMonth.some(c=>c.invoice_date==='2026-01-31'));
+const partitioned=[];
+for(const [from,to] of [['2026-01-01','2026-01-07'],['2026-01-08','2026-01-14'],['2026-01-15','2026-01-21'],['2026-01-22','2026-01-28'],['2026-01-29','2026-01-31']])partitioned.push(...await monthly.portal.covers(from,to,7));
+assert.deepEqual(partitioned,fullMonth,'monthly access preserves exactly the combined full range');
+console.log('Daewoo portal: auth/scope, complete monthly range, exact paisa/missing values and mismatch checks PASS; no network.');

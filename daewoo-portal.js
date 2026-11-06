@@ -34,7 +34,7 @@ export function validateRange(from,to) {
     Number.isFinite(Date.parse(value)) && new Date(value).toISOString().slice(0,10)===value;
   if(!valid(from)||!valid(to))fail('DATE_RANGE');
   const days=(Date.parse(to)-Date.parse(from))/86400000;
-  if(days<0||days>6)fail('DATE_RANGE'); // at most seven inclusive calendar days
+  if(days<0)fail('DATE_RANGE'); // preserve the caller's complete authorized date range
 }
 
 async function readBounded(response) {
@@ -162,11 +162,13 @@ export function reconcileInvoice(cover,detail){
   const gross=paisa(cover?.TotalCODAmount),charge=paisa(cover?.TotalServiceCharges),net=paisa(cover?.TotalReimbursementAmount);
   const cod=sum('amount_cod'),fees=sum('amount_wr');
   const ids=detail.map(row=>String(row?.booking_id??'')).filter(Boolean);
-  return {
+  const checks={
     codMatches:gross===null||cod===null?null:gross===cod,
     chargesMatch:charge===null||fees===null?null:charge===fees,
     coverArithmeticMatches:gross===null||charge===null||net===null?null:gross-charge===net,
     taxFieldsPresent:detail.length>0&&detail.every(row=>paisa(row?.RST_Amt)!==null&&paisa(row?.RWHT_Amt)!==null),
     duplicateParcel:new Set(ids).size!==ids.length
   };
+  return {...checks,reconciliationRequired:checks.codMatches!==true||checks.chargesMatch!==true||
+    checks.coverArithmeticMatches!==true||!checks.taxFieldsPresent||checks.duplicateParcel};
 }
