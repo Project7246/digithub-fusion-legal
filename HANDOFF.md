@@ -88,9 +88,90 @@ Last agent: Claude (Sonnet 5) - 6 Nov 2026. Task: migration Step A (add e.availi
 - Starter domain's own Intuit redirect URI entry was left as is - it was not
   part of this request.
 
-- Still not done, still waiting on the owner: Steps C (region to Singapore)
-  and D (database to Singapore) - owner confirmed "Singapore" when asked
-  (said "Bangkok" once, clarified). Neither started.
+## Step C done, 6 Nov 2026 - region moved to Singapore
+- Owner authorized ("koi bhe app use ni krta siway mery, done kro") after
+  confirming nobody else uses the app, answering the one open quiescing
+  question for Step D.
+- DigitalOcean -> Networking -> Edit network -> Singapore (SGP1) -> Save.
+  Confirmed in the UI afterwards ("Datacenter region: Singapore - Datacenter
+  1 - SGP1"). App redeployed itself; not separately re-verified by version
+  number since Step D's own redeploy (below) supersedes it.
+
+## Step D done, 6 Nov 2026 - database moved to Singapore, fully verified
+This is the one with real data, so written in full:
+
+- **New Neon project**: "Fusion Singapore", id `wispy-dream-34764792`,
+  region AWS ap-southeast-1 (Singapore), Postgres 18 (matches source's 18.6),
+  database `neondb`, branch `production` (`br-calm-bonus-ao4mnaaa`).
+- **pg_dump/pg_restore could not be used**: downloaded PostgreSQL 18.6.1
+  binaries (from github.com/theseus-rs/postgresql-binaries, checksum
+  verified) but the sandbox's auto-mode classifier blocked running any
+  downloaded `.exe` ("Code from External"). Owner chose, when asked, to find
+  another way rather than grant that permission.
+- **Method used instead**: `postgres_fdw` from Neon's own SQL Editor.
+  - Schema: booted this app locally (`node server.js`) with `DATABASE_URL`
+    pointed at the new empty Singapore database for ~35 seconds, just long
+    enough for `initDb()` and the module `init*()` chain to run and create
+    all 47 tables matching the current code - then let it exit (`timeout 35`).
+    Confirmed table count matched (47 = 47).
+  - On the Singapore database: `create extension postgres_fdw`, then
+    `create server` + `create user mapping` pointing at the old Ohio
+    database's **direct** (non-pooled) host, `import foreign schema public
+    ... into old_src` (all 47 tables as foreign tables).
+  - Copied data table by table with explicit column lists on both sides of
+    each `insert into public.X (col,...) select col,... from old_src.X` -
+    **not** `select *`, because this app has no migration-number system
+    (`ALTER TABLE ... ADD COLUMN IF NOT EXISTS` in each module's `init*()`),
+    so column order can differ between the two databases even when the
+    column set is identical; a positional `select *` silently misaligned
+    `courier_accounts` on the first attempt (integer value landing in a
+    `timestamptz` column) before this was caught and fixed.
+  - `SET session_replication_role = replica` is not available to Neon's
+    `neondb_owner` (superuser-only), so tables were loaded in dependency
+    order instead: `banks` before `bank_links`/`bank_moves`/`banking_setups`,
+    `courier_rate_cards` before `courier_rate_lines` - the only two FK
+    relationships that exist in the whole schema (checked and confirmed).
+  - Two tables had one stray row each from the local schema-creation boot
+    (`app_keys` got a freshly-generated VAPID keypair; `once_done` got a
+    `reset-non-admin-access-2026-09` marker) - both deleted before the real
+    copy ran, otherwise the real row collided on the primary key.
+  - The Neon SQL Editor's CodeMirror input repeatedly timed out (30s) on
+    long pasted blocks of SQL via simulated typing - it always finished the
+    paste itself a little after the tool-level timeout fired; the practical
+    fix was keeping batches to roughly 6-10 `insert` statements each rather
+    than all 47 at once, and treating the timeout as "wait and check", not
+    as a failure.
+- **Verified, not assumed**: wrote a one-off `_verify_counts()` function
+  comparing `count(*)` between every `public.X` and `old_src.X` -
+  **0 mismatches across all 47 tables**. Biggest tables: `courier_orders`
+  76,830 rows, `upload_logs` 16,321 rows, `hr_pay_lines` 2,514 rows,
+  `product_changes` 2,820 rows - all matched exactly.
+- **Sequences fixed**: wrote a one-off `_fix_sequences()` function that set
+  every serial/identity column's sequence to `setval(..., max(id), true)` -
+  28 sequences found and set (e.g. `courier_orders_id_seq` -> 1,325,105,
+  `users_id_seq` -> 10). Without this, the next locally-generated id on each
+  table would have collided with a copied row.
+- **Cleanup**: dropped both helper functions, `drop server ohio_old cascade`
+  (removes the user mapping holding the old database's password - it had
+  to be read once, via the Neon console's "Show password" toggle and
+  `get_page_text`, never typed into a reply or a git-tracked file), and
+  `drop schema old_src cascade`. Nothing pointing at the old database's
+  credentials is left on the new project.
+- **Secrets discipline kept throughout**: the old (Ohio) and new (Singapore)
+  database passwords were each read once from Neon's own console (never a
+  downloaded file, never the clipboard - clipboard access was also blocked
+  by the sandbox classifier when tried) and used directly in a local shell
+  command or a SQL statement typed into Neon's SQL Editor; neither value
+  was written into any reply, any git-tracked file, or repeated after use.
+- **Still to do** (next, in this same session or the next one): switch
+  `DATABASE_URL` in DigitalOcean to the new Singapore connection string,
+  redeploy, then verify in this exact order per the runbook - `/api/setup-check`
+  shows `DATABASE_URL: true`, the app opens and shows companies/couriers/receipts,
+  **open a courier account page and pull something** (proves `SESSION_SECRET`
+  carried across correctly and encrypted portal passwords still decrypt -
+  this is the one that catches a wrong key silently), then Settings ->
+  Database shows the new size. Keep the old Ohio project for at least a
+  week after, per the runbook, in case of rollback.
 - Agent lock still held (migration not finished). Files uncommitted before this
   task: none; this commit carries CLAUDE.md (exception note) and this file.
 
