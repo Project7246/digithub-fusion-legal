@@ -329,7 +329,9 @@
     '<nav>';
 
   ITEMS.forEach(function(sec){
-    if(sec.group) html += '<div class="group">' + sec.group + '</div>';
+    if(sec.group) html += '<details class="nav-group" data-nav-group="' + esc(sec.group) +
+      '" open><summary class="group"><span class="nav-label">' + esc(sec.group) +
+      '</span><span class="nav-chevron" aria-hidden="true"></span></summary><div class="nav-group-items">';
     sec.items.forEach(function(it){
       // Merge payments and the check list are tabs of Receive payments,
       // so that is the line that lights up
@@ -343,24 +345,27 @@
                // reached through the courier tree, so that is the line that
                // lights up - otherwise nothing on the rail would
                (it.tree && (HERE.claims || []).indexOf(path) > -1);
-      html += '<a href="' + it.href + '"' +
+      var tag = it.tree ? 'button' : 'a';
+      var classes = (it.tree ? 'nav-folder ' : '') + (on ? 'on' : (it.admin ? 'admin-only' : ''));
+      html += '<' + tag + (it.tree ? ' type="button" aria-expanded="false" aria-controls="ctree"' : ' href="' + it.href + '"') +
               (it.need ? ' data-line="' + it.need + '"' : '') +
-              (on ? ' class="on"' : (it.admin ? ' class="admin-only"' : '')) +
+              (classes ? ' class="' + classes.trim() + '"' : '') +
               (on && it.admin ? ' data-admin="1"' : '') +
               (it.tree ? ' id="couriersLink"' : '') +
               (it.rtree ? ' id="receiptsLink"' : '') + '>' +
-              svg(it.icon) + it.label +
+              svg(it.icon) + '<span class="nav-label">' + it.label + '</span>' +
               // A line that carries a figure says so here, and railCounts()
               // below fills it in. Empty until then: a nought standing in for
               // "not read yet" is a lie about the parcels.
               (it.count ? '<span class="rcnt" data-count="' + it.count + '"></span>' : '') +
-              (it.tree ? '<span class="tcar" id="couriersCar">\u25B8</span>' : '') +
-              (it.rtree ? '<span class="tcar" id="receiptsCar">\u25B8</span>' : '') + '</a>';
+              (it.tree ? '<span class="tcar nav-chevron" id="couriersCar" aria-hidden="true"></span>' : '') +
+              (it.rtree ? '<span class="tcar nav-chevron" id="receiptsCar" aria-hidden="true"></span>' : '') + '</' + tag + '>';
       // Couriers is not one page but a small tree, filled in further down
       if(it.tree) html += '<div class="ctree" id="ctree"></div>';
       // Receipts opens the same way, into one shelf per courier company
       if(it.rtree) html += '<div class="ctree" id="rtree"></div>';
     });
+    if(sec.group) html += '</div></details>';
   });
 
   // The company chip and the QuickBooks list belong to Finance, and only once
@@ -379,6 +384,17 @@
 
   var rail = document.querySelector('.rail');
   if(rail) rail.innerHTML = html;
+
+  // The same disclosure hierarchy is used by every module and company. Keep
+  // the current page visible even if its group was closed on another page.
+  if(rail) rail.querySelectorAll('.nav-group').forEach(function(group){
+    var key = 'fusion:nav-group:' + HERE.key + ':' + group.getAttribute('data-nav-group');
+    try { group.open = !!group.querySelector('.on') || localStorage.getItem(key) !== '0'; }
+    catch(e) { group.open = true; }
+    group.addEventListener('toggle', function(){
+      try { localStorage.setItem(key, group.open ? '1' : '0'); } catch(e) {}
+    });
+  });
 
   /* ---------- the figures beside the rail's own lines ---------- */
   //
@@ -696,6 +712,7 @@
             (s.admin && s.connected ? '<a href="/users">Manage users</a>' : '') +
             // the two screens above every company, and Fusion's own
             (s.boss ? '<a href="/people">People (all companies)</a>' : '') +
+            (s.boss ? '<a href="/settings#storage">Settings</a>' : '') +
             '<a href="/settings#style">Appearance</a>' +
             '<div class="fxmsep"></div>' +
             '<button class="fxmi fxout" type="button" id="fxSignOut">Sign out</button>' +
@@ -1121,47 +1138,11 @@
     var box = document.getElementById('ctree');
     if(!box) return;
 
-    var css = document.createElement('style');
-    css.textContent = [
-      '.tcar{margin-left:auto;font-size:9px;opacity:.5;transition:transform .15s;',
-      '  display:inline-block}',
-      '.tcar.open{transform:rotate(90deg)}',
-      '.ctree{margin:2px 0 8px 0;display:none}',
-      '.ctree.open{display:block}',
-      '.ctree a{display:block;padding:6px 14px 6px 46px;font-size:12.5px;',
-      '  color:rgba(255,255,255,.62);text-decoration:none;line-height:1.4}',
-      '.ctree a:hover{color:#fff;background:rgba(255,255,255,.05)}',
-      '.ctree a.on{color:#fff;background:rgba(255,255,255,.09);font-weight:600}',
-      // "All Trax accounts" is a way to widen what you are looking at, not a
-      // place you usually want - so it reads quieter than the accounts under
-      // it. It was the loudest thing in the tree, louder than the account
-      // actually open, which put the hierarchy upside down.
-      '.ctree a.all{font-weight:400;font-size:12px;color:rgba(255,255,255,.45);',
-      '  padding-left:34px}',
-      '.ctree .kids a.all{padding-left:46px;font-weight:400;color:rgba(255,255,255,.45)}',
-      // whichever of them is the page you are on still wins, in both places
-      '.ctree a.all.on, .ctree .kids a.all.on{color:#fff;font-weight:600}',
-      '.ctree .grp{display:flex;align-items:center;gap:8px;cursor:pointer;',
-      '  padding:7px 14px 7px 34px;font-size:12px;color:rgba(255,255,255,.62);',
-      '  user-select:none;line-height:1.4}',
-      '.ctree .grp:hover{color:#fff;background:rgba(255,255,255,.05)}',
-      '.ctree .grp .car{font-size:9px;opacity:.55;transition:transform .15s;',
-      '  display:inline-block;flex:none;width:9px}',
-      '.ctree .grp.open{color:#fff}',
-      '.ctree .grp.open .car{transform:rotate(90deg)}',
-      '.ctree .grp .soon{font-size:10px;opacity:.5}',
-      '.ctree .kids{display:none}',
-      '.ctree .kids.open{display:block}',
-      '.ctree a.add{padding-left:58px;color:rgba(255,255,255,.4);font-size:12px}',
-      '.ctree a.add:hover{color:#fff}',
-      '.ctree a.wide{padding-left:34px;margin-top:6px;font-size:12px;',
-      '  border-top:1px solid rgba(255,255,255,.08);padding-top:10px}'
-    ].join('');
-    document.head.appendChild(css);
-
     var link = document.getElementById('couriersLink');
     var car  = document.getElementById('couriersCar');
-    var here = location.pathname + location.search;
+    var query = new URLSearchParams(location.search);
+    var accountId = query.get('account');
+    var courierKey = query.get('courier');
 
     // nothing is open until it is asked for - but a page that belongs to an
     // account should show where it sits
@@ -1172,6 +1153,7 @@
       open = v;
       box.classList.toggle('open', v);
       if(car) car.classList.toggle('open', v);
+      if(link) link.setAttribute('aria-expanded', String(v));
       localStorage.setItem('ctreeOpen', v ? '1' : '0');
     }
     setOpen(open);
@@ -1190,28 +1172,29 @@
         if(d.error) return;
         var out = '';
 
-        out += '<a class="all' + (here.indexOf('scope=all') > -1 ? ' on' : '') +
+        out += '<a class="all' + (query.get('scope') === 'all' ? ' on' : '') +
                '" href="/courier-dash?scope=all">All courier companies</a>';
 
         (d.couriers || []).forEach(function(c){
           // only the company whose account - or whose own shelf - is on
           // screen opens itself
-          var mine = here.indexOf('courier=' + c.key) > -1 ||
+          var mine = courierKey === c.key ||
             c.accounts.some(function(a){
-              return here.indexOf('account=' + a.id) > -1;
+              return accountId === String(a.id);
             });
 
-          out += '<div class="grp' + (mine ? ' open' : '') + '">' +
-                 '<span class="car">\u25B8</span>' + esc(c.name) +
-                 (c.ready ? '' : ' <span class="soon">soon</span>') + '</div>';
+          out += '<details class="courier-group"' + (mine ? ' open' : '') + '>' +
+                 '<summary class="grp"><span class="car nav-chevron" aria-hidden="true"></span>' +
+                 '<span class="nav-label">' + esc(c.name) + '</span>' +
+                 (c.ready ? '' : ' <span class="soon">soon</span>') + '</summary>';
 
-          out += '<div class="kids' + (mine ? ' open' : '') + '">';
+          out += '<div class="kids">';
           // The courier itself is a page too: every one of its accounts on one
           // screen, each number still carrying the account's own name. Without
           // it the courier's name was only a hinge, and there was nowhere to
           // ask "how is PostEx doing" as against "how is PostEx - RB doing".
           if (c.accounts.length) {
-            out += '<a class="all' + (here.indexOf('courier=' + c.key) > -1 ? ' on' : '') +
+            out += '<a class="all' + (courierKey === c.key ? ' on' : '') +
                    '" href="/courier-dash?courier=' + esc(c.key) + '">' +
                    'All ' + esc(c.name) + ' accounts</a>';
           }
@@ -1219,30 +1202,25 @@
           // payments, receipts - are tabs inside the account's own page, not
           // more lines in this tree.
           c.accounts.forEach(function(a){
-            out += '<a class="acc' + (here.indexOf('account=' + a.id) > -1 ? ' on' : '') +
+            out += '<a class="acc' + (accountId === String(a.id) ? ' on' : '') +
                    '" href="/courier-dash?account=' + a.id + '">' +
                    esc(a.label) + '</a>';
           });
           out += '<a class="add" href="/couriers?add=' + esc(c.key) + '">+ add an account</a>';
-          out += '</div>';
+          out += '</div></details>';
         });
 
         out += '<a class="add wide" href="/couriers">Manage courier accounts</a>';
         box.innerHTML = out;
 
-        box.querySelectorAll('.grp').forEach(function(g){
-          g.addEventListener('click', function(){
-            var kids = g.nextElementSibling;
-            var now = !g.classList.contains('open');
-
-            // one company open at a time keeps the rail short
-            box.querySelectorAll('.grp').forEach(function(other){
-              other.classList.remove('open');
-              if(other.nextElementSibling) other.nextElementSibling.classList.remove('open');
+        box.querySelectorAll('.courier-group').forEach(function(group){
+          group.addEventListener('toggle', function(){
+            if(!group.open) return;
+            // Keep the other courier headings visible while this account
+            // list is open. Native summaries also support Enter and Space.
+            box.querySelectorAll('.courier-group').forEach(function(other){
+              if(other !== group) other.open = false;
             });
-
-            g.classList.toggle('open', now);
-            if(kids) kids.classList.toggle('open', now);
           });
         });
       })
@@ -1388,7 +1366,7 @@
       // ADMIN_EMAILS, whatever else they hold. The server refuses the pages
       // too; this is so nobody is offered a door that will not open.
       if(!s.boss && rail){
-        rail.querySelectorAll('nav a[data-line="__boss__"]').forEach(function(a){
+        rail.querySelectorAll('nav [data-line="__boss__"]').forEach(function(a){
           a.remove();
         });
       }
@@ -1398,7 +1376,7 @@
       // no empty word left standing over nothing.
       if(s.limited){
         var off = [];
-        rail && rail.querySelectorAll('nav a[data-line]').forEach(function(a){
+        rail && rail.querySelectorAll('nav [data-line]').forEach(function(a){
           if(mine.indexOf(a.getAttribute('data-line')) < 0) off.push(a);
         });
         off.forEach(function(a){
@@ -1407,13 +1385,8 @@
           a.remove();
         });
 
-        rail && rail.querySelectorAll('nav .group').forEach(function(h){
-          var n = h.nextElementSibling, any = false;
-          while(n && !n.classList.contains('group')){
-            if(n.tagName === 'A'){ any = true; break; }
-            n = n.nextElementSibling;
-          }
-          if(!any) h.remove();
+        rail && rail.querySelectorAll('nav .nav-group').forEach(function(group){
+          if(!group.querySelector('.nav-group-items > a, .nav-group-items > button')) group.remove();
         });
       }
 

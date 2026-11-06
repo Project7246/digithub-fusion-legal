@@ -1,29 +1,28 @@
 # Handover - current folder state
-Last agent: Codex - 6 Nov 2026. Task: Singapore migration cutover complete, documentation finalization.
-- Live address e.availity.pk; ca DNS/domain/callback removed per owner. Naming cleanup deferred.
-- Same DigitalOcean app hammerhead-app / digithub-fusion-legal, main auto-deploy, SGP1 confirmed.
-- Live Neon Fusion Singapore: wispy-dream-34764792 / production br-calm-bonus-ao4mnaaa / neondb.
-- Ohio billowing-poetry-08559264 / production br-wispy-sound-b4yb0j31 retained READ-ONLY.
-- Owner ran tools/fusion-migration.ps1 with MIGRATE during maintenance: source freeze + session
-  termination, fresh native dump and atomic target restore, private backup of target first.
-- Owner terminal output: Rows MATCH 47, Columns MATCH 538, Sequences MATCH 28, VERIFIED.
-- Backups LOCALAPPDATA/FusionMigration/20261106-055453; never upload/commit real-data dumps.
-- Owner saved encrypted Singapore DATABASE_URL only; SESSION_SECRET/relay preserved.
-- Screenshot: configuration deployed live 11:14:57 PKT; maintenance OFF afterwards.
-- Direct HTTP200: e and starter /api/version 1793942332224; setup-check e URL/callback, needed all true.
-- Owner: sign-in/companies/CPR work; no error on requested courier check; all account Tests Works.
-  Tests persist markSync; Trax cities route and M&P tests pass. Database screen loads 105.1 MB/10.3%.
-- Limits: runtime hostname Console command never succeeded due bracketed paste; inference uses
-  saved config/deployment and working app writes while Ohio stays frozen. Fresh QB OAuth reconnect
-  and a separate fresh courier-portal password round-trip NOT independently observed.
-- App compute screenshot ~35.4/100 hours, 176 wake-ups, 9.9 sweep hours; copied history, NOT
-  Singapore-only billing or proof of savings. Compare future usage deltas; no new polling.
-- Updated CLAUDE.md, START-HERE.md, docs/migration-2026-11.md and docs/compute-budget.md.
-- Checks: earlier helper syntax + synthetic URI/region tests pass; final docs whitespace/line checks.
-- Post-push version verification still to be reported; do not infer deployment from git push alone.
-- Keep Ohio read-only at least through 13 Nov, longer if needed; no deletion authorized/scheduled.
-  After Singapore writes, reconcile before rollback; never blindly swap to the frozen old snapshot.
-- Browser host unavailable; native reads sometimes work, input unreliable. Guided owner screenshots.
-- Leftovers unchanged: Trax ElRB/older M&P backfill; nine Trax CPRs unposted;
-  PostEx AH/UR webhook gaps; M&P Rose Belle unrelated work. No numbered migration reserved.
-- No application/runtime code changed in finalization. No unrelated dirty files at takeover.
+Last agent: Codex - 6 Nov 2026. Task: global navigation hierarchy + super-admin Settings shortcut.
+- Shared public/nav.js and public/app.css changed; no :root, server permissions or data changes.
+- Home/module profile menus: boss-only Settings -> /settings#storage; existing entries retained.
+- Shared module groups now native details/summary with chevrons and larger bold parents,
+  smaller indented children. Active ancestor opens; per-section collapse state kept locally.
+- Courier providers use native summaries/accordion; account links stay smaller, active or not.
+  Exact query matching avoids account 1/10 collisions. Folder is keyboard-accessible button.
+- Existing rights pruning now handles buttons/trees and removes empty group wrappers.
+- Added tools/navigation-check.mjs and registered in check-all; synthetic data only, no DB calls.
+- Docs decision: docs/pages-and-screens.md. Shared UI applies to all companies/sections.
+- Checks: npm.cmd run check:all PASS (20 checks); navigation fixtures and whitespace PASS.
+- Browser connector unavailable, native input unreliable; no visual layout verification claimed.
+- Owner to check main-page super-admin avatar -> Settings/Database, provider chevrons and
+  account sizing on Logistics, Finance/HR groups, narrow screen, and a limited user's menu.
+- Pre-push live baseline 1793951735896, setup needed all true; post-push verification pending.
+- Migration preserved: e.availity.pk live, same app SGP1, Neon Fusion Singapore
+  wispy-dream-34764792 / production br-calm-bonus-ao4mnaaa / neondb.
+- Native final copy matched 47 public row fingerprints, 538 columns, 28 sequences before cutover.
+  Private backups LOCALAPPDATA/FusionMigration/20261106-055453; never upload/commit.
+- Ohio billowing-poetry-08559264 retained READ-ONLY through at least 13 Nov; no deletion authorized.
+  Reconcile Singapore writes before rollback. SESSION_SECRET and relay unchanged.
+- Owner confirmed companies/CPR, all courier Tests Works; Database 105.1 MB / 10.3%.
+  Fresh QB OAuth and separate fresh portal-login round-trip not independently observed.
+- App meter ~35.4 hours includes copied history; measure future deltas before claiming savings.
+- Leftovers unchanged: Trax ElRB/older M&P parcel backfill; nine Trax CPRs unposted;
+  PostEx AH/UR webhook gaps; M&P Rose Belle unrelated work. No migration number reserved.
+- No dirty files at takeover. Only this task's files should be staged; lock released at completion.

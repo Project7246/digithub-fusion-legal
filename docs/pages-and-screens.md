@@ -3,6 +3,32 @@
 Moved out of CLAUDE.md on 4 Nov 2026, word for word, so that a task reads only
 the module it touches. Nothing here was changed, reworded or dropped - see the
 index in CLAUDE.md. Read this file before working on this module.
+
+## Shared navigation - 6 Nov 2026
+
+Owner requested the same sidebar hierarchy across the app and every company.
+All rails rendered by `public/nav.js` now use native details/summary groups:
+larger bold parent headings, smaller indented links, a chevron and keyboard
+disclosure. The active page's group opens automatically; other group choices
+are remembered per section in the browser. Mobile uses the same hierarchy.
+
+Courier provider headings stay larger/bolder than their account links, including
+the active account. Providers use native summaries and only one provider opens
+at a time. Account query parameters match exactly, so account 1 cannot select
+account 10's branch. The Courier accounts folder is a button with expanded state;
+existing rights filtering removes denied buttons, their trees and empty groups.
+No server permissions, company scope, endpoints or background reads were added.
+
+The shared profile menu, used on the home screen and module pages, offers
+**Settings** to `status.boss` only, linking to `/settings#storage`. Existing
+profile/appearance entries remain. Database access is still enforced by the
+server's existing admin check; this menu link grants no new access.
+
+`node tools/navigation-check.mjs` runs the production renderer and handlers
+against synthetic users/accounts for all seven sections, disclosure state,
+exact account selection, permission pruning and the super-admin shortcut.
+It is included in `check:all`. This DOM harness is not a browser layout check.
+
 ## How a screen is written here
 
 Three rules, all given as corrections, all about the same thing: a screen is
