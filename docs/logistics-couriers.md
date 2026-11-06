@@ -3,6 +3,19 @@
 Moved out of CLAUDE.md on 4 Nov 2026, word for word, so that a task reads only
 the module it touches. Nothing here was changed, reworded or dropped - see the
 index in CLAUDE.md. Read this file before working on this module.
+## Daewoo planning requested - 6 Nov 2026
+
+Owner now wants Daewoo with the same shared courier UI. The earlier "not being
+worked on" note below is historical. Planning only: supplied guide internally
+says v1.6 (2021), despite its v1.3 filename. API documents known-parcel tracking,
+not shipment discovery or settlements; owner confirms no webhook. Native Chrome
+inspection found date-wise booking and financial invoice reports with Excel
+exports, plus a reimbursement report form. Proposed portal-reader + tracking-API
+integration, with report-file import fallback, is documented in
+[daewoo-integration-plan.md](daewoo-integration-plan.md). Session automation and
+actual financial/report semantics remain unverified. No adapter/account/settings
+changed and no migration reserved. Missing amounts must not become confirmed zero.
+
 ## Couriers: three of them, one shape
 
 PostEx, **Trax** and **M&P**. Daewoo is not being worked on and is off the list
