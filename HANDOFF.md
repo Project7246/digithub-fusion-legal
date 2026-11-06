@@ -1,12 +1,11 @@
 # Handover - current folder state
-Last agent: Codex - 6 Nov 2026. Task: private Daewoo API connection checker.
-- Owner confirms API Management has API key/user/password, no Test button.
+Last agent: Codex - 7 Nov 2026. Task: sanitized Daewoo rejection diagnosis.
 - tools/daewoo-connection-check.mjs: fixed HTTPS read-only getLocations, muted inputs,
   no input history, redirects refused, 25s timeout, only sanitized status output.
   No credential values in code/arguments/files/logs. Node-only, no dependencies/settings.
 - Run: node tools/daewoo-connection-check.mjs. Owner pastes three credentials privately.
-  Actual API auth is PENDING. A PC PASS is not SGP1 API auth, portal login or CPR proof.
-- Offline --self-test: 9 response fixtures + hidden-input punctuation/no-echo check PASS.
+  Owner result REJECTED; reason unresolved. New DAEWOO_REASON categories require private rerun.
+- Offline --self-test: 9 response + 11 safe-reason + hidden-input/no-echo checks PASS.
   Node syntax/whitespace PASS. Earlier PowerShell draft removed; no policy bypass/change.
 - docs/daewoo-integration-plan.md holds contracts/findings and helper instructions.
 - Native UI reads began timing out; owner is doing manual API Management inspection.
@@ -22,6 +21,7 @@ Last agent: Codex - 6 Nov 2026. Task: private Daewoo API connection checker.
 - Existing app Healthy/SGP1. Container portal script GET 200; API root GET 403.
   Portal reachable; API root response is NOT a credential test. No relay/env changes.
 - No Daewoo adapter/account/runtime/schema edits or booking/payment mutations; no migration.
+  API Management password must be used; portal-login password is not assumed identical.
 - Banking f42c0c1 previously passed 22 checks; password/recovery and navigation retained.
 - Singapore e.availity.pk / same DO app; Neon wispy-dream-34764792/production/neondb.
 - Ohio billowing-poetry-08559264 read-only >=13 Nov; no deletion; reconcile before rollback.

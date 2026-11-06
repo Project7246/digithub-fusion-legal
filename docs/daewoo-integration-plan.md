@@ -20,7 +20,14 @@ prints only DAEWOO_API / HTTP_STATUS status lines. Never paste credentials in ch
 Offline --self-test checks nine success/rejection/schema fixtures and that hidden
 input preserves punctuation without echo. PASS means this locations request was
 accepted from the PC; it does not verify app-server API auth, portal login or CPRs.
-Actual merchant credential check is still pending the owner's private input.
+Owner ran the private check and reported DAEWOO_API=REJECTED. The reply passed
+the expected boolean Success/Error envelope but indicated rejection. This does
+not isolate a wrong password, key, user, account state or access policy. Helper
+now also emits DAEWOO_REASON as a fixed category inferred from Response/ResponseDetail;
+raw upstream text never leaves the diagnostic. Mixed key/password messages remain
+ambiguous. Updated self-test covers 9 response + 11 reason + hidden-input checks.
+Use API Management's USER PASSWORD, which is not assumed to equal portal login.
+No actual values are recorded; another private run is needed for the safe reason.
 
 ### Singapore container connectivity - subsequently verified
 

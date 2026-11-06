@@ -12,6 +12,22 @@ function outcome(reply) {
   return 'PASS';
 }
 
+// Only fixed categories leave this function; never return upstream text.
+function rejectionReason(reply) {
+  const text=[reply?.Response,reply?.ResponseDetail].filter(v=>typeof v==='string').join(' ').toLowerCase();
+  if (/rate.?limit|too many requests|throttl/.test(text)) return 'RATE_LIMIT_REPORTED';
+  if (/\bip\b|whitelist|allowlist|blacklist|not allowed from/.test(text)) return 'ACCESS_POLICY_REPORTED';
+  if (/disabled|suspended|deactivated|inactive account/.test(text)) return 'ACCOUNT_DISABLED_REPORTED';
+  const keyMention=/api.?key|invalid key|incorrect key/.test(text);
+  const credentialMention=/password|credential|invalid user|incorrect user|user.?id|unauthori[sz]|authentication|login/.test(text);
+  if(keyMention && credentialMention)return 'API_CREDENTIALS_REPORTED';
+  if(keyMention)return 'API_KEY_REPORTED';
+  if(credentialMention)return 'CREDENTIALS_REPORTED';
+  if (/required|missing|parameter|validation|invalid request/.test(text)) return 'REQUEST_VALIDATION_REPORTED';
+  if (/no (?:location|terminal|data|record)/.test(text)) return 'NO_DATA_REPORTED';
+  return 'UNSPECIFIED';
+}
+
 if (process.argv.includes('--self-test')) {
   const cases = [
     [{Success:true,Error:false,Data:[{terminal_id:1,terminal_name:'Fixture city'}]},'PASS'],
@@ -25,6 +41,23 @@ if (process.argv.includes('--self-test')) {
     [null,'UNEXPECTED_RESPONSE']
   ];
   for (const [reply, expected] of cases) assert.equal(outcome(reply), expected);
+  const reasons=[
+    ['Invalid API Key: fixture-private','API_KEY_REPORTED'],
+    ['Invalid API user or password: fixture-private','CREDENTIALS_REPORTED'],
+    ['Invalid API key or password','API_CREDENTIALS_REPORTED'],
+    ['Client IP not whitelisted','ACCESS_POLICY_REPORTED'],
+    ['Account has been disabled','ACCOUNT_DISABLED_REPORTED'],
+    ['Too many requests','RATE_LIMIT_REPORTED'],
+    ['Missing parameter','REQUEST_VALIDATION_REPORTED'],
+    ['No locations found','NO_DATA_REPORTED'],
+    ['Unrecognized fixture-private response','UNSPECIFIED']
+  ];
+  for(const [Response,expected] of reasons){
+    const reason=rejectionReason({Response});
+    assert.equal(reason,expected);assert.ok(!reason.includes('fixture-private'));
+  }
+  assert.equal(rejectionReason({Response:{secret:'fixture-private'}}),'UNSPECIFIED');
+  assert.equal(rejectionReason({ResponseDetail:'Invalid key fixture-private'}),'API_KEY_REPORTED');
   const stdin=new PassThrough(), stdout=new PassThrough();
   stdin.isTTY=true; stdin.setRawMode=()=>{};
   let visible=''; stdout.on('data',chunk=>{visible+=chunk;});
@@ -35,7 +68,7 @@ if (process.argv.includes('--self-test')) {
   assert.ok(!visible.includes(fixture),'private input must never echo');
   assert.ok(visible.includes('Fixture input'));
   stdin.destroy();stdout.destroy();
-  console.log('Daewoo checker: 9 synthetic response checks + hidden-input check PASS; no network used.');
+  console.log('Daewoo checker: 9 response + 11 safe-reason + hidden-input checks PASS; no network used.');
 } else {
   await main();
 }
@@ -66,6 +99,7 @@ async function main() {
   try {
     console.log('Read-only locations API check. No booking, cancellation or payment changes.');
     console.log('This check runs on this PC, not on the Singapore app.');
+    console.log('Use all three values from API Management, including its USER PASSWORD.');
     apiKey=await readHidden('1/3 API KEY');
     apiUser=await readHidden('2/3 USER ID');
     apiPassword=await readHidden('3/3 USER PASSWORD');
@@ -84,6 +118,7 @@ async function main() {
     catch { console.log('DAEWOO_API=UNEXPECTED_RESPONSE'); process.exitCode=1; return; }
     const result=outcome(reply);
     console.log('DAEWOO_API='+result);
+    if(result==='REJECTED')console.log('DAEWOO_REASON='+rejectionReason(reply));
     if (result==='PASS') {
       console.log('Locations API accepted this request. Portal login and CPR matching are separate checks.');
     } else process.exitCode=1;
