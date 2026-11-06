@@ -279,8 +279,14 @@ the app the background stays plain, because that is where the books are worked o
     redirect-URI entries left in Intuit (Production Redirect URIs) and Shopify
     (Dev Dashboard, Fusion app version) when they were added as prep now come
     out too, since `ca.availity.pk` itself is gone and they serve no purpose.
-    Still does not cover region or `DATABASE_URL` changes (Steps C-D), which
-    still wait for the owner.
+  - **Extended to Steps C and D, same day**: owner said "koi bhe app use ni
+    krta siway mery, done kro" (nobody else uses the app, finish it) - this
+    answers the one open question about quiescing writers during the database
+    copy, so Claude proceeds with Step C (region to Singapore) and Step D
+    (database to Singapore) directly. `DATABASE_URL` and any other connection
+    string is still never typed into a reply, a git-tracked file, or named by
+    value - read off Neon's own console when needed and used directly in a
+    local command, never echoed back.
 - First `git push` from this folder opens a browser login: user must sign in as **Project7246**.
 - When DigitalOcean env vars change, user must Save and redeploy.
 - If Google or a new login is added: add `https://e.availity.pk/...` as a redirect
