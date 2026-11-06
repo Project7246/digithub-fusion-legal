@@ -5,6 +5,84 @@ Owner wants the same Fusion courier screens and behavior, with a Daewoo-specific
 implementation underneath. Owner confirms only the supplied API guide is offered
 in the merchant portal and there is no webhook. Credentials must stay private.
 
+## Read-only verification results - 6 Nov 2026
+
+### Singapore container connectivity - subsequently verified
+
+Opened the existing DigitalOcean app's web-service console. UI confirmed Healthy
+and SGP1. A one-off credential-free Node fetch from the running container returned:
+
+- Portal public financial-report script: HTTP 200.
+- API host root https://codapi.daewoo.net.pk/: HTTP 403.
+
+The portal is reachable from the live application, including validated HTTPS.
+The API host also returned an HTTP response, so this was not a DNS/TCP/TLS timeout.
+However a root-path 403 does NOT establish whether a documented authenticated API
+endpoint works, nor whether the merchant's credentials are valid. No credentials,
+environment variables or database records were read by the probe. No settings,
+deployments or application files were changed in the container. This supersedes
+the earlier SGP1-not-tested checkpoint below; authenticated API testing is pending.
+
+Console paste caveat: pasted input acquired literal bracketed-paste markers.
+Removed the six-character prefix and trailing marker before execution. Browser
+Ctrl+E targets its search bar, so use terminal End after restoring terminal focus.
+Verify the settled terminal buffer before Enter; do not execute the paste wrapper.
+
+Verified after the initial plan, using the signed-in portal and its public scripts:
+
+- Native report and invoice-detail UI works. Invoice cover Excel download completed;
+  downloaded XLSX passed ZIP/workbook/worksheet checks and contains the expected
+  invoice, period, date, COD, service-charge and reimbursed-amount headers.
+  Export remains private in Downloads; no contents copied into this repository.
+- Public script assets/js/globalJs.js sets Admin.asmx/ as its service base. Calls
+  are POST JSON with application/json; charset=utf-8 and a response .d envelope.
+  Some methods return nested JSON strings; others return arrays/objects directly.
+- assets/js/pages/financial-report.js calls GetCustomersNew and GetFinancialReport.
+  Financial request keys: fromDate, toDate, customerId. response.d.Data is parsed
+  with JSON.parse. Actual fields include booking_id, BarCode, reference_no,
+  booking_datetime_f, SourceTerminal, DestinationTerminal, status, StatusDate,
+  invoice_status, Service_invoice_no, Payment_invoice_no, amount_cod, amount_wr,
+  AmountToPaid, AmountPaid2 and invoice_no.
+- assets/js/pages/master.js creates a browser-side DataTable with Copy/Excel/PDF.
+  Financial script adds the entire returned array locally; no server paging keys
+  are sent by that flow. Bounded resumable date windows are required.
+- Public assets/js/function.js defines invoice covers via Admin.asmx/GetReport,
+  keys fromDate/toDate/customerId. Success is response.d.Success; Data is an array.
+  Cover fields: invoice_no, customer_id, invoice_period_start_date,
+  invoice_period_end_date, invoice_date, TotalCODAmount, TotalServiceCharges,
+  TotalReimbursementAmount. Dates use the ASP.NET /Date(...)/ representation.
+- Detail uses Admin.asmx/GetDetailReport with invoiceNo/customerId. Fields include
+  booking_id, Barcode, booking_datetime, STI, BTN, weight, amount_wr, amount_cod,
+  RST_Amt, RWHT_Amt and portal_ref_invoice. Separate tax fields are confirmed.
+- Date-wise discovery uses Admin.asmx/LoadDatewiseReport with reportMode,
+  fromDate/toDate/reportType. Source explicitly uses reportMode 4 for custom dates;
+  includes separate manual/API booking tabs. Data is returned directly as .d;
+  session expiry can be the literal User Session Expired!, not an empty array.
+- Without browser credentials, FinancialReport.aspx redirects to Login.aspx and
+  the read-only Admin.asmx/CheckUserSession call rejects the session. Login page
+  uses assets/js/pages/login.js: Admin.asmx/AuthenticateUser with userName/password.
+  CheckUserSessionUpdated and SessionExpired handling exist in the newer wrapper.
+  Fresh programmatic authentication has NOT been attempted with real credentials.
+- Reimbursement report type controls are COD Invoice (Services) and COD Customer
+  Ledger. This confirms separate service-invoice/ledger routes in the UI; their
+  loaded report output and full accounting meaning remain to be verified.
+
+Private arithmetic checks used integer paisa and emitted booleans only. Observed
+invoice cover arithmetic reconciled internally. The selected detail's row count,
+COD, charges and both tax sums matched its own footer; its COD did NOT reconcile
+to its matching cover, including the tested subtraction of displayed taxes.
+This is a verified reconciliation exception, not a proven upstream bug or a
+justification to change the courier's figures. Do not infer a universal deduction
+policy from the selected covers, which did not exercise a nonzero service-charge
+deduction. Preserve authoritative covers and detail separately with an exception.
+
+Still unverified: API-key authentication/current API behavior, server-side fresh
+portal login/session renewal, customer-scope enforcement by the upstream service,
+report date boundaries/completeness across periods, separate service/ledger output,
+bank-paid semantics and the cover/detail discrepancy. SGP1 connectivity was not
+tested: Computer Use stopped the DigitalOcean-tab switch because it could not
+confidently establish the browser URL. No claim of full end-to-end readiness.
+
 ## Evidence reviewed
 
 - Supplied local COD Home Delivery API PDF: 16 pages. Filename says Version 1.3;
