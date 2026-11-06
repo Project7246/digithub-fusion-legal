@@ -1,28 +1,29 @@
 # Handover - current folder state
-Last agent: Codex - 6 Nov 2026. Task: compact shared rail/home cards and clearer selected headings.
-- User accepted prior Settings/hierarchy change, requested less spacing/scroll and theme selection.
-- Changed public/app.css (non-:root): tighter brand/nav/rows/indents; aqua active links with
-  dark text, teal-tinted active parents; labels keep wrapping rather than being cut off.
-- public/nav.js: one top-level group open, compact overview default, last group remembered;
-  active route wins on work pages. Adds selected ancestor classes and aria-current links.
-- public/index.html: compact icon/title card grid, 4/3/2/1 responsive columns; short-height rule.
-- public/tiles.css: compact module tile shelves consistently across app sections/companies.
-- Extended tools/navigation-check.mjs: compact defaults, remembered/active groups, accordion,
-  selected semantics; existing exact account matching, rights pruning and Settings tests retained.
-- Docs: docs/pages-and-screens.md. No server, money, scope, config, :root or poller changes.
-- Checks: npm.cmd run check:all PASS (20 checks), navigation fixture PASS, git diff whitespace PASS.
-- Pre-push live baseline 1793954901328, setup-check all required true. Post-push version pending.
-- Visual viewport/browser layout not independently verified (browser connector/native input
-  unreliable). Owner should refresh and inspect home grid + active rail on normal/narrow screens.
-- No data is hidden to remove scrolling; very narrow/short windows or large zoom may still scroll.
-- Previous super-admin profile Settings -> /settings#storage remains; actual server rights unchanged.
+Last agent: Codex - 6 Nov 2026. Task: self-service passwords + super-admin staff-ID recovery.
+- New account-password.js router: POST /api/me/password targets only verified session user,
+  requires current password + new/confirmation, scrypt, existing try limiter, old-hash CAS update.
+  Viewer/report-only users may change their OWN password; demo/disabled and foreign-target attempts refused.
+- Existing POST /api/portal/people/password moved from server.js into router: requireBoss,
+  member account only, new/confirmation required. Existing company-scoped reset remains unchanged.
+- server.js: router import/registration, personal POST-gate exception, canChangePassword status flag.
+  No whoIs/PAGE_NEED/RIGHT_OF_PATH policy changes, company rights changes or new DB objects.
+- public/settings.html: masked personal form under profile; shared nav.js offers Change password.
+- public/people.html: masked Reset password dialog replaces prompt and plaintext success echo.
+  public/account-password.js handles forms, confirmation, duplicate submit and field clearing.
+- Tests: npm.cmd run check:all PASS (21 checks); server/pages syntax and whitespace PASS.
+  New synthetic account-password check covers ownership, viewer access, invalid/wrong/oversized
+  inputs, throttling, races, hashes, boss-only recovery and form behavior. No real account touched.
+- Docs: docs/accounts-companies.md. No credential values recorded, no new timers/migration reserved.
+- Live pre-push baseline 1793956112999; setup required all true. Post-push verification pending.
+- Owner to refresh: staff avatar -> Change password, profile form, and super-admin People -> Reset
+  password. User supplies own credentials privately. No independent browser layout verification.
+- Previous compact rail/home cards and aqua selection preserved; Settings/Database boss-only retained.
 - Singapore migration retained: e.availity.pk, same app SGP1; Neon Fusion Singapore
   wispy-dream-34764792 / production br-calm-bonus-ao4mnaaa / neondb.
-- Ohio billowing-poetry-08559264 stays READ-ONLY >=13 Nov; no deletion authorized.
-  Reconcile new Singapore writes before rollback. SESSION_SECRET and relay preserved.
-- Final copy matched 47 row fingerprints, 538 columns, 28 sequences. Private backups outside git:
-  LOCALAPPDATA/FusionMigration/20261106-055453; never upload/commit their contents.
-- Owner verified companies/CPR, all courier Tests Works, Database screen 105.1 MB/10.3%.
-  Fresh QB OAuth/independent portal round-trip unobserved; copied compute meter is not savings.
-- Leftovers unchanged: Trax ElRB/old M&P backfill, nine unposted CPRs, PostEx AH/UR hooks,
-  M&P Rose Belle unrelated work. No migration number reserved. No unrelated dirty files.
+- Ohio billowing-poetry-08559264 READ-ONLY >=13 Nov, no deletion authorized; reconcile before rollback.
+  SESSION_SECRET/relay unchanged; final copy matched 47 public row fingerprints/538 columns/28 sequences.
+- Private backups LOCALAPPDATA/FusionMigration/20261106-055453; never upload/commit contents.
+- Owner previously verified companies/CPR, all courier Tests Works, Database 105.1 MB/10.3%.
+  Fresh QB OAuth/separate portal-login unobserved; copied compute history is not proof of savings.
+- Leftovers: Trax ElRB/old M&P backfill, nine unposted CPRs, PostEx AH/UR hooks; Rose Belle unrelated.
+- No dirty files at takeover; task files only. Lock released after push/check.

@@ -104,6 +104,12 @@
   .fxsay.fxbad{background:rgba(185,58,44,.09);border:1px solid rgba(185,58,44,.28);color:#8E2C22}
 
   .fxnone{padding:18px 0;color:var(--muted);font-size:13px}
+  .fxpwreset{width:440px;max-width:calc(100vw - 32px);border:1px solid var(--line);
+    border-radius:12px;padding:22px;background:var(--panel);color:var(--text)}
+  .fxpwreset::backdrop{background:rgba(24,35,42,.5)}
+  .fxpwreset h2{margin:0 0 12px;font-size:18px}
+  .fxpwreset .fxfields{grid-template-columns:minmax(0,1fr)}
+  .fxpwreset .fxhint{margin:0 0 16px}
 
   @media (max-width:560px){
     .fxbar{padding:12px 16px}
@@ -169,7 +175,26 @@
   </div>
 </div>
 
+<dialog class="fxpwreset" id="passwordResetDialog" aria-labelledby="passwordResetTitle">
+  <h2 id="passwordResetTitle">Reset password</h2>
+  <p class="fxhint" id="passwordResetWho"></p>
+  <form id="passwordResetForm">
+    <div class="fxfields">
+      <div><label for="passwordResetNew">New password</label>
+        <input id="passwordResetNew" type="password" autocomplete="new-password" maxlength="200" required></div>
+      <div><label for="passwordResetConfirm">Confirm new password</label>
+        <input id="passwordResetConfirm" type="password" autocomplete="new-password" maxlength="200" required></div>
+    </div>
+    <div class="fxsave">
+      <button class="fxgo" id="passwordResetSave" type="submit">Reset password</button>
+      <button class="fxmini" id="passwordResetCancel" type="button">Close</button>
+    </div>
+    <p class="fxhint" id="passwordResetSay" role="status" aria-live="polite"></p>
+  </form>
+</dialog>
+
 <script src="/nav.js"></script>
+<script src="/account-password.js"></script>
 <script>
 "use strict";
 (function(){
@@ -251,7 +276,7 @@
       (p.boss ? '' :
         '<div class="fxacts">' +
           '<button class="fxmini" data-do="edit">Access</button>' +
-          (p.loginId ? '<button class="fxmini" data-do="pw">New password</button>' : '') +
+          (p.loginId ? '<button class="fxmini" data-do="pw">Reset password</button>' : '') +
           '<button class="fxmini" data-do="off">' + (p.off ? 'Turn on' : 'Turn off') + '</button>' +
         '</div>') +
       '<div class="fxedit" id="ed-' + esc(p.sub) + '"></div>' +
@@ -283,13 +308,7 @@
     if (!p) return;
 
     if (what === 'pw') {
-      var pw = prompt('New password for ' + p.loginId);
-      if (pw === null) return;
-      post('/api/portal/people/password', { sub: sub, password: pw }).then(function(o){
-        say(o.ok ? 'fxgood' : 'fxbad', o.ok
-          ? 'Password set. Pass it on: ' + pw
-          : (o.d.error || 'That did not work.'));
-      });
+      window.FUSION.openPasswordReset({ sub:sub, loginId:p.loginId });
       return;
     }
 

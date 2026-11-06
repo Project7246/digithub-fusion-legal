@@ -3,6 +3,39 @@
 Moved out of CLAUDE.md on 4 Nov 2026, word for word, so that a task reads only
 the module it touches. Nothing here was changed, reworded or dropped - see the
 index in CLAUDE.md. Read this file before working on this module.
+
+## Personal password change and staff-ID recovery - 6 Nov 2026
+
+Every signed-in account with a password has **Change password** in the shared
+profile menu and Settings > Your profile: current password, new password and
+confirmation. This is independent of report/company write rights. `/auth/status`
+exposes only `canChangePassword`, not a hash or password. Demo/disabled accounts
+cannot use it. The existing password policy (nonempty, at most 200 characters)
+and existing scrypt hashing are unchanged.
+
+`account-password.js` exports the router; `server.js` only registers it, exposes
+the status flag and exempts `/api/me/password` from the module POST-right gate.
+The route derives the target from the verified session, checks the current
+password, uses the existing ten-try limiter under a separate password-change key,
+and updates with an old-hash/disabled-state condition so a concurrent reset cannot
+be overwritten. A submitted user ID, company, role or rights never changes the
+target or access. Current signed-in sessions follow the existing session policy.
+
+Lost staff-ID passwords are replaced by the super admin via **People > Reset
+password**. The existing `/api/portal/people/password` route moved into the same
+router, still requires `requireBoss` and a member account, and now requires new
+password confirmation. Its masked dialog clears fields on success/close and
+never echoes the new password in a success message. The user can then choose
+their own password through the personal form. Email-account forgotten-password
+codes and the company-scoped `/users` recovery flow are unchanged.
+
+No new table, migration, plaintext credential storage, access grant or background
+job is involved. Synthetic `tools/account-password-check.mjs` covers ownership,
+viewer access, wrong/invalid/oversized inputs, throttling, concurrent changes,
+scrypt storage, super-admin-only recovery, recovery followed by self-change and
+browser form behavior. It is part of `check:all`; no real account was changed
+during development/testing. The shared browser helper is `public/account-password.js`.
+
 ## Who may open the app
 
 Three doors, one room. Whichever was used, what ends up in `users` is the same

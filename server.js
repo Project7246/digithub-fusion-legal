@@ -85,6 +85,7 @@ import {
   mailReady, mailStatus, checkMail
 } from './notify.js';
 import { initPush, publicKey, addSub, dropSub, hasSub, pushTo } from './push.js';
+import { createAccountPasswordRouter } from './account-password.js';
 import {
   getAccessToken, getCompanyInfo, loadItems, loadTerms,
   getOrCreateCustomer, postInvoice, qbQuery, qbReport, listAccounts as qbAccountList, forgetToken, deleteInvoice, foldItem, salesPrefs,
@@ -1382,6 +1383,7 @@ const USER_MAY_POST = new Set([
   '/api/me/staff-asked',
   // their own name and picture
   '/api/me/profile',
+  '/api/me/password',
   // the portal: each route decides for itself who may do it
   '/api/portal/companies/new', '/api/portal/companies/rename',
   '/api/portal/companies/delete', '/api/portal/companies/restore',
@@ -2509,6 +2511,7 @@ app.get('/auth/status', async (req, res) => {
     support: { email: [...ADMIN_EMAILS][0] || null, phone: SUPPORT_PHONE },
     user: user ? (user.name || user.email) : null,
     loginId: (user && user.login_id) || null,
+    canChangePassword: !!(user && user.pass && !user.disabled && sub !== DEMO_SUB),
     avatarV: (user && user.avatar && user.avatar_at) ? new Date(user.avatar_at).getTime() : null
   });
 });
@@ -2531,6 +2534,9 @@ app.get('/api/me/avatar', async (req, res) => {
     res.send(Buffer.from(m[2], 'base64'));
   } catch (e) { res.status(500).end(); }
 });
+
+app.use(createAccountPasswordRouter({ currentUser, getUser, pool, forgetWho,
+  tooManyTries, triesDone, requireBoss, setMemberPassword, demoSub: DEMO_SUB }));
 
 app.post('/api/me/profile', async (req, res) => {
   try {
@@ -2892,25 +2898,6 @@ app.post('/api/portal/people/new', async (req, res) => {
     }
     console.error('portal/people/new:', e.message);
     res.status(500).json({ error: 'Could not make that user ID.' });
-  }
-});
-
-// A user id's password, set from the portal - there is no address to send a code
-// to, so whoever made it sets a new one and passes it on.
-app.post('/api/portal/people/password', async (req, res) => {
-  if (!await requireBoss(req, res)) return;
-  try {
-    const sub = String(req.body.sub || '');
-    const password = String(req.body.password || '');
-    const weak = passwordComplaint(password);
-    if (weak) return res.status(400).json({ error: weak });
-    const u = await getUser(sub);
-    if (!u || u.door !== 'member') return res.status(404).json({ error: 'That is not a user ID.' });
-    await setMemberPassword(sub, password);
-    res.json({ ok: true });
-  } catch (e) {
-    console.error('portal/people/password:', e.message);
-    res.status(500).json({ error: 'Could not set the password.' });
   }
 });
 

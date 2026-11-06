@@ -131,6 +131,11 @@
   .fxpic label.mini{cursor:pointer;display:inline-block}
   .fxnameform label{flex:0 0 100%;font-size:11px;letter-spacing:.07em;text-transform:uppercase;
     color:var(--faint)}
+  .fxpassword{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px}
+  .fxpassword label{display:block;font-size:12px;color:var(--muted)}
+  .fxpassword input{display:block;width:100%;margin-top:5px;min-width:0}
+  .fxpassword .password-actions{grid-column:1 / -1;display:flex;gap:12px;align-items:center;flex-wrap:wrap}
+  .password-panel{margin-top:20px;padding-top:16px;border-top:1px solid var(--line)}
   .fxdanger{margin-top:24px;padding-top:18px;border-top:1px solid var(--line)}
   .fxdanger summary{cursor:pointer;font:600 13px var(--head);color:var(--bad,#9A2E24);
     list-style:none;padding:4px 0}
@@ -222,6 +227,22 @@
             </div>
             <div class="note" id="coSay"></div>
           </form>
+
+          <section class="password-panel" id="passwordBox" style="display:none">
+            <h3 class="fxh3">Change password</h3>
+            <form class="fxpassword" id="passwordForm">
+              <label for="passwordCurrent">Current password
+                <input id="passwordCurrent" type="password" autocomplete="current-password" maxlength="200" required></label>
+              <label for="passwordNew">New password
+                <input id="passwordNew" type="password" autocomplete="new-password" maxlength="200" required></label>
+              <label for="passwordConfirm">Confirm new password
+                <input id="passwordConfirm" type="password" autocomplete="new-password" maxlength="200" required></label>
+              <div class="password-actions">
+                <button class="mini" id="passwordSave" type="submit">Change password</button>
+                <span class="note" id="passwordSay" role="status" aria-live="polite"></span>
+              </div>
+            </form>
+          </section>
 
           <!-- Fusion's own, and nowhere near the buttons that are pressed daily.
                It is in here, behind its own fold, because a company going dark
@@ -462,6 +483,7 @@
 </div>
 
 <script src="/nav.js"></script>
+<script src="/account-password.js"></script>
 <script>
 (function(){
   "use strict";
@@ -650,6 +672,7 @@
     $('nameBox').value = s.user || '';
     $('mIdLabel').textContent = s.loginId ? 'User ID' : 'Email';
     $('mId').textContent = s.loginId || s.email || '\u2014';
+    $('passwordBox').style.display = s.canChangePassword ? '' : 'none';
     $('mCo').textContent = s.companyName || (s.connected ? s.realmId : 'Not connected');
     if (s.admin && s.connected) {
       $('coForm').style.display = '';

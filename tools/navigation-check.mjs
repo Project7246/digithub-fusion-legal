@@ -162,7 +162,8 @@ assert.ok(couriers.rail.querySelector('a[href="/logistics"]'), 'overview remains
 
 for (const boss of [true, false]) {
   const ui = navigation('finance', '/');
-  ui.context.window.APP.ready = Promise.resolve({ boss, name: 'Synthetic user', email: 'fixture@example.test' });
+  ui.context.window.APP.ready = Promise.resolve({ boss, canChangePassword:true,
+    name: 'Synthetic user', email: 'fixture@example.test' });
   vm.runInContext(source.slice(source.indexOf('  window.FUSION = window.FUSION || {};',
     source.indexOf('  /* ---------- the person:')),
     source.indexOf('  (function pageTools(){')), ui.context);
@@ -172,6 +173,8 @@ for (const boss of [true, false]) {
   assert.equal(!!host.querySelector('a[href="/settings#storage"]'), boss,
     'Settings/Database shortcut is offered only to the super-admin');
   assert.ok(host.querySelector('a[href="/settings#profile"]'), 'existing profile entry remains');
+  assert.match(host.lastChild.innerHTML, />Change password<\/a>/,
+    'staff and super-admin both see their own password action');
 }
 
 console.log('Navigation: 7 sections, active ancestors, disclosure handlers, exact account selection, rights pruning and super-admin Settings PASS');

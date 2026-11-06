@@ -714,6 +714,7 @@
             (sub ? '<small>' + esc(sub) + '</small>' : '') + co + '</div></div>' +
           '<div style="padding:6px 0">' +
             '<a href="/settings#profile">Edit profile</a>' +
+            (s.canChangePassword ? '<a href="/settings#profile">Change password</a>' : '') +
             // More than one company, and moving between them is a thing this
             // person does daily - the way QuickBooks keeps the switch by the name
             (s.boss || s.companyCount > 1 ? '<a href="/companies">Switch company</a>' : '') +
