@@ -133,7 +133,7 @@ try {
 
   const app = express();
   app.use('/api/bank', createBankingRouter({
-    requireBoss: async (req, res) => req.get('x-fixture-boss') === 'yes' ||
+    requireBanking: async (req, res) => req.get('x-fixture-boss') === 'yes' ||
       (res.status(403).json({ error: 'Boss required' }), false),
     requireCompany: async req => req.get('x-fixture-realm') || 'fixture-company'
   }));

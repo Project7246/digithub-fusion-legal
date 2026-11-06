@@ -3,6 +3,23 @@
 Moved out of CLAUDE.md on 4 Nov 2026, word for word, so that a task reads only
 the module it touches. Nothing here was changed, reworded or dropped - see the
 index in CLAUDE.md. Read this file before working on this module.
+
+## Banking section access - owner override, 6 Nov 2026
+
+Owner explicitly approved opening Banking ("ha kholo") and requested separate
+Banking section access. This supersedes the older ADMIN_EMAILS-only decision below.
+All access includes Banking management; Reports only includes read-only Banking.
+Custom access has independent **Banking reports** (`bankingreports`) and
+**Manage Banking** (`banking`, includes reports) choices in the existing access editor.
+No grant opens another company's records: every Banking API retains requireCompany
+and realm-filtered queries. Hidden Banking amounts also deny Banking access.
+GET/HEAD require report access; mutations require management access on the server.
+Report-only screens expose reports, CPRs and exports without edit/setup controls.
+Banking grant changes and initial member grants write actor, old/new grant and
+timestamp into the existing company-scoped Banking audit in the same transaction.
+No schema change, migration, background timer or real-account test is involved.
+The launcher lists implemented permitted pages only, without future placeholders.
+
 ## PostEx HT reconciliation and receipt ranges - 3 Nov 2026
 
 PostEx Receipts cards and the portal list use the same date-filtered CPR response,

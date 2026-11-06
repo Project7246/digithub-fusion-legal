@@ -69,8 +69,18 @@ export function write(apps, money) {
 export function mayApp(who, app) {
   if (!who || !app) return false;
   if (who.admin || who.role === 'admin' || who.role === 'standard') return true;
+  if (app === 'bankingreports' && who.role === 'viewer') return true;
   if (who.role !== 'custom') return false;
-  return read(who.rights).apps.indexOf(app) > -1;
+  const apps = read(who.rights).apps;
+  return apps.indexOf(app) > -1 || (app === 'bankingreports' && apps.indexOf('banking') > -1);
+}
+
+// Page discovery is separate from write permission: Reports only may open
+// implemented pages without being handed their mutation endpoints.
+export function readableApps(who, groups) {
+  if (!who || who.allowed === false || who.disabled || who.role === 'none') return [];
+  return (groups || []).filter(group => (who.role === 'viewer' || mayApp(who, group.key)) &&
+    (group.module !== 'banking' || seesMoney(who, 'banking'))).map(group => group.key);
 }
 
 // Is this person part of this module at all? Holding one job inside it is

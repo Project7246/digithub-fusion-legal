@@ -15,6 +15,7 @@ const checks = [
   ['pages parse', 'tools/check-pages.js'],
   ['shared navigation', 'tools/navigation-check.mjs'],
   ['account passwords', 'tools/account-password-check.mjs'],
+  ['banking access', 'tools/banking-access-check.mjs'],
   ['banking', 'tools/banking-check.mjs'],
   ['banking report', 'tools/banking-report-check.mjs'],
   ['banking setup', 'tools/banking-setup-check.mjs'],

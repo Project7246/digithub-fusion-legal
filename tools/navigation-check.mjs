@@ -154,6 +154,7 @@ const pruning = source.slice(source.indexOf('      if(!s.boss && rail){'),
   source.indexOf('      if(!s.admin){'));
 couriers.context.s = { boss: false, limited: true };
 couriers.context.mine = [];
+couriers.context.window.APP.canOpen = () => false;
 vm.runInContext(pruning, couriers.context);
 assert.equal(couriers.document.getElementById('ctree'), null, 'denied courier tree is removed');
 assert.equal(couriers.document.getElementById('couriersLink'), null, 'denied folder is removed');

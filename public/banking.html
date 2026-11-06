@@ -22,6 +22,7 @@
   .pills button:hover{background:var(--panel-2);color:var(--ink)}
   .pills button.on{background:var(--ink);color:#fff}
   .pills{display:flex;width:100%;box-sizing:border-box}
+  .bank-readonly #tabs [data-tab]:not([data-tab="report"]),.bank-readonly .bk-settings-tabs{display:none!important}
   .bk-settings-tabs{margin-left:auto;display:flex;gap:3px;border-left:1px solid var(--line);padding-left:8px}
   .bk-help{display:inline-flex;align-items:center;justify-content:center;width:15px;height:15px;margin-left:4px;border:1px solid #98b5b3;border-radius:50%;font:600 10px var(--sans);color:var(--muted);cursor:help;vertical-align:middle}
   .bk-help:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
@@ -186,8 +187,8 @@
 
       <div id="gate" class="gate hide">
         <img src="/logo.svg" alt="">
-        <h2>Banking is Fusion's own</h2>
-        <p>These are the company's bank accounts, so only Fusion's own administrator opens them.</p>
+        <h2>Banking access required</h2>
+        <p>Ask your administrator for Banking reports or Manage Banking access.</p>
         <a class="solid" href="/">Back</a>
       </div>
     </div>
@@ -210,7 +211,7 @@
 (function(){
   var $ = function(id){ return document.getElementById(id); };
   var NAMES = { postex:'PostEx', trax:'Trax', mnp:'M&P' };
-  var S = { tab:'report', report:null, links:null, drift:[], today:'', editing:null, selectedBank:null, receiptFilter:'receivable', bankView:'accounts', loadedAt:0, spendingRows:[], spendingMonth:'', spendingBank:null, history:{transactions:[],setups:[]}, breakdown:null, editTransaction:null, editSetup:null };
+  var S = { canWrite:true, tab:'report', report:null, links:null, drift:[], today:'', editing:null, selectedBank:null, receiptFilter:'receivable', bankView:'accounts', loadedAt:0, spendingRows:[], spendingMonth:'', spendingBank:null, history:{transactions:[],setups:[]}, breakdown:null, editTransaction:null, editSetup:null };
 
   function esc(s){
     return String(s == null ? '' : s)
@@ -394,13 +395,13 @@
     var rows=(S.history.transactions || []).filter(function(t){return kind==='transfer'?t.type==='transfer':t.type!=='transfer';});
     return '<h3 style="font-size:13px;margin-top:18px">'+(kind==='transfer'?'Transfer log':'Transaction In / Out log')+'</h3><div class="wrapx"><table class="plain"><thead><tr><th>Entry</th><th>Date</th><th>Bank / direction</th><th class="n">Amount</th><th>Reference / note</th><th>Status / saved by</th><th>Actions</th></tr></thead><tbody>'+rows.map(function(t){
       var e=t.entries[0] || {};
-      return '<tr><td>#'+esc(t.id)+' '+esc(t.type)+'</td><td>'+esc(e.on)+'</td><td>'+t.entries.map(function(x){return esc(bankLabel(x.bankId))+' ('+(Number(x.amount)<0?'Out':'In')+')';}).join('<br>')+'</td><td class="n">'+amount(Math.abs(Number(e.amount)))+'</td><td>'+esc(e.note)+'</td><td>'+ (t.reversed?'Updated':'Active')+'<small class="bkdate">'+esc(t.actor)+'<br>'+esc(t.createdAt)+'</small></td><td>'+(!t.reversed?'<button class="mini" data-edit-transaction="'+t.id+'">Edit</button> <button class="mini" data-remove-transaction="'+t.id+'">Remove</button>':'')+'</td></tr>';
+      return '<tr><td>#'+esc(t.id)+' '+esc(t.type)+'</td><td>'+esc(e.on)+'</td><td>'+t.entries.map(function(x){return esc(bankLabel(x.bankId))+' ('+(Number(x.amount)<0?'Out':'In')+')';}).join('<br>')+'</td><td class="n">'+amount(Math.abs(Number(e.amount)))+'</td><td>'+esc(e.note)+'</td><td>'+ (t.reversed?'Updated':'Active')+'<small class="bkdate">'+esc(t.actor)+'<br>'+esc(t.createdAt)+'</small></td><td>'+(S.canWrite && !t.reversed?'<button class="mini" data-edit-transaction="'+t.id+'">Edit</button> <button class="mini" data-remove-transaction="'+t.id+'">Remove</button>':'')+'</td></tr>';
     }).join('')+'</tbody></table></div>';
   }
   function setupLog(){
     var rows=S.history.setups || [];
     return '<div class="sheet" style="margin-bottom:16px"><div class="sec"><h3 style="font-size:13px">Fiscal opening log - all banks</h3><div id="historyMsg" class="msg"></div><div class="wrapx"><table class="plain"><thead><tr><th>Record / bank</th><th>Fiscal year</th><th class="n">Opening In</th><th class="n">Opening Out</th><th>In / Out start</th><th>Status / saved by</th><th>Actions</th></tr></thead><tbody>'+rows.map(function(r){
-      return '<tr><td>#'+esc(r.id)+' '+esc(bankLabel(r.bankId))+'</td><td>'+esc(r.fiscalYear)+'</td><td class="n">'+amount(r.openingIn)+'</td><td class="n">'+amount(r.openingOut)+'</td><td>'+esc(r.inFrom)+'<br>'+esc(r.outFrom)+'</td><td>'+(r.active?'Current':'Superseded')+'<small class="bkdate">'+esc(r.actor)+'<br>'+esc(r.createdAt)+'</small></td><td>'+(r.active?'<button class="mini" data-edit-setup="'+r.id+'">Edit</button> <button class="mini" data-remove-setup="'+r.id+'">Remove</button>':'')+'</td></tr>';
+      return '<tr><td>#'+esc(r.id)+' '+esc(bankLabel(r.bankId))+'</td><td>'+esc(r.fiscalYear)+'</td><td class="n">'+amount(r.openingIn)+'</td><td class="n">'+amount(r.openingOut)+'</td><td>'+esc(r.inFrom)+'<br>'+esc(r.outFrom)+'</td><td>'+(r.active?'Current':'Superseded')+'<small class="bkdate">'+esc(r.actor)+'<br>'+esc(r.createdAt)+'</small></td><td>'+(S.canWrite && r.active?'<button class="mini" data-edit-setup="'+r.id+'">Edit</button> <button class="mini" data-remove-setup="'+r.id+'">Remove</button>':'')+'</td></tr>';
     }).join('')+'</tbody></table></div></div></div>';
   }
   function openingLog(){
@@ -788,8 +789,9 @@
     ['entries','shuffle','Transactions','Opening totals, bank transfers and entries'],
     ['couriers','box','Bank / courier links','Choose where each courier pays'],
     ['add','wallet','Bank settings','Bank details and Google Sheet start dates']
-  ].map(function(t){return '<button class="bk-door" data-open-tab="'+t[0]+'"><span class="bk-icon">'+window.FUSION.mark(t[1])+'</span><b>'+t[2]+'</b><small>'+t[3]+'</small></button>';}).join('')+'</div>';}
+  ].filter(function(t){return S.canWrite || t[0]==='report';}).map(function(t){return '<button class="bk-door" data-open-tab="'+t[0]+'"><span class="bk-icon">'+window.FUSION.mark(t[1])+'</span><b>'+t[2]+'</b><small>'+t[3]+'</small></button>';}).join('')+'</div>';}
   function openTab(tab,push){
+    if(!S.canWrite && tab!=='home' && tab!=='report')tab='report';
     S.tab=tab;
     if(push)history.pushState({bankTab:tab},'',tab==='home'?'/banking':'/banking?view='+tab);
     draw();window.scrollTo({top:0,behavior:'smooth'});
@@ -1056,7 +1058,7 @@
   function load(fresh,background){
     if(background && draftDirty)return Promise.resolve();
     var revision=draftRevision,tab=S.tab;
-    return Promise.all([ get('/api/bank/report' + (fresh === true ? '?fresh=1' : '')), get('/api/bank/links'),
+    return Promise.all([ get('/api/bank/report' + (fresh === true ? '?fresh=1' : '')), S.canWrite ? get('/api/bank/links') : Promise.resolve({accounts:[],links:[],waiting:[]}),
                          get('/api/bank/drift').catch(function(){ return { drift: [] }; }), get('/api/bank/history') ])
       .then(function(a){
         if(background && (draftDirty || draftRevision!==revision || S.tab!==tab))return;
@@ -1077,7 +1079,9 @@
   }
 
   window.APP.ready.then(function(s){
-    if(!s.boss){ $('gate').classList.remove('hide'); return; }
+    if(!s.bankingAccess || !s.bankingAccess.read){ $('gate').classList.remove('hide'); return; }
+    S.canWrite=!!s.bankingAccess.write;
+    document.documentElement.classList.toggle('bank-readonly',!S.canWrite);
     $('body').classList.remove('hide');
 
     $('tabs').addEventListener('click', function(e){
@@ -1089,6 +1093,7 @@
     try {
       var kept = new URLSearchParams(location.search).get('view') || 'home';
       if(!['home','report','entries','couriers','add'].includes(kept))kept='home';
+      if(!S.canWrite && kept!=='home' && kept!=='report')kept='report';
       if(kept){
         S.tab = kept;
         [].slice.call($('tabs').querySelectorAll('button')).forEach(function(x){

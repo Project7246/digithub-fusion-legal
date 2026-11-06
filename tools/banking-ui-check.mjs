@@ -32,6 +32,16 @@ vm.runInNewContext(script.replace(/\}\)\(\);\s*$/, `
 })();`), sandbox);
 const ui = sandbox.checkUi;
 assert.equal((ui.homeView().match(/data-open-tab=/g)||[]).length,4,'Banking opens a four-card launcher');
+ui.S.canWrite=false;
+ui.S.report={banks:[]};
+assert.equal((ui.homeView().match(/data-open-tab=/g)||[]).length,1,'report-only user sees only the report');
+assert.doesNotMatch(ui.homeView(),/data-open-tab="(?:entries|couriers|add)"/);
+ui.S.history={transactions:[{id:1,type:'in',entries:[],reversed:false}],setups:[{id:1,active:true}]};
+assert.doesNotMatch(ui.transactionLog('in'),/data-edit-|data-remove-/);
+assert.doesNotMatch(ui.setupLog(),/data-edit-|data-remove-/);
+ui.S.history={transactions:[],setups:[]};
+ui.S.canWrite=true;
+ui.S.report=null;
 assert.match(html,/id="bkBack"/);
 ui.S.report = { year: { from: '2026-07-01', to: '2027-06-30' },
   banks: [{ id: 1, title: 'Synthetic <Trading>', name: 'Sample Bank', active: true,

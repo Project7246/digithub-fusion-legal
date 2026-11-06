@@ -202,11 +202,12 @@ import { reachCourier } from './reach.js';
 import { absorbPayment } from './traxlive.js';
 import { absorbPayouts, bankSaid, bankDrift } from './mnplive.js';
 import { createBankingRouter } from './banking-router.js';
+import { bankingAccess, createBankingGuard } from './banking-access.js';
 import { initMessages, createMessagesRouter } from './messages.js';
 import { relayState } from './wire.js';
 import {
   read as readGrant, write as writeGrant, mayApp, inModule as inAccessModule,
-  seesMoney, catalogue as accessCatalogue, grantOf
+  seesMoney, catalogue as accessCatalogue, grantOf, readableApps
 } from './access.js';
 import {
   initRates, listCards, saveCard, dropCard, rateReport, expectedFor, todayText as rateToday
@@ -428,13 +429,15 @@ app.get(/^\/$|^\/[A-Za-z0-9-]+$/, async (req, res, next) => {
       return res.redirect('/');
     }
 
+    if (here === '/banking' && !bankingAccess(who).read) return res.redirect('/');
+
     // A page that belongs to an area this person was not given is not theirs to
     // open. Only a limited user is held to this - everybody else was given the
     // whole of the books, or the whole of them to read.
     if (who && who.role === 'custom' && !who.admin) {
-      const rights = who.rights || [];
+      const rights = readGrant(who.rights).apps;
       const need = PAGE_NEED.get(here + '.html');
-      if (need && rights.indexOf(need) < 0) return res.redirect('/');
+      if (need && !mayDo(who, need)) return res.redirect('/');
 
       // A module's own front page belongs to the module. Being given nothing
       // in Logistics and still being able to open /logistics is how somebody
@@ -599,6 +602,7 @@ const AREAS = [
 ];
 const ROLE_KEYS = new Set(ROLES.map(r => r.key));
 
+const requireBanking = createBankingGuard({ currentUser, whoIs });
 const whoCache = new Map();          // sub -> what they are, for half a minute
 const WHO_LIFE = 30 * 1000;
 
@@ -612,7 +616,7 @@ async function whoIs(sub) {
     email: (u && u.email) ? String(u.email).toLowerCase() : '',
     name: u ? (u.name || u.login_id || u.email) : null,
     allowed: u ? u.allowed !== false : true,
-    rights: (u && Array.isArray(u.rights)) ? u.rights : [],
+    rights: (u && u.rights) || [],
     role: (u && u.role) ? u.role : 'viewer',
     // which door they came through, the id they type if it was that door, and the
     // one company a handed-out id belongs to - the rail needs all three to say
@@ -1025,7 +1029,7 @@ app.post('/api/admin/users/money', async (req, res) => {
       if (!theirs) return res.status(403).json({ error: 'That person is not in this company.' });
     }
 
-    await setUserMoney(sub, !!hide);
+    await setUserMoney(sub, !!hide, { actor:currentUser(req), realms:[realmId] });
     forgetWho(sub);
     res.json({ ok: true, hide: !!hide });
   } catch (e) {
@@ -1077,7 +1081,7 @@ app.post('/api/admin/users/access', async (req, res) => {
       );
     }
 
-    await setUserAccess(sub, { allowed, rights: grant, role });
+    await setUserAccess(sub, { allowed, rights: grant, role }, { actor:currentUser(req), realms:[realmId] });
     forgetWho(sub);
 
     // Told that something changed, never what the role is. Which role a person
@@ -1441,6 +1445,14 @@ const USER_MAY_POST = new Set([
 // addresses. The courier accounts and their keys are not here on purpose: those
 // stay with the admin whatever else is given away.
 const RIGHT_GROUPS = [
+  { key: 'bankingreports', module: 'banking', money: true, area: 'banking', label: 'Banking reports',
+    what: 'Read bank reports, history and exports', paths: [] },
+  { key: 'banking', module: 'banking', money: true, area: 'banking', label: 'Manage Banking',
+    what: 'Manage bank accounts, openings, entries and courier links (includes reports)',
+    paths: ['/api/bank/save','/api/bank/close','/api/bank/link','/api/bank/unlink',
+      '/api/bank/post','/api/bank/transfer','/api/bank/adjust','/api/bank/move',
+      '/api/bank/entry-remove','/api/bank/sheet','/api/bank/setup',
+      '/api/bank/transaction','/api/bank/correct-transaction','/api/bank/remove-setup'] },
   { key: 'upload', module: 'finance', money: true, area: 'sales', label: 'Create invoices',
     what: 'Post invoices to QuickBooks',
     paths: ['/api/upload/start', '/api/upload/retry', '/api/upload/resume',
@@ -1599,7 +1611,7 @@ const PAGE_NEED = new Map(Object.entries({
   '/rates.html': 'couriersync',
   // Banking is Fusion's own, like the mail settings and the database page -
   // the routes behind it all ask requireBoss, and the page says so too.
-  '/banking.html': '__boss__',
+  '/banking.html': 'bankingreports',
   '/load-sheet.html': 'couriersync',
   '/dispatch-app.html': 'couriersync',
   '/cprs.html': 'couriersync',
@@ -1620,6 +1632,7 @@ const PAGE_NEED = new Map(Object.entries({
 // is open to anybody with a login. The browser cannot be the only thing saying
 // no: a tile that is not drawn is still a URL that can be typed.
 const SECTION_RIGHTS = new Map(Object.entries({
+  '/banking':    ['bankingreports', 'banking'],
   '/finance':    ['upload', 'payments', 'advance', 'charges', 'void', 'merge',
                   'changes', 'products', 'purchases', 'delete', 'books', 'settings'],
   '/logistics':  ['couriersync'],
@@ -2428,6 +2441,8 @@ app.get('/auth/status', async (req, res) => {
       limited: !!(who && !who.admin && who.role === 'custom'),
       companyCount: mine.length,
       admin: !!(who && who.admin),
+      readableRights: readableApps(who, RIGHT_GROUPS),
+      bankingAccess: bankingAccess(who),
       // With no company yet, what the chooser needs to know is whether this
       // person may connect one - which is not the same question as whether they
       // run Fusion. Somebody who signed up for themselves may.
@@ -2468,6 +2483,8 @@ app.get('/auth/status', async (req, res) => {
     // "admin" above is the administrator of the company now open. This one is
     // Fusion itself - the portal over every company is theirs and nobody else's.
     boss: !!(who && who.admin),
+    readableRights: readableApps(who, RIGHT_GROUPS),
+    bankingAccess: bankingAccess(who),
     canConnect: mayConnect(who),
     letIn,
     // given areas rather than the whole of the books - the rail is cut to them
@@ -2770,7 +2787,7 @@ app.get('/api/portal/people', async (req, res) => {
             off: !!u.disabled,
             allowed: boss || u.allowed !== false,
             role: boss ? 'admin' : (u.role || 'viewer'),
-            rights: Array.isArray(u.rights) ? u.rights : [],
+            rights: readGrant(u.rights).apps,
             realms,
             // nobody has ruled on them yet: this is the queue to work through
             waiting: !boss && !u.decided_at && u.allowed === false,
@@ -2820,8 +2837,8 @@ app.post('/api/portal/people/access', async (req, res) => {
     await setUserCompanies(sub, want);
     await setUserAccess(sub, {
       allowed: want.length > 0,
-      role, rights: role === 'custom' ? rights : []
-    });
+      role, rights: writeGrant(role === 'custom' ? rights : [], readGrant(u.rights).money)
+    }, { actor:currentUser(req), realms:[...had,...want] });
     forgetWho(sub);
     forgetSettled(sub);
 
@@ -2885,6 +2902,7 @@ app.post('/api/portal/people/new', async (req, res) => {
     const sub = await createMemberAccount({
       loginId, name, password,
       realmId: want.length === 1 ? want[0] : null,
+      realms: want,
       madeBy: currentUser(req),
       role, rights: role === 'custom' ? rights : []
     });
@@ -9213,14 +9231,13 @@ app.get('/api/courier/peek', async (req, res) => {
 
 // ==================== banking ====================
 //
-// Fusion's own, every route of it: the banks are the company's money and the
-// courier sign-ins sit beside them. requireBoss, not requireAdmin.
+// Banking has separate report/full grants; every route also requires its company.
 
-app.use('/api/bank', createBankingRouter({ requireBoss, requireCompany }));
+app.use('/api/bank', createBankingRouter({ requireBanking, requireCompany }));
 app.use('/api/messages',createMessagesRouter({requireCompany,currentUser}));
 
 app.get('/api/bank/report', async (req, res) => {
-  if (!await requireBoss(req, res)) return;
+  if (!await requireBanking(req, res)) return;
   const realmId = await requireCompany(req, res);
   if (!realmId) return;
   try {
@@ -9233,7 +9250,7 @@ app.get('/api/bank/report', async (req, res) => {
 });
 
 app.get('/api/bank/one', async (req, res) => {
-  if (!await requireBoss(req, res)) return;
+  if (!await requireBanking(req, res)) return;
   const realmId = await requireCompany(req, res);
   if (!realmId) return;
   try {
@@ -9246,7 +9263,7 @@ app.get('/api/bank/one', async (req, res) => {
 });
 
 app.post('/api/bank/save', async (req, res) => {
-  if (!await requireBoss(req, res)) return;
+  if (!await requireBanking(req, res)) return;
   const realmId = await requireCompany(req, res);
   if (!realmId) return;
   try {
@@ -9257,7 +9274,7 @@ app.post('/api/bank/save', async (req, res) => {
 });
 
 app.post('/api/bank/close', async (req, res) => {
-  if (!await requireBoss(req, res)) return;
+  if (!await requireBanking(req, res)) return;
   const realmId = await requireCompany(req, res);
   if (!realmId) return;
   try {
@@ -9275,7 +9292,7 @@ app.post('/api/bank/close', async (req, res) => {
 // next payment says so - and this is what puts the two side by side instead
 // of somebody noticing it on a statement weeks later.
 app.get('/api/bank/drift', async (req, res) => {
-  if (!await requireBoss(req, res)) return;
+  if (!await requireBanking(req, res)) return;
   const realmId = await requireCompany(req, res);
   if (!realmId) return;
   try {
@@ -9287,7 +9304,7 @@ app.get('/api/bank/drift', async (req, res) => {
 });
 
 app.get('/api/bank/links', async (req, res) => {
-  if (!await requireBoss(req, res)) return;
+  if (!await requireBanking(req, res)) return;
   const realmId = await requireCompany(req, res);
   if (!realmId) return;
   try {
@@ -9303,12 +9320,12 @@ app.get('/api/bank/links', async (req, res) => {
 });
 
 app.post('/api/bank/link', async (req, res) => {
-  const who = await requireBoss(req, res);
+  const who = await requireBanking(req, res);
   if (!who) return;
   const realmId = await requireCompany(req, res);
   if (!realmId) return;
   try {
-    const id = await linkBank(realmId, Object.assign({}, req.body, { by: who.email || null }));
+    const id = await linkBank(realmId, Object.assign({}, req.body, { by: who.actor || who.email || null }));
     // the money follows the change at once, rather than at the next sweep
     const posted = await postDeposits(realmId);
     res.json({ ok: true, id, posted });
@@ -9318,7 +9335,7 @@ app.post('/api/bank/link', async (req, res) => {
 });
 
 app.post('/api/bank/unlink', async (req, res) => {
-  if (!await requireBoss(req, res)) return;
+  if (!await requireBanking(req, res)) return;
   const realmId = await requireCompany(req, res);
   if (!realmId) return;
   try {
@@ -9330,7 +9347,7 @@ app.post('/api/bank/unlink', async (req, res) => {
 
 // the couriers' paid receipts, into the banks they were paying into that day
 app.post('/api/bank/post', async (req, res) => {
-  if (!await requireBoss(req, res)) return;
+  if (!await requireBanking(req, res)) return;
   const realmId = await requireCompany(req, res);
   if (!realmId) return;
   try {
@@ -9342,12 +9359,12 @@ app.post('/api/bank/post', async (req, res) => {
 });
 
 app.post('/api/bank/transfer', async (req, res) => {
-  const who = await requireBoss(req, res);
+  const who = await requireBanking(req, res);
   if (!who) return;
   const realmId = await requireCompany(req, res);
   if (!realmId) return;
   try {
-    await transfer(realmId, Object.assign({}, req.body, { by: who.email || null }));
+    await transfer(realmId, Object.assign({}, req.body, { by: who.actor || who.email || null }));
     res.json({ ok: true });
   } catch (e) {
     res.status(400).json({ error: e.message });
@@ -9355,12 +9372,12 @@ app.post('/api/bank/transfer', async (req, res) => {
 });
 
 app.post('/api/bank/adjust', async (req, res) => {
-  const who = await requireBoss(req, res);
+  const who = await requireBanking(req, res);
   if (!who) return;
   const realmId = await requireCompany(req, res);
   if (!realmId) return;
   try {
-    res.json({ ok: true, id: await adjust(realmId, Object.assign({}, req.body, { by: who.email || null })) });
+    res.json({ ok: true, id: await adjust(realmId, Object.assign({}, req.body, { by: who.actor || who.email || null })) });
   } catch (e) {
     res.status(400).json({ error: e.message });
   }
@@ -9368,12 +9385,12 @@ app.post('/api/bank/adjust', async (req, res) => {
 
 // a payment that landed in the account the courier was told to stop using
 app.post('/api/bank/move', async (req, res) => {
-  const who = await requireBoss(req, res);
+  const who = await requireBanking(req, res);
   if (!who) return;
   const realmId = await requireCompany(req, res);
   if (!realmId) return;
   try {
-    await moveDeposit(realmId, Object.assign({}, req.body, { by: who.email || null }));
+    await moveDeposit(realmId, Object.assign({}, req.body, { by: who.actor || who.email || null }));
     res.json({ ok: true });
   } catch (e) {
     res.status(400).json({ error: e.message });
@@ -9381,7 +9398,7 @@ app.post('/api/bank/move', async (req, res) => {
 });
 
 app.post('/api/bank/entry-remove', async (req, res) => {
-  if (!await requireBoss(req, res)) return;
+  if (!await requireBanking(req, res)) return;
   const realmId = await requireCompany(req, res);
   if (!realmId) return;
   try {
@@ -9393,7 +9410,7 @@ app.post('/api/bank/entry-remove', async (req, res) => {
 });
 
 app.post('/api/bank/sheet', async (req, res) => {
-  if (!await requireBoss(req, res)) return;
+  if (!await requireBanking(req, res)) return;
   const realmId = await requireCompany(req, res);
   if (!realmId) return;
   try {

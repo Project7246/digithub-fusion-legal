@@ -142,16 +142,13 @@
       ]}
     ]},
 
-    // Fusion's own money, not a client's books: every bank account, what the
-    // couriers paid into it, what the spending sheet took out of it. Only
-    // ADMIN_EMAILS sees it - `need:'__boss__'` is not a right that can be
-    // handed out, and the server refuses the page to anybody else.
+    // Banking has its own report and management grants, scoped to the open company.
     { key:'banking', label:'Banking', home:'/banking', tile:'cash',
       what:'Every bank account, what came in and what went out.', qb:false,
       groups: [
       { group: null, items: [
         { href:'/banking', front:true, showTile:true, label:'Overview',
-          icon:'cash', tile:'cash', as:'Banking', need:'__boss__' }
+          icon:'cash', tile:'cash', as:'Banking', need:'bankingreports' }
       ]}
     ]},
 
@@ -1372,7 +1369,15 @@
       // the whole answer, for anything that has to know more than one flag -
       // the launcher needs `support` and `rights` together to say who to ask
       window.APP.status = s;
-      window.APP.may = function(job){ return !!s.admin || mine.indexOf(job) > -1; };
+      window.APP.may = function(job){
+        if(job==='banking')return !!(s.bankingAccess && s.bankingAccess.write);
+        if(job==='bankingreports')return !!(s.bankingAccess && s.bankingAccess.read);
+        return !!s.admin || mine.indexOf(job) > -1;
+      };
+      window.APP.canOpen = function(job){
+        if(job==='bankingreports' || job==='banking')return !!(s.bankingAccess && s.bankingAccess.read);
+        return !!s.admin || (s.readableRights || mine).indexOf(job)>-1;
+      };
 
       // Fusion's own lines. Not a right that can be handed out, so they are not
       // cut by the rights below - they are simply not drawn for anybody but
@@ -1390,7 +1395,7 @@
       if(s.limited){
         var off = [];
         rail && rail.querySelectorAll('nav [data-line]').forEach(function(a){
-          if(mine.indexOf(a.getAttribute('data-line')) < 0) off.push(a);
+          if(!window.APP.canOpen(a.getAttribute('data-line'))) off.push(a);
         });
         off.forEach(function(a){
           var tree = a.nextElementSibling;

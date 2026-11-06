@@ -8,10 +8,10 @@ import { liveSpend } from './banking-cprs.js';
 import { bankingHistory, correctTransaction, removeFiscalSetup, moveFiscalSetup, columnBreakdown, paymentWorkbook, historyWorkbook } from './banking-history.js';
 import { archiveCsv } from './banking-archive.js';
 
-export function createBankingRouter({ requireBoss, requireCompany }) {
+export function createBankingRouter({ requireBanking, requireCompany }) {
   const router = express.Router();
   router.get('/archive-export',async(req,res)=>{
-    if(!await requireBoss(req,res))return;
+    if(!await requireBanking(req,res))return;
     const realm=await requireCompany(req,res);if(!realm)return;
     try{
       res.setHeader('Cache-Control','no-store');res.setHeader('Content-Type','text/csv; charset=utf-8');
@@ -27,7 +27,7 @@ export function createBankingRouter({ requireBoss, requireCompany }) {
     }catch(e){if(res.headersSent)res.destroy(e);else res.status(500).json({error:'Saved CPR export unavailable'});}
   });
   router.post('/save',async(req,res)=>{
-    const who=await requireBoss(req,res);if(!who)return;
+    const who=await requireBanking(req,res);if(!who)return;
     const realm=await requireCompany(req,res);if(!realm)return;
     let c;
     try{
@@ -37,12 +37,12 @@ export function createBankingRouter({ requireBoss, requireCompany }) {
       const id=await saveBank(realm,req.body||{},c);
       const after=(await c.query('SELECT * FROM banks WHERE realm_id=$1 AND id=$2',[realm,id])).rows[0];
       await c.query('INSERT INTO banking_entry_audit (realm_id,actor,action,new_value) VALUES ($1,$2,$3,$4::jsonb)',
-        [realm,who.email||'boss','bank-opening',JSON.stringify([{bankId:id,before:before||null,after}])]);
+        [realm,who.actor||who.email||'boss','bank-opening',JSON.stringify([{bankId:id,before:before||null,after}])]);
       await c.query('COMMIT');res.json({ok:true,id});
     }catch(e){if(c)await c.query('ROLLBACK');res.status(400).json({error:e.message});}finally{if(c)c.release();}
   });
   router.get('/history',async(req,res)=>{
-    if(!await requireBoss(req,res))return;
+    if(!await requireBanking(req,res))return;
     const realm=await requireCompany(req,res);if(!realm)return;
     try{
       res.setHeader('Cache-Control','no-store');
@@ -59,44 +59,44 @@ export function createBankingRouter({ requireBoss, requireCompany }) {
     catch(e){res.status(400).json({error:e.message});}
   });
   router.post('/correct-transaction',async(req,res)=>{
-    const who=await requireBoss(req,res);if(!who)return;
+    const who=await requireBanking(req,res);if(!who)return;
     const realm=await requireCompany(req,res);if(!realm)return;
-    try{await correctTransaction(realm,req.body.id,req.body.replacement||null,who.email||'boss');res.json({ok:true});}
+    try{await correctTransaction(realm,req.body.id,req.body.replacement||null,who.actor||who.email||'boss');res.json({ok:true});}
     catch(e){res.status(400).json({error:e.message});}
   });
   router.post('/remove-setup',async(req,res)=>{
-    const who=await requireBoss(req,res);if(!who)return;
+    const who=await requireBanking(req,res);if(!who)return;
     const realm=await requireCompany(req,res);if(!realm)return;
-    try{await removeFiscalSetup(realm,req.body.id,who.email||'boss');res.json({ok:true});}
+    try{await removeFiscalSetup(realm,req.body.id,who.actor||who.email||'boss');res.json({ok:true});}
     catch(e){res.status(400).json({error:e.message});}
   });
   router.get('/breakdown',async(req,res)=>{
-    if(!await requireBoss(req,res))return;
+    if(!await requireBanking(req,res))return;
     const realm=await requireCompany(req,res);if(!realm)return;
     try{res.setHeader('Cache-Control','no-store');res.json(columnBreakdown(await bankReport(realm,
       {year:req.query.year,allMoves:true}),req.query.bank,req.query.column));}
     catch(e){res.status(400).json({error:e.message});}
   });
   router.post('/setup', async(req,res)=>{
-    const who=await requireBoss(req,res); if(!who)return;
+    const who=await requireBanking(req,res); if(!who)return;
     const realm=await requireCompany(req,res);if(!realm)return;
     try {
       const input=req.body||{};
-      if(input.sourceBankId && Number(input.sourceBankId)!==Number(input.bankId))await moveFiscalSetup(realm,input,who.email||'boss');
-      else await saveBankingSetup(realm,input,who.email||'boss');
+      if(input.sourceBankId && Number(input.sourceBankId)!==Number(input.bankId))await moveFiscalSetup(realm,input,who.actor||who.email||'boss');
+      else await saveBankingSetup(realm,input,who.actor||who.email||'boss');
       res.json({ok:true});
     }
     catch(e){res.status(400).json({error:e.message});}
   });
   router.post('/transaction',async(req,res)=>{
-    const who=await requireBoss(req,res);if(!who)return;
+    const who=await requireBanking(req,res);if(!who)return;
     const realm=await requireCompany(req,res);if(!realm)return;
-    try {res.json({ok:true,entries:await recordBankEntry(realm,req.body||{},who.email||'boss')});}
+    try {res.json({ok:true,entries:await recordBankEntry(realm,req.body||{},who.actor||who.email||'boss')});}
     catch(e){res.status(400).json({error:e.message});}
   });
   // Preview is read-only: the source workbook and historical imported rows remain untouched.
   router.get('/spending',async(req,res)=>{
-    if(!await requireBoss(req,res))return;
+    if(!await requireBanking(req,res))return;
     const realm=await requireCompany(req,res);if(!realm)return;
     try {
       const bank=(await listBanks(realm,{all:true})).find(b=>b.id===Number(req.query.bank));
@@ -116,7 +116,7 @@ export function createBankingRouter({ requireBoss, requireCompany }) {
     }catch(e){res.status(400).json({error:e.message});}
   });
   router.get('/cpr', async (req, res) => {
-    if (!await requireBoss(req, res)) return;
+    if (!await requireBanking(req, res)) return;
     const realmId = await requireCompany(req, res);
     if (!realmId) return;
     const account = Number(req.query.account);

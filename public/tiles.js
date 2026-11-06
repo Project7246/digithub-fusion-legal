@@ -127,9 +127,6 @@
                    need: it.need, always: !!it.always });
       });
     });
-    (sec.soon || []).forEach(function(t){
-      out.push({ label: t.label, icon: t.tile, soon: true });
-    });
     return out;
   }
 
@@ -149,7 +146,7 @@
       (g.items || []).forEach(function(it){ if (it.need){ needs[it.need] = 1; any = true; } });
     });
     if (!any) return true;                       // a section that asks for nothing
-    for (var k in needs) if (window.APP.may(k)) return true;
+    for (var k in needs) if ((window.APP.canOpen || window.APP.may)(k)) return true;
     return false;
   }
 
@@ -166,9 +163,10 @@
     }
     if (sec && !inSection(sec)) return false;
     if (!t.need) return true;
-    return !window.APP || !window.APP.may || window.APP.may(t.need);
+    return !window.APP || !window.APP.may || (window.APP.canOpen || window.APP.may)(t.need);
   }
 
+  function availableTiles(sec){ return tilesOf(sec).filter(function(t){return mine(t,sec);}); }
   function one(t){
     if (t.soon) {
       return '<div class="fxtile fxsoon"><div class="fxbox">' + mark(t.icon) + '</div>' +
@@ -200,6 +198,7 @@
   window.FUSION = window.FUSION || {};
   window.FUSION.mark = mark;
   window.FUSION.tilesOf = tilesOf;
+  window.FUSION.availableTiles = availableTiles;
 
   // A shelf of tiles into `el`. With a section key it draws that one; with none
   // it draws every section, each under its own heading - which is the launcher.

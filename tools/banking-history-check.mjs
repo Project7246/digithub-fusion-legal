@@ -106,7 +106,7 @@ try {
   await assert.rejects(moveFiscalSetup('fixture',moved,'owner'),/audit failure/);
   assert.equal(calls.at(-1).sql,'ROLLBACK');failAudit=false;calls=[];
   const app=express();app.use(express.json());
-  app.use('/api/bank',createBankingRouter({requireBoss:async()=>({email:'owner'}),requireCompany:async()=> 'fixture'}));
+  app.use('/api/bank',createBankingRouter({requireBanking:async()=>({email:'owner'}),requireCompany:async()=> 'fixture'}));
   server=await new Promise(resolve=>{const s=app.listen(0,'127.0.0.1',()=>resolve(s));});
   const url='http://127.0.0.1:'+server.address().port+'/api/bank/save';
   const request={method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id:1,name:'Fixture Bank',opening:'100.00',openingOn:'2026-10-20'})};

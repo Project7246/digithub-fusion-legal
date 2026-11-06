@@ -196,23 +196,15 @@
     $('board').innerHTML = '<div class="fxdesks">' + all.map(function(sec){
       // only what this person was given, so the line under a desk never names
       // a module they cannot open
-      var list = ((window.FUSION && window.FUSION.tilesOf(sec)) || []).filter(function(t){
-        if (t.soon) return false;
-        if (!t.need) return true;
-        return !window.APP || !window.APP.may || window.APP.may(t.need);
-      });
+      var list = window.FUSION ? window.FUSION.availableTiles(sec) : [];
+      if(!list.length)return '';
       var shown = list.slice(0, 3).map(function(t){ return esc(t.label); }).join(' · ');
       var more  = list.length > 3 ? ' · +' + (list.length - 3) + ' more' : '';
-      if (!shown) {
-        shown = (sec.soon || []).slice(0, 3)
-          .map(function(t){ return esc(t.label); }).join(' · ');
-        more = shown ? ' · soon' : '';
-      }
       return '<a class="fxdesk" href="' + esc(sec.home) + '" data-sec="' + esc(sec.key) + '">' +
         '<div class="fxdeskbox">' + window.FUSION.mark(sec.tile) + '</div>' +
         '<b>' + esc(sec.label) + '</b>' +
         '<em>' + esc(sec.what || '') + '</em>' +
-        '<i>' + (shown ? shown + more : 'Being built') + '</i></a>';
+        '<i>' + (shown + more) + '</i></a>';
     }).join('') + '</div>';
 
     $('board').querySelectorAll('[data-sec]').forEach(function(a){

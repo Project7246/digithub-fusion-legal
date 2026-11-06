@@ -11,6 +11,7 @@
 // on the users row, read by whoIs() in server.js. This file is only the lock.
 
 import crypto from 'node:crypto';
+import { recordBankingAccess } from './banking-access.js';
 import { pool } from './db.js';
 
 // ==================== the shape of an account ====================
@@ -300,16 +301,26 @@ export async function upsertGoogleAccount({ googleSub, email, name }) {
 // A user id made by the admin of a company, for somebody in that company. It needs
 // no email and verifies nothing, because the admin standing there is the proof. It
 // belongs to the one company it was made for and cannot be moved to another.
-export async function createMemberAccount({ loginId, name, password, realmId, madeBy, role, rights }) {
+export async function createMemberAccount({ loginId, name, password, realmId, madeBy, role, rights, realms = [] }) {
   const id = String(loginId).trim();
-  const r = await pool.query(
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const r = await client.query(
     `INSERT INTO users (sub, login_id, name, pass, door, allowed, role, rights,
                         home_realm, made_by, decided_at)
      VALUES ($1, $2, $3, $4, 'member', TRUE, $5, $6::jsonb, $7, $8, NOW())
-     RETURNING sub`,
+     RETURNING sub,allowed,role,rights`,
     ['id:' + id.toLowerCase(), id, name || id, hashPassword(password),
      role || 'custom', JSON.stringify(rights || []), realmId, madeBy]);
-  return r.rows[0].sub;
+    const after = r.rows[0];
+    await recordBankingAccess(client, { actor:madeBy, sub:after.sub, realms:[realmId,...realms],
+      before:{allowed:false,role:'none'}, after });
+    await client.query('COMMIT');
+    return after.sub;
+  } catch (error) {
+    await client.query('ROLLBACK'); throw error;
+  } finally { client.release(); }
 }
 
 export async function listMembers(realmId) {

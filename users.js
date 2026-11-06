@@ -1,4 +1,5 @@
 import { pool } from './db.js';
+import { recordBankingAccess } from './banking-access.js';
 
 export async function initUsers() {
   await pool.query(`
@@ -76,24 +77,39 @@ export async function listUsers() {
 // here. This is a hide, off for everyone until an administrator turns it on
 // for one user id - a packer who needs the tracking numbers and has no
 // business with what the parcels are worth.
-export async function setUserMoney(sub, hide) {
-  await pool.query('UPDATE users SET hide_money = $2 WHERE sub = $1',
-                   [sub, !!hide]);
+export async function setUserMoney(sub, hide, options) {
+  return setUserAccess(sub, { hideMoney:!!hide }, options);
 }
 
 // The admin says whether someone may use the app, and what they may change
-export async function setUserAccess(sub, { allowed, rights, role }) {
-  await pool.query(
+export async function setUserAccess(sub, { allowed, rights, role, hideMoney }, { actor, realms = [] } = {}) {
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const columns = 'sub,allowed,rights,role,hide_money,disabled,home_realm';
+    const before = (await client.query(`SELECT ${columns} FROM users WHERE sub=$1 FOR UPDATE`, [sub])).rows[0];
+    const result = await client.query(
     `UPDATE users SET
        allowed    = COALESCE($2, allowed),
        rights     = COALESCE($3, rights),
        role       = COALESCE($4, role),
+       hide_money = COALESCE($5, hide_money),
        decided_at = NOW()
-     WHERE sub = $1`,
+     WHERE sub = $1 RETURNING ${columns}`,
     [sub, allowed === undefined ? null : !!allowed,
      rights === undefined ? null : JSON.stringify(rights),
-     role === undefined ? null : String(role)]
+     role === undefined ? null : String(role), hideMoney === undefined ? null : !!hideMoney]
   );
+    const after = result.rows[0];
+    if (before && after) {
+      const companies = await client.query('SELECT realm_id FROM user_companies WHERE user_sub=$1', [sub]);
+      await recordBankingAccess(client, { actor, sub, before, after,
+        realms:[...realms, before.home_realm, after.home_realm, ...companies.rows.map(row => row.realm_id)] });
+    }
+    await client.query('COMMIT');
+  } catch (error) {
+    await client.query('ROLLBACK'); throw error;
+  } finally { client.release(); }
 }
 
 export async function getUser(sub) {
