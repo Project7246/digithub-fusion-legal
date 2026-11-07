@@ -53,6 +53,11 @@ r=await call('/orders',q);assert.equal(accountRealm,'realm-a');assert.equal(r.bo
 assert.equal(r.body.postingAllowed,false);assert.equal(r.body.rows[0].Service_invoice_no,'service-a');
 r=await call('/dashboard',q);assert.equal(r.body.orders[0].fusionStatusGroup,'delivered');
 assert.equal(r.body.covers[0].invoice_no,'cod-a');assert.equal(r.body.settlements,null);
+const sessionsBeforeCache=sessions;
+r=await call('/dashboard',q);assert.equal(r.body.cached,true);assert.equal(sessions,sessionsBeforeCache);
+r=await call('/dashboard',{...q,refresh:'1'});assert.equal(r.body.cached,false);assert.equal(sessions,sessionsBeforeCache+1);
+realm='realm-b';r=await call('/dashboard',q);assert.equal(r.body.cached,false);realm='realm-a';
+foreign=true;r=await call('/dashboard',q);assert.equal(r.code,404,'cached reports still require current account ownership');foreign=false;
 r=await call('/invoices',q);assert.equal(r.body.rows[0].invoice_no,'cod-a');
 r=await call('/detail',{...q,invoice:'cod-a'});assert.equal(r.body.rows.length,1);
 r=await call('/detail',{...q,invoice:'outside'});assert.equal(r.code,404);

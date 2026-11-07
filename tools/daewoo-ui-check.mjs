@@ -43,6 +43,8 @@ assert.equal(inFlight.options.signal.aborted,true);resolve({ok:true,json:async()
 assert.equal(elements.rows.children[0].children[0].textContent,'0002');assert.equal(elements.ttl.textContent,'Fixture two');
 const html=readFileSync('public/daewoo.html','utf8'),standard=readFileSync('public/courier-dash.html','utf8');
 assert.ok(html.includes('/courier-dashboard.css')&&standard.includes('/courier-dashboard.css'),'one actual shared courier stylesheet');
+assert.ok(!html.includes('<select')&&!html.includes('Manage account'),'sidebar is the account selector, no duplicate controls');
+assert.match(requests.find(r=>r.url.includes('refresh=1')).url,/dashboard/,'manual refresh bypasses short portal cache');
 for(const label of ['Parcels','Finance','Receipts'])assert.ok(html.includes('>'+label+'</button>'));
 assert.ok(!readFileSync('public/daewoo-dashboard.js','utf8').includes('setInterval'));
 console.log('Daewoo dashboard: shared courier stylesheet/tabs, no-money Parcels, missing vs zero, source escaping, finite reads and stale scope cancellation PASS.');

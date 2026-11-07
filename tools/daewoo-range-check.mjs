@@ -1,0 +1,28 @@
+import assert from 'node:assert/strict';
+import { readDaewooRange,createDaewooReportCache } from '../daewoo-report-range.js';
+const oversized=()=>Object.assign(new Error('bounded'),{code:'RESPONSE_TOO_LARGE'});
+const calls=[];
+const rows=await readDaewooRange('2026-01-01','2026-01-31',async(from,to)=>{
+  calls.push([from,to]);if(Date.parse(to)-Date.parse(from)>6*86400000)throw oversized();
+  const result=[];for(let d=Date.parse(from);d<=Date.parse(to);d+=86400000)result.push({booking_id:new Date(d).toISOString().slice(0,10),amount_cod:'0.00'});
+  return result;
+});
+assert.equal(rows.length,31);assert.equal(new Set(rows.map(r=>r.booking_id)).size,31);assert.equal(rows.at(-1).booking_id,'2026-01-31');
+const duplicate=await readDaewooRange('2026-01-01','2026-01-02',async(a,b)=>{if(a!==b)throw oversized();return a.endsWith('01')?[{id:'same'},{id:'same'}]:[{id:'same'}];});
+assert.equal(duplicate.length,2,'repeated cross-window covers do not double count; within-window multiplicity remains');
+await assert.rejects(readDaewooRange('2026-01-01','2026-01-01',async()=>{throw oversized();}),e=>e.code==='SINGLE_DAY_REPORT_TOO_LARGE');
+await assert.rejects(readDaewooRange('2026-01-01','2026-01-02',async(a,b)=>{if(a!==b)throw oversized();if(a.endsWith('02'))throw Object.assign(new Error('expired'),{code:'SESSION_EXPIRED'});return [{id:'first'}];}),e=>e.code==='SESSION_EXPIRED','never returns a partial successful range');
+await assert.rejects(readDaewooRange('2026-01-01','2026-01-31',async()=>{throw oversized();},{maxCalls:2}),e=>e.code==='REPORT_RANGE_TOO_LARGE');
+await assert.rejects(readDaewooRange('2026-01-01','2026-01-01',async()=>[{id:'1'},{id:'2'}],{maxRows:1}),e=>e.code==='REPORT_RANGE_TOO_LARGE');
+let now=0,loads=0;const cache=createDaewooReportCache({now:()=>now,ttl:10,maxBytes:100});
+const load=async()=>{loads++;return {orders:[{id:'fixture'}]};};
+assert.equal((await cache('realm-a/account-1/range/creds',load)).cached,false);
+assert.equal((await cache('realm-a/account-1/range/creds',load)).cached,true);assert.equal(loads,1);
+await cache('realm-b/account-1/range/creds',load);assert.equal(loads,2,'realm keys isolated');
+await cache('realm-a/account-1/range/new-creds',load);assert.equal(loads,3);
+now=11;await cache('realm-a/account-1/range/creds',load);assert.equal(loads,4);
+await cache('realm-a/account-1/range/creds',load,{refresh:true});assert.equal(loads,5);
+await assert.rejects(cache('failure',async()=>{throw new Error('fixture');}));
+assert.equal((await cache('failure',load)).cached,false,'errors never cached');
+let resolve;const wait=new Promise(r=>resolve=r);const a=cache('parallel',()=>wait),b=cache('parallel',()=>{throw new Error('must coalesce');});resolve({orders:[]});await Promise.all([a,b]);
+console.log('Daewoo range: complete adaptive partitions, duplicate-safe merge, bounded memory/calls, no partial success, scoped TTL cache/refresh and request coalescing PASS.');

@@ -18,6 +18,7 @@ const checks = [
   ['courier account names', 'tools/courier-account-check.mjs'],
   ['banking access', 'tools/banking-access-check.mjs'],
   ['Daewoo portal', 'tools/daewoo-portal-check.mjs'],
+  ['Daewoo large reports', 'tools/daewoo-range-check.mjs'],
   ['Daewoo settlements', 'tools/daewoo-settlement-check.mjs'],
   ['Daewoo app', 'tools/daewoo-app-check.mjs'],
   ['Daewoo UI', 'tools/daewoo-ui-check.mjs'],

@@ -1450,3 +1450,27 @@ Current implementation supersedes the earlier live-report-only milestone.
 
 ## 7 Nov 2026 - Courier account display names
 Manage courier accounts now offers Edit name on every provider's account. The admin-only, realm-scoped rename route updates label only; IDs, credentials, reports and bank links are retained. Duplicate names within one courier/company are rejected. Page reload refreshes the sidebar name too.
+
+## 7 Nov 2026 - Bounded large Daewoo reports and sidebar-only account selection
+- Owner reported RESPONSE_TOO_LARGE. The portal client caps each response at
+  4 MiB, while Daewoo's direct financial report can exceed that over long ranges.
+  Other courier dashboards usually read previously stored Fusion parcels.
+- On an oversized range response, split inclusively into non-overlapping date
+  halves and retry sequentially until each fits; preserve the entire requested
+  range. Each branch validates source scope before merge. Cross-window identical
+  rows retain maximum multiplicity, including repeated rows within one response.
+  One failed segment fails the whole read; no successful partial totals.
+- Bounds remain: 4 MiB per upstream response, 16 MiB / 100,000 merged rows and
+  127 attempts. An oversized single day or exhausted range gives a clear message
+  rather than removing limits. Single-invoice detail/export remains bounded.
+- Dashboard portal reports have an in-process, two-minute cache (16 MiB total),
+  keyed by realm/account/date range plus credential fingerprint, with concurrent
+  request coalescing. Access/account ownership checked on each hit. Settlements
+  always read fresh. Refresh bypasses the cache. Errors are never cached; no
+  database writes, timer, new scheduler or permanent raw financial storage.
+- Account selection only through sidebar; duplicate dropdown and Manage account
+  link removed. Default range now 30 days. No selected account means a sidebar
+  selection prompt, never silently another account. Source note simplified.
+- Synthetic full-month, large-response recovery, no-partial-result, cache scope,
+  refresh, expiry and UI regression checks pass. Real large range still needs
+  post-deploy observation. First uncached read remains dependent on portal speed.

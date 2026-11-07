@@ -2,6 +2,7 @@
 'use strict';
 var $=function(id){return document.getElementById(id);};
 var main='parcels',sub='summary',orders=[],covers=[],details=[],settlements=null,data=[],page=0,serial=0,controller=null,loaded=false;
+var accountNames=[];
 var tabs={parcels:[['summary','Summary'],['days','Day by day'],['status','Every status'],['cities','Cities'],['handed','Handed over'],['carriers','By carrier']],
  finance:[['statement','Statement'],['months','By month'],['ageing','Ageing'],['carriers','By carrier'],['cprs','CPRs'],['pending','Not collected'],['cities','Cities'],['charges','Delivery / tax invoices'],['matching','Invoice matching']],
  receipts:[['cprs','CPRs'],['charges','Delivery charges'],['detail','Invoice details / tax'],['matching','Invoice matching']]};
@@ -16,7 +17,7 @@ function day(v){var m=String(v||'').match(/^\/Date\((-?\d+)(?:[+-]\d{4})?\)\/$/)
 function sum(rows,key){var n=0n;for(var r of rows){if(r[key]==null||r[key]==='')return null;var m=String(r[key]).replace(/,/g,'').match(/^(\d+)(?:\.(\d{1,2}))?$/);if(!m)return null;n+=BigInt(m[1])*100n+BigInt((m[2]||'').padEnd(2,'0'));}return n/100n+'.'+String(n%100n).padStart(2,'0');}
 function unique(){var map=new Map();orders.forEach(function(r){var id=String(r.booking_id);var old=map.get(id);if(!old)map.set(id,Object.assign({},r));else if(old.status!==r.status){old.status='Multiple source statuses — review';old.fusionStatusGroup='other';} });return Array.from(map.values());}
 function grouped(rows,key,moneyKey){var map=new Map();rows.forEach(function(r){var k=key(r)||'Unavailable';if(!map.has(k))map.set(k,[]);map.get(k).push(r);});return Array.from(map).map(function(x){return {group:x[0],count:x[1].length,total:moneyKey?sum(x[1],moneyKey):null};});}
-function accountLabel(){var s=$('account');return s.options&&s.selectedIndex>=0?s.options[s.selectedIndex].textContent:'Daewoo';}
+function accountLabel(){var a=accountNames.find(function(a){return String(a.id)===$('account').value;});return a?a.label:'Daewoo';}
 function clear(){serial++;if(controller)controller.abort();loaded=false;orders=[];covers=[];details=[];settlements=null;data=[];page=0;$('message').textContent='';render();}
 function choose(next){serial++;if(controller)controller.abort();$('load').disabled=!$('account').value;sub=next;page=0;$('back').hidden=sub!=='detail';render();}
 function cards(rows){$('cards').replaceChildren();rows.forEach(function(r){var card=document.createElement('div');card.className='card';var label=document.createElement('div');label.className='k';label.textContent=r[0];var value=document.createElement('div');value.className='v';value.textContent=r[1];card.appendChild(label);card.appendChild(value);$('cards').appendChild(card);});}
@@ -55,12 +56,12 @@ function table(columns){
  filtered.slice(page*50,page*50+50).forEach(function(row){var tr=document.createElement('tr');columns.forEach(function(c){var td=document.createElement('td');if(c[1]==='invoice_no'){var b=document.createElement('button');b.className='mini';b.textContent=display(row.invoice_no);b.onclick=function(){readDetail(row.invoice_no);};td.appendChild(b);}else td.textContent=display(row[c[1]]);tr.appendChild(td);});$('rows').appendChild(tr);});
  $('empty').hidden=filtered.length>0;$('empty').textContent=loaded?'No rows for this view.':'Load the selected account and period.';$('count').textContent=filtered.length+' rows'+(filtered.length?' · page '+(page+1)+' / '+Math.ceil(filtered.length/50):'');$('prev').disabled=page===0;$('next').disabled=(page+1)*50>=filtered.length;
 }
-async function get(url,signal){var response=await fetch(url,{cache:'no-store',signal:signal});var result=await response.json();if(!response.ok)throw new Error(result.error||'Report unavailable.');return result;}
+async function get(url,signal){var response=await fetch(url,{cache:'no-store',signal:signal});var result=await response.json();if(!response.ok){var message=result.error||'Report unavailable.';if(/SINGLE_DAY_REPORT_TOO_LARGE/.test(message))message='One day’s report exceeds the safe limit. No partial totals are shown; a portal export/import is needed for that day.';else if(/REPORT_RANGE_TOO_LARGE|RESPONSE_TOO_LARGE/.test(message))message='This report is too large to load safely. Choose a shorter date range; no partial totals are shown.';throw new Error(message);}return result;}
 function query(){return new URLSearchParams({account:$('account').value,from:$('from').value,to:$('to').value});}
-async function read(){
+async function read(refresh){
  if(!$('account').value)return;if(!$('from').value||!$('to').value||$('from').value>$('to').value){$('message').textContent='Choose a valid period.';return;}
  var current=++serial;if(controller)controller.abort();controller=new AbortController();$('load').disabled=true;$('message').textContent='Reading the courier…';loaded=false;orders=[];covers=[];details=[];render();
- try{var result=await get('/api/daewoo/dashboard?'+query(),controller.signal);if(current!==serial)return;orders=result.orders||[];covers=result.covers||[];settlements=result.settlements||null;loaded=true;render();$('message').textContent='Read from Daewoo · '+new Date().toLocaleString();}
+ try{var q=query();if(refresh===true)q.set('refresh','1');var result=await get('/api/daewoo/dashboard?'+q,controller.signal);if(current!==serial)return;orders=result.orders||[];covers=result.covers||[];settlements=result.settlements||null;loaded=true;render();$('message').textContent=(result.cached?'Up to date · recent report · ':'Up to date · ')+(result.readAt?new Date(result.readAt):new Date()).toLocaleString();}
  catch(error){if(current!==serial||error.name==='AbortError')return;$('message').textContent=error.message;}
  finally{if(current===serial)$('load').disabled=false;}
 }
@@ -73,12 +74,12 @@ document.querySelectorAll('[data-main]').forEach(function(b){b.onclick=function(
 document.querySelectorAll('[data-days]').forEach(function(b){b.onclick=function(){range(Number(b.dataset.days));document.querySelectorAll('[data-days]').forEach(function(x){x.classList.toggle('on',x===b);});$('picker').classList.add('hide');read();};});
 $('btnPick').onclick=function(){$('picker').classList.toggle('hide');};
 ['from','to'].forEach(function(id){$(id).onchange=function(){clear();read();};});
-$('account').onchange=function(){clear();$('ttl').textContent=accountLabel();if(window.history)window.history.replaceState(null,'','/daewoo?account='+encodeURIComponent(this.value));read();};$('load').onclick=read;$('back').onclick=function(){choose('cprs');};$('search').oninput=function(){page=0;render();};$('prev').onclick=function(){page--;render();};$('next').onclick=function(){page++;render();};
+$('account').onchange=function(){clear();$('ttl').textContent=accountLabel();if(window.history)window.history.replaceState(null,'','/daewoo?account='+encodeURIComponent(this.value));read();};$('load').onclick=function(){read(true);};$('back').onclick=function(){choose('cprs');};$('search').oninput=function(){page=0;render();};$('prev').onclick=function(){page--;render();};$('next').onclick=function(){page++;render();};
 window.APP.ready.then(async function(){
- range(6);try{var result=await get('/api/daewoo/accounts');var wanted=new URLSearchParams(location.search).get('account');result.accounts.forEach(function(a){var o=document.createElement('option');o.value=a.id;o.textContent=a.label;$('account').appendChild(o);});
+ range(29);document.querySelectorAll('[data-days]').forEach(function(b){b.classList.toggle('on',b.dataset.days==='29');});try{var result=await get('/api/daewoo/accounts');var wanted=new URLSearchParams(location.search).get('account');accountNames=result.accounts;
  if(wanted&&result.accounts.some(function(a){return String(a.id)===wanted;}))$('account').value=wanted;
- $('load').disabled=!result.accounts.length;$('ttl').textContent=result.accounts.length?accountLabel():'Daewoo';$('sourceNote').textContent='Daewoo · same courier dashboard, source reports kept separate';
- if(!result.accounts.length){$('message').textContent='Add a Daewoo account to open its reports.';render();}else read();
+ $('load').disabled=!$('account').value;$('ttl').textContent=accountLabel();$('sourceNote').textContent='Daewoo';
+ if(!$('account').value){$('message').textContent='Choose a Daewoo account from the left sidebar.';render();}else read();
  }catch(error){$('message').textContent=error.message;$('load').disabled=true;}
 });
 })();

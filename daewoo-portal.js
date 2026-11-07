@@ -1,5 +1,6 @@
 // Read-only Daewoo merchant-portal client. No database, timers or global sessions.
 const ORIGIN='https://codportal.daewoo.net.pk';
+import { readDaewooRange } from './daewoo-report-range.js';
 const LIMIT=4*1024*1024;
 const METHODS=new Set(['AuthenticateUser','CheckUserSessionUpdated','GetCustomersNew','GetReport','GetDetailReport','GetFinancialReport']);
 export class DaewooPortalError extends Error {
@@ -126,9 +127,11 @@ export class DaewooPortal {
   async covers(fromDate,toDate,customerId){
     validateRange(fromDate,toDate);
     const id=String(customerId??'');if(!id)fail('INPUT_REQUIRED');
-    const rows=this.#rows(await this.#call('GetReport',{fromDate,toDate,customerId:id}));
-    if(rows.some(r=>!r||r.invoice_no==null||String(r.customer_id)!==id))fail('CUSTOMER_SCOPE_MISMATCH');
-    return rows;
+    return readDaewooRange(fromDate,toDate,async(a,b)=>{
+      const rows=this.#rows(await this.#call('GetReport',{fromDate:a,toDate:b,customerId:id}));
+      if(rows.some(r=>!r||r.invoice_no==null||String(r.customer_id)!==id))fail('CUSTOMER_SCOPE_MISMATCH');
+      return rows;
+    });
   }
   async detail(invoiceNo,customerId){
     if(invoiceNo==null||String(invoiceNo).trim()===''||customerId==null||String(customerId).trim()==='')fail('INPUT_REQUIRED');
@@ -143,10 +146,12 @@ export class DaewooPortal {
     const id=String(customerId??'').trim();if(!id||id==='0'||id==='-1')fail('INPUT_REQUIRED');
     // Exact read-only contract used by FinancialReport.aspx. Preserve both
     // invoice references and original payable/paid fields; never net them here.
-    const rows=this.#rows(await this.#call('GetFinancialReport',{fromDate,toDate,customerId:id}));
-    if(rows.some(row=>!row||row.booking_id==null||row.BarCode==null))fail('BAD_RESPONSE');
-    if(rows.some(row=>row.customer_id!=null&&String(row.customer_id)!==id))fail('CUSTOMER_SCOPE_MISMATCH');
-    return rows;
+    return readDaewooRange(fromDate,toDate,async(a,b)=>{
+      const rows=this.#rows(await this.#call('GetFinancialReport',{fromDate:a,toDate:b,customerId:id}));
+      if(rows.some(row=>!row||row.booking_id==null||row.BarCode==null))fail('BAD_RESPONSE');
+      if(rows.some(row=>row.customer_id!=null&&String(row.customer_id)!==id))fail('CUSTOMER_SCOPE_MISMATCH');
+      return rows;
+    });
   }
   async invoiceExport(invoiceNo,customerId){
     if(!this.#authenticated)fail('LOGIN_REQUIRED');

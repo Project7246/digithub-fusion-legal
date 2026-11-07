@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Daewoo ? Fusion</title>
+<title>Daewoo — Fusion</title>
 <link rel="icon" href="/favicon.svg" type="image/svg+xml">
 <link rel="manifest" href="/manifest.json">
 <meta name="theme-color" content="#222F34">
@@ -17,9 +17,9 @@
 <div class="topline"><div><h1 id="ttl">Daewoo</h1><div class="sub" id="sourceNote">Courier dashboard</div></div></div>
 <div class="shell"><div class="tabs" id="mainTabs">
 <button data-main="parcels" class="on">Parcels</button><button data-main="finance">Finance</button><button data-main="receipts">Receipts</button></div>
-<div class="cdbar"><button data-days="0">Today</button><button data-days="6" class="on">7 days</button><button data-days="29">30 days</button><button data-days="89">3 months</button><button id="btnPick">Date range</button>
+<div class="cdbar"><button data-days="0">Today</button><button data-days="6">7 days</button><button data-days="29" class="on">30 days</button><button data-days="89">3 months</button><button id="btnPick">Date range</button>
 <span id="picker" class="hide"><input id="from" type="date" aria-label="From"><input id="to" type="date" aria-label="To"></span>
-<select id="account" aria-label="Daewoo account"></select><button id="load">Refresh</button><a href="/couriers?add=daewoo">Manage account</a></div>
+<input id="account" type="hidden"><button id="load">Refresh</button></div>
 <div class="fresh" id="message" role="status" aria-live="polite"></div>
 <div class="subtabs" id="subTabs"></div><div class="cards" id="cards"></div>
 <div class="box"><h3 id="tableTitle">Parcels</h3><div class="cdbar"><input id="search" type="search" placeholder="Tracking or invoice reference"><button id="back" hidden>Back to CPRs</button></div>
