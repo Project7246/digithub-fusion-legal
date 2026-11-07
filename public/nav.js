@@ -1,6 +1,50 @@
 (function(){
   "use strict";
 
+  // A small app-wide busy cue for network-backed work. Delay its appearance so
+  // fast reads do not flash; reference-count overlapping calls so one response
+  // cannot hide another request that is still running.
+  if(!window.__fusionBusyFetchWrapped && typeof window.fetch === 'function'){
+    window.__fusionBusyFetchWrapped = true;
+    var nativeFetch = window.fetch;
+    var activeFetches = 0, busyDelay = null;
+    var busyStyle = document.createElement('style');
+    busyStyle.textContent =
+      '@keyframes fusion-fetch-spin{to{transform:rotate(360deg)}}' +
+      'html.fusion-fetch-busy,html.fusion-fetch-busy *{cursor:progress!important}' +
+      '#fusion-fetch-indicator{position:fixed;right:18px;bottom:18px;width:22px;height:22px;' +
+      'border:3px solid #D5E5E5;border-top-color:#0FB8B5;border-radius:50%;z-index:10000;' +
+      'opacity:0;visibility:hidden;pointer-events:none;box-shadow:0 1px 5px #0002}' +
+      'html.fusion-fetch-busy #fusion-fetch-indicator{opacity:1;visibility:visible;' +
+      'animation:fusion-fetch-spin .75s linear infinite}' +
+      '@media(prefers-reduced-motion:reduce){html.fusion-fetch-busy #fusion-fetch-indicator{animation:none;border-right-color:transparent}}';
+    (document.head || document.documentElement).appendChild(busyStyle);
+    function showFetchBusy(){
+      if(activeFetches<1)return;
+      document.documentElement.classList.add('fusion-fetch-busy');
+      if(!document.getElementById('fusion-fetch-indicator')){
+        var indicator=document.createElement('span');indicator.id='fusion-fetch-indicator';
+        indicator.setAttribute('role','status');indicator.setAttribute('aria-label','Loading');
+        document.body.appendChild(indicator);
+      }
+    }
+    function finishFetch(){
+      activeFetches=Math.max(0,activeFetches-1);
+      if(activeFetches===0){
+        if(busyDelay){clearTimeout(busyDelay);busyDelay=null;}
+        document.documentElement.classList.remove('fusion-fetch-busy');
+      }
+    }
+    window.fetch=function(){
+      activeFetches++;
+      if(activeFetches===1)busyDelay=setTimeout(showFetchBusy,180);
+      var request;
+      try{request=nativeFetch.apply(window,arguments);}
+      catch(error){finishFetch();return Promise.reject(error);}
+      return Promise.resolve(request).finally(finishFetch);
+    };
+  }
+
   /* ---------- before anyone has signed in ---------- */
   // A sign-in screen is not a page of the app, so it is not framed like one: no
   // rail, no toolbar, nothing to click until there is somebody here. The server

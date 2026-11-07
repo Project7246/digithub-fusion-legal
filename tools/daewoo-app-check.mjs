@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import { createDaewooAdapter, openDaewooPortal } from '../daewoo.js';
 import { mapDaewooOrders } from '../daewoo-map.js';
 import { saveDaewooBundle } from '../daewoo-store.js';
@@ -48,6 +49,9 @@ assert.ok(stored.some(x=>x.kind==='cod-cpr')&&stored.some(x=>x.kind==='cod-cpr-d
 assert.ok(stored.some(x=>x.kind==='delivery-charge')&&stored.some(x=>x.kind==='tax')&&stored.some(x=>x.kind==='payment-report'));
 assert.equal(typeof adapter.fetchOrders,'function','Daewoo parcels are imported through the standard courier adapter');
 assert.equal(adapter.reportPath,'/courier-dash');
+const sharedDashboard=readFileSync('public/courier-dash.html','utf8');
+assert.match(sharedDashboard,/daewooSyncStatus/);assert.match(sharedDashboard,/Syncing reports/);
+assert.match(sharedDashboard,/aria-live="polite"/,'the report sync result is announced accessibly');
 assert.equal(adapterFor('daewoo').name,'Daewoo');
 assert.equal(courierKinds().find(k=>k.key==='daewoo').reportPath,'/courier-dash');
 assert.ok(!deductingCouriers().includes('daewoo'));

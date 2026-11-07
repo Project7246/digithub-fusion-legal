@@ -1493,3 +1493,5 @@ Manage courier accounts now offers Edit name on every provider's account. The ad
   amounts stay NULL rather than being recorded as zero. Existing courier logic,
   calculations, and styling are unchanged. Synthetic sync tests pass; production
   sync and live database screen still require post-deployment owner verification.
+- The Sync button has its own animated busy state and live status. The shared
+  `nav.js` network cue also shows a delayed progress cursor/spinner across pages.

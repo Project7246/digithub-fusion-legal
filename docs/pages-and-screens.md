@@ -51,6 +51,15 @@ truncate actual labels/descriptions. No global :root brand variables changed.
 Navigation fixtures also verify compact overview defaults, remembered groups,
 single-open behavior, active-ancestor priority and selected-link semantics.
 
+## App-wide network loading feedback - 7 Nov 2026
+
+Every page that loads `public/nav.js` shares the fetch busy cue: after 180 ms of
+outstanding network work, the cursor becomes `progress` and a small aqua spinner
+appears at the lower right. Concurrent fetches are counted so the cue clears only
+after all requests settle; quick responses do not flash it. It never blocks input.
+The Daewoo report sync additionally keeps its own button spinner and live result
+message, so background dashboard refresh text cannot replace the sync status.
+
 ## How a screen is written here
 
 Three rules, all given as corrections, all about the same thing: a screen is

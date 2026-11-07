@@ -5,6 +5,9 @@ import { readFileSync } from 'node:fs';
 import vm from 'node:vm';
 
 const source = readFileSync('public/nav.js', 'utf8');
+assert.match(source,/window\.__fusionBusyFetchWrapped/,'one shared fetch wrapper owns the loading cue');
+assert.match(source,/setTimeout\(showFetchBusy,180\)/,'fast requests do not flash the loading cue');
+assert.match(source,/fusion-fetch-busy/,'the shared cursor and spinner have a root busy state');
 
 class Element {
   constructor(tag = 'div', attributes = {}) {

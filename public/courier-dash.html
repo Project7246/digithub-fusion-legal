@@ -12,6 +12,14 @@
 <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@600;700;800&family=Roboto:wght@400;500&family=Roboto+Mono:wght@400;500&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="/app.css">
 <link rel="stylesheet" href="/courier-dashboard.css">
+<style>
+  #btnDaewooSync.is-syncing::before{content:"";display:inline-block;width:12px;height:12px;margin-right:7px;
+    border:2px solid currentColor;border-right-color:transparent;border-radius:50%;vertical-align:-2px;
+    animation:daewoo-sync-spin .7s linear infinite}
+  @keyframes daewoo-sync-spin{to{transform:rotate(360deg)}}
+  @media(prefers-reduced-motion:reduce){#btnDaewooSync.is-syncing::before{animation:none;border-right-color:transparent}}
+  #daewooSyncStatus{font-size:12px;color:var(--muted)}
+</style>
 </head>
 <body>
 
@@ -49,6 +57,7 @@
           <button data-days="89">3 months</button>
           <button id="btnPick">Date range</button>
           <button id="btnDaewooSync" class="hide">Sync Daewoo reports</button>
+          <span id="daewooSyncStatus" role="status" aria-live="polite"></span>
           <span id="picker" class="hide">
             <input type="date" id="from">
             <input type="date" id="to">
@@ -226,13 +235,15 @@
   $('btnConnect').addEventListener('click', function(){ location.href = '/auth/connect'; });
   $('btnDaewooSync').addEventListener('click', function(){
     if(!account)return;
-    var button=$('btnDaewooSync');button.disabled=true;button.textContent='Syncing portal reports…';
+    var button=$('btnDaewooSync'),status=$('daewooSyncStatus');
+    button.disabled=true;button.classList.add('is-syncing');button.setAttribute('aria-busy','true');
+    button.textContent='Syncing reports…';status.textContent='Reading the selected range from Daewoo…';
     fetch('/api/daewoo/sync',{method:'POST',headers:{'Content-Type':'application/json'},
       body:JSON.stringify({account:account,from:fromEl.value,to:toEl.value})})
       .then(function(r){return r.json().then(function(d){if(!r.ok)throw new Error(d.error||'Daewoo sync failed');return d;});})
-      .then(function(d){$('fresh').textContent='Daewoo reports saved · '+n0(d.orders)+' parcels · '+n0(d.documents)+' source records';load();})
-      .catch(function(e){$('fresh').textContent=e.message;})
-      .finally(function(){button.disabled=false;button.textContent='Sync Daewoo reports';});
+      .then(function(d){status.textContent='Saved '+n0(d.orders)+' parcels and '+n0(d.documents)+' invoice records.';load();})
+      .catch(function(e){status.textContent='Sync failed: '+e.message;})
+      .finally(function(){button.disabled=false;button.classList.remove('is-syncing');button.removeAttribute('aria-busy');button.textContent='Sync Daewoo reports';});
   });
 
   window.APP.ready.then(function(s){
