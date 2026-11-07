@@ -1,23 +1,23 @@
 // Synthetic sessions and money only: no network or production account access.
 import assert from 'node:assert/strict';
-import { DaewooPortal, reconcileInvoice, validateRange, chooseCustomer } from '../daewoo-portal.js';
+import { DaewooPortal, compareInvoiceFigures, validateRange, chooseCustomer } from '../daewoo-portal.js';
 
 const cover={customer_id:7,TotalCODAmount:'10000.00',TotalServiceCharges:'500.00',TotalReimbursementAmount:'9500.00'};
 const detail=[{booking_id:'0001',invoice_no:'fixture-invoice',amount_cod:'6000.00',amount_wr:'300.00',RST_Amt:'20.00',RWHT_Amt:'30.00'},
   {booking_id:'0002',invoice_no:'fixture-invoice',amount_cod:'4000.00',amount_wr:'200.00',RST_Amt:'10.00',RWHT_Amt:'15.00'}];
-assert.deepEqual(reconcileInvoice(cover,detail),{codMatches:true,chargesMatch:true,coverArithmeticMatches:true,taxFieldsPresent:true,duplicateParcel:false,reconciliationRequired:false});
+assert.deepEqual(compareInvoiceFigures(cover,detail),{codMatches:true,chargesMatch:true,coverArithmeticMatches:true,taxFieldsPresent:true,duplicateParcel:false,settlementStatus:'NOT_CHECKED'});
 const originalCover=structuredClone(cover),originalDetail=structuredClone(detail);
-reconcileInvoice(cover,detail);
+compareInvoiceFigures(cover,detail);
 assert.deepEqual(cover,originalCover);assert.deepEqual(detail,originalDetail,'never adjust original totals to force a match');
-assert.equal(reconcileInvoice({...cover,TotalCODAmount:'9999.99'},detail).reconciliationRequired,true);
-assert.equal(reconcileInvoice({...cover,TotalCODAmount:null},detail).reconciliationRequired,true);
-assert.equal(reconcileInvoice({...cover,TotalCODAmount:'9999.99'},detail).codMatches,false);
-assert.equal(reconcileInvoice({...cover,TotalCODAmount:null},detail).codMatches,null);
-assert.equal(reconcileInvoice(cover,[{...detail[0],amount_cod:null}]).codMatches,null);
-assert.equal(reconcileInvoice(cover,[detail[0],detail[0]]).duplicateParcel,true);
-assert.equal(reconcileInvoice(cover,[{...detail[0],RST_Amt:null}]).taxFieldsPresent,false);
-assert.equal(reconcileInvoice({...cover,TotalCODAmount:'10.001'},detail).codMatches,null);
-assert.equal(reconcileInvoice({TotalCODAmount:0,TotalServiceCharges:0,TotalReimbursementAmount:0},[]).codMatches,true);
+assert.equal(compareInvoiceFigures({...cover,TotalCODAmount:'9999.99'},detail).settlementStatus,'NOT_CHECKED');
+assert.equal(compareInvoiceFigures({...cover,TotalCODAmount:null},detail).settlementStatus,'NOT_CHECKED');
+assert.equal(compareInvoiceFigures({...cover,TotalCODAmount:'9999.99'},detail).codMatches,false);
+assert.equal(compareInvoiceFigures({...cover,TotalCODAmount:null},detail).codMatches,null);
+assert.equal(compareInvoiceFigures(cover,[{...detail[0],amount_cod:null}]).codMatches,null);
+assert.equal(compareInvoiceFigures(cover,[detail[0],detail[0]]).duplicateParcel,true);
+assert.equal(compareInvoiceFigures(cover,[{...detail[0],RST_Amt:null}]).taxFieldsPresent,false);
+assert.equal(compareInvoiceFigures({...cover,TotalCODAmount:'10.001'},detail).codMatches,null);
+assert.equal(compareInvoiceFigures({TotalCODAmount:0,TotalServiceCharges:0,TotalReimbursementAmount:0},[]).codMatches,true);
 validateRange('2026-01-01','2026-01-03');
 validateRange('2026-01-01','2026-01-31');
 validateRange('2026-01-01','2026-02-01');
@@ -62,6 +62,10 @@ function fixture(options={}) {
       }
     }
     if(method==='GetDetailReport')body.Data=options.foreignInvoice?detail.map(row=>({...row,invoice_no:'other-fixture'})):detail;
+    if(method==='GetFinancialReport')body.Data=JSON.stringify([{booking_id:'fixture-booking',BarCode:'0000123',
+      Service_invoice_no:'fixture-service',Payment_invoice_no:'fixture-cod',
+      amount_cod:'100.00',amount_wr:'10.00',AmountToPaid:'100.00',AmountPaid2:null,
+      ...(options.foreign?{customer_id:8}:{})}]);
     return Response.json({d:options.stringWrapper?JSON.stringify(body):body});
   }});
   return {portal,calls};
@@ -72,6 +76,12 @@ assert.equal((await portal.customers())[0].customer_id,7);
 const covers=await portal.covers('2026-01-01','2026-01-03',7);
 assert.equal(covers.length,1);
 assert.equal((await portal.detail('fixture-invoice',7)).length,2);
+const financial=await portal.financialRows('2026-01-01','2026-01-31',7);
+assert.equal(financial[0].Service_invoice_no,'fixture-service');
+assert.equal(financial[0].Payment_invoice_no,'fixture-cod');
+assert.equal(financial[0].AmountPaid2,null,'invoice reference does not turn missing paid amount into zero');
+assert.deepEqual(JSON.parse(calls.find(c=>c.url.endsWith('/GetFinancialReport')).request.body),
+  {fromDate:'2026-01-01',toDate:'2026-01-31',customerId:'7'});
 assert.ok((await portal.invoiceExport('fixture-invoice',7)).toString().startsWith('%PDF-'));
 const exportCall=calls.find(c=>new URL(c.url).pathname==='/CODInvoiceSummaryReportPrint.aspx');
 assert.equal(exportCall.request.method,'GET');
@@ -89,6 +99,7 @@ for(const [option,code] of [['reject','AUTH_REJECTED'],['expired','SESSION_EXPIR
 }
 const foreign=fixture({foreign:true});await foreign.portal.login('fixture','fixture');
 await assert.rejects(foreign.portal.covers('2026-01-01','2026-01-03',7),e=>e.code==='CUSTOMER_SCOPE_MISMATCH');
+await assert.rejects(foreign.portal.financialRows('2026-01-01','2026-01-31',7),e=>e.code==='CUSTOMER_SCOPE_MISMATCH');
 const string=fixture({stringWrapper:true});await string.portal.login('fixture','fixture');assert.equal((await string.portal.customers()).length,1);
 const wrongInvoice=fixture({foreignInvoice:true});await wrongInvoice.portal.login('fixture','fixture');
 await assert.rejects(wrongInvoice.portal.detail('fixture-invoice',7),e=>e.code==='INVOICE_SCOPE_MISMATCH');

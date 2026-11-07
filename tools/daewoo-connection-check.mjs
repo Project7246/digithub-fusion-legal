@@ -2,7 +2,7 @@
 import assert from 'node:assert/strict';
 import { createInterface } from 'node:readline';
 import { Writable, PassThrough } from 'node:stream';
-import { DaewooPortal, DaewooPortalError, reconcileInvoice, validateRange, chooseCustomer } from '../daewoo-portal.js';
+import { DaewooPortal, DaewooPortalError, compareInvoiceFigures, validateRange, chooseCustomer } from '../daewoo-portal.js';
 
 function outcome(reply) {
   if (!reply || typeof reply !== 'object' || Array.isArray(reply) ||
@@ -110,17 +110,17 @@ async function portalMain(){
     covers=await client.covers(from,to,choice.customer.customer_id);
     console.log('DAEWOO_CPR='+(covers.length?'READ_OK':'EMPTY_RANGE'));
     if(!covers.length)return;
-    console.log('Checking one invoice detail against its cover...');
+    console.log('Comparing one cover and its detail; this is not payment reconciliation.');
     // One cover only: verify a sample without requesting all historical parcel details.
     detail=await client.detail(covers[0].invoice_no,covers[0].customer_id);
-    const match=reconcileInvoice(covers[0],detail);
+    const match=compareInvoiceFigures(covers[0],detail);
     const label=value=>value===null?'UNKNOWN':value?'MATCH':'DIFFERENT';
-    console.log('DAEWOO_CPR_COD='+label(match.codMatches));
-    console.log('DAEWOO_CPR_CHARGES='+label(match.chargesMatch));
-    console.log('DAEWOO_CPR_COVER_ARITHMETIC='+label(match.coverArithmeticMatches));
+    console.log('DAEWOO_COD_FIGURE_COMPARISON='+label(match.codMatches));
+    console.log('DAEWOO_CHARGE_FIGURE_COMPARISON='+label(match.chargesMatch));
+    console.log('DAEWOO_COVER_ARITHMETIC_COMPARISON='+label(match.coverArithmeticMatches));
     console.log('DAEWOO_TAX_FIELDS='+(match.taxFieldsPresent?'PRESENT':'MISSING'));
     console.log('DAEWOO_DUPLICATE_PARCELS='+(match.duplicateParcel?'REVIEW':'NONE_IN_SAMPLE'));
-    console.log('DAEWOO_RECONCILIATION='+(match.reconciliationRequired?'REQUIRED':'SAMPLE_MATCH_ONLY'));
+    console.log('DAEWOO_SETTLEMENT=DOCUMENT_LINKS_REQUIRED');
     console.log('DAEWOO_FINANCIAL_POSTING=DISABLED');
     console.log('Only fixed diagnostic results are shown. This does not authorize financial posting.');
   }catch(error){

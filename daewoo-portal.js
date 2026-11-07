@@ -1,7 +1,7 @@
 // Read-only Daewoo merchant-portal client. No database, timers or global sessions.
 const ORIGIN='https://codportal.daewoo.net.pk';
 const LIMIT=4*1024*1024;
-const METHODS=new Set(['AuthenticateUser','CheckUserSessionUpdated','GetCustomersNew','GetReport','GetDetailReport']);
+const METHODS=new Set(['AuthenticateUser','CheckUserSessionUpdated','GetCustomersNew','GetReport','GetDetailReport','GetFinancialReport']);
 export class DaewooPortalError extends Error {
   constructor(code){super('Daewoo portal: '+code);this.code=code;}
 }
@@ -138,6 +138,16 @@ export class DaewooPortal {
     if(rows.some(row=>row.customer_id!=null&&String(row.customer_id)!==String(customerId)))fail('CUSTOMER_SCOPE_MISMATCH');
     return rows;
   }
+  async financialRows(fromDate,toDate,customerId){
+    validateRange(fromDate,toDate);
+    const id=String(customerId??'').trim();if(!id||id==='0'||id==='-1')fail('INPUT_REQUIRED');
+    // Exact read-only contract used by FinancialReport.aspx. Preserve both
+    // invoice references and original payable/paid fields; never net them here.
+    const rows=this.#rows(await this.#call('GetFinancialReport',{fromDate,toDate,customerId:id}));
+    if(rows.some(row=>!row||row.booking_id==null||row.BarCode==null))fail('BAD_RESPONSE');
+    if(rows.some(row=>row.customer_id!=null&&String(row.customer_id)!==id))fail('CUSTOMER_SCOPE_MISMATCH');
+    return rows;
+  }
   async invoiceExport(invoiceNo,customerId){
     if(!this.#authenticated)fail('LOGIN_REQUIRED');
     if(invoiceNo==null||String(invoiceNo).trim()===''||customerId==null||String(customerId).trim()==='')fail('INPUT_REQUIRED');
@@ -156,7 +166,9 @@ function paisa(value){
   const [whole,decimal='']=text.replace(/,/g,'').replace(/^-/,'').split('.');
   return BigInt((negative?'-':'')+whole+decimal.padEnd(2,'0'));
 }
-export function reconcileInvoice(cover,detail){
+// A diagnostic comparison only. COD, service/tax invoices and actual payments
+// are separate documents; these equalities cannot establish settlement.
+export function compareInvoiceFigures(cover,detail){
   if(!Array.isArray(detail))fail('BAD_RESPONSE');
   const sum=key=>{let total=0n;for(const row of detail){const v=paisa(row?.[key]);if(v===null)return null;total+=v;}return total;};
   const gross=paisa(cover?.TotalCODAmount),charge=paisa(cover?.TotalServiceCharges),net=paisa(cover?.TotalReimbursementAmount);
@@ -169,6 +181,5 @@ export function reconcileInvoice(cover,detail){
     taxFieldsPresent:detail.length>0&&detail.every(row=>paisa(row?.RST_Amt)!==null&&paisa(row?.RWHT_Amt)!==null),
     duplicateParcel:new Set(ids).size!==ids.length
   };
-  return {...checks,reconciliationRequired:checks.codMatches!==true||checks.chargesMatch!==true||
-    checks.coverArithmeticMatches!==true||!checks.taxFieldsPresent||checks.duplicateParcel};
+  return {...checks,settlementStatus:'NOT_CHECKED'};
 }

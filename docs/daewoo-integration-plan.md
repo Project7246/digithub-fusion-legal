@@ -6,9 +6,59 @@ Owner wants the same Fusion courier screens and behavior, with a Daewoo-specific
 implementation underneath. Owner confirms only the supplied API guide is offered
 in the merchant portal and there is no webhook. Credentials must stay private.
 
+## Current settlement model - owner clarification, 7 Nov 2026
+
+Owner clarified that COD/CPR invoices and delivery/tax invoices are separate.
+Daewoo deducts applicable service/tax invoices when making a payment. This
+supersedes the earlier interpretation that one CPR must equal its parcel COD
+minus that same document's charges/taxes. Different figure comparisons alone
+are not proof of an accounting discrepancy. No source numbers were adjusted.
+
+Implemented in daewoo-finance.js, with synthetic checks written first:
+- Typed COD, delivery and tax documents remain separate, scoped by realm,
+  courier account and portal customer. No matching by amount/date/number similarity.
+- A payment has explicit allocations to one or more source documents; COD
+  allocations add, delivery/tax allocations deduct. No allocations means UNVERIFIED.
+- Partial allocation and remaining invoice balances are preserved. Duplicate
+  documents/payments/links, foreign scope, unknown links, over-allocation and
+  missing/invalid money refuse calculation. Exact BigInt paisa, no float subtraction.
+- A tax document must explicitly state whether it is a separate deduction or a
+  breakdown already included in a delivery invoice. Included tax cannot be
+  allocated again. Source mappings must establish this, never guess it.
+- MATCH describes declared allocation arithmetic only. Outstanding documents are
+  reported separately; bank receipt is not verified and posting remains disabled.
+
+compareInvoiceFigures replaces the misleading reconcileInvoice name. Its
+comparisons are diagnostic facts only; settlementStatus is always NOT_CHECKED.
+The private helper now says DOCUMENT_LINKS_REQUIRED rather than deriving a
+settlement error or success from a cover/detail comparison. No rerun needed.
+
+Portal client now exposes financialRows using the observed GetFinancialReport
+contract. It preserves Service_invoice_no, Payment_invoice_no, payable and paid
+fields separately, including null. No implicit deduction or payment is created.
+
+Read-only native portal inspection (same selected customer) loaded Customer Ledger
+and COD Invoice (Services) and exported both privately to owner's Downloads:
+- Ledger columns: Date /Time, Details, Reimbur. Amount, Paid Amount, Balance.
+  Full export has invoice and bank-paid descriptions. Bank-paid descriptions do
+  not carry the observed invoice-number pattern; allocation references unverified.
+  The requested month returned a much longer ledger: date-filter behavior is not
+  assumed. Keep complete source coverage separate from requested period.
+- Service report columns: date, consignment, route, weight, Service Ch, Fuel Adj.,
+  GST Amount, Total Service Ch. No invoice reference or RST/WHT column in that
+  export. Two rows do not satisfy service+fuel+GST=total even at displayed paisa;
+  do not label a source error or change figures without row status/basis evidence.
+- Source exports remain private, unchanged and outside git. No raw records,
+  amounts, customer names or IDs are recorded in fixtures/docs.
+
+Remaining before app attachment: verify the service-invoice identity and payment
+allocation source (possibly payment advice/voucher), report date semantics and
+complete order discovery/mapping. No adapter registration, UI integration,
+financial posting, database/schema/env change or migration reservation in this step.
+
 ## Read-only verification results - 6 Nov 2026
 
-### Latest checkpoint - 7 Nov 2026
+### Earlier figure-comparison checkpoint - superseded by owner settlement clarification
 
 Updated owner-supplied PDF supersedes the clipped copy: both RST and WHT columns
 and the printed reimbursement/service/payable header are now visible. Same invoice
@@ -319,8 +369,9 @@ erase newer delivery/return information. Unknown statuses remain visibly unmappe
   different states. Track them separately; do not mark paid from delivery alone.
 - Confirm CODMode/payment_mode_name, service-charge deduction vs separate invoice,
   GST/withholding/adjustments, return charges and the meaning of Total Amount.
-  adapters.js currently assumes charges are deducted unless deducts:false; neither
-  choice is safe for Daewoo until its actual merchant terms and reports agree.
+  Owner confirms deduction at payment against separate invoices. adapters.js
+  parcel-level deduction cannot represent this; explicit document/payment links
+  are required before registering Daewoo financial totals.
 - quickCalculateRate is a quote, not final charge or proof of deduction.
 - Missing charge/tax/settlement data is unavailable, not zero. Existing saveOrders
   uses zero defaults and preserves earlier nonzero fees; an availability contract

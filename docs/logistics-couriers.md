@@ -5,20 +5,19 @@ the module it touches. Nothing here was changed, reworded or dropped - see the
 index in CLAUDE.md. Read this file before working on this module.
 ## Daewoo planning requested - 6 Nov 2026
 
-7 Nov checkpoint: owner reports locations API PASS from their PC. Added the
-read-only daewoo-portal.js client plus --portal private diagnostic; synthetic
-session/scope/date/paisa tests pass (23 check:all checks). No adapter is registered
-or account attached yet. Owner's website login diagnostic now also reports PASS;
-multiple customers require a private name/ID choice before CPRs can be queried.
-The chooser preserves the session and refuses ambiguous or unknown selections;
-the chosen-customer CPR read now passes. Owner also reproduces COD DIFFERENT,
-charges/cover arithmetic MATCH, taxes present and no duplicate parcels in sample.
-Updated owner-supplied PDF now shows both RST/WHT and payable columns. Same-invoice
-COD difference persists; adding/subtracting both taxes does not reconcile it with
-the private summary. Service charges match; cause remains unverified. Automatic export retries
-are removed; unknown formats are never accepted. Reconciliation stays required,
-and no Daewoo financial posting is enabled. Client/helper now preserve monthly
-and longer authorized ranges; the earlier arbitrary seven-day clamp was removed.
+7 Nov owner clarification: Daewoo COD/CPR and service/tax invoices are separate;
+applicable invoices are deducted at payment. Earlier cover/detail comparisons
+are not settlement reconciliation and their differences alone prove no discrepancy.
+daewoo-finance.js now calculates explicitly linked payments and typed documents
+with exact paisa, partial balances, scope checks and no double tax. Synthetic
+checks are in tools/daewoo-settlement-check.mjs; bank/posting remain unverified/off.
+Portal financialRows preserves service/payment invoice references and paid/payable
+fields separately. Private helper now says DOCUMENT_LINKS_REQUIRED.
+Native portal Customer Ledger and Services reports loaded/exported privately.
+Ledger bank-paid descriptions lack the observed invoice-reference pattern; service
+export has no invoice reference. Payment-allocation source/date behavior still need
+verification before account attachment. No adapter/UI/database changes yet.
+Full evidence and current model: docs/daewoo-integration-plan.md.
 
 Owner now wants Daewoo with the same shared courier UI. The earlier "not being
 worked on" note below is historical. Planning only: supplied guide internally
