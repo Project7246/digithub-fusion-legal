@@ -1,27 +1,24 @@
 # Handover - current folder state
-Last agent: Codex - 7 Nov 2026. Task: attach Daewoo live-report connector in app.
-- Added daewoo.js registry adapter: non-secret portal user as account token;
-  API key/user/password + portal password in existing encrypted extra credentials.
-  Save tests locations API, fresh portal login and exact/unique customer selection.
-- Added scoped daewoo-routes.js (/api/daewoo), registered in server.js;
-  report/money grants + realm/account/customer/invoice ownership checks.
-- /daewoo page: orders/status, COD/CPR covers, service references, selected
-  invoice detail/RST/WHT. Original/null figures preserved; search/pagination;
-  manual reads only, abort/ignore stale scope responses. Shared nav/labels wired.
-- Explicit limit: live reports, NOT stored parcel/CPR import or tracking API
-  sweeps. No financial posting/settlement inference/webhook advertised. Keeper
-  skips manualOnly; shared Pull/hook selectors exclude it. No schema/migration.
-- Existing daewoo-finance.js typed invoices/payment allocations retained;
-  payment advice/allocations, date completeness/order mapping still need proof.
-- Tests: all 26 check:all PASS; server syntax and diff check PASS.
-  Real saved account/report test awaits owner-entered app credentials.
-- Migration follow-up retained: Singapore project confirmed; 2.33 CU-hours
-  baseline includes possible copy work, savings unproven. Both M&P tests had no
-  visible error and refreshed sync times. Fresh Trax/QB round-trips pending.
-- Prior DO console blank/cached; exact active commit not independently read.
-  Prior live version 1794010292045, e base/callback, all required values true.
-- Ohio read-only >=13 Nov; no deletion, reconcile Singapore writes before rollback.
-  Both private backups present/non-empty: LOCALAPPDATA/FusionMigration/20261106-055453.
-- Older Trax/M&P backfills, nine Trax posting review, PostEx webhook gaps remain.
-  Naming deferred; 2-3 day monitoring needs dated observations, not scheduled.
-- No private exports/credentials committed. Task files only; deployment pending.
+Last agent: Codex - 7 Nov 2026. Task: Daewoo UI parity + Banking invoice locks.
+- Owner confirmed Daewoo connection/CPR/charges working after 72849ac.
+- Standard Parcels / Finance / Receipts + subtabs now share courier-dashboard.css;
+  former courier styles extracted unchanged; other courier handlers/formulas unchanged.
+- Provider extras: delivery/tax detail and Banking invoice matching; missing pickup
+  dates and unallocated parcel nets remain unavailable. No stored parcel import/timer.
+- New daewoo-locks/store/banking-router + matching widget: exact allocations,
+  pending lock, separate actual bank receipt, audited reversal; existing dated
+  bank links/fiscal placement via transactional saveCprs. No QuickBooks posting.
+- Migration 006_daewoo_settlements.sql RESERVED/created this task; startup applies
+  once transactionally. Both new tables have realm filters + FORCE RLS.
+- Tests: all 29 check:all PASS; syntax + diff checks PASS; reversed-history
+  preview regression PASS. Private HR file importer not run (owner folder needed).
+- Deployment pending this commit; pre-push version 1794030492058. Live tabs and
+  migration startup need verification; no real financial lock/receipt executed.
+- Owner check: one documented invoice match and separate actual bank confirmation.
+- Singapore server/database retained. Neon 2.33 CU-hour baseline includes copy;
+  savings unproven. Both M&P tests worked; fresh Trax/QB round-trips pending.
+- Ohio read-only >=13 Nov; deletion deferred; reconcile Singapore writes before
+  rollback. Private backups LOCALAPPDATA/FusionMigration/20261106-055453 retained.
+- Older Trax/M&P backfills, nine Trax posting review and PostEx webhook gaps pending.
+  Naming deferred; 2-3 day monitoring needs observations, not scheduled.
+- Dirty: task files only, including this checkpoint. No credentials/private exports.

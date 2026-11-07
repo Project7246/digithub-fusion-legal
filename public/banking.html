@@ -22,7 +22,8 @@
   .pills button:hover{background:var(--panel-2);color:var(--ink)}
   .pills button.on{background:var(--ink);color:#fff}
   .pills{display:flex;width:100%;box-sizing:border-box}
-  .bank-readonly #tabs [data-tab]:not([data-tab="report"]),.bank-readonly .bk-settings-tabs{display:none!important}
+  .bank-readonly #tabs [data-tab]:not([data-tab="report"]):not([data-tab="daewoo"]),.bank-readonly .bk-settings-tabs{display:none!important}
+  #daewooTab[hidden]{display:none!important}
   .bk-settings-tabs{margin-left:auto;display:flex;gap:3px;border-left:1px solid var(--line);padding-left:8px}
   .bk-help{display:inline-flex;align-items:center;justify-content:center;width:15px;height:15px;margin-left:4px;border:1px solid #98b5b3;border-radius:50%;font:600 10px var(--sans);color:var(--muted);cursor:help;vertical-align:middle}
   .bk-help:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
@@ -180,6 +181,7 @@
         <div class="pills" id="tabs">
           <button data-tab="report" class="on">Live balance &amp; CPRs</button>
           <button data-tab="entries">Transactions</button>
+          <button data-tab="daewoo" id="daewooTab" hidden>Daewoo invoice matching</button>
           <span class="bk-settings-tabs"><button data-tab="couriers">Bank / courier links</button><button data-tab="add">Bank settings</button></span>
         </div>
         <div id="view"><div class="fxnone">One moment…</div></div>
@@ -206,6 +208,7 @@
 <script src="/nav.js"></script>
 <script src="/tiles.js"></script>
 <script src="/messages.js"></script>
+<script src="/daewoo-matching.js"></script>
 <script>
 "use strict";
 (function(){
@@ -788,10 +791,12 @@
     ['report','cash','Live balance & CPRs','Balances, received payments and receivables'],
     ['entries','shuffle','Transactions','Opening totals, bank transfers and entries'],
     ['couriers','box','Bank / courier links','Choose where each courier pays'],
-    ['add','wallet','Bank settings','Bank details and Google Sheet start dates']
-  ].filter(function(t){return S.canWrite || t[0]==='report';}).map(function(t){return '<button class="bk-door" data-open-tab="'+t[0]+'"><span class="bk-icon">'+window.FUSION.mark(t[1])+'</span><b>'+t[2]+'</b><small>'+t[3]+'</small></button>';}).join('')+'</div>';}
+    ['add','wallet','Bank settings','Bank details and Google Sheet start dates'],
+    ['daewoo','box','Daewoo invoice matching','Match COD invoices with delivery / tax invoices']
+  ].filter(function(t){return (S.canWrite || t[0]==='report'||t[0]==='daewoo') && (t[0]!=='daewoo'||hasDaewoo());}).map(function(t){return '<button class="bk-door" data-open-tab="'+t[0]+'"><span class="bk-icon">'+window.FUSION.mark(t[1])+'</span><b>'+t[2]+'</b><small>'+t[3]+'</small></button>';}).join('')+'</div>';}
+  function hasDaewoo(){return ((S.links&&S.links.accounts)||[]).some(function(a){return a.courier==='daewoo';})||((S.report&&S.report.receipts)||[]).some(function(r){return r.courier==='daewoo';});}
   function openTab(tab,push){
-    if(!S.canWrite && tab!=='home' && tab!=='report')tab='report';
+    if(!S.canWrite && tab!=='home' && tab!=='report' && tab!=='daewoo')tab='report';
     S.tab=tab;
     if(push)history.pushState({bankTab:tab},'',tab==='home'?'/banking':'/banking?view='+tab);
     draw();window.scrollTo({top:0,behavior:'smooth'});
@@ -800,13 +805,15 @@
     draftDirty=false;
     var v = $('view');
     $('tabs').style.display=S.tab==='home'?'none':'flex';
+    $('daewooTab').hidden=!hasDaewoo()&&S.tab!=='daewoo';
     $('tabs').querySelectorAll('[data-tab]').forEach(function(b){b.classList.toggle('on',b.getAttribute('data-tab')===S.tab);});
-    v.innerHTML = S.tab === 'home' ? homeView() : S.tab === 'report'   ? reportView()
+    v.innerHTML = S.tab === 'daewoo' ? '<div id="daewooMatch"></div>' : S.tab === 'home' ? homeView() : S.tab === 'report'   ? reportView()
                 : S.tab === 'couriers' ? couriersView()
                 : S.tab === 'entries'  ? entriesView()
                 : addView()+logButton('opening');
     v.querySelectorAll('[data-open-tab]').forEach(function(b){b.addEventListener('click',function(){openTab(b.dataset.openTab,true);});});
     wire();
+    if(S.tab==='daewoo')window.DAEWOO_MATCHING.mount($('daewooMatch'),new URLSearchParams(location.search).get('account'),{onDirty:function(){draftDirty=true;draftRevision++;},onSaved:function(){draftDirty=false;}});
   }
 
   function say(el, cls, text){
@@ -1092,8 +1099,8 @@
 
     try {
       var kept = new URLSearchParams(location.search).get('view') || 'home';
-      if(!['home','report','entries','couriers','add'].includes(kept))kept='home';
-      if(!S.canWrite && kept!=='home' && kept!=='report')kept='report';
+      if(!['home','report','entries','couriers','add','daewoo'].includes(kept))kept='home';
+      if(!S.canWrite && kept!=='home' && kept!=='report' && kept!=='daewoo')kept='report';
       if(kept){
         S.tab = kept;
         [].slice.call($('tabs').querySelectorAll('button')).forEach(function(x){

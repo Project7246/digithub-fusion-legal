@@ -1428,3 +1428,22 @@ are two different claims and only the second is a receipt.
 So: a number reported by a sync says what the database holds when the sync
 is over, or it says nothing worth printing. `absorbPayouts` returns
 `wrote` / `held` / `lost`, and `/api/courier/sync` passes them through.
+
+## 7 Nov 2026 - Daewoo interface parity and invoice matching
+Current implementation supersedes the earlier live-report-only milestone.
+- Owner confirmed the connected account, CPR and charge reads work. Daewoo now
+  uses the standard Parcels / Finance / Receipts shell and matching sub-tabs.
+  courier-dashboard.css is the former shared dashboard style, extracted unchanged;
+  other couriers' handlers, financial formulas and data sources are unchanged.
+- Provider-only extras: delivery/tax invoices, original RST/WHT detail and a link
+  to Banking invoice matching. Raw COD covers are not treated as bank payments.
+- Matched pending/received nets come from scoped settlement records. Missing
+  pickup dates, parcel deduction allocations and unallocated receivables remain
+  unavailable; no other metric or zero substitutes for them. Unknown statuses
+  remain other; no persistent parcel import, API sweep or new timer was added.
+- Migration 006_daewoo_settlements.sql adds realm-scoped FORCE RLS storage/audit.
+  Startup applies it once under a transactional advisory lock. Invoice locks
+  publish through saveCprs in the same transaction; see Banking notes for rules.
+- Synthetic checks cover scoped routes, allocations, tax, store rollback/audit,
+  standard tabs, stale requests and unchanged Banking placement behavior.
+  Real financial lock/receipt actions are deliberately left to the owner.

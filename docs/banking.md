@@ -398,3 +398,25 @@ are one row here, which is the price of not needing a column nobody keeps.
 than nought. A nought is a figure nobody can argue with and nobody should
 trust.
 
+
+## 7 Nov 2026 - Daewoo invoice matching (provider-specific extension)
+- Banking gains a Daewoo invoice matching tab only for companies with Daewoo.
+  Existing Banking read/manage grants apply; no permissions or formulas for
+  other couriers change. Shared server wiring registers a separate router.
+- Load source COD covers, select partial/full allocations, enter verified
+  delivery/tax invoice references, full totals and deductions, then Check match.
+  COD cover totals are re-read at lock time. Included tax must allocate zero
+  and identify its parent invoice. Exact paisa arithmetic checks net and reuse.
+- Lock creates a pending CPR/receivable, not an actual bank deposit. Confirm
+  bank receipt separately with exact amount, actual date and transaction ref;
+  an existing dated bank/courier link must cover that date. Existing fiscal
+  opening/link placement and one-receipt-one-deposit rules remain authoritative.
+- Immutable snapshot/amounts plus audited state transitions: locked -> received,
+  or reversed with a reason. Reversal retains history and cancels the canonical
+  CPR; a new payment reference is needed for a replacement lock. Original
+  source documents are not changed. No QuickBooks posting or bank transfer.
+- Migration 006_daewoo_settlements.sql: settlement + audit tables, realm/account
+  filters, FORCE RLS, transaction-scoped realm and advisory serialization.
+  saveCprs publishes the same transaction; failure rolls back lock and audit.
+- This is explicit owner-verified invoice matching. The portal does not supply
+  proven bank-payment invoice allocations, so no automatic settlement inference.

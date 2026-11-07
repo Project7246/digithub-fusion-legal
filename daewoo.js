@@ -30,6 +30,13 @@ export function createDaewooAdapter({fetcher=fetch,Portal=DaewooPortal}={}){
   }
   return {
     key:'daewoo',name:'Daewoo',base:'https://codapi.daewoo.net.pk',
+    groupOf(status){
+      const key=String(status||'').trim().toLowerCase().replace(/[_-]+/g,' ').replace(/\s+/g,' ');
+      return ({booked:'booked',delivered:'delivered','shipment delivered':'delivered',returned:'returned','rto delivered':'returned',
+        'in transit':'transit','out for delivery':'transit','ready for delivery':'transit','delivery in process':'transit',
+        'return in transit':'returning','out for return':'returning',cancelled:'cancelled',canceled:'cancelled',
+        'on hold':'review',lost:'lost',damaged:'damaged'})[key]||'other';
+    },
     lists:false,manualOnly:true,reportPath:'/daewoo',financialPosting:false,
     deducts:false, // no parcel-net calculation; deductions belong to linked invoices
     // The first field is stored as the account token in the common schema.

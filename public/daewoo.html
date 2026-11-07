@@ -1,89 +1,29 @@
-<!doctype html>
-<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Daewoo — Fusion</title><link rel="stylesheet" href="/app.css">
-<style>
-.content{padding:16px 24px}@media(max-width:650px){.content{padding:12px}.dwbar label{flex:1}.dwbar input,.dwbar select{max-width:100%}}
-.dwbar,.dwtabs,.dwpager{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:12px}
-.dwbar label{font-size:12px;color:var(--muted)}
-.dwbar input,.dwbar select,.dwbar button,.dwtabs button,.dwpager button{font:inherit;font-size:12px;border:1px solid var(--line);border-radius:6px;padding:7px 10px;width:auto;height:auto;background:var(--panel);color:var(--text)}
-.dwbar label input{display:block}.dwbar .primary,.dwtabs .on{background:var(--ink);color:var(--aqua);border-color:var(--ink)}
-.dwbox{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:14px;margin:12px 0;overflow:auto}
-.dwbox table{width:100%;border-collapse:collapse;font-size:12px;white-space:nowrap}.dwbox th,.dwbox td{text-align:left;border-bottom:1px solid var(--line);padding:8px}
-.dwbox th{font-weight:700}.dwbox td button{border:0;background:none;color:var(--qbo);text-decoration:underline;cursor:pointer}
-.dwnote{font-size:12px;color:var(--muted);margin:10px 0}.dwerror{color:var(--neg)}[hidden]{display:none!important}
-</style></head><body><div class="layout"><aside class="rail"></aside><div class="main">
-<div class="topline"><div><h1>Daewoo</h1><div class="sub">Live courier reports for the selected account.</div></div></div>
-<div class="content">
-<div class="dwbar"><label>Account<select id="account" aria-label="Daewoo account"></select></label>
-<label>From<input id="from" type="date"></label><label>To<input id="to" type="date"></label>
-<button id="load" class="primary">Load report</button><a href="/couriers?add=daewoo">Add / manage account</a></div>
-<div class="dwtabs" role="tablist" aria-label="Daewoo reports">
-<button role="tab" aria-selected="true" data-tab="orders" class="on">Orders &amp; status</button>
-<button role="tab" aria-selected="false" data-tab="invoices">COD / CPR invoices</button>
-<button role="tab" aria-selected="false" data-tab="charges">Charges &amp; tax</button></div>
-<p class="dwnote">COD invoices and delivery/tax invoices are separate. A payment may deduct several invoices.
-Payment allocation and bank receipt are not verified here; no QuickBooks posting is made.</p>
-<p class="dwnote" id="sourceNote">Choose a period and load a report. Reports are read on request; they are not added to parcel-net totals.</p>
-<div id="message" role="status" aria-live="polite"></div>
-<div class="dwbar"><label>Search<input id="search" type="search" placeholder="Tracking or invoice reference"></label>
-<button id="back" hidden>Back to invoices</button></div>
-<div class="dwbox"><table><thead id="head"></thead><tbody id="rows"></tbody></table><p id="empty">No report loaded.</p></div>
-<div class="dwpager"><button id="prev">Previous</button><span id="count"></span><button id="next">Next</button></div>
-</div></div></div><script src="/nav.js"></script><script>
-(function(){
-'use strict';
-var $=function(id){return document.getElementById(id);};
-var tab='orders',data=[],page=0,detail=false,serial=0,controller=null;
-var columns={
- orders:[['CN / booking','booking_id'],['Barcode','BarCode'],['Order reference','reference_no'],['Booking date','booking_datetime_f'],['Status','status'],['Status date','StatusDate'],['COD','amount_cod'],['Service invoice','Service_invoice_no'],['Payment invoice','Payment_invoice_no'],['Reported payable','AmountToPaid'],['Reported paid','AmountPaid2']],
- invoices:[['Invoice','invoice_no'],['Period from','invoice_period_start_date'],['Period to','invoice_period_end_date'],['Invoice date','invoice_date'],['Reported COD','TotalCODAmount'],['Reported service charges','TotalServiceCharges'],['Reported reimbursed','TotalReimbursementAmount']],
- charges:[['CN / booking','booking_id'],['Barcode','BarCode'],['Service invoice','Service_invoice_no'],['Reported service charges','amount_wr'],['Payment invoice','Payment_invoice_no'],['Invoice status','invoice_status']],
- detail:[['CN / booking','booking_id'],['Barcode','Barcode'],['Booking date','booking_datetime'],['COD','amount_cod'],['Service charges','amount_wr'],['RST','RST_Amt'],['WHT','RWHT_Amt'],['Invoice','invoice_no']]
-};
-function display(value){
- if(value==null||value==='')return 'Unavailable';
- var match=String(value).match(/^\/Date\((-?\d+)(?:[+-]\d{4})?\)\/$/);
- return match?new Date(Number(match[1])).toLocaleDateString('en-GB',{timeZone:'Asia/Karachi'}):String(value);
-}
-function clear(){serial++;if(controller)controller.abort();controller=null;data=[];page=0;detail=false;$('back').hidden=true;$('message').textContent='';$('load').disabled=!$('account').value;render();}
-function render(){
- var cols=columns[detail?'detail':tab],query=$('search').value.trim().toLowerCase();
- var filtered=data.filter(function(r){return cols.some(function(c){return display(r[c[1]]).toLowerCase().indexOf(query)!==-1;});});
- page=Math.min(page,Math.max(0,Math.ceil(filtered.length/50)-1));
- $('head').replaceChildren();var hr=document.createElement('tr');cols.forEach(function(c){var th=document.createElement('th');th.textContent=c[0];hr.appendChild(th);});$('head').appendChild(hr);
- $('rows').replaceChildren();filtered.slice(page*50,page*50+50).forEach(function(row){
-  var tr=document.createElement('tr');cols.forEach(function(c){var td=document.createElement('td');
-   if(tab==='invoices'&&!detail&&c[1]==='invoice_no'){var button=document.createElement('button');button.textContent=display(row.invoice_no);button.onclick=function(){read(row.invoice_no);};td.appendChild(button);}
-   else td.textContent=display(row[c[1]]);tr.appendChild(td);});$('rows').appendChild(tr);
- });
- $('empty').hidden=filtered.length>0;$('empty').textContent=data.length?'No matching rows.':'No report rows loaded.';
- $('count').textContent=filtered.length+' rows'+(filtered.length?' · page '+(page+1)+' / '+Math.ceil(filtered.length/50):'');
- $('prev').disabled=page===0;$('next').disabled=(page+1)*50>=filtered.length;
-}
-async function get(url,signal){var response=await fetch(url,{cache:'no-store',signal:signal});var result=await response.json();if(!response.ok)throw new Error(result.error||'Report unavailable.');return result;}
-async function read(invoice){
- if(!$('account').value)return;
- if(!$('from').value||!$('to').value||$('from').value>$('to').value){$('message').textContent='Choose a valid from/to period.';return;}
- var current=++serial;if(controller)controller.abort();controller=new AbortController();var signal=controller.signal;
- data=[];page=0;detail=!!invoice;$('back').hidden=!detail;render();$('load').disabled=true;$('message').className='';$('message').textContent='Reading the selected account report…';
- var query=new URLSearchParams({account:$('account').value,from:$('from').value,to:$('to').value});if(invoice)query.set('invoice',invoice);
- try{var result=await get('/api/daewoo/'+(invoice?'detail':tab==='invoices'?'invoices':'orders')+'?'+query,signal);
-  if(current!==serial)return;data=result.rows||[];page=0;render();$('message').textContent='Report loaded.';
-  $('sourceNote').textContent=invoice?'Source: selected COD invoice detail. Tax lines are shown as reported, not deducted again.':tab==='charges'?'Source: Financial Summary. Service invoice references and charges are reported separately; open a COD invoice for its parcel RST/WHT detail.':'Source: '+result.source+'. Invoice references do not prove bank payment.';
- }catch(error){if(current!==serial||error.name==='AbortError')return;$('message').className='dwerror';$('message').textContent=error.message;}
- finally{if(current===serial)$('load').disabled=false;}
-}
-document.querySelectorAll('[data-tab]').forEach(function(button){button.onclick=function(){tab=button.dataset.tab;clear();document.querySelectorAll('[data-tab]').forEach(function(b){var on=b===button;b.classList.toggle('on',on);b.setAttribute('aria-selected',String(on));});};});
-['account','from','to'].forEach(function(id){$(id).onchange=clear;});
-$('load').onclick=function(){read();};$('back').onclick=function(){read();};$('search').oninput=function(){page=0;render();};
-$('prev').onclick=function(){page--;render();};$('next').onclick=function(){page++;render();};
-window.APP.ready.then(async function(){
- var now=new Date(),today=now.toLocaleDateString('en-CA',{timeZone:'Asia/Karachi'});$('to').value=today;$('from').value=today.slice(0,8)+'01';
- try{var result=await get('/api/daewoo/accounts');var wanted=new URLSearchParams(location.search).get('account');
-  result.accounts.forEach(function(a){var option=document.createElement('option');option.value=a.id;option.textContent=a.label;$('account').appendChild(option);});
-  if(wanted&&result.accounts.some(function(a){return String(a.id)===wanted;}))$('account').value=wanted;
-  $('load').disabled=!result.accounts.length;if(!result.accounts.length)$('message').textContent='Add a Daewoo account to open its reports.';render();
- }catch(error){$('load').disabled=true;$('message').textContent=error.message;}
-});
-})();
-</script></body></html>
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Daewoo ? Fusion</title>
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="manifest" href="/manifest.json">
+<meta name="theme-color" content="#222F34">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@600;700;800&family=Roboto:wght@400;500&family=Roboto+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/app.css">
+<link rel="stylesheet" href="/courier-dashboard.css">
+</head>
+<body><div class="layout"><aside class="rail"></aside><div class="main">
+<div class="topline"><div><h1 id="ttl">Daewoo</h1><div class="sub" id="sourceNote">Courier dashboard</div></div></div>
+<div class="shell"><div class="tabs" id="mainTabs">
+<button data-main="parcels" class="on">Parcels</button><button data-main="finance">Finance</button><button data-main="receipts">Receipts</button></div>
+<div class="cdbar"><button data-days="0">Today</button><button data-days="6" class="on">7 days</button><button data-days="29">30 days</button><button data-days="89">3 months</button><button id="btnPick">Date range</button>
+<span id="picker" class="hide"><input id="from" type="date" aria-label="From"><input id="to" type="date" aria-label="To"></span>
+<select id="account" aria-label="Daewoo account"></select><button id="load">Refresh</button><a href="/couriers?add=daewoo">Manage account</a></div>
+<div class="fresh" id="message" role="status" aria-live="polite"></div>
+<div class="subtabs" id="subTabs"></div><div class="cards" id="cards"></div>
+<div class="box"><h3 id="tableTitle">Parcels</h3><div class="cdbar"><input id="search" type="search" placeholder="Tracking or invoice reference"><button id="back" hidden>Back to CPRs</button></div>
+<div style="overflow:auto"><table class="t"><thead id="head"></thead><tbody id="rows"></tbody></table></div><p class="note" id="empty">Reading?</p>
+<div class="cdbar"><button id="prev">Previous</button><span id="count"></span><button id="next">Next</button></div></div>
+<p class="note" id="coverage">Daewoo reports keep COD, delivery/tax invoices and bank payments separate. Unmatched net amounts remain unavailable.</p>
+</div></div></div><script src="/nav.js"></script><script src="/daewoo-dashboard.js"></script></body></html>

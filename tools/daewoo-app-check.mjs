@@ -21,6 +21,9 @@ const check=await adapter.testToken('fixture-user',extra);
 assert.equal(check.ok,true);assert.equal(check.learned.customerId,'001');
 assert.ok(!JSON.stringify(check).includes('fixture-key'));
 assert.equal(adapter.manualOnly,true);assert.equal(adapter.financialPosting,false);
+assert.equal(adapter.groupOf('Ready for delivery'),'transit');
+assert.equal(adapter.groupOf('RTO Delivered'),'returned');
+assert.equal(adapter.groupOf('Unrecognized fixture status'),'other');
 assert.equal(adapter.fetchOrders,undefined,'live reports must not enter parcel-net storage');
 assert.equal(adapterFor('daewoo').name,'Daewoo');
 assert.equal(courierKinds().find(k=>k.key==='daewoo').reportPath,'/daewoo');
@@ -48,6 +51,8 @@ let r=await call('/accounts');assert.equal(r.code,200);assert.deepEqual(r.body.a
 const q={account:'1',from:'2026-01-01',to:'2026-01-31'};
 r=await call('/orders',q);assert.equal(accountRealm,'realm-a');assert.equal(r.body.rows[0].AmountPaid2,null);
 assert.equal(r.body.postingAllowed,false);assert.equal(r.body.rows[0].Service_invoice_no,'service-a');
+r=await call('/dashboard',q);assert.equal(r.body.orders[0].fusionStatusGroup,'delivered');
+assert.equal(r.body.covers[0].invoice_no,'cod-a');assert.equal(r.body.settlements,null);
 r=await call('/invoices',q);assert.equal(r.body.rows[0].invoice_no,'cod-a');
 r=await call('/detail',{...q,invoice:'cod-a'});assert.equal(r.body.rows.length,1);
 r=await call('/detail',{...q,invoice:'outside'});assert.equal(r.code,404);

@@ -436,3 +436,14 @@ Outstanding: portal session automation, complete export semantics, current statu
 catalogue, settlement/charge/tax rules, invoice Action detail, report date semantics,
 multi-customer ownership, rate limits and SGP1 connectivity. UI feasibility is
 established; end-to-end automatic financial integration is not yet established.
+
+## 7 Nov 2026 - Current delivery status
+The earlier outstanding/planning sections describe staged work, not current UI.
+Account connection and live reports were owner-confirmed after 72849ac.
+Standard courier tabs and provider-specific Banking invoice matching are now
+implemented; see the dated logistics and Banking notes. Migration 006 reserved
+for immutable settlement snapshots and audit. Exact synthetic money and access
+checks run before deployment. No real financial record is created by tests.
+Automatic parcel import/scheduling, complete pickup/parcel allocation semantics,
+QuickBooks posting and proven automatic payment-to-invoice allocation remain
+outside this delivery; missing source fields remain explicitly unavailable.

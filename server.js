@@ -205,6 +205,8 @@ import { createBankingRouter } from './banking-router.js';
 import { bankingAccess, createBankingGuard } from './banking-access.js';
 import { initMessages, createMessagesRouter } from './messages.js';
 import { createDaewooRouter } from './daewoo-routes.js';
+import { createDaewooBankingRouter } from './daewoo-banking-router.js';
+import { initDaewooLocks, createDaewooLockStore } from './daewoo-lock-store.js';
 import { relayState } from './wire.js';
 import {
   read as readGrant, write as writeGrant, mayApp, inModule as inAccessModule,
@@ -1453,7 +1455,9 @@ const RIGHT_GROUPS = [
     paths: ['/api/bank/save','/api/bank/close','/api/bank/link','/api/bank/unlink',
       '/api/bank/post','/api/bank/transfer','/api/bank/adjust','/api/bank/move',
       '/api/bank/entry-remove','/api/bank/sheet','/api/bank/setup',
-      '/api/bank/transaction','/api/bank/correct-transaction','/api/bank/remove-setup'] },
+      '/api/bank/transaction','/api/bank/correct-transaction','/api/bank/remove-setup',
+      '/api/daewoo-banking/preview','/api/daewoo-banking/lock',
+      '/api/daewoo-banking/confirm','/api/daewoo-banking/reverse'] },
   { key: 'upload', module: 'finance', money: true, area: 'sales', label: 'Create invoices',
     what: 'Post invoices to QuickBooks',
     paths: ['/api/upload/start', '/api/upload/retry', '/api/upload/resume',
@@ -9239,7 +9243,11 @@ app.use('/api/bank', createBankingRouter({ requireBanking, requireCompany }));
 app.use('/api/messages',createMessagesRouter({requireCompany,currentUser}));
 app.use('/api/daewoo',createDaewooRouter({requireCompany,
   getWho:req=>whoIs(currentUser(req)),listAccounts:listCourierAccounts,
-  getAccount:getCourierAccount,credsOf}));
+  getAccount:getCourierAccount,credsOf,
+  listSettlements:(realm,account)=>createDaewooLockStore().list(realm,account)}));
+app.use('/api/daewoo-banking',createDaewooBankingRouter({requireBanking,requireCompany,
+  listAccounts:listCourierAccounts,getAccount:getCourierAccount,credsOf,listLinks,
+  store:createDaewooLockStore()}));
 
 app.get('/api/bank/report', async (req, res) => {
   if (!await requireBanking(req, res)) return;
@@ -14627,6 +14635,7 @@ initDb()
   .then(() => initCouriers())
   .then(() => initRates())
   .then(() => initBanking())
+  .then(() => initDaewooLocks())
   .then(() => initMessages())
   .then(() => initShopify())
   .then(() => initHr())

@@ -2,8 +2,9 @@ import { Router } from 'express';
 import { readableApps, seesMoney } from './access.js';
 import { validateRange } from './daewoo-portal.js';
 import { openDaewooPortal } from './daewoo.js';
+import { groupFor } from './adapters.js';
 
-export function createDaewooRouter({requireCompany,getWho,listAccounts,getAccount,credsOf,openPortal=openDaewooPortal}){
+export function createDaewooRouter({requireCompany,getWho,listAccounts,getAccount,credsOf,openPortal=openDaewooPortal,listSettlements=async()=>null}){
   const router=Router();
   const wrap=work=>async(req,res)=>{
     const realm=await requireCompany(req,res);if(!realm)return;
@@ -28,6 +29,13 @@ export function createDaewooRouter({requireCompany,getWho,listAccounts,getAccoun
     if(!account||account.courier!=='daewoo'||account.active===false)return res.status(404).json({error:'Daewoo account not found.'});
     const {client,customerId}=await openPortal(account.token,credsOf(account));
     try{
+      if(kind==='dashboard'){
+        const orders=(await client.financialRows(q.from,q.to,customerId)).map(row=>({...row,fusionStatusGroup:groupFor('daewoo',row.status)}));
+        const covers=await client.covers(q.from,q.to,customerId);
+        const locks=await listSettlements(realm,account.id);
+        const settlements=locks===null?null:locks.filter(l=>l.scope.customerId===customerId).map(l=>({id:l.id,paymentRef:l.paymentRef,state:l.state,net:l.net,gross:l.gross,deductions:l.deductions,on:l.on,paidOn:l.bankReceipt?.on||null}));
+        return res.json({orders,covers,settlements,postingAllowed:false,source:'Daewoo portal',account:{id:account.id,label:account.label}});
+      }
       let rows;
       if(kind==='orders')rows=await client.financialRows(q.from,q.to,customerId);
       else{
@@ -45,5 +53,6 @@ export function createDaewooRouter({requireCompany,getWho,listAccounts,getAccoun
   router.get('/orders',read('orders'));
   router.get('/invoices',read('invoices'));
   router.get('/detail',read('detail'));
+  router.get('/dashboard',read('dashboard'));
   return router;
 }
