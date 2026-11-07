@@ -453,6 +453,7 @@
                 ? '<button data-pout="' + a.id + '">Forget</button>' : '')
             : '') +
           (pastable ? '<button data-past="' + a.id + '">Bring the past in</button>' : '') +
+          '<button data-rename="' + a.id + '">Edit name</button>' +
           '<button data-test="' + a.id + '">Test</button>' +
           '<button class="danger" data-del="' + a.id + '">Remove</button>' +
         '</div>';
@@ -597,6 +598,20 @@
       });
     });
 
+    box.querySelectorAll('button[data-rename]').forEach(function(b){
+      b.addEventListener('click', function(){
+        var id = Number(b.getAttribute('data-rename'));
+        var a = S.accounts.filter(function(x){ return x.id === id; })[0];
+        var label = prompt('Account display name', a ? a.label : '');
+        if(label === null) return;
+        label = label.trim();
+        if(!label || label.length > 120){ say('bad', 'Enter an account name (1–120 characters).'); return; }
+        b.disabled = true;
+        post('/api/courier/accounts/rename', {id:id,label:label})
+          .then(function(){ location.reload(); })
+          .catch(function(e){ b.disabled=false; say('bad', '<b>'+esc(e.message)+'</b>'); });
+      });
+    });
     box.querySelectorAll('button[data-test]').forEach(function(b){
       b.addEventListener('click', function(){
         var id = Number(b.getAttribute('data-test'));

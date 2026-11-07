@@ -205,6 +205,7 @@ import { createBankingRouter } from './banking-router.js';
 import { bankingAccess, createBankingGuard } from './banking-access.js';
 import { initMessages, createMessagesRouter } from './messages.js';
 import { createDaewooRouter } from './daewoo-routes.js';
+import { createCourierAccountRouter } from './courier-account-router.js';
 import { createDaewooBankingRouter } from './daewoo-banking-router.js';
 import { initDaewooLocks, createDaewooLockStore } from './daewoo-lock-store.js';
 import { relayState } from './wire.js';
@@ -10085,6 +10086,7 @@ app.get('/api/courier/report', async (req, res) => {
   }
 });
 
+app.use('/api/courier/accounts',createCourierAccountRouter({requireAdmin}));
 app.get('/api/courier/accounts', async (req, res) => {
   const realmId = await requireCompany(req, res);
   if (!realmId) return;

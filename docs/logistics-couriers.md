@@ -118,7 +118,7 @@ answers from a network Bangalore can see.
 | `tracking.mulphilog.com.pk` | Azure | yes |
 | **`sonic.pk`** (Trax) | **PTCL, inside Pakistan** | **no - the call times out** |
 
-So the first Trax key gave `✗ That did not work: Trax said nothing: fetch
+So the first Trax key gave `âœ— That did not work: Trax said nothing: fetch
 failed`, which reads like a bug here and is not one: the same key, from a
 laptop in Karachi, answers in under a second. Nothing in the key, the endpoint
 or the adapter can fix a route.
@@ -265,11 +265,11 @@ delivered ni ho"* - and a payment is made for none of those.
 | `trax.js` | one API key, an `Authorization` header, and no call anywhere that takes a span of days |
 | `traxportal.js` | the portal's own sign-in at `sonic.pk`, where a span of days is the whole point |
 
-The portal's **Reports → Summary** screen is one DataTables feed:
+The portal's **Reports â†’ Summary** screen is one DataTables feed:
 
 ```
 GET /cod/reports/summary/list
-    ?search_user=<shipper id>&search_date_from=…&search_date_to=…&start=&length=
+    ?search_user=<shipper id>&search_date_from=â€¦&search_date_to=â€¦&start=&length=
 ```
 
 Read off the portal while signed in (29 Oct 2026): on one account it answered
@@ -701,9 +701,9 @@ Seven tabs come out of it: where they got to, every status, how long it took,
 trouble, cities, day by day, and parcel by parcel. Every figure opens into its
 parcels through `/api/courier/rows`.
 
-- **Three legs, not one average.** Booked → picked up is ours to fix: how long
-  a parcel sits waiting for the courier to come. Picked up → delivered is
-  theirs. Booked → delivered is what the customer feels. One number hides
+- **Three legs, not one average.** Booked â†’ picked up is ours to fix: how long
+  a parcel sits waiting for the courier to come. Picked up â†’ delivered is
+  theirs. Booked â†’ delivered is what the customer feels. One number hides
   which of the two is slipping. Counted only where both ends are known,
   because a parcel with no pickup date is a missing date, not a same-day
   pickup.
@@ -932,7 +932,7 @@ were never reached. `movingTrackings()` puts unknown first now.
 | | |
 |---|---|
 | `POST /api/courier/rebucket` | files every parcel again from the courier's own words. Needed whenever a mapping is corrected, because `status_group` is stored, not worked out when read |
-| `POST /api/courier/cityfix` | tidies the shape of a city name (`SIALKOT` → `Sialkot`) and asks the courier for the name behind a code. **It never turns a code into a name itself** - only the courier knows whether `GUJ` is Gujranwala or Gujrat |
+| `POST /api/courier/cityfix` | tidies the shape of a city name (`SIALKOT` â†’ `Sialkot`) and asks the courier for the name behind a code. **It never turns a code into a name itself** - only the courier knows whether `GUJ` is Gujranwala or Gujrat |
 | `GET /api/courier/peek` | the courier's own row, untouched |
 
 ### Where it stands
@@ -1447,3 +1447,6 @@ Current implementation supersedes the earlier live-report-only milestone.
 - Synthetic checks cover scoped routes, allocations, tax, store rollback/audit,
   standard tabs, stale requests and unchanged Banking placement behavior.
   Real financial lock/receipt actions are deliberately left to the owner.
+
+## 7 Nov 2026 - Courier account display names
+Manage courier accounts now offers Edit name on every provider's account. The admin-only, realm-scoped rename route updates label only; IDs, credentials, reports and bank links are retained. Duplicate names within one courier/company are rejected. Page reload refreshes the sidebar name too.
