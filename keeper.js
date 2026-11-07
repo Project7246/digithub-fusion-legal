@@ -116,6 +116,12 @@ async function catchUpOne(realmId, acc) {
   const a = adapterFor(acc.courier);
   if (!a) return;
 
+  if(a.manualOnly){
+    state.accounts[acc.id]={id:acc.id,label:acc.label,courier:acc.courier,
+      skipped:true,at:new Date().toISOString(),note:'Open this account to read its live reports.'};
+    return;
+  }
+
   const last = await lastDayOf(realmId, acc.id);
   const to = today();
 

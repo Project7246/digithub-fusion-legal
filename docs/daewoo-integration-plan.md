@@ -1,7 +1,11 @@
 # Daewoo courier integration plan - 6 Nov 2026
 
-Status: portal client and private diagnostics built, tested offline. No Daewoo
-adapter registered, account created, schema or live setting changed.
+Status, 7 Nov: Daewoo live-report connector is registered in the app. Shared
+account form/sidebar now connect to /daewoo. No stored parcel/CPR import, tracking
+API sweep, payment allocation verification or financial posting is enabled.
+Actual saved-account end-to-end report read awaits owner credentials. Details:
+docs/logistics-couriers.md, "Daewoo app connector". Earlier planning/checkpoints
+below describe the investigation before this app attachment.
 Owner wants the same Fusion courier screens and behavior, with a Daewoo-specific
 implementation underneath. Owner confirms only the supplied API guide is offered
 in the merchant portal and there is no webhook. Credentials must stay private.

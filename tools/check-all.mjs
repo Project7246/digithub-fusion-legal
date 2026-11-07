@@ -18,6 +18,8 @@ const checks = [
   ['banking access', 'tools/banking-access-check.mjs'],
   ['Daewoo portal', 'tools/daewoo-portal-check.mjs'],
   ['Daewoo settlements', 'tools/daewoo-settlement-check.mjs'],
+  ['Daewoo app', 'tools/daewoo-app-check.mjs'],
+  ['Daewoo UI', 'tools/daewoo-ui-check.mjs'],
   ['banking', 'tools/banking-check.mjs'],
   ['banking report', 'tools/banking-report-check.mjs'],
   ['banking setup', 'tools/banking-setup-check.mjs'],

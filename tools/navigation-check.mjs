@@ -150,6 +150,15 @@ assert.equal(couriers.rail.querySelectorAll('a.acc.on').length, 1);
 branches[0].open = true; branches[0].events.toggle();
 assert.equal(branches[1].open, false, 'opening a provider closes its sibling');
 
+const daewooNav=navigation('logistics','/daewoo','?account=11');
+daewooNav.context.fetch=async()=>({json:async()=>({couriers:[
+  {key:'daewoo',name:'Daewoo',ready:true,reportPath:'/daewoo',accounts:[{id:11,label:'Synthetic Daewoo'}]}
+]})});
+vm.runInContext(source.slice(source.indexOf('  (function courierTree(){'),
+  source.indexOf('  // A CPR belongs to one courier.')),daewooNav.context);
+await new Promise(resolve=>setImmediate(resolve));
+assert.equal(daewooNav.rail.querySelector('a.acc.on').getAttribute('href'),'/daewoo?account=11');
+
 const pruning = source.slice(source.indexOf('      if(!s.boss && rail){'),
   source.indexOf('      if(!s.admin){'));
 couriers.context.s = { boss: false, limited: true };

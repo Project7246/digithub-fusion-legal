@@ -26,13 +26,15 @@
 import { adapter as postex } from './postex.js';
 import { adapter as trax }   from './trax.js';
 import { adapter as mnp }    from './mnp.js';
+import { adapter as daewoo } from './daewoo.js';
 import { readHook } from './hooks.js';
 import { makeGrouper } from './statuses.js';
 
 export const ADAPTERS = {
   postex: postex,
   trax:   trax,
-  mnp:    mnp
+  mnp:    mnp,
+  daewoo: daewoo
 };
 
 // Which couriers take their charges out of the money they send us.
@@ -54,14 +56,12 @@ export function adapterFor(courier) {
   return ADAPTERS[String(courier || '').trim().toLowerCase()] || null;
 }
 
-// Daewoo was on this list as "soon" and is off it on purpose: nobody is
-// working on it, and a courier shown greyed out for months reads as something
-// broken rather than something not started. It comes back as a file beside
-// trax.js on the day it is wanted.
 export function courierKinds() {
   return Object.values(ADAPTERS).map(a => ({
     key: a.key,
     name: a.name,
+    reportPath: a.reportPath || null,
+    manualOnly: !!a.manualOnly,
     fields: (a.fields || [{ name: 'token', label: 'API token', secret: true }])
       .map(f => ({
         name: f.name,

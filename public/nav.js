@@ -84,7 +84,7 @@
       // Opened from an account in this rail's courier tree, and from the
       // figures on its front page. They are not lines here - see the Couriers
       // group below - but they are this section's pages while you are in it.
-      claims:['/courier-dash', '/pickups', '/receipts'],
+      claims:['/courier-dash', '/pickups', '/receipts', '/daewoo'],
       soon:[{ label:'Returns', tile:'back' }],
       groups: [
       { group: null, items: [
@@ -1185,6 +1185,7 @@
                '" href="/courier-dash?scope=all">All courier companies</a>';
 
         (d.couriers || []).forEach(function(c){
+          var accountPage = /^\/[a-z0-9-]+$/.test(c.reportPath || '') ? c.reportPath : '/courier-dash';
           // only the company whose account - or whose own shelf - is on
           // screen opens itself
           var mine = courierKey === c.key ||
@@ -1204,7 +1205,7 @@
           // ask "how is PostEx doing" as against "how is PostEx - RB doing".
           if (c.accounts.length) {
             out += '<a class="all' + (courierKey === c.key ? ' on' : '') +
-                   '" href="/courier-dash?courier=' + esc(c.key) + '">' +
+                   '" href="' + accountPage + '?courier=' + esc(c.key) + '">' +
                    'All ' + esc(c.name) + ' accounts</a>';
           }
           // An account is one entry here. What can be done with it - orders,
@@ -1213,7 +1214,7 @@
           c.accounts.forEach(function(a){
             out += '<a class="acc' + (accountId === String(a.id) ? ' on' : '') +
                    '"' + (accountId === String(a.id) ? ' aria-current="page"' : '') +
-                   ' href="/courier-dash?account=' + a.id + '">' +
+                   ' href="' + accountPage + '?account=' + a.id + '">' +
                    esc(a.label) + '</a>';
           });
           out += '<a class="add" href="/couriers?add=' + esc(c.key) + '">+ add an account</a>';

@@ -204,6 +204,7 @@ import { absorbPayouts, bankSaid, bankDrift } from './mnplive.js';
 import { createBankingRouter } from './banking-router.js';
 import { bankingAccess, createBankingGuard } from './banking-access.js';
 import { initMessages, createMessagesRouter } from './messages.js';
+import { createDaewooRouter } from './daewoo-routes.js';
 import { relayState } from './wire.js';
 import {
   read as readGrant, write as writeGrant, mayApp, inModule as inAccessModule,
@@ -1605,6 +1606,7 @@ const PAGE_NEED = new Map(Object.entries({
   '/audit.html': 'books',
   '/couriers.html': 'couriersync',
   '/courier-dash.html': 'couriersync',
+  '/daewoo.html': 'couriersync',
   '/receipts.html': 'couriersync',
   '/delivery-reports.html': 'couriersync',
   '/service-areas.html': 'couriersync',
@@ -9235,6 +9237,9 @@ app.get('/api/courier/peek', async (req, res) => {
 
 app.use('/api/bank', createBankingRouter({ requireBanking, requireCompany }));
 app.use('/api/messages',createMessagesRouter({requireCompany,currentUser}));
+app.use('/api/daewoo',createDaewooRouter({requireCompany,
+  getWho:req=>whoIs(currentUser(req)),listAccounts:listCourierAccounts,
+  getAccount:getCourierAccount,credsOf}));
 
 app.get('/api/bank/report', async (req, res) => {
   if (!await requireBanking(req, res)) return;
@@ -9918,6 +9923,7 @@ app.get('/api/courier/tree', async (req, res) => {
       key: a.key,
       name: a.name,
       ready: true,
+      reportPath: a.reportPath || null,
       accounts: accounts
         .filter(x => x.courier === a.key)
         .map(x => ({ id: x.id, label: x.label, lastSync: x.last_sync }))

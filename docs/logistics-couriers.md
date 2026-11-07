@@ -3,6 +3,38 @@
 Moved out of CLAUDE.md on 4 Nov 2026, word for word, so that a task reads only
 the module it touches. Nothing here was changed, reworded or dropped - see the
 index in CLAUDE.md. Read this file before working on this module.
+## Daewoo app connector - 7 Nov 2026
+
+Daewoo is now registered in adapters.js and offered in Add account/sidebar.
+The first common account field is the non-secret portal user; API key, API user,
+API password and portal password are in the existing encrypted extra credentials.
+Connection validation checks getLocations, fresh portal login and a unique selected
+customer before saving. No credential-bearing error URLs are returned or logged.
+
+Daewoo accounts open /daewoo in the shared Logistics navigation, rather than the
+parcel-net dashboard. It offers live Financial Summary orders/status and service
+references, COD/CPR covers, and selected invoice detail including reported RST/WHT.
+Requests enforce company membership, report/money grants, account kind/ownership,
+customer scope and invoice ownership within the requested period. Missing figures
+remain Unavailable; source strings/identifiers are preserved. Tables paginate/search
+in the browser and ignore late responses after a scope/filter change.
+
+This is a live report connector, not a completed stored-history/payment adapter.
+It does not import rows into courier_orders/courier_cprs, infer settlement, post to
+Banking/QuickBooks, generate a webhook, or run tracking API sweeps. The registry
+marks manualOnly; the existing keeper skips it. No new timer, schema or migration.
+Shared Pull/webhook controls exclude this account; Open reports is its action.
+The requested period is forwarded without an arbitrary seven-day clamp. Actual
+upstream date completeness and payment-to-invoice allocations remain unverified.
+Full automatic discovery/storage and posting require their own verified mapping;
+report connectivity must not be called proof of bank settlement.
+
+Synthetic adapter/router/UI/registry/navigation checks cover encrypted-extra shape,
+private session cleanup, denied grants/foreign accounts, invoice identity, null
+money, source escaping, manual reads, pagination and stale account responses.
+Actual account save/report read still requires owner-entered credentials in the
+app form; nothing is prefilled from chat or committed. See integration plan.
+
 ## Daewoo planning requested - 6 Nov 2026
 
 7 Nov owner clarification: Daewoo COD/CPR and service/tax invoices are separate;

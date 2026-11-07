@@ -308,7 +308,12 @@
 
     // worth saying before an account is added, not after: these two couriers
     // work in opposite ways and both ways are the courier's doing, not ours
-    if(k.lists === false){
+    $('btnReach').hidden = !!k.manualOnly;
+    if(k.manualOnly){
+      says.push('<b>Live reports</b>: API and portal sign-in are checked before saving. ' +
+        'Then use Open reports on the account for orders/status, COD invoices and charges. ' +
+        'This courier has no webhook. Reports are read when requested; payment allocation is not verified.');
+    } else if(k.lists === false){
       says.push('<b>How ' + esc(k.name) + ' works</b>: its API answers about one ' +
         'parcel at a time, never a span of days, so new parcels arrive through ' +
         'its webhooks and Fusion refreshes the ones still moving.');
@@ -437,6 +442,7 @@
         (a.last_error ? ' \u00b7 <span style="color:var(--bad)">' + esc(a.last_error) + '</span>' : '') +
         '</small></div>' +
         '<div class="acts">' +
+          (K && K.reportPath ? '<a class="save" href="' + esc(K.reportPath) + '?account=' + a.id + '">Open reports</a>' : '') +
           (hasPortal
             ? '<button data-portal="' + a.id + '">' +
               (a.portal_ready
@@ -729,14 +735,14 @@
   function fillPullAccounts(){
     var sel = $('pullAcc');
     sel.innerHTML = '';
-    S.accounts.forEach(function(a){
+    S.accounts.filter(function(a){ var k=kindOf(a.courier); return !(k && k.manualOnly); }).forEach(function(a){
       var o = document.createElement('option');
       o.value = a.id;
       o.textContent = a.label;
       sel.appendChild(o);
     });
 
-    if(S.accounts.length){
+    if(sel.options.length){
       $('stepPull').classList.remove('hide');
       $('pullHint').textContent =
         'Orders are kept here once pulled, so the same days can be asked for again ' +
@@ -753,12 +759,12 @@
   function fillHookAccounts(){
     var sel = $('hookAcc');
     var was = sel.value;
-    sel.innerHTML = S.accounts.map(function(a){
+    sel.innerHTML = S.accounts.filter(function(a){ var k=kindOf(a.courier); return !(k && k.manualOnly); }).map(function(a){
       return '<option value="' + a.id + '">' + esc(a.label) + '</option>';
     }).join('');
     if(was) sel.value = was;
-    $('stepHook').classList.toggle('hide', !S.accounts.length);
-    if(S.accounts.length) showHook();
+    $('stepHook').classList.toggle('hide', !sel.options.length);
+    if(sel.options.length) showHook();
   }
 
   function when(t){
