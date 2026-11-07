@@ -48,6 +48,7 @@
           <button data-days="29">30 days</button>
           <button data-days="89">3 months</button>
           <button id="btnPick">Date range</button>
+          <button id="btnDaewooSync" class="hide">Sync Daewoo reports</button>
           <span id="picker" class="hide">
             <input type="date" id="from">
             <input type="date" id="to">
@@ -117,6 +118,7 @@
   var qs = new URLSearchParams(location.search);
   var account = qs.get('account');
   var courier = qs.get('courier');
+  var daewooMode = courier === 'daewoo';
   var keeperTimer = null;
   // true while a catch-up is running, so the one quiet refresh happens when it
   // ends rather than every few seconds while it goes on
@@ -222,6 +224,16 @@
   }
 
   $('btnConnect').addEventListener('click', function(){ location.href = '/auth/connect'; });
+  $('btnDaewooSync').addEventListener('click', function(){
+    if(!account)return;
+    var button=$('btnDaewooSync');button.disabled=true;button.textContent='Syncing portal reports…';
+    fetch('/api/daewoo/sync',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({account:account,from:fromEl.value,to:toEl.value})})
+      .then(function(r){return r.json().then(function(d){if(!r.ok)throw new Error(d.error||'Daewoo sync failed');return d;});})
+      .then(function(d){$('fresh').textContent='Daewoo reports saved · '+n0(d.orders)+' parcels · '+n0(d.documents)+' source records';load();})
+      .catch(function(e){$('fresh').textContent=e.message;})
+      .finally(function(){button.disabled=false;button.textContent='Sync Daewoo reports';});
+  });
 
   window.APP.ready.then(function(s){
     if(!s.connected){ $('gate').classList.remove('hide'); return; }
@@ -308,6 +320,12 @@
         if(d.error) return;
         $('ttl').textContent = d.title || 'Courier dashboard';
         $('sub').textContent = d.sub || '';
+        if(d.courier==='daewoo'){
+          daewooMode=true;TABS.push('source');$('btnDaewooSync').classList.remove('hide');
+          var tabButton=document.createElement('button');tabButton.setAttribute('data-tab','source');tabButton.textContent='Invoices';
+          $('tabs').insertBefore(tabButton,$('tabs').querySelector('[data-go]'));
+          tabButton.addEventListener('click',function(){showTab('source');load();});
+        }
       })
       .catch(function(){});
   }
@@ -365,6 +383,7 @@
   function load(quiet){
     localStorage.setItem('cdFrom', fromEl.value);
     localStorage.setItem('cdTo', toEl.value);
+    if(tab==='source'&&daewooMode){loadDaewooSource(quiet);return;}
     if(!quiet) $('out').innerHTML = '<div class="loading">Reading\u2026</div>';
 
     Promise.all([
@@ -388,6 +407,42 @@
     .catch(function(e){
       if(!quiet) $('out').innerHTML = '<div class="msg">'+esc(e.message)+'</div>';
     });
+  }
+
+  function loadDaewooSource(quiet){
+    if(!quiet)$('out').innerHTML='<div class="loading">Loading saved Daewoo invoices…</div>';
+    var p=new URLSearchParams({account:account||'',from:fromEl.value,to:toEl.value});
+    fetch('/api/daewoo/stored?'+p.toString(),{cache:'no-store'}).then(function(r){return r.json().then(function(d){if(!r.ok)throw new Error(d.error||'Could not read Daewoo records');return d;});})
+      .then(function(d){renderDaewooSource(d.sourceReports||[]);})
+      .catch(function(e){if(!quiet)$('out').innerHTML='<div class="msg">'+esc(e.message)+'</div>';});
+  }
+
+  function renderDaewooSource(rows){
+    var kinds=[['all','All source records'],['cod-cpr','COD / CPR invoices'],['cod-cpr-detail','Invoice parcel details'],['payment-report','Payment reports'],['delivery-charge','Delivery charges'],['tax','Tax / withholding']];
+    var selected=localStorage.getItem('daewooSourceKind')||'all';
+    function show(){
+      var filtered=selected==='all'?rows:rows.filter(function(r){return r.kind===selected;});
+      var columns={
+        'cod-cpr':['invoice_no','invoice_date','invoice_period_start_date','invoice_period_end_date','TotalCODAmount','TotalServiceCharges','TotalReimbursementAmount'],
+        'cod-cpr-detail':['invoice_no','booking_id','Barcode','amount_cod','amount_wr','RST_Amt','RWHT_Amt'],
+        'payment-report':['Payment_invoice_no','invoice_status','booking_id','BarCode','AmountPaid2'],
+        'delivery-charge':['Service_invoice_no','invoice_no','booking_id','Barcode','amount_wr'],
+        'tax':['invoice_no','booking_id','Barcode','RST_Amt','RWHT_Amt']
+      };
+      var html='<div class="subtabs">'+kinds.map(function(k){return '<button data-dkind="'+k[0]+'"'+(selected===k[0]?' class="on"':'')+'>'+esc(k[1])+'</button>';}).join('')+'</div>'+
+        '<div class="box"><h3>Daewoo source records <span class="aside">'+n0(filtered.length)+' saved in Fusion</span></h3><div class="note">Source documents stay separate. A COD or charge invoice is not proof that a bank payment was received.</div>';
+      if(!filtered.length)html+='<div class="note">No saved records for this period yet. Use Sync Daewoo reports above.</div>';
+      else{
+        html+='<div style="overflow:auto"><table class="t"><thead><tr><th>Type</th><th>Reference</th>';
+        var fields=['invoice_no','invoice_date','invoice_period_start_date','invoice_period_end_date','booking_id','Barcode','Payment_invoice_no','Service_invoice_no','invoice_status','TotalCODAmount','TotalServiceCharges','TotalReimbursementAmount','amount_cod','amount_wr','AmountPaid2','RST_Amt','RWHT_Amt'];
+        html+=fields.map(function(f){return '<th>'+esc(f.replace(/_/g,' '))+'</th>';}).join('')+'</tr></thead><tbody>';
+        filtered.forEach(function(r){var p=r.payload||{};html+='<tr><td>'+esc(r.kind)+'</td><td>'+esc(r.reference)+'</td>'+fields.map(function(f){return '<td>'+esc(p[f]==null?'':String(p[f]))+'</td>';}).join('')+'</tr>';});
+        html+='</tbody></table></div>';
+      }
+      html+='</div>';$('out').innerHTML=html;
+      document.querySelectorAll('#out button[data-dkind]').forEach(function(b){b.addEventListener('click',function(){selected=b.getAttribute('data-dkind');localStorage.setItem('daewooSourceKind',selected);show();});});
+    }
+    show();
   }
 
   function donut(done, total, colDone, colRest){

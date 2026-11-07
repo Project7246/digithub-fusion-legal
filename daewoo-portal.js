@@ -153,6 +153,20 @@ export class DaewooPortal {
       return rows;
     });
   }
+  async syncBundle(fromDate,toDate,customerId){
+    const orders=await this.financialRows(fromDate,toDate,customerId);
+    const covers=await this.covers(fromDate,toDate,customerId);
+    // Detail rows carry per-parcel delivery charges and withholding fields.
+    // Keep the manual sync bounded; never silently save only part of a range.
+    if(covers.length>200)fail('INVOICE_SYNC_LIMIT');
+    const details=[];
+    for(const cover of covers){
+      const rows=await this.detail(cover.invoice_no,customerId);
+      details.push(...rows);
+      if(details.length>100000)fail('REPORT_RANGE_TOO_LARGE');
+    }
+    return {orders,covers,details,customerId,from:fromDate,to:toDate};
+  }
   async invoiceExport(invoiceNo,customerId){
     if(!this.#authenticated)fail('LOGIN_REQUIRED');
     if(invoiceNo==null||String(invoiceNo).trim()===''||customerId==null||String(customerId).trim()==='')fail('INPUT_REQUIRED');

@@ -590,7 +590,7 @@ export async function markSync(realmId, id, error) {
 }
 
 // an order seen again is updated, never duplicated
-export async function saveOrders(realmId, accountId, courier, rows) {
+export async function saveOrders(realmId, accountId, courier, rows, queryable = pool) {
   if (!rows.length) return 0;
 
   // one round trip per hundred orders instead of one per order
@@ -613,7 +613,8 @@ export async function saveOrders(realmId, accountId, courier, rows) {
       params.push(
         realmId, accountId, courier, o.tracking, o.orderRef || null,
         o.status || null, o.statusGroup || null,
-        o.amount || 0, o.fee || 0, o.tax || 0, o.city || null,
+        o.amount == null ? null : o.amount, o.fee == null ? null : o.fee,
+        o.tax == null ? null : o.tax, o.city || null,
         o.bookedOn || null, o.pickedOn || null, o.deliveredOn || null,
         // a weight the courier did not give is NULL, not nought: the rates
         // screen counts what it cannot price rather than pricing it at zero
@@ -623,7 +624,7 @@ export async function saveOrders(realmId, accountId, courier, rows) {
       );
     });
 
-    await pool.query(
+    await queryable.query(
       `INSERT INTO courier_orders
          (realm_id, account_id, courier, tracking, order_ref, status, status_group,
           amount, fee, tax, city, booked_on, picked_on, delivered_on, weight, raw, seen_at)
@@ -657,7 +658,8 @@ export async function saveOrders(realmId, accountId, courier, rows) {
             AND EXCLUDED.status_group IN ('unbooked','booked')
              THEN courier_orders.status_group
            ELSE EXCLUDED.status_group END,
-         amount       = EXCLUDED.amount,
+         amount       = CASE WHEN EXCLUDED.courier = 'daewoo' AND EXCLUDED.amount IS NULL
+                             THEN courier_orders.amount ELSE EXCLUDED.amount END,
          -- **A courier that says nothing about the money does not erase the
          -- money it already said.** Several calls carry a parcel without its
          -- charges on it at all - Trax's tracking call is one, and it returns
@@ -665,9 +667,13 @@ export async function saveOrders(realmId, accountId, courier, rows) {
          -- charges a webhook or an invoice had already written, and the
          -- receivable grew by exactly the charges every time the sweep ran.
          -- Nought here means "not said", the way it does for the weight.
-         fee          = CASE WHEN COALESCE(EXCLUDED.fee,0) <> 0
+         fee          = CASE WHEN EXCLUDED.courier = 'daewoo' AND EXCLUDED.fee IS NOT NULL
+                             THEN EXCLUDED.fee
+                             WHEN COALESCE(EXCLUDED.fee,0) <> 0
                              THEN EXCLUDED.fee ELSE courier_orders.fee END,
-         tax          = CASE WHEN COALESCE(EXCLUDED.tax,0) <> 0
+         tax          = CASE WHEN EXCLUDED.courier = 'daewoo' AND EXCLUDED.tax IS NOT NULL
+                             THEN EXCLUDED.tax
+                             WHEN COALESCE(EXCLUDED.tax,0) <> 0
                              THEN EXCLUDED.tax ELSE courier_orders.tax END,
          -- A courier that answers with a code where it once gave a name is
          -- not correcting the name - see cityName() in statuses.js.

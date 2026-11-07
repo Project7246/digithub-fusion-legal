@@ -208,6 +208,8 @@ import { createDaewooRouter } from './daewoo-routes.js';
 import { createCourierAccountRouter } from './courier-account-router.js';
 import { createDaewooBankingRouter } from './daewoo-banking-router.js';
 import { initDaewooLocks, createDaewooLockStore } from './daewoo-lock-store.js';
+import { initDaewooReports } from './daewoo-store.js';
+import { syncDaewooAccount } from './daewoo-sync.js';
 import { relayState } from './wire.js';
 import {
   read as readGrant, write as writeGrant, mayApp, inModule as inAccessModule,
@@ -9244,10 +9246,10 @@ app.use('/api/bank', createBankingRouter({ requireBanking, requireCompany }));
 app.use('/api/messages',createMessagesRouter({requireCompany,currentUser}));
 app.use('/api/daewoo',createDaewooRouter({requireCompany,
   getWho:req=>whoIs(currentUser(req)),listAccounts:listCourierAccounts,
-  getAccount:getCourierAccount,credsOf,
+  getAccount:getCourierAccount,credsOf,markSynced:markSync,
   listSettlements:(realm,account)=>createDaewooLockStore().list(realm,account)}));
 app.use('/api/daewoo-banking',createDaewooBankingRouter({requireBanking,requireCompany,
-  listAccounts:listCourierAccounts,getAccount:getCourierAccount,credsOf,listLinks,
+  listAccounts:listCourierAccounts,getAccount:getCourierAccount,listLinks,
   store:createDaewooLockStore()}));
 
 app.get('/api/bank/report', async (req, res) => {
@@ -9883,6 +9885,7 @@ app.get('/api/courier/scope', async (req, res) => {
       return res.json({
         kind: 'account',
         id: acc.id,
+        courier: acc.courier,
         title: acc.label,
         sub: (a ? a.name : acc.courier),
         lastSync: acc.last_sync,
@@ -10200,6 +10203,14 @@ app.post('/api/courier/sync', async (req, res) => {
     if (!a) return res.status(400).json({ error: 'No adapter for ' + acc.courier });
 
     const extra = credsOf(acc);
+
+    if (acc.courier === 'daewoo') {
+      const result = await syncDaewooAccount({ realmId, account: acc, from, to, credsOf });
+      await markSync(realmId, acc.id, null);
+      return res.json({ ok: true, account: acc.label, pulled: result.sourceOrders,
+        saved: result.orders, documents: result.documents, settled: 0, payments: 0,
+        how: 'days', note: 'Daewoo invoices are stored as source documents; no bank receipt is inferred.' });
+    }
 
     // A courier that cannot be asked for a span of days is refreshed parcel by
     // parcel instead, and the page is told that is what happened - rather than
@@ -14635,6 +14646,7 @@ initDb()
   .then(() => initSettings())
   .then(() => initCache())
   .then(() => initCouriers())
+  .then(() => initDaewooReports())
   .then(() => initRates())
   .then(() => initBanking())
   .then(() => initDaewooLocks())

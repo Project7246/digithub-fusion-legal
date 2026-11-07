@@ -1463,14 +1463,33 @@ Manage courier accounts now offers Edit name on every provider's account. The ad
 - Bounds remain: 4 MiB per upstream response, 16 MiB / 100,000 merged rows and
   127 attempts. An oversized single day or exhausted range gives a clear message
   rather than removing limits. Single-invoice detail/export remains bounded.
-- Dashboard portal reports have an in-process, two-minute cache (16 MiB total),
-  keyed by realm/account/date range plus credential fingerprint, with concurrent
-  request coalescing. Access/account ownership checked on each hit. Settlements
-  always read fresh. Refresh bypasses the cache. Errors are never cached; no
-  database writes, timer, new scheduler or permanent raw financial storage.
+- Live portal reads on the former standalone page have an in-process two-minute
+  cache (16 MiB total); access/account scope is checked on every hit and Refresh
+  bypasses it. That page is no longer the sidebar destination.
 - Account selection only through sidebar; duplicate dropdown and Manage account
   link removed. Default range now 30 days. No selected account means a sidebar
   selection prompt, never silently another account. Source note simplified.
 - Synthetic full-month, large-response recovery, no-partial-result, cache scope,
   refresh, expiry and UI regression checks pass. Real large range still needs
   post-deploy observation. First uncached read remains dependent on portal speed.
+
+## 7 Nov 2026 - Daewoo persistent courier reports
+- Sidebar accounts open the shared `/courier-dash` screen. Its standard Parcels
+  and Finance summaries read imported rows from `courier_orders`; Receipts keep
+  their existing bank/CPR meaning. A Daewoo-only Invoices tab lives in the same
+  shell for COD/CPR covers, invoice details, payment report rows, charges, and tax.
+- Daewoo invoice matching in Banking now reads its COD covers from this same
+  scoped store; sync the desired date range first. Delivery/tax invoice totals
+  remain owner-verified inputs and actual bank receipt remains a separate action.
+- Owner-triggered “Sync Daewoo reports” reads the selected date range from the
+  official portal, including per-cover detail, then transactionally upserts
+  shared parcel rows and realm-scoped raw source documents. No automatic timer.
+  Maximum 200 COD covers and 100,000 detail rows per sync; if exceeded, choose a
+  shorter range. The operation fails as a whole; it never reports partial sync.
+- Migration 007 adds `daewoo_source_reports` with FORCE RLS. Source documents
+  remain separate from bank receipts and settlement locks: an invoice/payment
+  report alone is not confirmation that money reached a bank. No auto-posting.
+- `amount_cod`, `amount_wr`, and RST/WHT values remain distinct; missing source
+  amounts stay NULL rather than being recorded as zero. Existing courier logic,
+  calculations, and styling are unchanged. Synthetic sync tests pass; production
+  sync and live database screen still require post-deployment owner verification.

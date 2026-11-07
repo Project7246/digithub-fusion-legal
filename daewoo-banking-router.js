@@ -1,10 +1,10 @@
 import { Router } from 'express';
-import { openDaewooPortal } from './daewoo.js';
 import { validateRange } from './daewoo-portal.js';
 import { prepareDaewooLock } from './daewoo-locks.js';
 import { bankingAccess } from './banking-access.js';
+import { readDaewooBundle } from './daewoo-store.js';
 
-export function createDaewooBankingRouter({requireBanking,requireCompany,listAccounts,getAccount,credsOf,store,listLinks,openPortal=openDaewooPortal}){
+export function createDaewooBankingRouter({requireBanking,requireCompany,listAccounts,getAccount,store,listLinks,readBundle=readDaewooBundle}){
   const router=Router();
   const wrap=work=>async(req,res)=>{
     const who=await requireBanking(req,res);if(!who)return;
@@ -23,11 +23,8 @@ export function createDaewooBankingRouter({requireBanking,requireCompany,listAcc
   }
   async function sources(realm,input,work){
     validateRange(input.from,input.to);const account=await accountFor(realm,input);
-    const {client,customerId}=await openPortal(account.token,credsOf(account));
-    try{
-      const covers=await client.covers(input.from,input.to,customerId);
-      return await work({realmId:realm,accountId:String(account.id),customerId},covers);
-    }finally{client.close();}
+    const data=await readBundle({realmId:realm,accountId:account.id,from:input.from,to:input.to});
+    return await work({realmId:realm,accountId:String(account.id),customerId:data.customerId||''},data.covers,data);
   }
   router.get('/accounts',wrap(async(_req,res,realm,who)=>{
     const accounts=(await listAccounts(realm)).filter(a=>a.courier==='daewoo'&&a.active!==false).map(a=>({id:a.id,label:a.label}));
@@ -38,8 +35,8 @@ export function createDaewooBankingRouter({requireBanking,requireCompany,listAcc
     res.json({locks:await store.list(realm,account.id),links:await listLinks(realm,account.id)});
   }));
   router.get('/sources',wrap(async(req,res,realm)=>{
-    const rows=await sources(realm,req.query,async(_scope,covers)=>covers);
-    res.json({covers:rows});
+    const result=await sources(realm,req.query,async(_scope,covers,data)=>({covers,syncedAt:data.readAt||null,storedOnly:true}));
+    res.json(result);
   }));
   router.post('/preview',wrap(async(req,res,realm)=>{
     const preview=await sources(realm,req.body,async(scope,covers)=>prepareDaewooLock(scope,covers,req.body,(await store.list(realm,scope.accountId)).filter(lock=>lock.state!=='reversed')));

@@ -1,4 +1,5 @@
-import { DaewooPortal, chooseCustomer } from './daewoo-portal.js';
+import { DaewooPortal, chooseCustomer, validateRange } from './daewoo-portal.js';
+import { mapDaewooOrders } from './daewoo-map.js';
 const fail=code=>{throw new Error('Daewoo: '+code);};
 
 // No shared session cache: each report authenticates and validates its customer.
@@ -37,7 +38,7 @@ export function createDaewooAdapter({fetcher=fetch,Portal=DaewooPortal}={}){
         'return in transit':'returning','out for return':'returning',cancelled:'cancelled',canceled:'cancelled',
         'on hold':'review',lost:'lost',damaged:'damaged'})[key]||'other';
     },
-    lists:false,manualOnly:true,reportPath:'/daewoo',financialPosting:false,
+    lists:true,manualOnly:false,reportPath:'/courier-dash',financialPosting:false,
     deducts:false, // no parcel-net calculation; deductions belong to linked invoices
     // The first field is stored as the account token in the common schema.
     // Use a non-secret portal user there; all keys/passwords go in encrypted extra.
@@ -58,6 +59,19 @@ export function createDaewooAdapter({fetcher=fetch,Portal=DaewooPortal}={}){
     async fetchAreas(_user,extra){
       return (await locations(extra)).map(row=>({id:String(row.terminal_id),name:row.terminal_name,
         hub:'',zone:'',services:[],pickup:null,delivery:null}));
+    },
+    async fetchOrders(user,from,to,_statusId,extra){
+      validateRange(from,to);
+      const session=await openDaewooPortal(user,extra,Portal);
+      try{
+        const rows=await session.client.financialRows(from,to,session.customerId);
+        return mapDaewooOrders(rows,status=>this.groupOf(status));
+      }finally{session.client.close();}
+    },
+    async fetchReportBundle(user,from,to,extra){
+      const session=await openDaewooPortal(user,extra,Portal);
+      try{return await session.client.syncBundle(from,to,session.customerId);}
+      finally{session.client.close();}
     }
   };
 }
