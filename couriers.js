@@ -685,7 +685,7 @@ export async function saveOrders(realmId, accountId, courier, rows, queryable = 
              THEN courier_orders.city
            ELSE EXCLUDED.city END,
          -- the same again for the two dates a lesser answer leaves empty
-         booked_on    = CASE WHEN EXCLUDED.courier = 'postex' THEN COALESCE(EXCLUDED.booked_on, courier_orders.booked_on) ELSE courier_orders.booked_on END,
+         booked_on    = CASE WHEN EXCLUDED.courier IN ('postex','daewoo') THEN COALESCE(EXCLUDED.booked_on, courier_orders.booked_on) ELSE courier_orders.booked_on END,
          picked_on    = COALESCE(EXCLUDED.picked_on, courier_orders.picked_on),
          delivered_on = COALESCE(EXCLUDED.delivered_on, courier_orders.delivered_on),
          order_ref    = COALESCE(NULLIF(EXCLUDED.order_ref, ''), courier_orders.order_ref),

@@ -31,17 +31,23 @@ assert.equal(adapter.groupOf('Unrecognized fixture status'),'other');
 const mapped=mapDaewooOrders([{booking_id:'0005',BarCode:'00009',amount_cod:'100.00',amount_wr:null,Payment_invoice_no:'cod-a'}],
   ()=> 'delivered',[{booking_id:'0005',invoice_no:'cod-a',amount_wr:'5.00',RST_Amt:'2.00',RWHT_Amt:'2.00'}])[0];
 assert.equal(mapped.amount,'100.00');assert.equal(mapped.fee,'5.00');assert.equal(mapped.tax,'4.00');
+const linked=mapDaewooOrders([{booking_id:'0007',BarCode:'00011',invoice_no:'COD-7',Payment_invoice_no:'PAY-7',booking_datetime_f:'07/11/2026'}],
+  ()=> 'delivered',[{booking_id:'0007',invoice_no:'COD-7',amount_wr:'8.00',RST_Amt:'20.00',RWHT_Amt:'30.00'}])[0];
+assert.equal(linked.tax,'50.00','tax detail links to the COD invoice, not the separate payment invoice');
+assert.equal(linked.fee,'8.00');assert.equal(linked.bookedOn,'2026-11-07','Daewoo day-first source dates become usable dashboard dates');
+const slashDate=mapDaewooOrders([{booking_id:'0008',BarCode:'00012',booking_datetime_f:'/Date(1794009600000)/'}],()=> 'other')[0];
+assert.equal(slashDate.bookedOn,'2026-11-07');
 const unknown=mapDaewooOrders([{booking_id:'0006',BarCode:'00010',amount_cod:null,amount_wr:null}],()=> 'other')[0];
 assert.equal(unknown.amount,null);assert.equal(unknown.fee,null);assert.equal(unknown.tax,null,'missing source values stay NULL, not zero');
 const sql=[],stored=[];
 const fakeDb={connect:async()=>({query:async(text,params=[])=>{
   sql.push(text);
-  if(text.includes('INSERT INTO courier_orders'))assert.equal(params[7],'100.00');
+  if(text.includes('INSERT INTO courier_orders')){assert.equal(params[7],'100.00');assert.equal(params[11],'2026-11-07');assert.match(text,/EXCLUDED\.courier IN \('postex','daewoo'\)/);}
   if(text.includes('INSERT INTO daewoo_source_reports'))stored.push({kind:params[3],payload:JSON.parse(params[7])});
   return {rows:[]};
 },release(){}})};
 const persisted=await saveDaewooBundle({realmId:'fixture-realm',accountId:7,customerId:'001',from:'2026-01-01',to:'2026-01-31',
-  orders:[{booking_id:'0005',BarCode:'00009',status:'Delivered',amount_cod:'100.00',Payment_invoice_no:'cod-a',AmountPaid2:'90.00',Service_invoice_no:'service-a'}],
+  orders:[{booking_id:'0005',BarCode:'00009',status:'Delivered',amount_cod:'100.00',booking_datetime_f:'07/11/2026',Payment_invoice_no:'cod-a',AmountPaid2:'90.00',Service_invoice_no:'service-a'}],
   covers:[{invoice_no:'cod-a',TotalCODAmount:'100.00'}],
   details:[{booking_id:'0005',invoice_no:'cod-a',amount_wr:'5.00',RST_Amt:'2.00',RWHT_Amt:'2.00'}]},fakeDb);
 assert.equal(persisted.orders,1);assert.ok(sql[0]==='BEGIN'&&sql.at(-1)==='COMMIT');

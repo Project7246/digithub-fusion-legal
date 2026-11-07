@@ -1495,3 +1495,12 @@ Manage courier accounts now offers Edit name on every provider's account. The ad
   sync and live database screen still require post-deployment owner verification.
 - The Sync button has its own animated busy state and live status. The shared
   `nav.js` network cue also shows a delayed progress cursor/spinner across pages.
+
+## 7 Nov 2026 - Daewoo date and tax totals correction
+- Financial report booking dates may be `dd/MM/yyyy`, so normalize them to SQL
+  dates. Re-sync updates existing Daewoo `booked_on` values as well as new rows;
+  otherwise selected-period dashboard totals remain zero while all-time totals
+  include those parcels.
+- `Payment_invoice_no` is not the COD invoice reference used by `GetDetailReport`.
+  Match tax/charge detail on the parcel plus its COD `invoice_no`, never on the
+  separate payment reference. Ambiguous detail-to-parcel links stay missing.
